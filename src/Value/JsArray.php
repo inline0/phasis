@@ -67,6 +67,28 @@ class JsArray extends JsObject
      */
     public function __construct(array $elements = [], ?JsObject $prototype = null)
     {
+        // Resolve the prototype from the active realm's Array.prototype
+        // first. Without this, cross-realm tests fail: createRealm rebuilds
+        // the JsArray::$globalPrototype static to the *child's*
+        // Array.prototype, then [] arrays created back in the parent realm
+        // pick up the child's prototype chain (and its iterator-helper
+        // methods). Resolve through Engine::getCurrentInterpreter so the
+        // proto matches whichever realm is currently executing.
+        if ($prototype === null) {
+            $interp = \PhpJs\Engine::getCurrentInterpreter();
+            if ($interp !== null) {
+                $env = $interp->getGlobalEnv();
+                if ($env->has('Array')) {
+                    $arrCtor = $env->get('Array');
+                    if ($arrCtor instanceof JsObject) {
+                        $realmProto = $arrCtor->get('prototype');
+                        if ($realmProto instanceof JsObject) {
+                            $prototype = $realmProto;
+                        }
+                    }
+                }
+            }
+        }
         parent::__construct($prototype ?? self::$globalPrototype);
 
         // Dense init: skip defineOwnProperty entirely so seeded elements

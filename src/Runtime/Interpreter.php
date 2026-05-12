@@ -4674,7 +4674,27 @@ class Interpreter
             // When a strict-mode function returns a TailCallThunk, we retry
             // with the thunk's function/args instead of recursing.
             while (true) {
-                $result = $this->callFunctionInner($fn, $thisValue, $args);
+                try {
+                    $result = $this->callFunctionInner($fn, $thisValue, $args);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    throw $e;
+                } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
+                    // Per spec: a PHP RuntimeError / SyntaxError that escapes
+                    // the callee's body must surface as a JS error constructed
+                    // from the callee's realm — `c1.access(c2)` brand-check
+                    // TypeError is realm1.TypeError, not the caller's. Wrap
+                    // eagerly so execTryStatement on the caller side sees the
+                    // right realm's constructor identity. (Native callees
+                    // already handle this inside callFunctionInner.)
+                    $fnRealm = $fn->realm;
+                    if ($fnRealm !== null && $fnRealm !== $this->engineRealm) {
+                        $realmInterp = $fnRealm->getInterpreter();
+                        throw new \PhpJs\Exceptions\JsThrowable(
+                            $realmInterp->phpExceptionToJsValue($e)
+                        );
+                    }
+                    throw $e;
+                }
                 if ($result instanceof TailCallThunk) {
                     $fn = $result->function;
                     $thisValue = $result->thisValue;
@@ -4728,18 +4748,20 @@ class Interpreter
         $nativeFn = $fn->getNativeCallable();
         if ($nativeFn !== null) {
             // When the function belongs to a different realm than the
-            // caller, wrap any PHP RuntimeError that escapes the native
-            // body using the *callee's* realm. Per spec, the error
-            // surfaces from the realm of the function being invoked, so
-            // `otherFn.call(undefined, ...)` throws `other.TypeError`
-            // even when the caller is in the parent realm.
+            // caller, wrap any PHP RuntimeError / SyntaxError that escapes
+            // the native body using the *callee's* realm. Per spec, the
+            // error surfaces from the realm of the function being invoked,
+            // so `otherFn.call(undefined, ...)` throws `other.TypeError`
+            // even when the caller is in the parent realm. SyntaxError is
+            // included for JSON.rawJSON / JSON.parse, whose parser failures
+            // must surface as the JSON intrinsic's realm.
             $fnRealm = $fn->realm;
             if ($fnRealm !== null && $fnRealm !== $this->engineRealm) {
                 try {
                     return $nativeFn($thisValue, $args, $this);
                 } catch (\PhpJs\Exceptions\JsThrowable $e) {
                     throw $e;
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
                     $realmInterp = $fnRealm->getInterpreter();
                     throw new \PhpJs\Exceptions\JsThrowable(
                         $realmInterp->phpExceptionToJsValue($e)

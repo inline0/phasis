@@ -56,31 +56,11 @@ class Test262Runner
         'built-ins/Function/proto-from-ctor-realm-prototype.js',
         'built-ins/Proxy/revocable/tco-fn-realm.js',
         'language/expressions/call/eval-realm-indirect.js',
-        // Private brand-check TypeError must surface as the calling
-        // method's realm's intrinsic %TypeError%. Our JsObject brand
-        // throws a single-realm PHP TypeError; threading the method's
-        // [[Realm]] down to JsObject would require plumbing the active
-        // function realm into every value-level error site. Tracked
-        // alongside the other structural cross-realm gaps in CLAUDE.md.
-        'language/expressions/class/private-getter-brand-check-multiple-evaluations-of-class-realm-function-ctor.js',
-        'language/expressions/class/private-getter-brand-check-multiple-evaluations-of-class-realm.js',
-        'language/expressions/class/private-method-brand-check-multiple-evaluations-of-class-realm-function-ctor.js',
-        'language/expressions/class/private-method-brand-check-multiple-evaluations-of-class-realm.js',
-        'language/expressions/class/private-setter-brand-check-multiple-evaluations-of-class-realm-function-ctor.js',
-        'language/expressions/class/private-setter-brand-check-multiple-evaluations-of-class-realm.js',
         'staging/sm/Array/change-array-by-copy-cross-compartment-create.js',
         'staging/sm/Array/species.js',
         'staging/sm/ArrayBuffer/slice-species.js',
         'staging/sm/Function/arguments-iterator.js',
-        'staging/sm/Iterator/from/wrap-new-global.js',
-        'staging/sm/Iterator/prototype/every/error-from-correct-realm.js',
-        'staging/sm/Iterator/prototype/find/error-from-correct-realm.js',
-        'staging/sm/Iterator/prototype/forEach/error-from-correct-realm.js',
-        'staging/sm/Iterator/prototype/reduce/error-from-correct-realm.js',
-        'staging/sm/Iterator/prototype/some/error-from-correct-realm.js',
-        'staging/sm/Iterator/prototype/toArray/create-in-current-realm.js',
         'staging/sm/syntax/yield-as-identifier.js',
-        'staging/sm/JSON/parse-with-source.js',
         'staging/sm/Proxy/proxy-with-revoked-arguments.js',
         'staging/sm/Reflect/set.js',
         'staging/sm/RegExp/constructor-constructor.js',

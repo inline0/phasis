@@ -734,9 +734,11 @@ class JsFunction extends JsObject
         }
 
         if ($this->nativeCallable !== null) {
-            // Per spec: PHP RuntimeError escaping a native body of a
-            // cross-realm function must surface as the callee realm's
-            // TypeError. otherFn.call(undefined, …) -> other.TypeError.
+            // Per spec: PHP RuntimeError / SyntaxError escaping a native
+            // body of a cross-realm function must surface as the callee
+            // realm's intrinsic. otherFn.call(undefined, …) -> other.
+            // TypeError. JSON.rawJSON / JSON.parse SyntaxError likewise
+            // comes from the JSON object's realm.
             $fnRealm = $this->realm;
             $currentRealm = \PhpJs\Engine::getCurrentRealm();
             if ($fnRealm !== null && $fnRealm !== $currentRealm) {
@@ -744,7 +746,7 @@ class JsFunction extends JsObject
                     $result = ($this->nativeCallable)($thisValue, $args);
                 } catch (\PhpJs\Exceptions\JsThrowable $e) {
                     throw $e;
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
                     throw new \PhpJs\Exceptions\JsThrowable(
                         $fnRealm->getInterpreter()->phpExceptionToJsValue($e)
                     );

@@ -34,9 +34,15 @@ class ArrayConstructor
         $iteratorPrototype = $env->has('__IteratorPrototype__')
             ? $env->get('__IteratorPrototype__')
             : null;
-        self::getArrayIteratorPrototype(
+        $arrayIterProto = self::getArrayIteratorPrototype(
             $iteratorPrototype instanceof JsObject ? $iteratorPrototype : null,
         );
+        // Stash on the realm env so cross-realm iterator creation can route
+        // through the *active realm's* %ArrayIteratorPrototype% rather than
+        // the last-built static. iter from main's [].values() must keep
+        // walking main's prototype chain even after createRealm rebuilt the
+        // static for the child realm.
+        $env->defineVar('__ArrayIteratorPrototype__', $arrayIterProto);
         $constructor = JsFunction::fromCallable('Array', function (JsValue $this_, array $args): JsValue {
             // Resolve the prototype to install on the new array: subclasses carry a
             // [[NewTarget]] slot whose prototype should be used. Per spec
@@ -1902,7 +1908,23 @@ class ArrayConstructor
     /** Create an iterator object for keys, values, or entries. */
     private static function createArrayIterator(JsObject $array, string $kind): JsObject
     {
-        $proto = self::$arrayIteratorPrototype;
+        // Look up %ArrayIteratorPrototype% on the active realm's globalEnv
+        // first. The static slot below is a last-built fallback used during
+        // very early bootstrap (before the realm-env binding is available).
+        $proto = null;
+        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        if ($interp !== null) {
+            $env = $interp->getGlobalEnv();
+            if ($env->has('__ArrayIteratorPrototype__')) {
+                $stashed = $env->get('__ArrayIteratorPrototype__');
+                if ($stashed instanceof JsObject) {
+                    $proto = $stashed;
+                }
+            }
+        }
+        if ($proto === null) {
+            $proto = self::$arrayIteratorPrototype;
+        }
         $iterator = new JsObject($proto);
 
         // Store iteration state as internal data.
