@@ -473,6 +473,16 @@ class Test262Runner
             => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
         'built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Number.js'
             => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/Script_-_Myanmar.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/Script_-_Syloti_Nagri.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/Script_-_Lydian.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tirhuta.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Pahawh_Hmong.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
     ];
 
     public function __construct(string $suiteDir)
