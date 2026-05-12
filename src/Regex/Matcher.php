@@ -549,6 +549,15 @@ class Matcher
 
     private function lookupUnicodeProperty(string $name, ?string $value, int $cp): bool
     {
+        // Unicode 16 bundled tables take precedence over host ICU
+        // (which on Ubuntu CI is ICU 74 = Unicode 14, two versions
+        // behind the test262 fixtures). Falls back to IntlChar/PCRE2
+        // for properties not present in the bundle.
+        $bundled = self::lookupBundledProperty($name, $value, $cp);
+        if ($bundled !== null) {
+            return $bundled;
+        }
+
         if (!class_exists(\IntlChar::class)) {
             return false;
         }
@@ -594,6 +603,69 @@ class Matcher
         }
         return false;
     }
+
+    /**
+     * Look up a property/value combination in the bundled Unicode 16
+     * tables (src/Regex/Unicode16Tables.php). Returns true/false if
+     * the property is in our bundle, or null if the property is
+     * unknown (caller falls back to IntlChar/PCRE2).
+     *
+     * Aliases are resolved by IntlChar before the lookup so e.g.
+     * \p{sc=Cyrl} hits the same row as \p{Script=Cyrillic}. When
+     * IntlChar can't resolve an alias we still try the literal key
+     * — most aliases either ARE the canonical name or fail through.
+     */
+    private static function lookupBundledProperty(string $name, ?string $value, int $cp): ?bool
+    {
+        $key = self::bundledPropertyKey($name, $value);
+        if (!array_key_exists($key, Unicode16Tables::PROPERTIES)) {
+            return null;
+        }
+        return self::codePointInRanges($cp, Unicode16Tables::PROPERTIES[$key]);
+    }
+
+    /**
+     * Canonicalize ($name, $value) into the key shape used by
+     * Unicode16Tables: bare property name for binaries / General_Category
+     * shorthands, or "Property=Value" with long-form names for
+     * sc/scx/gc=value queries.
+     */
+    private static function bundledPropertyKey(string $name, ?string $value): string
+    {
+        if ($value === null) {
+            return $name;
+        }
+        $longName = match ($name) {
+            'sc' => 'Script',
+            'scx' => 'Script_Extensions',
+            'gc' => 'General_Category',
+            default => $name,
+        };
+        // Resolve value alias to its long form via IntlChar when we can:
+        // \p{Script=Cyrl} should resolve to Script=Cyrillic which is the
+        // key the fixtures emit. IntlChar returns the long name for any
+        // alias on the property's enum.
+        $longValue = $value;
+        if (class_exists(\IntlChar::class)) {
+            $propId = match ($longName) {
+                'Script' => \IntlChar::PROPERTY_SCRIPT,
+                'Script_Extensions' => \IntlChar::PROPERTY_SCRIPT_EXTENSIONS,
+                'General_Category' => \IntlChar::PROPERTY_GENERAL_CATEGORY,
+                default => null,
+            };
+            if ($propId !== null) {
+                $enum = \IntlChar::getPropertyValueEnum($propId, $value);
+                if ($enum >= 0) {
+                    $resolved = \IntlChar::getPropertyValueName($propId, $enum, \IntlChar::LONG_PROPERTY_NAME);
+                    if ($resolved !== '') {
+                        $longValue = $resolved;
+                    }
+                }
+            }
+        }
+        return $longName . '=' . $longValue;
+    }
+
 
     /**
      * ECMAScript-only "binary" property aliases that aren't backed by
