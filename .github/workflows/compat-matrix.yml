@@ -156,7 +156,15 @@ jobs:
           ini-values: memory_limit=2G
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        # Wrap composer install in a 3-attempt retry: occasional
+        # mirror flakes on GH runners have caused entire runs to fail
+        # at this step (run 25758154888 / 25759842734).
+        run: |
+          for i in 1 2 3; do
+            composer install --no-interaction --prefer-dist && break
+            echo "composer install attempt $i failed; sleeping 10s..."
+            sleep 10
+          done
 
       - name: Check test262 submodule
         run: |
@@ -256,7 +264,15 @@ jobs:
           ini-values: memory_limit=2G
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        # Wrap composer install in a 3-attempt retry: occasional
+        # mirror flakes on GH runners have caused entire runs to fail
+        # at this step (run 25758154888 / 25759842734).
+        run: |
+          for i in 1 2 3; do
+            composer install --no-interaction --prefer-dist && break
+            echo "composer install attempt $i failed; sleeping 10s..."
+            sleep 10
+          done
 
       - name: Download all shard artifacts
         uses: actions/download-artifact@v6
