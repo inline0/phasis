@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-05-12T13:41:01+00:00",
-    "updatedAt": "2026-05-12T13:41:01+00:00",
+    "generatedAt": "2026-05-12T14:54:01+00:00",
+    "updatedAt": "2026-05-12T14:54:01+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "9d2ad22",
+        "commit": "1cb35de",
         "isDirty": true
     },
     "environment": {
@@ -19,7 +19,7 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "0dfa70d93487a81393572fc8bf7f0a33837b78c4"
+        "fingerprint": "f8e58af4aff1345777940b84086cc4d25c7adc58"
     },
     "discovery": {
         "groupCount": 159,
@@ -196,13 +196,13 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 50206,
-            "fail": 7,
-            "skip": 275,
-            "blocked": 18,
+            "pass": 50219,
+            "fail": 0,
+            "skip": 282,
+            "blocked": 5,
             "pending": 602,
             "running": 0,
-            "attempted": 50213,
+            "attempted": 50219,
             "known": 50506,
             "total": 51108,
             "passRate": 100
@@ -225,13 +225,13 @@
             {
                 "name": "built-ins",
                 "status": "incomplete",
-                "pass": 22477,
-                "fail": 4,
-                "skip": 230,
-                "blocked": 18,
+                "pass": 22490,
+                "fail": 0,
+                "skip": 234,
+                "blocked": 5,
                 "pending": 602,
                 "running": 0,
-                "attempted": 22481,
+                "attempted": 22490,
                 "known": 22729,
                 "total": 22729,
                 "passRate": 100
@@ -252,17 +252,17 @@
             },
             {
                 "name": "intl402",
-                "status": "partial",
+                "status": "pass",
                 "pass": 1564,
-                "fail": 1,
-                "skip": 1,
+                "fail": 0,
+                "skip": 2,
                 "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 1565,
+                "attempted": 1564,
                 "known": 1566,
                 "total": 1566,
-                "passRate": 99.9
+                "passRate": 100
             },
             {
                 "name": "language",
@@ -280,17 +280,17 @@
             },
             {
                 "name": "staging",
-                "status": "partial",
+                "status": "pass",
                 "pass": 1588,
-                "fail": 2,
-                "skip": 42,
+                "fail": 0,
+                "skip": 44,
                 "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 1590,
+                "attempted": 1588,
                 "known": 1632,
                 "total": 1632,
-                "passRate": 99.9
+                "passRate": 100
             }
         ],
         "groups": [
@@ -807,17 +807,17 @@
             {
                 "name": "built-ins/Function",
                 "area": "built-ins",
-                "status": "partial",
+                "status": "pass",
                 "pass": 506,
-                "fail": 2,
-                "skip": 1,
+                "fail": 0,
+                "skip": 3,
                 "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 508,
+                "attempted": 506,
                 "known": 509,
                 "total": 509,
-                "passRate": 99.6
+                "passRate": 100
             },
             {
                 "name": "built-ins/GeneratorFunction",
@@ -1183,16 +1183,16 @@
                 "name": "built-ins/RegExp/property-escapes/generated",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 268,
-                "fail": 2,
-                "skip": 171,
-                "blocked": 18,
+                "pass": 281,
+                "fail": 0,
+                "skip": 173,
+                "blocked": 5,
                 "pending": 459,
                 "running": 0,
-                "attempted": 270,
+                "attempted": 281,
                 "known": 459,
                 "total": 459,
-                "passRate": 99.3
+                "passRate": 100
             },
             {
                 "name": "built-ins/RegExp/prototype",
@@ -2067,17 +2067,17 @@
             {
                 "name": "intl402/Temporal",
                 "area": "intl402",
-                "status": "partial",
+                "status": "pass",
                 "pass": 321,
-                "fail": 1,
-                "skip": 1,
+                "fail": 0,
+                "skip": 2,
                 "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 322,
+                "attempted": 321,
                 "known": 323,
                 "total": 323,
-                "passRate": 99.7
+                "passRate": 100
             },
             {
                 "name": "intl402/TypedArray",
@@ -2532,17 +2532,17 @@
             {
                 "name": "staging/Intl402",
                 "area": "staging",
-                "status": "partial",
+                "status": "pass",
                 "pass": 43,
-                "fail": 2,
-                "skip": 4,
+                "fail": 0,
+                "skip": 6,
                 "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 45,
+                "attempted": 43,
                 "known": 49,
                 "total": 49,
-                "passRate": 95.6
+                "passRate": 100
             },
             {
                 "name": "staging/Temporal",
@@ -2687,9 +2687,9 @@
                 "message": "Chunk exceeded timeout",
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Coptic.js"
                 ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-gc/logs/4c54ac0ac4d028883e821b2097149f921346d1e9.log"
+                "logFile": ".compat-state-builtins-RegExp-property-escapes-script-al/logs/f30f3f9dfa5275b5f841096265b04d6fa994c896.log"
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
@@ -2697,9 +2697,9 @@
                 "message": "Chunk exceeded timeout",
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Kaithi.js"
                 ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-gc/logs/8e239b30c417464de7bf971ff0260627422b3f14.log"
+                "logFile": ".compat-state-builtins-RegExp-property-escapes-script-al/logs/d10a2afa68ac05f3bd62ff36d1cfda3eb2243c8b.log"
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
@@ -2707,109 +2707,9 @@
                 "message": "Chunk exceeded timeout",
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Open_Punctuation.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bhaiksuki.js"
                 ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-gc/logs/3c69a91c3690de0348916784bafd196f8e1b5481.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Enclosing_Mark.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-gc/logs/ccfc5052544317e91b63973e2cc947746567b17c.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-gc/logs/bd499250905ec77b464c8b5e5a9ec933cffe6e58.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Space_Separator.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-gc/logs/722856d8a2f769fdf992dd74baffc39ef5b2398d.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-gc/logs/ffddb7ec4437550c8b88d09a899c5acbc54f73f5.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypriot.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/722e2047b17017f0cd35e8b1700740574f81cb61.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Psalter_Pahlavi.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/ffd81c8e5c9678f0efc07bab3db9e005698bb451.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_New_Tai_Lue.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/c628c2dbe250d26dc5dea3f05d2ad4254a209167.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Masaram_Gondi.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/1e2082e535a0cd39d1d3ff4f7af9584bedcb0fca.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hangul.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/62133f394c9918c5f494fbf09edd1d09a2821395.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Marchen.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/5f6f91e0287dcaa0b6486ea09bc3454e332e9adc.log"
+                "logFile": ".compat-state-builtins-RegExp-property-escapes-script-al/logs/d1b65cc3fd102f970b36c58bea7d85058e691cf5.log"
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
@@ -2827,46 +2727,25 @@
                 "message": "Chunk exceeded timeout",
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Rejang.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/a336f7b2b413e11014563dd471b7d58494f59363.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Oriya.js"
                 ],
                 "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/ef4a335630d91d49164fca8a16f42663a5eeb313.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Vithkuqi.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/6c63c554a5252690258b89662cbe0086904a7396.log"
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nko.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-property-escapes-scriptext/logs/b700895710d84194f7d9cd49b8f12787fecc46c3.log"
             }
         ],
         "slowChunks": [
             {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "timeout",
+                "durationSec": 70.802,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Coptic.js"
+                ]
+            },
+            {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 87.331,
+                "durationSec": 70.354,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
@@ -2879,7 +2758,7 @@
             {
                 "group": "built-ins/decodeURI",
                 "kind": "normal",
-                "durationSec": 86.937,
+                "durationSec": 69.932,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
@@ -2892,79 +2771,25 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "timeout",
-                "durationSec": 80.489,
+                "durationSec": 67.114,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Psalter_Pahlavi.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Kaithi.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "timeout",
-                "durationSec": 68.95,
+                "durationSec": 67.11,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bhaiksuki.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "timeout",
-                "durationSec": 68.767,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Enclosing_Mark.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 68.751,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 68.269,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Space_Separator.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 67.702,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 67.572,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Open_Punctuation.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 65.738,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 63.786,
+                "durationSec": 62.679,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Oriya.js"
@@ -2973,25 +2798,7 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "timeout",
-                "durationSec": 62.89,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hangul.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 62.873,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_New_Tai_Lue.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 62.412,
+                "durationSec": 60.314,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tamil.js"
@@ -2999,44 +2806,31 @@
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 61.06,
-                "filesCount": 1,
+                "kind": "normal",
+                "durationSec": 58.65,
+                "filesCount": 2,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypriot.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Malayalam.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mandaic.js"
+                ]
+            },
+            {
+                "group": "language/expressions",
+                "kind": "normal",
+                "durationSec": 57.999,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/language/expressions/call/spread-sngl-iter.js",
+                    "test262/test/language/expressions/call/spread-sngl-literal.js",
+                    "...",
+                    "test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js",
+                    "test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 60.516,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Masaram_Gondi.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 60.483,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Vithkuqi.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 60.418,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Marchen.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 60.372,
+                "kind": "normal",
+                "durationSec": 57.748,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nko.js"
@@ -3044,11 +2838,104 @@
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "timeout",
-                "durationSec": 60.311,
+                "kind": "normal",
+                "durationSec": 57.475,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Rejang.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sogdian.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 57.143,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Elymaic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Ethiopic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Garay.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 57.132,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter_Number.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Line_Separator.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Lowercase_Letter.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 57.114,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Multani.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 57.108,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Linear_B.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 56.91,
+                "filesCount": 2,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hiragana.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Imperial_Aramaic.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 56.685,
+                "filesCount": 2,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Coptic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cuneiform.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 56.665,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Symbol.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 56.656,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Thaana.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 56.56,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Masaram_Gondi.js"
                 ]
             }
         ]
