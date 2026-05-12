@@ -15376,6 +15376,21 @@ class Interpreter
                                     continue;
                                 }
                             }
+                            // Properties of strings (Basic_Emoji,
+                            // RGI_Emoji, RGI_Emoji_*_Sequence,
+                            // Emoji_Keycap_Sequence) are only valid under
+                            // /v and only outside character classes. Per
+                            // ECMA-262 §22.2.1: \p{StringProperty} with
+                            // /u or with \P or inside a class is an
+                            // early-error SyntaxError.
+                            if (self::isVStringBinaryProperty($propExpr)) {
+                                if (!$isVFlag || $next === 'P' || $inCharClass) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        'Invalid regular expression: '
+                                            . 'property of strings only allowed in /v outside character classes'
+                                    );
+                                }
+                            }
                             $pcreProperty = self::mapEsPropertyToPcre($propExpr, $next === 'P');
                             if ($pcreProperty === null) {
                                 throw new \PhpJs\Exceptions\SyntaxError(
