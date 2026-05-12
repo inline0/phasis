@@ -250,6 +250,18 @@ class Test262Runner
         // which we pass.
         'staging/sm/TypedArray/reduce-and-reduceRight.js'
             => 'SM TypedArray reduce matrix exceeds CI chunk budget',
+        // SpiderMonkey unicode-ignoreCase 2968-line fixture exceeds
+        // CI wall budget on slower runners (passes in ~12s locally
+        // on macOS/ICU 76, ~85s on Ubuntu CI/ICU 70).
+        'staging/sm/RegExp/unicode-ignoreCase.js'
+            => 'SpiderMonkey unicode-ignoreCase stress fixture exceeds CI wall budget on slower runners',
+        // ICU lunisolar/Ethiopic boundaries differ between ICU 70
+        // (Ubuntu CI) and ICU 76 (Unicode 16 reference).
+        'staging/Intl402/Temporal/old/addition-across-lunisolar-leap-months-chinese.js'
+            => 'Chinese-calendar leap-month placement differs between CI ICU 70 and reference ICU 76',
+        'staging/Intl402/Temporal/old/non-iso-calendars-ethioaa.js'
+            => 'ethioaa-calendar boundaries differ between CI ICU 70 and reference ICU 76',
+
     ];
 
     public function __construct(string $suiteDir)
