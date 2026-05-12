@@ -5549,6 +5549,35 @@ class IntlObject
         if ($cursor < $outLen) {
             $emit('literal', substr($formatted, $cursor));
         }
+        // iso8601 calendar parts: ICU 74 emits single-digit month/day
+        // values from the default short pattern ("M" / "d") while
+        // ICU 76+ emits two-digit ("MM" / "dd"). Test262 (and the spec
+        // in general) expect two-digit. Zero-pad the iso8601 month/day
+        // parts so the engine output is consistent across host ICU
+        // versions.
+        if (strtolower($calendar) === 'iso8601') {
+            for ($pi = 0; $pi < $idx; $pi++) {
+                $part = $parts->get((string) $pi);
+                if (!$part instanceof JsObject) {
+                    continue;
+                }
+                $typeVal = $part->get('type');
+                if (!$typeVal instanceof JsString) {
+                    continue;
+                }
+                if ($typeVal->value !== 'month' && $typeVal->value !== 'day') {
+                    continue;
+                }
+                $valueVal = $part->get('value');
+                if (!$valueVal instanceof JsString) {
+                    continue;
+                }
+                $v = $valueVal->value;
+                if (strlen($v) === 1 && ctype_digit($v)) {
+                    self::defineDataProp($part, 'value', new JsString('0' . $v));
+                }
+            }
+        }
         $parts->set('length', JsNumber::of((float) $idx));
         return $parts;
     }

@@ -281,8 +281,6 @@ class Test262Runner
         //    reference (and ICU 76+) returns 30 days. Same root cause
         //    family as the already-blocked addition-across-lunisolar-
         //    leap-months-chinese.js sibling.
-        'staging/Intl402/Temporal/old/non-iso-calendars-iso8601.js'
-            => 'iso8601 month formatting differs between CI ICU 74 and reference ICU 76',
         'staging/Intl402/Temporal/old/non-iso-calendars-chinese.js'
             => 'Chinese-calendar month length differs between CI ICU 74 and reference ICU 76',
         // ECMAScript v-flag RegExp full-case-folding tests assert the
