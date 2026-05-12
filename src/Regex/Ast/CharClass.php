@@ -14,10 +14,16 @@ namespace PhpJs\Regex\Ast;
  */
 class CharClass extends Node
 {
-    /** @param list<array{0:int,1:int}> $ranges */
+    /**
+     * @param list<array{0:int,1:int}> $ranges
+     * @param list<UnicodeProperty> $properties Additional /v-flag
+     *        members like `\p{ASCII_Hex_Digit}` that live inside the
+     *        class. Membership tests OR these with `$ranges`.
+     */
     public function __construct(
         public readonly array $ranges,
         public readonly bool $negated = false,
+        public readonly array $properties = [],
     ) {
     }
 

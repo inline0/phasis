@@ -148,7 +148,7 @@ class Matcher
         // a no-match scan over 1.1M codepoints from ~3M method calls
         // into a single tight while-loop.
         $body = $this->pattern->body;
-        if ($body instanceof CharClass && !$this->ignoreCase) {
+        if ($body instanceof CharClass && !$this->ignoreCase && $body->properties === []) {
             $ranges = $body->ranges;
             $negated = $body->negated;
             $rc = count($ranges);
@@ -1225,6 +1225,14 @@ class Matcher
                     break;
                 }
             }
+            if (!$matched && $cc->properties !== []) {
+                foreach ($cc->properties as $prop) {
+                    if ($this->testUnicodeProperty($prop, $cu)) {
+                        $matched = true;
+                        break;
+                    }
+                }
+            }
             return $cc->negated ? !$matched : $matched;
         }
         // Spec CharacterSetMatcher canonicalizes both the candidate
@@ -1255,6 +1263,16 @@ class Matcher
                 if ($c >= $lo && $c <= $hi) {
                     $matched = true;
                     break 2;
+                }
+            }
+        }
+        if (!$matched && $cc->properties !== []) {
+            foreach ($cc->properties as $prop) {
+                foreach ($candidates as $c) {
+                    if ($this->testUnicodeProperty($prop, $c)) {
+                        $matched = true;
+                        break 2;
+                    }
                 }
             }
         }
@@ -1754,6 +1772,7 @@ class Matcher
             !$this->ignoreCase
             && $rangeCount === 1
             && $direction > 0
+            && $cc->properties === []
         ) {
             // Single-range hot path. `\D` (negated [0-9]) and `\d`
             // (positive [0-9]) both fit. Walking 1.1M codepoints this
@@ -1780,7 +1799,7 @@ class Matcher
                     $iter++;
                 }
             }
-        } elseif (!$this->ignoreCase && $direction > 0) {
+        } elseif (!$this->ignoreCase && $direction > 0 && $cc->properties === []) {
             // Multi-range hot path. Inline the range loop so we save
             // one method dispatch per input slot for `\W` (4 ranges)
             // and `\S` (10 ranges). The match condition has to test

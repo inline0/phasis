@@ -20291,7 +20291,17 @@ class Interpreter
             // category mismatches on codepoints whose
             // Bidi_Mirrored / Script / Script_Extensions /
             // Alphabetic / ... state changed.
-            return true;
+            // Exception: /v patterns. The custom matcher's
+            // CharClass parser does not model set operations
+            // ([A--B], [A&&B]), nested classes ([[A]B]), or
+            // property-of-strings (\p{Emoji_Keycap_Sequence} and
+            // friends, which match multi-codepoint sequences).
+            // The transformVFlagPattern PCRE2 lowering already
+            // handles all three; keep /v patterns on that path
+            // until the custom matcher catches up.
+            if (!str_contains($flags, 'v')) {
+                return true;
+            }
         }
         // Patterns with duplicate named groups also route through the
         // custom matcher so backreferences resolve the right capture

@@ -759,10 +759,11 @@ class Parser
         }
         $ranges = [];
         $negatedRanges = []; // For unioning negative escapes.
+        $properties = []; // /v-flag \p{...} members folded into the class.
         while ($this->pos < $this->len && $this->src[$this->pos] !== ']') {
             $firstStartPos = $this->pos;
             $firstWasEscape = $this->src[$this->pos] === '\\';
-            $first = $this->parseClassAtom($negatedRanges);
+            $first = $this->parseClassAtom($negatedRanges, $properties);
             // /u mode: an adjacent high+low surrogate pair encodes a
             // single astral codepoint (UTF16Decode in spec terms).
             // Combine them so [𝌆]/u matches U+1D306.
@@ -783,7 +784,7 @@ class Parser
                 && $nextCh === '\\'
             ) {
                 $savePos = $this->pos;
-                $second = $this->parseClassAtom($negatedRanges);
+                $second = $this->parseClassAtom($negatedRanges, $properties);
                 if ($second !== null && $second >= 0xDC00 && $second <= 0xDFFF) {
                     $first = 0x10000 + (($first - 0xD800) << 10) + ($second - 0xDC00);
                 } else {
@@ -800,7 +801,7 @@ class Parser
                 && $this->src[$this->pos + 1] !== ']'
             ) {
                 $this->pos++; // consume -
-                $second = $this->parseClassAtom($negatedRanges);
+                $second = $this->parseClassAtom($negatedRanges, $properties);
                 if ($second !== null) {
                     // Per ECMA-262 §22.2.1.6, the first endpoint
                     // must be <= the second; otherwise SyntaxError.
@@ -843,7 +844,7 @@ class Parser
         foreach ($negatedRanges as $r) {
             $ranges[] = $r;
         }
-        return new CharClass($ranges, $negated);
+        return new CharClass($ranges, $negated, $properties);
     }
 
     /**
@@ -853,8 +854,10 @@ class Parser
      *
      * @param-out list<array{0:int,1:int}> $extraRanges
      * @param list<array{0:int,1:int}> $extraRanges
+     * @param list<\PhpJs\Regex\Ast\UnicodeProperty> $extraProperties
+     * @param-out list<\PhpJs\Regex\Ast\UnicodeProperty> $extraProperties
      */
-    private function parseClassAtom(array &$extraRanges): ?int
+    private function parseClassAtom(array &$extraRanges, array &$extraProperties = []): ?int
     {
         if ($this->src[$this->pos] !== '\\') {
             return $this->readCodePoint();
@@ -864,6 +867,22 @@ class Parser
             throw new SyntaxError('Invalid escape in char class');
         }
         $ch = $this->src[$this->pos];
+        // \p{...} / \P{...} inside a class: only meaningful in /u or
+        // /v mode. Outside Unicode mode the spec lowers \p to a
+        // literal 'p', which the identity-escape fallthrough below
+        // already produces.
+        if (($ch === 'p' || $ch === 'P') && $this->unicode) {
+            $negProp = ($ch === 'P');
+            $node = $this->parseUnicodePropertyEscape($negProp);
+            if ($node instanceof \PhpJs\Regex\Ast\UnicodeProperty) {
+                $extraProperties[] = $node;
+                return null;
+            }
+            // parseUnicodePropertyEscape may lower a property-of-strings
+            // escape to a different node shape; we don't support those
+            // inside a class without /v set operations.
+            return null;
+        }
         switch ($ch) {
             case 'd':
                 $this->pos++;
