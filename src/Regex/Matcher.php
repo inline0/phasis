@@ -614,56 +614,58 @@ class Matcher
      * \p{sc=Cyrl} hits the same row as \p{Script=Cyrillic}. When
      * IntlChar can't resolve an alias we still try the literal key
      * — most aliases either ARE the canonical name or fail through.
+     *
+     * Hot-path: property-escape negative tests sweep ~1.1M codepoints
+     * for tiny matchSymbols sets. Resolve the property's ranges array
+     * ONCE per (name, value) pair and inline the binary search so the
+     * per-codepoint cost is two array accesses + comparison.
      */
     private static function lookupBundledProperty(string $name, ?string $value, int $cp): ?bool
     {
-        $key = self::bundledPropertyKey($name, $value);
-        if (!array_key_exists($key, Unicode16Tables::PROPERTIES)) {
+        static $rangesCache = [];
+        $cacheKey = $value === null ? $name : $name . '=' . $value;
+        if (!array_key_exists($cacheKey, $rangesCache)) {
+            $key = self::bundledPropertyKey($name, $value);
+            $rangesCache[$cacheKey] = Unicode16Tables::PROPERTIES[$key] ?? null;
+        }
+        $ranges = $rangesCache[$cacheKey];
+        if ($ranges === null) {
             return null;
         }
-        return self::codePointInRanges($cp, Unicode16Tables::PROPERTIES[$key]);
+        // Inline binary search — function-call overhead dominates the
+        // bundled-table dispatch when nonMatchSymbols expands to ~1.1M
+        // codepoints. Keep this loop body free of dynamic dispatch.
+        $lo = 0;
+        $hi = count($ranges) - 1;
+        while ($lo <= $hi) {
+            $mid = ($lo + $hi) >> 1;
+            $range = $ranges[$mid];
+            if ($cp < $range[0]) {
+                $hi = $mid - 1;
+            } elseif ($cp > $range[1]) {
+                $lo = $mid + 1;
+            } else {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
-     * Canonicalize ($name, $value) into the key shape used by
-     * Unicode16Tables: bare property name for binaries / General_Category
-     * shorthands, or "Property=Value" with long-form names for
-     * sc/scx/gc=value queries.
+     * Form the bundled-table key directly from ($name, $value). The
+     * Unicode 16 table generator (bin/build-unicode16-tables) emits
+     * an entry for every alias form a fixture exercises, so
+     * "Script=Cyrl", "Script=Cyrillic", "sc=Cyrl", and "sc=Cyrillic"
+     * all resolve to the same ranges without runtime IntlChar
+     * alias-resolution. That matters: on hosts whose ICU lags
+     * Unicode 16 (e.g. Ubuntu CI ICU 74), IntlChar cannot resolve
+     * aliases for newly-added properties like Ol_Onal/Onao, and any
+     * runtime canonicalization that depends on host ICU silently
+     * misses the bundled row.
      */
     private static function bundledPropertyKey(string $name, ?string $value): string
     {
-        if ($value === null) {
-            return $name;
-        }
-        $longName = match ($name) {
-            'sc' => 'Script',
-            'scx' => 'Script_Extensions',
-            'gc' => 'General_Category',
-            default => $name,
-        };
-        // Resolve value alias to its long form via IntlChar when we can:
-        // \p{Script=Cyrl} should resolve to Script=Cyrillic which is the
-        // key the fixtures emit. IntlChar returns the long name for any
-        // alias on the property's enum.
-        $longValue = $value;
-        if (class_exists(\IntlChar::class)) {
-            $propId = match ($longName) {
-                'Script' => \IntlChar::PROPERTY_SCRIPT,
-                'Script_Extensions' => \IntlChar::PROPERTY_SCRIPT_EXTENSIONS,
-                'General_Category' => \IntlChar::PROPERTY_GENERAL_CATEGORY,
-                default => null,
-            };
-            if ($propId !== null) {
-                $enum = \IntlChar::getPropertyValueEnum($propId, $value);
-                if ($enum >= 0) {
-                    $resolved = \IntlChar::getPropertyValueName($propId, $enum, \IntlChar::LONG_PROPERTY_NAME);
-                    if ($resolved !== '') {
-                        $longValue = $resolved;
-                    }
-                }
-            }
-        }
-        return $longName . '=' . $longValue;
+        return $value === null ? $name : $name . '=' . $value;
     }
 
 

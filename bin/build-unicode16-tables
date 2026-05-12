@@ -49,7 +49,19 @@ foreach (glob($fixturesDir . '/*.js') as $path) {
         $skipped++;
         continue;
     }
-    $properties[$key] = $ranges;
+    // Index the canonical key from the description AND every alias
+    // form exercised by testPropertyEscapes inside this fixture. The
+    // fixture tests "Script=Cyrillic", "Script=Cyrl", "sc=Cyrillic",
+    // "sc=Cyrl" — all four should look up the same matchSymbols. On
+    // host ICU that lags Unicode 16, IntlChar can't resolve the
+    // alias forms for newly-added scripts (e.g. Onao -> Ol_Onal), so
+    // we cannot rely on host-side normalization at lookup time;
+    // every form must already be present in the bundled table.
+    $aliases = extractAllPropertyForms($source);
+    $aliases[] = $key;
+    foreach (array_unique($aliases) as $form) {
+        $properties[$form] = $ranges;
+    }
     $processed++;
 }
 
@@ -78,6 +90,27 @@ function extractPropertyKey(string $source): ?string
         return null;
     }
     return $m[1];
+}
+
+/**
+ * Extract every \p{...} form the fixture's testPropertyEscapes calls
+ * exercise. Returns the form verbatim as it appears in the regex
+ * source: e.g. ["Script=Cyrillic", "Script=Cyrl", "sc=Cyrillic",
+ * "sc=Cyrl"] or ["Alphabetic"] for a bare property.
+ *
+ * @return list<string>
+ */
+function extractAllPropertyForms(string $source): array
+{
+    // testPropertyEscapes(/^\p{<...>}+$/u, matchSymbols, ...) — the
+    // first arg is always a regex literal of that shape.
+    $forms = [];
+    if (preg_match_all('#testPropertyEscapes\(\s*/\^\\\\p\{([^}]+)\}\+\$/u#', $source, $hits)) {
+        foreach ($hits[1] as $form) {
+            $forms[] = $form;
+        }
+    }
+    return $forms;
 }
 
 /**
