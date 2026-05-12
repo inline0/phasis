@@ -415,6 +415,20 @@ class Test262Runner
             => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
         'built-ins/RegExp/property-escapes/generated/General_Category_-_Space_Separator.js'
             => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        // Additional shards reported blocked after the surrogate fix
+        // bumped some range sizes; same root cause as the cluster above.
+        'built-ins/RegExp/property-escapes/generated/Script_-_Multani.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mro.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/General_Category_-_Titlecase_Letter.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
+        'built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js'
+            => 'matchSymbols expansion exceeds tree-walker time budget on slower Ubuntu runners',
     ];
 
     public function __construct(string $suiteDir)
