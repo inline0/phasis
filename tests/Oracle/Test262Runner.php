@@ -290,6 +290,27 @@ class Test262Runner
                 'Worker spin-loop on shared atomic needs preemptive scheduling',
             );
         }
+        // Multi-agent waitAsync tests need cross-fiber microtask scheduling
+        // we don't yet have: the .then(async (agentCount) => {...}) handler
+        // body runs in an async-arrow Fiber, but the polled getReportAsync
+        // setTimeout(loop, 1000) chain restarts itself when an early
+        // getReport call sees an empty report queue, and the resume path
+        // out of the second `await getReportAsync()` re-enters the polling
+        // loop instead of letting $DONE fire. The AgentHost now provides:
+        //   - a virtual-clock setTimeout / clearTimeout (bypasses the
+        //     atomicsHelper.js Date.now polyfill spin) — see install()
+        //   - a post-microtask-drain hook that fires due timers and
+        //     restarts the drain loop — see advanceVirtualClock()
+        //   - an Atomics.waitAsync timeout hook so a worker-side
+        //     waitAsync(... TIMEOUT) doesn't race-resolve as "timed-out"
+        //     before main can call notify — see AtomicsObject::setWaitAsyncTimeoutHook
+        // That covers the setTimeout half but the remaining gap is in the
+        // engine's evalAwaitExpression: when an async arrow is resumed
+        // via the .then-attached resume Fiber and its body issues another
+        // await, the fiber is the right one to suspend but the post-drain
+        // hook can no longer fire the next setTimeout from outside the
+        // chain. Until that's resolved we keep the skip in place rather
+        // than let these tests infinite-loop.
         if (
             (strpos($source, '$262.agent.start') !== false
                 || strpos($source, '$262.agent.broadcast') !== false)
@@ -431,6 +452,8 @@ class Test262Runner
         $agentCleanup = static function (): void {
             \PhpJs\BuiltIn\AtomicsObject::setSyncWaitHook(null);
             \PhpJs\BuiltIn\AtomicsObject::setSyncNotifyHook(null);
+            \PhpJs\BuiltIn\AtomicsObject::setWaitAsyncTimeoutHook(null);
+            \PhpJs\Value\JsPromise::setPostDrainHook(null);
         };
         // Host-side fast-path for assert.sameValue / _isSameValue —
         // tests like sort_large_countingsort.js call it ~400k times.

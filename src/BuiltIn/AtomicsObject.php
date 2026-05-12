@@ -65,6 +65,19 @@ class AtomicsObject
      */
     private static ?\Closure $syncNotifyHook = null;
 
+    /**
+     * Optional hook invoked by Atomics.waitAsync when a finite, positive
+     * timeout is registered with a pending promise. The hook is given the
+     * promise + timeout (ms) and is expected to arrange for the promise
+     * to resolve to "timed-out" after the host's virtual clock advances
+     * that far. When null, the legacy behaviour applies: schedule the
+     * timeout resolution as a same-turn microtask (which makes notify
+     * races on the same buffer/index never observe the waiter).
+     *
+     * @var \Closure(JsPromise, float): void|null
+     */
+    private static ?\Closure $waitAsyncTimeoutHook = null;
+
     public static function setSyncWaitHook(?\Closure $hook): void
     {
         self::$syncWaitHook = $hook;
@@ -73,6 +86,11 @@ class AtomicsObject
     public static function setSyncNotifyHook(?\Closure $hook): void
     {
         self::$syncNotifyHook = $hook;
+    }
+
+    public static function setWaitAsyncTimeoutHook(?\Closure $hook): void
+    {
+        self::$waitAsyncTimeoutHook = $hook;
     }
 
     /** Integer typed array type names that Atomics operates on. */
@@ -560,20 +578,38 @@ class AtomicsObject
             'index' => $index,
             'promise' => $promise,
         ];
-        // Finite, non-infinite timeouts resolve to "timed-out" once the
-        // current synchronous turn completes — we don't model wall-clock
-        // sleep, so this is the closest spec-compatible behaviour for
-        // single-threaded code that doesn't notify.
+        // Finite, non-infinite timeouts resolve to "timed-out". When a
+        // host-supplied virtual clock is wired up (AgentHost in the
+        // test262 runner), defer resolution to the next clock advance so
+        // a same-turn Atomics.notify can still wake the waiter first.
+        // Otherwise fall back to the legacy same-turn microtask
+        // resolution, which matches plain single-threaded usage where
+        // no notify is forthcoming.
         if (!is_nan($timeoutNum) && is_finite($timeoutNum) && $timeoutNum > 0.0) {
-            JsPromise::scheduleCallback(static function () use ($promise): void {
-                if ($promise->getState() !== JsPromise::STATE_PENDING) {
-                    return;
-                }
-                self::removeWaitAsyncEntry($promise);
-                $promise->resolve(new JsString('timed-out'));
-            });
+            $hook = self::$waitAsyncTimeoutHook;
+            if ($hook !== null) {
+                $hook($promise, $timeoutNum);
+            } else {
+                JsPromise::scheduleCallback(static function () use ($promise): void {
+                    if ($promise->getState() !== JsPromise::STATE_PENDING) {
+                        return;
+                    }
+                    self::removeWaitAsyncEntry($promise);
+                    $promise->resolve(new JsString('timed-out'));
+                });
+            }
         }
         return self::makeWaitAsyncResult(true, $promise);
+    }
+
+    /**
+     * Remove a pending waiter from the waitAsync queue. Used by host hooks
+     * that drive timeout resolution out-of-band (e.g. AgentHost firing the
+     * timeout once its virtual clock advances past the deadline).
+     */
+    public static function dropWaitAsyncEntry(JsPromise $promise): void
+    {
+        self::removeWaitAsyncEntry($promise);
     }
 
     private static function makeWaitAsyncResult(bool $async, JsValue $value): JsObject

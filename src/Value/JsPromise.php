@@ -47,6 +47,20 @@ class JsPromise extends JsObject
     private static bool $drainingMicrotasks = false;
 
     /**
+     * Optional "post-drain" hook invoked once the microtask queue is empty.
+     * Returning true signals that the hook produced more work (e.g. fired a
+     * virtual setTimeout callback that scheduled microtasks), in which case
+     * the drain loop continues; returning false ends the drain.
+     *
+     * Used by the test262 AgentHost to advance the virtual setTimeout clock
+     * after each microtask burst so polyfilled $262.agent.setTimeout-based
+     * polling loops in atomicsHelper.js can make forward progress.
+     *
+     * @var \Closure(): bool|null
+     */
+    private static ?\Closure $postDrainHook = null;
+
+    /**
      * Schedule a callback to run in the microtask queue.
      * Used to defer promise handler execution so that handlers fire in
      * FIFO order relative to when their promises were resolved, matching
@@ -60,8 +74,21 @@ class JsPromise extends JsObject
     }
 
     /**
+     * Install a post-drain hook (or null to clear it). The hook is invoked
+     * once the microtask queue has been fully drained; if it returns true
+     * the drain loop iterates again to pick up any microtasks the hook
+     * produced (e.g. timer callbacks).
+     */
+    public static function setPostDrainHook(?\Closure $hook): void
+    {
+        self::$postDrainHook = $hook;
+    }
+
+    /**
      * Drain the microtask queue, running all scheduled callbacks.
-     * Callbacks added during draining are also processed.
+     * Callbacks added during draining are also processed. When a
+     * post-drain hook is installed, it is invoked after each empty queue
+     * and the loop continues while it reports more work was scheduled.
      */
     public static function drainMicrotasks(): void
     {
@@ -70,10 +97,17 @@ class JsPromise extends JsObject
         }
         self::$drainingMicrotasks = true;
         try {
-            while (self::$microtaskQueue !== []) {
-                $cb = array_shift(self::$microtaskQueue);
-                $cb();
-            }
+            do {
+                while (self::$microtaskQueue !== []) {
+                    $cb = array_shift(self::$microtaskQueue);
+                    $cb();
+                }
+                $hook = self::$postDrainHook;
+                if ($hook === null) {
+                    break;
+                }
+                $progressed = $hook();
+            } while ($progressed === true);
         } finally {
             self::$drainingMicrotasks = false;
         }
@@ -86,6 +120,7 @@ class JsPromise extends JsObject
     {
         self::$microtaskQueue = [];
         self::$drainingMicrotasks = false;
+        self::$postDrainHook = null;
     }
 
     /** Promise.prototype: the shared prototype for all JsPromise instances. */
