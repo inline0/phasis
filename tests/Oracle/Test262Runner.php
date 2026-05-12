@@ -41,20 +41,20 @@ class Test262Runner
      * cross-realm semantics than we implement. The list was originally
      * the audited 94 tests that depended on multi-realm intrinsics; the
      * realm-tracking layer (GetFunctionRealm, per-realm intrinsic
-     * lookup in builtins) brought 63 of them green. The remaining
+     * lookup in builtins) brought 67 of them green. The remaining
      * entries assert deeper semantics (Function constructor's prototype
      * coming from the new-target realm, species across realms in
-     * TypedArray/ArrayBuffer, ShadowRealm wrapped-function realm
-     * inheritance, etc.). Tracked under "structural gaps" in CLAUDE.md.
+     * TypedArray/ArrayBuffer, etc.). Set PHPJS_AUDIT_BYPASS_CROSSREALM=1
+     * to skip the blocklist when re-auditing whether further engine
+     * work has recovered any of them. Tracked under "structural gaps"
+     * in CLAUDE.md.
      *
      * @var list<string>
      */
     private const CROSS_REALM_BLOCKLIST = [
         'annexB/built-ins/RegExp/prototype/compile/this-cross-realm-instance.js',
-        'built-ins/AsyncGeneratorFunction/proto-from-ctor-realm-prototype.js',
         'built-ins/Function/proto-from-ctor-realm-prototype.js',
         'built-ins/Proxy/revocable/tco-fn-realm.js',
-        'built-ins/ShadowRealm/prototype/evaluate/wrapped-function-proto-from-caller-realm.js',
         'language/expressions/call/eval-realm-indirect.js',
         // Private brand-check TypeError must surface as the calling
         // method's realm's intrinsic %TypeError%. Our JsObject brand
@@ -79,8 +79,6 @@ class Test262Runner
         'staging/sm/Iterator/prototype/reduce/error-from-correct-realm.js',
         'staging/sm/Iterator/prototype/some/error-from-correct-realm.js',
         'staging/sm/Iterator/prototype/toArray/create-in-current-realm.js',
-        'staging/sm/object/setPrototypeOf-cross-realm-cycle.js',
-        'staging/sm/regress/regress-636364.js',
         'staging/sm/syntax/yield-as-identifier.js',
         'staging/sm/JSON/parse-with-source.js',
         'staging/sm/Proxy/proxy-with-revoked-arguments.js',
@@ -105,7 +103,8 @@ class Test262Runner
      * ICU4X-only calendars, etc.) or that are stress fixtures with
      * runtime cost so far above the tree-walker's budget that they
      * always exceed the runner's per-test deadline. Each entry
-     * carries a short rationale.
+     * carries a short rationale. Set PHPJS_AUDIT_BYPASS_HOSTGAP=1
+     * when re-auditing whether any of them now pass.
      *
      * @var array<string, string>
      */
@@ -232,13 +231,15 @@ class Test262Runner
         }
 
         // Host-data and structural-stress blocklist.
-        foreach (self::HOST_GAP_BLOCKLIST as $rel => $reason) {
-            if (str_ends_with($testPath, '/' . $rel)) {
-                return new TestResult(
-                    $testPath,
-                    TestStatus::Skip,
-                    $reason,
-                );
+        if (!getenv('PHPJS_AUDIT_BYPASS_HOSTGAP')) {
+            foreach (self::HOST_GAP_BLOCKLIST as $rel => $reason) {
+                if (str_ends_with($testPath, '/' . $rel)) {
+                    return new TestResult(
+                        $testPath,
+                        TestStatus::Skip,
+                        $reason,
+                    );
+                }
             }
         }
 
