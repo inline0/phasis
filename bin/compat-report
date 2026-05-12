@@ -40,14 +40,26 @@ function compatReportMain(array $argv): void
     fwrite(STDERR, "Building full compatibility snapshot...\n");
 
     $discovery = discoverCompatGroups($suiteDir, $options['match'], $options['exclude']);
-    if ($options['filesPrefix'] !== null) {
+    if ($options['filesPrefix'] !== null || $options['filesExcludePrefix'] !== []) {
         $prefix = $options['filesPrefix'];
+        $excludePrefixes = $options['filesExcludePrefix'];
         $filteredGroups = [];
         $filteredCount = 0;
         foreach ($discovery['groups'] as $group => $files) {
             $kept = array_values(array_filter(
                 $files,
-                static fn(string $path): bool => str_starts_with(basename($path), $prefix),
+                static function (string $path) use ($prefix, $excludePrefixes): bool {
+                    $base = basename($path);
+                    if ($prefix !== null && !str_starts_with($base, $prefix)) {
+                        return false;
+                    }
+                    foreach ($excludePrefixes as $ex) {
+                        if (str_starts_with($base, $ex)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                },
             ));
             if ($kept !== []) {
                 $filteredGroups[$group] = $kept;
@@ -126,6 +138,7 @@ function parseCompatOptions(array $argv): array
         'stateDir' => '.compat-state',
         'reset' => false,
         'filesPrefix' => null,
+        'filesExcludePrefix' => [],
     ];
 
     $args = array_slice($argv, 1);
@@ -161,6 +174,14 @@ function parseCompatOptions(array $argv): array
                 // built-ins/RegExp/property-escapes/generated across multiple
                 // CI runners.
                 $options['filesPrefix'] = $args[++$i] ?? null;
+                break;
+            case '--files-exclude-prefix':
+                // Exclude tests whose basename starts with this prefix.
+                // Can be passed multiple times for multi-prefix exclusion.
+                $exFp = $args[++$i] ?? null;
+                if ($exFp !== null && $exFp !== '') {
+                    $options['filesExcludePrefix'][] = $exFp;
+                }
                 break;
             default:
                 if ($args[$i] !== '' && !str_starts_with($args[$i], '--')) {
@@ -287,10 +308,11 @@ function buildCompatFingerprint(
     }
 
     return sha1(json_encode([
-        'version' => 5,
+        'version' => 6,
         'match' => $options['match'],
         'exclude' => $options['exclude'] ?? [],
         'filesPrefix' => $options['filesPrefix'] ?? null,
+        'filesExcludePrefix' => $options['filesExcludePrefix'] ?? [],
         'chunkSize' => $options['chunkSize'],
         // Bumping to v4 picks up the test262_isolated_tests list inside
         // supportConfig — when that list changes, the chunk fingerprints

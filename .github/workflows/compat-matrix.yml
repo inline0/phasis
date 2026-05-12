@@ -68,14 +68,17 @@ jobs:
           # subprefixes resolve to distinct groups.
           - { id: 'builtins-RegExp-prototype', prefix: 'built-ins/RegExp/prototype', exclude: '' }
           # property-escapes/generated holds 432 procedurally generated
-          # unicode property tests. The custom regex matcher routes
-          # \p{...} through ICU via IntlChar (see src/Regex/Matcher.php),
-          # so they run alongside the rest of the suite. A handful of
-          # tests still fail because PHP's ICU build is one Unicode
-          # revision ahead of the test data (e.g. U+A7D2 is Alphabetic
-          # in Unicode 17 but not in Unicode 16); those are out of
-          # reach without shipping Unicode-16 data files.
-          - { id: 'builtins-RegExp-property-escapes', prefix: 'built-ins/RegExp/property-escapes', exclude: '' }
+          # unicode property tests, each ~6-8s through the custom regex
+          # matcher's ICU dispatch. Split into 4 parallel runner shards
+          # via the --files-prefix / --files-exclude-prefix flags:
+          #   Script_-_*           (~170 tests, ~3 min)
+          #   Script_Extensions_-_ (~170 tests, ~3 min)
+          #   General_Category_-_  (~38 tests, ~1 min)
+          #   rest (Binary, Bidi, Emoji, etc.) (~54 tests, ~1 min)
+          - { id: 'builtins-RegExp-property-escapes-script', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_-_', filesExcludePrefix: '' }
+          - { id: 'builtins-RegExp-property-escapes-scriptext', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_Extensions_-_', filesExcludePrefix: '' }
+          - { id: 'builtins-RegExp-property-escapes-gc', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'General_Category_-_', filesExcludePrefix: '' }
+          - { id: 'builtins-RegExp-property-escapes-rest', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: '', filesExcludePrefix: 'Script_-_ Script_Extensions_-_ General_Category_-_' }
           - { id: 'builtins-RegExp-rest', prefix: 'built-ins/RegExp', exclude: 'built-ins/RegExp/prototype built-ins/RegExp/property-escapes' }
           - { id: 'builtins-S', prefix: 'built-ins/S', exclude: '' }
           # Temporal has 4165 tests; split by top-level type.
@@ -165,20 +168,36 @@ jobs:
             EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude $ex"
           done
           # property-escapes/generated has 432 \p{...} tests that each
-          # take ~6-8s. With chunk-size 25 a chunk takes ~150-200s and
-          # exceeds the per-chunk 90s timeout, forcing repeated retries.
-          # Drop chunk size + raise job count for that shard specifically.
+          # take ~6-8s. The matrix splits the group across multiple shards
+          # via --files-prefix / --files-exclude-prefix; pump jobs up and
+          # chunks down so any single chunk completes well under the
+          # per-chunk timeout.
           JOBS=4
           CHUNK=25
           TIMEOUT=90
-          if [ '${{ matrix.shard.id }}' = 'builtins-RegExp-property-escapes' ]; then
-            JOBS=8
-            CHUNK=5
-            TIMEOUT=60
+          case '${{ matrix.shard.id }}' in
+            builtins-RegExp-property-escapes-*)
+              JOBS=8
+              CHUNK=5
+              TIMEOUT=60
+              ;;
+          esac
+          # Build --files-prefix / --files-exclude-prefix from optional
+          # matrix fields. filesExcludePrefix is whitespace-separated so
+          # one shard can carve out multiple prefixes (e.g. "rest" shard).
+          FILES_PREFIX_ARG=""
+          if [ -n '${{ matrix.shard.filesPrefix }}' ]; then
+            FILES_PREFIX_ARG="--files-prefix ${{ matrix.shard.filesPrefix }}"
           fi
+          FILES_EXCLUDE_ARGS=""
+          for fx in ${{ matrix.shard.filesExcludePrefix }}; do
+            FILES_EXCLUDE_ARGS="$FILES_EXCLUDE_ARGS --files-exclude-prefix $fx"
+          done
           ./bin/compat-report \
             --match '${{ matrix.shard.prefix }}' \
             $EXCLUDE_ARGS \
+            $FILES_PREFIX_ARG \
+            $FILES_EXCLUDE_ARGS \
             --state-dir .compat-state-${{ matrix.shard.id }} \
             --jobs $JOBS \
             --timeout $TIMEOUT \
