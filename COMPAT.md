@@ -4,29 +4,29 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-05-13T00:49:35+00:00`
+- Snapshot time: `2026-05-13T01:20:17+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `6c57774` (dirty)
+- Git: `main` @ `89f9b9d` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 49352 | 0 | 111 | 3 | 1642 | 0 | 49352 | 49466 | 51108 | 100.0% |
+| 50219 | 0 | 166 | 2 | 721 | 0 | 50219 | 50387 | 51108 | 100.0% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | PASS | 1078 | 0 | 1 | 0 | 0 | 0 | 100.0% |
-| built-ins | INCOMPLETE | 21837 | 0 | 66 | 3 | 1425 | 0 | 100.0% |
+| built-ins | INCOMPLETE | 22487 | 0 | 121 | 2 | 721 | 0 | 100.0% |
 | harness | PASS | 116 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402 | PASS | 1564 | 0 | 2 | 0 | 0 | 0 | 100.0% |
-| language | INCOMPLETE | 23166 | 0 | 1 | 0 | 217 | 0 | 100.0% |
+| language | PASS | 23383 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | staging | PASS | 1591 | 0 | 41 | 0 | 0 | 0 | 100.0% |
 
 ## Group Coverage
@@ -49,17 +49,17 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | annexB/language/global-code | PASS | 153 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | annexB/language/literals | PASS | 8 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | annexB/language/statements | PASS | 22 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/AbstractModuleSource | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
+| built-ins/AbstractModuleSource | PASS | 8 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Array | PASS | 3075 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/ArrayBuffer | PASS | 192 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/ArrayIteratorPrototype | PASS | 27 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/AsyncDisposableStack | PENDING | 0 | 0 | 0 | 0 | 52 | 0 | n/a |
-| built-ins/AsyncFromSyncIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 38 | 0 | n/a |
-| built-ins/AsyncFunction | PENDING | 0 | 0 | 0 | 0 | 18 | 0 | n/a |
-| built-ins/AsyncGeneratorFunction | PENDING | 0 | 0 | 0 | 0 | 23 | 0 | n/a |
-| built-ins/AsyncGeneratorPrototype | PENDING | 0 | 0 | 0 | 0 | 48 | 0 | n/a |
-| built-ins/AsyncIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 10 | 0 | n/a |
-| built-ins/Atomics | PENDING | 0 | 0 | 0 | 0 | 376 | 0 | n/a |
+| built-ins/AsyncDisposableStack | PASS | 52 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/AsyncFromSyncIteratorPrototype | PASS | 38 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/AsyncFunction | PASS | 18 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/AsyncGeneratorFunction | PASS | 23 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/AsyncGeneratorPrototype | PASS | 48 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/AsyncIteratorPrototype | PASS | 10 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/Atomics | PASS | 322 | 0 | 54 | 0 | 0 | 0 | 100.0% |
 | built-ins/BigInt | PASS | 75 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Boolean | PASS | 51 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/DataView | PASS | 550 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -92,7 +92,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/RegExp/match-indices | PASS | 14 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/named-groups | PASS | 36 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/property-escapes | INCOMPLETE | 143 | 0 | 0 | 0 | 143 | 0 | 100.0% |
-| built-ins/RegExp/property-escapes/generated | INCOMPLETE | 397 | 0 | 59 | 3 | 459 | 0 | 100.0% |
+| built-ins/RegExp/property-escapes/generated | INCOMPLETE | 397 | 0 | 60 | 2 | 459 | 0 | 100.0% |
 | built-ins/RegExp/prototype | PASS | 487 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/regexp-modifiers | PASS | 70 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/unicodeSets | PASS | 113 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -119,19 +119,19 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/TypedArray | PASS | 1426 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/TypedArrayConstructors | PASS | 736 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Uint8Array | PASS | 64 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/WeakMap | PENDING | 0 | 0 | 0 | 0 | 102 | 0 | n/a |
-| built-ins/WeakRef | PENDING | 0 | 0 | 0 | 0 | 29 | 0 | n/a |
-| built-ins/WeakSet | PENDING | 0 | 0 | 0 | 0 | 85 | 0 | n/a |
+| built-ins/WeakMap | PASS | 102 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/WeakRef | PASS | 29 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/WeakSet | PASS | 85 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/decodeURI | PASS | 54 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | built-ins/decodeURIComponent | PASS | 55 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | built-ins/encodeURI | PASS | 31 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/encodeURIComponent | PASS | 31 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/eval | PASS | 10 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/global | PASS | 29 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/isFinite | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
-| built-ins/isNaN | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
-| built-ins/parseFloat | PASS | 59 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/parseInt | PASS | 60 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/isFinite | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/isNaN | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/parseFloat | PENDING | 0 | 0 | 0 | 0 | 59 | 0 | n/a |
+| built-ins/parseInt | PENDING | 0 | 0 | 0 | 0 | 60 | 0 | n/a |
 | built-ins/undefined | PASS | 8 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | harness | PASS | 116 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402 | PASS | 22 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -163,7 +163,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/eval-code | PASS | 347 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/export | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/expressions | PASS | 11022 | 0 | 1 | 0 | 0 | 0 | 100.0% |
-| language/function-code | PENDING | 0 | 0 | 0 | 0 | 217 | 0 | n/a |
+| language/function-code | PASS | 217 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/future-reserved-words | PASS | 55 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/global-code | PASS | 42 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/identifier-resolution | PASS | 14 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -197,7 +197,6 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 | Group | Kind | Files | Sample | Log |
 |---|---|---:|---|---|
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Lydian.js` | `.compat-state-builtins-RegExp-property-escapes-script-al/logs/68bf6b8cc2d9c8f2cadb2baa70de9c30fd504df7.log` |
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Newa.js` | `.compat-state-builtins-RegExp-property-escapes-scriptext-mz/logs/de0794a6a25eaf19f185f08944f483770737b447.log` |
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Le.js` | `.compat-state-builtins-RegExp-property-escapes-scriptext-mz/logs/e87516307e4190452e44756bf28bac76c61904d0.log` |
 
@@ -205,26 +204,26 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| built-ins/decodeURIComponent | NORMAL | 87.837s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
-| built-ins/decodeURI | NORMAL | 87.679s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 72.084s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Newa.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 72.011s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Le.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 62.343s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Lydian.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.801s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Noncharacter_Code_Point.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Pattern_Syntax.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.478s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Common.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.128s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Emoji_Component.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Emoji_Modifier.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.042s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Hex_Digit.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/IDS_Binary_Operator.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 58.944s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Saurashtra.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Sharada.js` |
-| staging/sm | NORMAL | 58.594s | 25 | `test262/test/staging/sm/TypedArray/iterator-next-with-detached.js`<br>`test262/test/staging/sm/TypedArray/iterator.js`<br>...<br>`test262/test/staging/sm/TypedArray/slice-memcpy.js`<br>`test262/test/staging/sm/TypedArray/slice-species.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 58.042s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Radical.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Regional_Indicator.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 56.819s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 55.730s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Bidi_Control.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Bidi_Mirrored.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 55.523s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Cased.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Casefolded.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 55.263s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Diacritic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Emoji.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 55.237s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ethiopic.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 54.569s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Greek.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 54.328s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Lao.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 54.200s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js` |
+| built-ins/decodeURIComponent | NORMAL | 70.787s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
+| built-ins/decodeURI | NORMAL | 70.380s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 69.159s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Newa.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 69.012s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Le.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 58.915s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Uppercase.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Variation_Selector.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 57.133s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Casemapped.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Lowercased.js` |
+| language/expressions | NORMAL | 56.620s | 25 | `test262/test/language/expressions/call/spread-sngl-iter.js`<br>`test262/test/language/expressions/call/spread-sngl-literal.js`<br>...<br>`test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js`<br>`test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 55.476s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Noncharacter_Code_Point.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Pattern_Syntax.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 55.383s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Join_Control.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 55.191s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Logical_Order_Exception.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Lowercase.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 55.190s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Cased.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Casefolded.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 54.887s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kannada.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 54.168s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Hex_Digit.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/IDS_Binary_Operator.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 53.973s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ugaritic.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 53.814s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 53.692s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Rejang.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 53.632s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Sora_Sompeng.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 52.894s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/ASCII.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/ASCII_Hex_Digit.js` |
+| language/literals | NORMAL | 52.867s | 25 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 52.847s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Latin.js` |
 
 ## Runner Caveats
 
