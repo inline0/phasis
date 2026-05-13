@@ -97,6 +97,49 @@ foreach ($shardEntries as $shardPath) {
 }
 fwrite(STDERR, "Merged {$mergedChunks} chunk records.\n");
 
+// When a shard runs with a different chunkSize than the orchestrator's
+// default (property-escapes shards use CHUNK=5 to fit the per-chunk
+// timeout, while the default is 25), the resulting chunkIds —
+// sha1(group + files + chunkSize) — don't match. The merge then has
+// BOTH the orchestrator's pending placeholders AND the shard's
+// complete chunks for the same files. That double-counts: a test
+// shows up as both pass (via the shard chunk) AND pending (via the
+// orchestrator placeholder). Walk through, build a set of files
+// covered by complete chunks, and drop pending chunks whose files
+// are fully covered. Trim partially-covered pending chunks so their
+// filesCount reflects only the uncovered tail.
+$coveredFiles = [];
+foreach ($state['chunks'] as $chunk) {
+    if (($chunk['status'] ?? null) === 'complete' && isset($chunk['files']) && is_array($chunk['files'])) {
+        foreach ($chunk['files'] as $f) {
+            $coveredFiles[$f] = true;
+        }
+    }
+}
+$prunedPending = 0;
+$prunedFiles = 0;
+foreach ($state['chunks'] as $chunkId => $chunk) {
+    if (($chunk['status'] ?? null) === 'pending' && isset($chunk['files']) && is_array($chunk['files'])) {
+        $uncovered = [];
+        foreach ($chunk['files'] as $f) {
+            if (!isset($coveredFiles[$f])) {
+                $uncovered[] = $f;
+            }
+        }
+        if ($uncovered === []) {
+            unset($state['chunks'][$chunkId]);
+            $prunedPending++;
+            $prunedFiles += count($chunk['files']);
+        } elseif (count($uncovered) !== count($chunk['files'])) {
+            $chunk['files'] = $uncovered;
+            $chunk['filesCount'] = count($uncovered);
+            $state['chunks'][$chunkId] = $chunk;
+            $prunedFiles += count($chunk['files']) - count($uncovered);
+        }
+    }
+}
+fwrite(STDERR, "Pruned {$prunedPending} fully-covered pending chunks ({$prunedFiles} test files).\n");
+
 $state['updatedAt'] = date('c');
 $state['completed'] = true;
 foreach ($state['chunks'] as $chunk) {
