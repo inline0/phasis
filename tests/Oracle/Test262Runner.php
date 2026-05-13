@@ -54,7 +54,6 @@ class Test262Runner
     private const CROSS_REALM_BLOCKLIST = [
         'annexB/built-ins/RegExp/prototype/compile/this-cross-realm-instance.js',
         'built-ins/Function/proto-from-ctor-realm-prototype.js',
-        'built-ins/Proxy/revocable/tco-fn-realm.js',
         'staging/sm/Reflect/set.js',
         'staging/sm/TypedArray/constructor-buffer-sequence.js',
         'staging/sm/TypedArray/every-and-some.js',
@@ -1278,8 +1277,9 @@ PHP;
                 ) use ($childEngine): \PhpJs\Value\JsValue {
                     return $childEngine->getInterpreter()->callFunction($fn, $thisValue, $args);
                 });
+                $result = \PhpJs\Value\JsUndefined::instance();
                 try {
-                    $childEngine->getInterpreter()->execute(
+                    $result = $childEngine->getInterpreter()->execute(
                         (new \PhpJs\Parser\Parser($src))->parse(),
                     );
                     \PhpJs\Value\JsPromise::drainMicrotasks();
@@ -1292,7 +1292,9 @@ PHP;
                         \PhpJs\Value\JsFunction::setInterpreterInstance($prevInstance);
                     }
                 }
-                return \PhpJs\Value\JsUndefined::instance();
+                return $result instanceof \PhpJs\Value\JsValue
+                    ? $result
+                    : \PhpJs\Value\JsUndefined::instance();
             },
         );
         $wrapper->set('evalScript', $evalScriptFn);
