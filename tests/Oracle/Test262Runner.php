@@ -220,39 +220,11 @@ class Test262Runner
         // by built-ins/Array/prototype/toSpliced/* which we pass.
         'staging/sm/Array/toSpliced-dense.js'
             => 'SM 14k-iter exhaustive toSpliced sweep exceeds chunk budget',
-        // SM Chinese-calendar happy-path test: instantiates
-        // Temporal.PlainMonthDay across 12 month codes, each forcing
-        // a search across the ICU4X-equivalent Chinese cycle table.
-        // Passes locally in 4s but consistently hits the chunk
-        // timeout in CI (Chinese-calendar resolution is ~20x slower
-        // on the GitHub runner due to repeated PHP IntlCalendar
-        // round-trips inside the year search). Behaviour is mirrored
-        // by the leap-month variant which is already blocklisted as
-        // a host-data gap.
-        'staging/sm/Temporal/PlainMonthDay/from-chinese.js'
-            => 'SM Chinese-calendar PlainMonthDay search exceeds CI chunk budget',
-        // SpiderMonkey unicode-ignoreCase 2968-line fixture exceeds
-        // CI wall budget on slower runners (passes in ~12s locally
-        // on macOS/ICU 76, ~85s on Ubuntu CI/ICU 70).
-        // Chinese-calendar leap-month placement differs between ICU 70
-        // (Ubuntu CI) and ICU 76 (Unicode 16 reference). ethiopic /
-        // ethioaa / hebrew-leap-month no longer need ICU at all
-        // (TemporalObject ships pure-PHP arithmetic for those), so their
-        // entries are dropped here.
-        'staging/Intl402/Temporal/old/addition-across-lunisolar-leap-months-chinese.js'
-            => 'Chinese-calendar leap-month placement differs between CI ICU 70 and reference ICU 76',
-        // staging/Intl402 calendar snapshots that disagree with ICU 74
-        // (Ubuntu CI) but match ICU 76+/macOS ICU 78:
-        //  - non-iso-calendars-iso8601.js: iso8601 month formatted as
-        //    "1" instead of "01" because ICU 74's IntlDateTimeFormat
-        //    zero-pads differently than ICU 76+.
-        //  - non-iso-calendars-chinese.js: Chinese-calendar month
-        //    length resolves to 29 days on ICU 74 but the Unicode-16
-        //    reference (and ICU 76+) returns 30 days. Same root cause
-        //    family as the already-blocked addition-across-lunisolar-
-        //    leap-months-chinese.js sibling.
-        'staging/Intl402/Temporal/old/non-iso-calendars-chinese.js'
-            => 'Chinese-calendar month length differs between CI ICU 74 and reference ICU 76',
+        // (from-chinese.js, addition-across-lunisolar-leap-months-chinese.js,
+        // and non-iso-calendars-chinese.js are no longer blocklisted: php-js
+        // now ships a pure-PHP Reingold-Dershowitz-equivalent table for the
+        // Chinese / Dangi calendars under src/BuiltIn/data, which is
+        // CI-independent and matches the V8 / Unicode 16 reference.)
         // ECMAScript v-flag RegExp full-case-folding tests assert the
         // ΐ / ΐ family of multi-char Unicode case-folding
         // pairs. ICU 70 (CI) lacks the U+1FD3 / U+1FE3 / U+FB05-FB06
@@ -374,9 +346,9 @@ class Test262Runner
         // advances time and fires due timers, and an Atomics.waitAsync
         // timeout hook so a worker-side waitAsync(... TIMEOUT) doesn't
         // race-resolve as "timed-out" before main can call notify. The
-        // residual JsToPhp double-call quirk that previously caused these
-        // to hang was fixed by bail-on-let-with-callExpr (cd2b265), so
-        // the heuristic skip is no longer needed.
+        // residual JsToPhp double-call quirk that previously caused
+        // these to hang was fixed by bail-on-let-with-callExpr (commit
+        // cd2b265), so the heuristic skip is no longer needed.
 
         // Audited cross-realm blocklist: only these specific paths
         // genuinely depend on multi-realm semantics our single-realm

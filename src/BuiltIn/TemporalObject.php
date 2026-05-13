@@ -12690,6 +12690,23 @@ class TemporalObject
                 'isLeapMonth' => false,
             ];
         }
+        // Chinese / dangi: pure-PHP table lookup (CI-independent).
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            $c = self::isoToChineseDate($y, $m, $d);
+            if ($c !== null) {
+                $monthCode = self::calendarMonthToCode($calendar, $c['year'], $c['icuMonth'], $c['isLeap']);
+                $monthOneBased = self::chineseMonthOneBased($c['year'], $c['icuMonth'], $c['isLeap']);
+                return [
+                    'year' => $c['year'],
+                    'month' => $monthOneBased,
+                    'monthCode' => $monthCode,
+                    'day' => $c['day'],
+                    'isLeapMonth' => $c['isLeap'],
+                ];
+            }
+            // Out of table range: fall through to ICU fallback.
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12794,6 +12811,23 @@ class TemporalObject
                 $largestUnit,
             );
         }
+        // Chinese / dangi: deterministic via pure-PHP table.
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            $r = self::chineseYearsMonthsDaysBetween(
+                $smlY,
+                $smlM,
+                $smlD,
+                $lrgY,
+                $lrgM,
+                $lrgD,
+                $largestUnit,
+            );
+            if ($r !== null) {
+                return $r;
+            }
+            // Out of table range: fall through to ICU.
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12880,31 +12914,11 @@ class TemporalObject
         if (!in_array($calendar, ['chinese', 'dangi'], true)) {
             return null;
         }
-        if (!class_exists('IntlCalendar', false)) {
-            return null;
-        }
-        try {
-            for ($m = 0; $m < 12; $m++) {
-                $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$calendar}");
-                $probe->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $extendedYear);
-                $probe->set(\IntlCalendar::FIELD_MONTH, $m);
-                $probe->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 1);
-                $probe->set(\IntlCalendar::FIELD_DAY_OF_MONTH, 1);
-                $ms = $probe->getTime();
-                $verify = \IntlCalendar::createInstance('UTC', "en@calendar={$calendar}");
-                $verify->setTime($ms);
-                if (
-                    $verify->get(\IntlCalendar::FIELD_EXTENDED_YEAR) === $extendedYear
-                    && $verify->get(\IntlCalendar::FIELD_MONTH) === $m
-                    && $verify->get(\IntlCalendar::FIELD_IS_LEAP_MONTH) === 1
-                ) {
-                    return $m;
-                }
-            }
-        } catch (\Throwable) {
-            return null;
-        }
-        return null;
+        // Pure-PHP lookup table (CI-independent). dangi has its own table
+        // because Korean local time (UTC+9) vs Beijing (UTC+8) shifts a
+        // few new-moon boundaries by one day.
+        self::$chineseDispatchCalendar = $calendar;
+        return self::chineseLeapMonthIcuFromTable($extendedYear);
     }
 
     /**
@@ -12932,6 +12946,13 @@ class TemporalObject
             $startDays = self::ethiopicNewYearDay($e['year']);
             $thisDays = self::isoDateToDays($isoY, $isoM, $isoD);
             return $thisDays - $startDays + 1;
+        }
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            $r = self::chineseDayOfYearForIso($isoY, $isoM, $isoD);
+            if ($r !== null) {
+                return $r;
+            }
         }
         if (!class_exists('IntlCalendar', false)) {
             return null;
@@ -12972,6 +12993,13 @@ class TemporalObject
             $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
             return self::ethiopicDaysInMonth($e['year'], $e['month']);
         }
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            $c = self::isoToChineseDate($isoY, $isoM, $isoD);
+            if ($c !== null) {
+                return self::chineseDaysInMonth($c['year'], $c['icuMonth'], $c['isLeap']);
+            }
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -13010,6 +13038,13 @@ class TemporalObject
             $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
             return self::ethiopicYearLength($e['year']);
         }
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            $c = self::isoToChineseDate($isoY, $isoM, $isoD);
+            if ($c !== null) {
+                return self::chineseYearLength($c['year']);
+            }
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -13045,15 +13080,26 @@ class TemporalObject
         if (in_array($calendar, ['coptic', 'ethiopic', 'ethioaa', 'ethiopic-amete-alem'], true)) {
             return 13;
         }
-        if (!class_exists('IntlCalendar', false)) {
-            return null;
+        // Chinese / Dangi: pure-PHP table lookup.
+        if (in_array($calendar, ['chinese', 'dangi'], true)) {
+            self::$chineseDispatchCalendar = $calendar;
+            $c = self::isoToChineseDate($isoY, $isoM, $isoD);
+            if ($c !== null) {
+                $info = self::chineseYearInfo($c['year']);
+                if ($info !== null) {
+                    return $info['monthCount'];
+                }
+            }
+            // Out of table range: fall through.
         }
-        // Hebrew: 13 in leap years, 12 otherwise.
+        // Hebrew can be answered without ICU.
         if ($calendar === 'hebrew') {
             $leap = self::calendarInLeapYear($calendar, $isoY, $isoM, $isoD);
             return $leap === true ? 13 : 12;
         }
-        // Chinese / Dangi: 13 in years with a leap month, 12 otherwise.
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
         if (in_array($calendar, ['chinese', 'dangi'], true)) {
             $leap = self::calendarInLeapYear($calendar, $isoY, $isoM, $isoD);
             return $leap === true ? 13 : 12;
@@ -13077,6 +13123,13 @@ class TemporalObject
         if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
             $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
             return self::isEthiopicLeapYear($e['year']);
+        }
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            $c = self::isoToChineseDate($isoY, $isoM, $isoD);
+            if ($c !== null) {
+                return self::chineseLeapMonthIcuFromTable($c['year']) !== null;
+            }
         }
         if (!class_exists('IntlCalendar', false)) {
             return null;
@@ -13198,28 +13251,42 @@ class TemporalObject
             }
             return null;
         }
-        if (!class_exists('IntlCalendar', false)) {
-            return null;
-        }
-        // Approximate calendar-year for ISO 1972-12-31.
-        try {
-            $icuCal = $cal;
-            static $aliasMapPmd = [
-                'islamicc' => 'islamic-civil',
-                'ethioaa' => 'ethiopic-amete-alem',
-            ];
-            if (isset($aliasMapPmd[$cal])) {
-                $icuCal = $aliasMapPmd[$cal];
+        // Chinese / dangi: pure-PHP approximate via the table.
+        if (in_array($cal, ['chinese', 'dangi'], true)) {
+            self::$chineseDispatchCalendar = $cal;
+            $refC = self::isoToChineseDate(1972, 12, 31);
+            if ($refC !== null) {
+                $approxYear = $refC['year'];
+            } elseif (class_exists('IntlCalendar', false)) {
+                try {
+                    $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$cal}");
+                    $probe->setTime(strtotime('1972-12-31 UTC') * 1000);
+                    $approxYear = $probe->get(\IntlCalendar::FIELD_EXTENDED_YEAR);
+                } catch (\Throwable) {
+                    return null;
+                }
+            } else {
+                return null;
             }
-            $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            $probe->setTime(strtotime('1972-12-31 UTC') * 1000);
-            // Chinese / Dangi expose the actual year in EXTENDED_YEAR; FIELD_YEAR
-            // is the 1-60 cycle position.
-            $approxYear = in_array($cal, ['chinese', 'dangi'], true)
-                ? $probe->get(\IntlCalendar::FIELD_EXTENDED_YEAR)
-                : $probe->get(\IntlCalendar::FIELD_YEAR);
-        } catch (\Throwable) {
-            return null;
+        } else {
+            if (!class_exists('IntlCalendar', false)) {
+                return null;
+            }
+            try {
+                $icuCal = $cal;
+                static $aliasMapPmd = [
+                    'islamicc' => 'islamic-civil',
+                    'ethioaa' => 'ethiopic-amete-alem',
+                ];
+                if (isset($aliasMapPmd[$cal])) {
+                    $icuCal = $aliasMapPmd[$cal];
+                }
+                $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+                $probe->setTime(strtotime('1972-12-31 UTC') * 1000);
+                $approxYear = $probe->get(\IntlCalendar::FIELD_YEAR);
+            } catch (\Throwable) {
+                return null;
+            }
         }
         // Try a window of calendar years from approxYear and pick the largest
         // one whose ISO mapping for M-d lands in 1972 or earlier AND whose ICU
@@ -13293,7 +13360,16 @@ class TemporalObject
             $isoYear = $calendar === 'roc' ? ($year + 1911) : $year;
             return ['year' => $isoYear, 'month' => $m, 'day' => $day];
         }
-        if (!class_exists('IntlCalendar', false)) {
+        // Ethiopic / hebrew / chinese / dangi do not require IntlCalendar.
+        // Other calendars (islamic*, persian, indian, coptic, ...) still need
+        // it, so the ICU class gate is deferred until after the pure-PHP
+        // branches are tried.
+        $purePhp = in_array(
+            $calendar,
+            ['ethiopic', 'ethioaa', 'ethiopic-amete-alem', 'hebrew', 'chinese', 'dangi'],
+            true,
+        );
+        if (!$purePhp && !class_exists('IntlCalendar', false)) {
             return null;
         }
         // islamic-umalqura's astronomical lookup tables only span ~1300-1600 AH.
@@ -13415,6 +13491,35 @@ class TemporalObject
                 return null;
             }
             return self::hebrewToIsoDate($year, $icuMonth, $day);
+        }
+        // Chinese / dangi: pure-PHP table lookup (CI-independent).
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            if ($icuMonth < 0 || $icuMonth > 11) {
+                return null;
+            }
+            if ($isLeapMonth) {
+                $leapIcu = self::chineseLeapMonthIcuFromTable($year);
+                if ($leapIcu !== $icuMonth) {
+                    return null; // caller decides constrain vs reject.
+                }
+            }
+            $chronoIdx = self::chineseChronoIdxFromIcu($year, $icuMonth, $isLeapMonth);
+            if ($chronoIdx === null) {
+                return null;
+            }
+            $dim = self::chineseDaysInMonthByChrono($year, $chronoIdx);
+            if ($day < 1 || $day > $dim) {
+                return null;
+            }
+            $iso = self::chineseToIsoDate($year, $icuMonth, $isLeapMonth, $day);
+            if ($iso !== null) {
+                return $iso;
+            }
+            // Out of table range: fall through to ICU fallback.
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
         }
         try {
             $icuCal = $calendar;
@@ -14112,6 +14217,518 @@ class TemporalObject
     }
 
     // -----------------------------------------------------------------------
+    // Chinese / Dangi calendar (pure-PHP, ICU-independent)
+    //
+    // The Chinese calendar is astronomically determined: each month begins
+    // on the day of a new moon in Beijing local time, and a leap month is
+    // inserted whenever a year between two winter-solstice-containing
+    // months has 13 new moons. Reingold-Dershowitz "Calendrical
+    // Calculations" §19 gives the algorithm in terms of solar longitude
+    // and lunar phase, both of which require high-precision astronomy
+    // (errors of a few minutes around midnight Beijing time shift a date
+    // by one day).
+    //
+    // To stay independent of the host ICU version (Ubuntu CI ships ICU
+    // 70/74 whose leap-month placements diverge from Unicode 16 / V8),
+    // php-js ships a precomputed table generated from an R-D-equivalent
+    // implementation (ICU 76+). The table is regenerated by
+    // bin/gen-chinese-table.php and consumed here. The runtime never
+    // calls IntlCalendar for chinese / dangi arithmetic.
+    //
+    // dangi is the Korean ICU calendar; the underlying month / leap-month
+    // arithmetic is identical to chinese (only the era differs), so we
+    // route both through the same table.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Lazily-decoded packed tables for chinese / dangi calendar lookups.
+     * Indexed by calendar id ('chinese' or 'dangi'). Each entry is a
+     * tuple [blob, start, end].
+     *
+     * @var array<string,array{blob:string,start:int,end:int}>
+     */
+    private static array $lunisolarTables = [];
+
+    /** Decode the chinese / dangi calendar table for the given id on first use. */
+    private static function loadLunisolarTable(string $calendar): void
+    {
+        if (isset(self::$lunisolarTables[$calendar])) {
+            return;
+        }
+        $path = __DIR__ . '/data/' . $calendar . '_calendar.php';
+        if (!is_file($path)) {
+            self::$lunisolarTables[$calendar] = ['blob' => '', 'start' => 0, 'end' => 0];
+            return;
+        }
+        $data = require $path;
+        $compressed = base64_decode($data['blob'], true);
+        if ($compressed === false) {
+            self::$lunisolarTables[$calendar] = ['blob' => '', 'start' => 0, 'end' => 0];
+            return;
+        }
+        $blob = gzuncompress($compressed);
+        if ($blob === false) {
+            self::$lunisolarTables[$calendar] = ['blob' => '', 'start' => 0, 'end' => 0];
+            return;
+        }
+        self::$lunisolarTables[$calendar] = [
+            'blob' => $blob,
+            'start' => (int) $data['start'],
+            'end' => (int) $data['end'],
+        ];
+    }
+
+    /**
+     * Calendar context for the in-flight chinese / dangi operation. Set
+     * by the dispatcher at entry to chineseDispatch() and consumed by
+     * every internal helper, so we don't have to thread the calendar id
+     * through ~14 helper signatures. PHP is single-threaded so the
+     * static is safe; chineseDispatch() restores the previous value via
+     * try/finally to keep nested calls correct (e.g. when dangi probes
+     * during a chinese reference search, or vice versa).
+     */
+    private static string $chineseDispatchCalendar = 'chinese';
+
+    /**
+     * Look up the packed record for the in-flight calendar's extended-year.
+     *
+     * @return array{newYearDays:int,leapIcuMonth:int,monthLenBits:int,monthCount:int}|null
+     */
+    private static function chineseYearInfo(int $extYear): ?array
+    {
+        $calendar = self::$chineseDispatchCalendar;
+        self::loadLunisolarTable($calendar);
+        $tbl = self::$lunisolarTables[$calendar];
+        if ($tbl['blob'] === '') {
+            return null;
+        }
+        if ($extYear < $tbl['start'] || $extYear > $tbl['end']) {
+            return null;
+        }
+        $offset = ($extYear - $tbl['start']) * 8;
+        $record = substr($tbl['blob'], $offset, 8);
+        if (strlen($record) !== 8) {
+            return null;
+        }
+        $unpacked = unpack('lnewYearDays/cleapIcu/vmonthLenBits/CmonthCount', $record);
+        if ($unpacked === false) {
+            return null;
+        }
+        $monthCount = (int) $unpacked['monthCount'];
+        if ($monthCount !== 12 && $monthCount !== 13) {
+            return null;
+        }
+        return [
+            'newYearDays' => (int) $unpacked['newYearDays'],
+            'leapIcuMonth' => (int) $unpacked['leapIcu'],
+            'monthLenBits' => (int) $unpacked['monthLenBits'],
+            'monthCount' => $monthCount,
+        ];
+    }
+
+    /** Days in the chinese month at chronological index (0-indexed) for the year. */
+    private static function chineseDaysInMonthByChrono(int $extYear, int $chronoIdx): int
+    {
+        $info = self::chineseYearInfo($extYear);
+        if ($info === null) {
+            return 30;
+        }
+        if ($chronoIdx < 0 || $chronoIdx >= $info['monthCount']) {
+            return 30;
+        }
+        return (($info['monthLenBits'] >> $chronoIdx) & 1) === 1 ? 30 : 29;
+    }
+
+    /** Days in chinese year (354..385). */
+    private static function chineseYearLength(int $extYear): int
+    {
+        $info = self::chineseYearInfo($extYear);
+        if ($info === null) {
+            return 354;
+        }
+        $days = 0;
+        for ($i = 0; $i < $info['monthCount']; $i++) {
+            $days += (($info['monthLenBits'] >> $i) & 1) === 1 ? 30 : 29;
+        }
+        return $days;
+    }
+
+    /** Leap ICU-month index (0..11) for the chinese year, or null. */
+    private static function chineseLeapMonthIcuFromTable(int $extYear): ?int
+    {
+        $info = self::chineseYearInfo($extYear);
+        if ($info === null) {
+            return null;
+        }
+        $l = $info['leapIcuMonth'];
+        if ($l < 0 || $l > 11) {
+            return null;
+        }
+        return $l;
+    }
+
+    /**
+     * Convert ISO (y,m,d) to chinese ['year','icuMonth','isLeap','day'].
+     *
+     * @return array{year:int,icuMonth:int,isLeap:bool,day:int}|null
+     */
+    private static function isoToChineseDate(int $isoY, int $isoM, int $isoD): ?array
+    {
+        $days = self::isoDateToDays($isoY, $isoM, $isoD);
+        $extYear = $isoY;
+        $info = self::chineseYearInfo($extYear);
+        if ($info === null) {
+            return null;
+        }
+        $guardLimit = 6;
+        while ($info !== null && $info['newYearDays'] > $days && $guardLimit-- > 0) {
+            $extYear--;
+            $info = self::chineseYearInfo($extYear);
+        }
+        if ($info === null) {
+            return null;
+        }
+        $guardLimit = 6;
+        while ($guardLimit-- > 0) {
+            $next = self::chineseYearInfo($extYear + 1);
+            if ($next === null) {
+                break;
+            }
+            if ($next['newYearDays'] <= $days) {
+                $extYear++;
+                $info = $next;
+                continue;
+            }
+            break;
+        }
+        if ($info['newYearDays'] > $days) {
+            return null;
+        }
+        $offset = $days - $info['newYearDays'];
+        $leapIcu = $info['leapIcuMonth'];
+        $cursor = 0;
+        for ($idx = 0; $idx < $info['monthCount']; $idx++) {
+            $dim = (($info['monthLenBits'] >> $idx) & 1) === 1 ? 30 : 29;
+            if ($offset < $cursor + $dim) {
+                $dayOfMonth = $offset - $cursor + 1;
+                if ($leapIcu === -1) {
+                    return [
+                        'year' => $extYear,
+                        'icuMonth' => $idx,
+                        'isLeap' => false,
+                        'day' => $dayOfMonth,
+                    ];
+                }
+                if ($idx <= $leapIcu) {
+                    return [
+                        'year' => $extYear,
+                        'icuMonth' => $idx,
+                        'isLeap' => false,
+                        'day' => $dayOfMonth,
+                    ];
+                }
+                if ($idx === $leapIcu + 1) {
+                    return [
+                        'year' => $extYear,
+                        'icuMonth' => $leapIcu,
+                        'isLeap' => true,
+                        'day' => $dayOfMonth,
+                    ];
+                }
+                return [
+                    'year' => $extYear,
+                    'icuMonth' => $idx - 1,
+                    'isLeap' => false,
+                    'day' => $dayOfMonth,
+                ];
+            }
+            $cursor += $dim;
+        }
+        return null;
+    }
+
+    /**
+     * Map chinese (icuMonth, isLeap) for the given extended-year to its
+     * chronological index (0-indexed). Returns null if invalid.
+     */
+    private static function chineseChronoIdxFromIcu(int $extYear, int $icuMonth, bool $isLeap): ?int
+    {
+        $leapIcu = self::chineseLeapMonthIcuFromTable($extYear);
+        if ($leapIcu === null) {
+            if ($isLeap) {
+                return null;
+            }
+            if ($icuMonth < 0 || $icuMonth > 11) {
+                return null;
+            }
+            return $icuMonth;
+        }
+        if ($isLeap) {
+            if ($icuMonth !== $leapIcu) {
+                return null;
+            }
+            return $leapIcu + 1;
+        }
+        if ($icuMonth < 0 || $icuMonth > 11) {
+            return null;
+        }
+        if ($icuMonth <= $leapIcu) {
+            return $icuMonth;
+        }
+        return $icuMonth + 1;
+    }
+
+    /** Map a chronological index (0-indexed) back to (icuMonth, isLeap). */
+    private static function chineseIcuFromChronoIdx(int $extYear, int $chronoIdx): ?array
+    {
+        $info = self::chineseYearInfo($extYear);
+        if ($info === null) {
+            return null;
+        }
+        if ($chronoIdx < 0 || $chronoIdx >= $info['monthCount']) {
+            return null;
+        }
+        $leapIcu = $info['leapIcuMonth'];
+        if ($leapIcu === -1) {
+            return ['icuMonth' => $chronoIdx, 'isLeap' => false];
+        }
+        if ($chronoIdx <= $leapIcu) {
+            return ['icuMonth' => $chronoIdx, 'isLeap' => false];
+        }
+        if ($chronoIdx === $leapIcu + 1) {
+            return ['icuMonth' => $leapIcu, 'isLeap' => true];
+        }
+        return ['icuMonth' => $chronoIdx - 1, 'isLeap' => false];
+    }
+
+    /**
+     * Convert chinese (extYear, icuMonth, isLeap, day) to ISO.
+     *
+     * @return array{year:int,month:int,day:int}|null
+     */
+    private static function chineseToIsoDate(int $extYear, int $icuMonth, bool $isLeap, int $day): ?array
+    {
+        $info = self::chineseYearInfo($extYear);
+        if ($info === null) {
+            return null;
+        }
+        $chronoIdx = self::chineseChronoIdxFromIcu($extYear, $icuMonth, $isLeap);
+        if ($chronoIdx === null) {
+            return null;
+        }
+        $dim = (($info['monthLenBits'] >> $chronoIdx) & 1) === 1 ? 30 : 29;
+        if ($day < 1 || $day > $dim) {
+            return null;
+        }
+        $cursor = 0;
+        for ($i = 0; $i < $chronoIdx; $i++) {
+            $cursor += (($info['monthLenBits'] >> $i) & 1) === 1 ? 30 : 29;
+        }
+        $absDays = $info['newYearDays'] + $cursor + ($day - 1);
+        return self::isoDateFromDays($absDays);
+    }
+
+    /** Days in a specific chinese (extYear, icuMonth, isLeap). */
+    private static function chineseDaysInMonth(int $extYear, int $icuMonth, bool $isLeap): int
+    {
+        $chronoIdx = self::chineseChronoIdxFromIcu($extYear, $icuMonth, $isLeap);
+        if ($chronoIdx === null) {
+            return 30;
+        }
+        return self::chineseDaysInMonthByChrono($extYear, $chronoIdx);
+    }
+
+    /** Day-of-year (1-indexed) in chinese terms for an ISO date. */
+    private static function chineseDayOfYearForIso(int $isoY, int $isoM, int $isoD): ?int
+    {
+        $c = self::isoToChineseDate($isoY, $isoM, $isoD);
+        if ($c === null) {
+            return null;
+        }
+        $info = self::chineseYearInfo($c['year']);
+        if ($info === null) {
+            return null;
+        }
+        $days = self::isoDateToDays($isoY, $isoM, $isoD);
+        return $days - $info['newYearDays'] + 1;
+    }
+
+    /**
+     * Add (years, months) to an ISO date in chinese terms then constrain
+     * the day. Returns [isoY, isoM, isoD] in proleptic Gregorian.
+     *
+     * @return array{0:int,1:int,2:int}|null
+     */
+    private static function chineseAddYearsMonthsIso(
+        int $isoY,
+        int $isoM,
+        int $isoD,
+        int $years,
+        int $months,
+        string $overflow,
+    ): ?array {
+        $c = self::isoToChineseDate($isoY, $isoM, $isoD);
+        if ($c === null) {
+            return null;
+        }
+        $newY = $c['year'] + $years;
+        $newIcuMonth = $c['icuMonth'];
+        $newLeap = $c['isLeap'];
+        $startDay = $c['day'];
+
+        if ($newLeap) {
+            $tgtLeap = self::chineseLeapMonthIcuFromTable($newY);
+            if ($tgtLeap !== $newIcuMonth) {
+                $newLeap = false;
+            }
+        }
+
+        if ($months !== 0) {
+            $pos = self::chineseChronoIdxFromIcu($newY, $newIcuMonth, $newLeap);
+            if ($pos === null) {
+                return null;
+            }
+            $pos += $months;
+            $guard = 0;
+            while (true) {
+                $info = self::chineseYearInfo($newY);
+                if ($info === null || $guard++ > 100000) {
+                    return null;
+                }
+                if ($pos >= $info['monthCount']) {
+                    $pos -= $info['monthCount'];
+                    $newY++;
+                    continue;
+                }
+                if ($pos < 0) {
+                    $newY--;
+                    $prev = self::chineseYearInfo($newY);
+                    if ($prev === null) {
+                        return null;
+                    }
+                    $pos += $prev['monthCount'];
+                    continue;
+                }
+                break;
+            }
+            $resolved = self::chineseIcuFromChronoIdx($newY, $pos);
+            if ($resolved === null) {
+                return null;
+            }
+            $newIcuMonth = $resolved['icuMonth'];
+            $newLeap = $resolved['isLeap'];
+        }
+
+        $dim = self::chineseDaysInMonth($newY, $newIcuMonth, $newLeap);
+        $newD = $startDay;
+        if ($newD > $dim) {
+            if ($overflow === 'reject') {
+                throw new RangeError("Day {$startDay} out of range after calendar arithmetic");
+            }
+            $newD = $dim;
+        }
+        $iso = self::chineseToIsoDate($newY, $newIcuMonth, $newLeap, $newD);
+        if ($iso === null) {
+            return null;
+        }
+        return [$iso['year'], $iso['month'], $iso['day']];
+    }
+
+    /**
+     * (years, months, days) between two ISO dates in chinese terms,
+     * with sml <= lrg.
+     *
+     * @return array{0:int,1:int,2:int}|null
+     */
+    private static function chineseYearsMonthsDaysBetween(
+        int $smlY,
+        int $smlM,
+        int $smlD,
+        int $lrgY,
+        int $lrgM,
+        int $lrgD,
+        string $largestUnit,
+    ): ?array {
+        $smlC = self::isoToChineseDate($smlY, $smlM, $smlD);
+        if ($smlC === null) {
+            return null;
+        }
+        $endDays = self::isoDateToDays($lrgY, $lrgM, $lrgD);
+
+        $years = 0;
+        if ($largestUnit === 'year') {
+            $cand = $smlC['year'];
+            while (true) {
+                $next = $cand + 1;
+                $probe = self::chineseAddYearsMonthsIso(
+                    $smlY,
+                    $smlM,
+                    $smlD,
+                    $next - $smlC['year'],
+                    0,
+                    'constrain',
+                );
+                if ($probe === null) {
+                    break;
+                }
+                $probeDays = self::isoDateToDays($probe[0], $probe[1], $probe[2]);
+                if ($probeDays > $endDays) {
+                    break;
+                }
+                $cand = $next;
+                $years++;
+            }
+        }
+
+        $anchorIso = $years > 0
+            ? self::chineseAddYearsMonthsIso($smlY, $smlM, $smlD, $years, 0, 'constrain')
+            : [$smlY, $smlM, $smlD];
+        if ($anchorIso === null) {
+            return null;
+        }
+
+        $months = 0;
+        if ($largestUnit !== 'day' && $largestUnit !== 'week') {
+            while (true) {
+                $probe = self::chineseAddYearsMonthsIso(
+                    $anchorIso[0],
+                    $anchorIso[1],
+                    $anchorIso[2],
+                    0,
+                    1,
+                    'constrain',
+                );
+                if ($probe === null) {
+                    break;
+                }
+                $probeDays = self::isoDateToDays($probe[0], $probe[1], $probe[2]);
+                if ($probeDays > $endDays) {
+                    break;
+                }
+                $anchorIso = $probe;
+                $months++;
+            }
+        }
+
+        $anchorDays = self::isoDateToDays($anchorIso[0], $anchorIso[1], $anchorIso[2]);
+        $days = $endDays - $anchorDays;
+        if ($days < 0) {
+            return null;
+        }
+        return [$years, $months, $days];
+    }
+
+    /** 1-indexed chronological month for chinese (icuMonth, isLeap). */
+    private static function chineseMonthOneBased(int $extYear, int $icuMonth, bool $isLeap): int
+    {
+        $idx = self::chineseChronoIdxFromIcu($extYear, $icuMonth, $isLeap);
+        if ($idx === null) {
+            return $icuMonth + 1;
+        }
+        return $idx + 1;
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers: arithmetic
     // -----------------------------------------------------------------------
 
@@ -14723,6 +15340,22 @@ class TemporalObject
                 $months,
                 $overflow,
             );
+        }
+        // Chinese / dangi: deterministic via pure-PHP table.
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            self::$chineseDispatchCalendar = $calendar;
+            $r = self::chineseAddYearsMonthsIso(
+                $isoY,
+                $isoM,
+                $isoD,
+                $years,
+                $months,
+                $overflow,
+            );
+            if ($r !== null) {
+                return $r;
+            }
+            // Out of table range: fall through to ICU.
         }
         if (!class_exists('IntlCalendar', false)) {
             return null;
