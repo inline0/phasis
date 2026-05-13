@@ -485,6 +485,32 @@ class RegExpPrototype
                 );
             }
 
+            // Per Annex B B.2.5.1 step 3: legacy features ride on the
+            // RegExp instance's [[LegacyFeaturesEnabled]] slot, which we
+            // approximate by the receiver's prototype identity. A regex
+            // from a different realm reaches a different RegExp.prototype
+            // (each Engine installs its own), so compile-from-other-realm
+            // surfaces as TypeError per legacy-regexp tests.
+            $currentRealm = \PhpJs\Engine::getCurrentRealm();
+            if ($currentRealm !== null) {
+                $env = $currentRealm->getGlobalEnv();
+                $thisRegExpProto = null;
+                if ($env->has('RegExp')) {
+                    $ctor = $env->get('RegExp');
+                    if ($ctor instanceof JsObject) {
+                        $maybeProto = $ctor->get('prototype');
+                        if ($maybeProto instanceof JsObject) {
+                            $thisRegExpProto = $maybeProto;
+                        }
+                    }
+                }
+                if ($thisRegExpProto !== null && $this_->getPrototype() !== $thisRegExpProto) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Method RegExp.prototype.compile called on incompatible receiver',
+                    );
+                }
+            }
+
             // Per Annex B step 3: if [[LegacyFeaturesEnabled]] is false, throw TypeError.
             $legacyDesc = $this_->getOwnPropertyDescriptor("[[LegacyFeaturesEnabled]]");
             if (
