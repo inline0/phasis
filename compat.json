@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-05-13T16:01:25+00:00",
-    "updatedAt": "2026-05-13T16:01:25+00:00",
+    "generatedAt": "2026-05-13T16:22:42+00:00",
+    "updatedAt": "2026-05-13T16:22:42+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "8500610",
+        "commit": "37e3e97",
         "isDirty": true
     },
     "environment": {
@@ -19,7 +19,7 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "5d2a1958dfc30c934d61cc2a3103e170e9ceeb10"
+        "fingerprint": "2146d6dbf3a6af60f21ca468648af279b3587e8f"
     },
     "discovery": {
         "groupCount": 159,
@@ -196,15 +196,15 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 50496,
+            "pass": 50388,
             "fail": 0,
-            "skip": 2,
-            "blocked": 8,
-            "pending": 0,
-            "running": 0,
-            "attempted": 50496,
-            "known": 50506,
-            "total": 50506,
+            "skip": 0,
+            "blocked": 0,
+            "pending": 1,
+            "running": 13,
+            "attempted": 50388,
+            "known": 50388,
+            "total": 50402,
             "passRate": 100
         },
         "areas": [
@@ -224,15 +224,15 @@
             },
             {
                 "name": "built-ins",
-                "status": "blocked",
-                "pass": 22727,
+                "status": "running",
+                "pass": 22628,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 2,
+                "blocked": 0,
                 "pending": 0,
-                "running": 0,
-                "attempted": 22727,
-                "known": 22729,
+                "running": 13,
+                "attempted": 22628,
+                "known": 22628,
                 "total": 22729,
                 "passRate": 100
             },
@@ -280,15 +280,15 @@
             },
             {
                 "name": "staging",
-                "status": "blocked",
-                "pass": 1624,
+                "status": "incomplete",
+                "pass": 1615,
                 "fail": 0,
-                "skip": 2,
-                "blocked": 6,
-                "pending": 0,
+                "skip": 0,
+                "blocked": 0,
+                "pending": 1,
                 "running": 0,
-                "attempted": 1624,
-                "known": 1632,
+                "attempted": 1615,
+                "known": 1615,
                 "total": 1632,
                 "passRate": 100
             }
@@ -1182,15 +1182,15 @@
             {
                 "name": "built-ins/RegExp/property-escapes/generated",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 459,
+                "status": "running",
+                "pass": 358,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
-                "running": 0,
-                "attempted": 459,
-                "known": 459,
+                "running": 13,
+                "attempted": 358,
+                "known": 358,
                 "total": 459,
                 "passRate": 100
             },
@@ -1632,14 +1632,14 @@
             {
                 "name": "built-ins/decodeURI",
                 "area": "built-ins",
-                "status": "blocked",
-                "pass": 54,
+                "status": "pass",
+                "pass": 55,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 1,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 54,
+                "attempted": 55,
                 "known": 55,
                 "total": 55,
                 "passRate": 100
@@ -1647,14 +1647,14 @@
             {
                 "name": "built-ins/decodeURIComponent",
                 "area": "built-ins",
-                "status": "blocked",
-                "pass": 55,
+                "status": "pass",
+                "pass": 56,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 1,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 55,
+                "attempted": 56,
                 "known": 56,
                 "total": 56,
                 "passRate": 100
@@ -2637,32 +2637,32 @@
             {
                 "name": "staging/sm",
                 "area": "staging",
-                "status": "blocked",
-                "pass": 1420,
+                "status": "pass",
+                "pass": 1412,
                 "fail": 0,
-                "skip": 2,
-                "blocked": 6,
+                "skip": 0,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 1420,
-                "known": 1428,
+                "attempted": 1412,
+                "known": 1412,
                 "total": 1428,
                 "passRate": 100
             },
             {
                 "name": "staging/source-phase-imports",
                 "area": "staging",
-                "status": "pass",
-                "pass": 1,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 1,
                 "running": 0,
-                "attempted": 1,
-                "known": 1,
+                "attempted": 0,
+                "known": 0,
                 "total": 1,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "staging/upsert",
@@ -2680,102 +2680,12 @@
                 "passRate": 100
             }
         ],
-        "blockedChunks": [
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 75 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 5674",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
-                ],
-                "logFile": ".compat-state-builtins-lower-de/logs/6687624bd5fb87a6a4ff167cd35af4b69d14f50d.log"
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 75 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsNumber.php on line 69",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ],
-                "logFile": ".compat-state-builtins-lower-de/logs/5a3e033d7be8e84f9d36d0440da488ff5b100e26.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 533",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/f77d96875630465a6823161d465877fc4c60f9ae.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Bytecode/VM.php on line 687",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/dd2d25d5cc94da8b81ed7a27013584a93402ab8e.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyDescriptor.php on line 45",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/c58e8146c6f3a001cf0781adbce015d2d9682c2d.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 7067",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/fc434724163390adbcf5051f147ab7c4fd54a93b.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 525",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/931d7d3921a965471071a964166aad45b1d595f4.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Bytecode/VM.php on line 768",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/af18b1bdadaf3999fb864b5776bc2b53ed5c7dcb.log"
-            }
-        ],
+        "blockedChunks": [],
         "slowChunks": [
             {
                 "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 242.286,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 241.547,
+                "kind": "normal",
+                "durationSec": 289.11,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
@@ -2783,35 +2693,8 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 241.497,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 240.824,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 240.627,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 240.475,
+                "kind": "normal",
+                "durationSec": 288.261,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
@@ -2820,7 +2703,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 219.185,
+                "durationSec": 233.255,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
@@ -2829,7 +2712,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 156.128,
+                "durationSec": 159.741,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
@@ -2837,8 +2720,8 @@
             },
             {
                 "group": "built-ins/decodeURI",
-                "kind": "crash",
-                "durationSec": 126.783,
+                "kind": "normal",
+                "durationSec": 157.074,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
@@ -2846,39 +2729,17 @@
             },
             {
                 "group": "built-ins/decodeURIComponent",
-                "kind": "crash",
-                "durationSec": 126.173,
+                "kind": "normal",
+                "durationSec": 155.896,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 122.062,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 116.363,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js"
-                ]
-            },
-            {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 115.038,
+                "durationSec": 113.115,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
@@ -2889,64 +2750,22 @@
                 ]
             },
             {
-                "group": "staging/sm",
+                "group": "built-ins/decodeURI",
                 "kind": "normal",
-                "durationSec": 64.196,
+                "durationSec": 112.776,
                 "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/forEach.js",
-                    "test262/test/staging/sm/TypedArray/from_basics.js",
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js",
                     "...",
-                    "test262/test/staging/sm/TypedArray/object-defineproperty.js",
-                    "test262/test/staging/sm/TypedArray/of.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 61.41,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/expressions/nullish-coalescing.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 59.383,
-                "filesCount": 3,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Emoji_Modifier_Base.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Emoji_Presentation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Extended_Pictographic.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 59.297,
-                "filesCount": 3,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Medefaidrin.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Meetei_Mayek.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mende_Kikakui.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 59.209,
-                "filesCount": 3,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/ID_Start.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Join_Control.js"
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js",
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js"
                 ]
             },
             {
                 "group": "language/expressions",
                 "kind": "normal",
-                "durationSec": 59.032,
+                "durationSec": 78.281,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/language/expressions/call/spread-sngl-iter.js",
@@ -2957,14 +2776,124 @@
                 ]
             },
             {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 68.29,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/expressions/nullish-coalescing.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 63.243,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/forEach.js",
+                    "test262/test/staging/sm/TypedArray/from_basics.js",
+                    "...",
+                    "test262/test/staging/sm/TypedArray/object-defineproperty.js",
+                    "test262/test/staging/sm/TypedArray/of.js"
+                ]
+            },
+            {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 58.742,
+                "durationSec": 59.943,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Canadian_Aboriginal.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Carian.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Caucasian_Albanian.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.408,
                 "filesCount": 3,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Malayalam.js",
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mandaic.js",
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Manichaean.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.348,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Number.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.255,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khitan_Small_Script.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khmer.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khojki.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.144,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypriot.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypro_Minoan.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cyrillic.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 58.873,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Linear_B.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lisu.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lycian.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 58.611,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dives_Akuru.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dogra.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Duployan.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 58.297,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Medefaidrin.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Meetei_Mayek.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mende_Kikakui.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 58.024,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ol_Chiki.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ol_Onal.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Old_Hungarian.js"
                 ]
             }
         ]
