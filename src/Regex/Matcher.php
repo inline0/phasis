@@ -128,6 +128,26 @@ class Matcher
      */
     public function matchTest(string $inputUtf8, int $startCodeUnit): bool
     {
+        // Vectorized fast path for `^\p{X}+$` / `^\P{X}+$` style
+        // anchored-greedy unicode-property patterns. test262's property-
+        // escape corpus sweeps these against ~1.1M-codepoint inputs and
+        // the per-codepoint AST dispatch saturates the per-test wall
+        // budget on slower CI runners. The fast path streams UTF-8
+        // bytes through a single tight loop with an O(1) byte-table
+        // membership lookup: no array materialisation, no method
+        // dispatch per codepoint, no binary search.
+        if ($startCodeUnit === 0 && $this->unicode && !$this->multiline) {
+            $shape = $this->detectAnchoredPropertyShape();
+            if ($shape !== null) {
+                return self::sweepAnchoredProperty(
+                    $inputUtf8,
+                    $shape['table'],
+                    $shape['propertyNegated'],
+                    $shape['min'],
+                    $shape['max'],
+                );
+            }
+        }
         $this->input = $this->unicode
             ? self::utf8ToCodePoints($inputUtf8)
             : self::utf8ToUtf16Units($inputUtf8);
@@ -179,6 +199,227 @@ class Matcher
             }
         }
         return false;
+    }
+
+    /**
+     * Detect the `^\p{X}+$` / `^\P{X}+$` anchored-greedy unicode-property
+     * shape and pre-resolve its bundled-table ranges so the sweep loop
+     * has no AST or table lookup to do per codepoint.
+     *
+     * Returns null if the pattern is anything else (mixed terms,
+     * /i case-folding, /m multiline, bundle miss). The full matcher
+     * picks it up unchanged in that case.
+     *
+     * @return array{table: string, propertyNegated: bool, min: int, max: ?int}|null
+     */
+    private function detectAnchoredPropertyShape(): ?array
+    {
+        if ($this->ignoreCase) {
+            // /i adds case-fold variants per codepoint; the streaming
+            // path would need to call canonicalize per codepoint, at
+            // which point the AST path is fine. The test262 corpus
+            // uses /u not /ui for property-escapes anyway.
+            return null;
+        }
+        $body = $this->pattern->body;
+        if (!$body instanceof Sequence) {
+            return null;
+        }
+        $terms = $body->terms;
+        if (count($terms) !== 3) {
+            return null;
+        }
+        [$head, $mid, $tail] = $terms;
+        if (
+            !$head instanceof Anchor
+            || $head->kind !== Anchor::START
+            || !$tail instanceof Anchor
+            || $tail->kind !== Anchor::END
+        ) {
+            return null;
+        }
+        if (!$mid instanceof Quantified) {
+            return null;
+        }
+        if (!$mid->greedy) {
+            // Lazy `+?` against an all-match string still has to match
+            // the whole input (lazy still needs to satisfy `$`), so
+            // semantically the sweep is identical. Be conservative for
+            // now and bail to the AST path.
+            return null;
+        }
+        $atom = $mid->atom;
+        if (!$atom instanceof \PhpJs\Regex\Ast\UnicodeProperty) {
+            return null;
+        }
+        $ranges = self::resolvePropertyRanges($atom->name, $atom->value);
+        if ($ranges === null) {
+            // Property isn't in the bundled tables; let the AST path
+            // handle it via IntlChar/PCRE2 fallbacks.
+            return null;
+        }
+        $key = $atom->value === null ? $atom->name : $atom->name . '=' . $atom->value;
+        return [
+            'table' => self::propertyMembershipTable($key, $ranges),
+            'propertyNegated' => $atom->negated,
+            'min' => $mid->min,
+            'max' => $mid->max,
+        ];
+    }
+
+    /**
+     * Resolve and cache the [start,end] code-point ranges for a
+     * bundled Unicode property. Returns null when the property isn't
+     * bundled (caller falls back to the AST matcher which can route
+     * through IntlChar / PCRE2 for unknown names).
+     *
+     * @return list<array{int,int}>|null
+     */
+    private static function resolvePropertyRanges(string $name, ?string $value): ?array
+    {
+        static $cache = [];
+        $key = $value === null ? $name : $name . '=' . $value;
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+        $ranges = Unicode16Tables::PROPERTIES[$key] ?? null;
+        $cache[$key] = $ranges;
+        return $ranges;
+    }
+
+    /**
+     * Build (and cache) a 0x110000-byte membership table for a
+     * bundled property. Each byte is "\1" if the codepoint is in
+     * the property, "\0" otherwise. The whole table fits in 1.1MB
+     * of contiguous string memory and turns the inner-loop lookup
+     * from a log2(R)-step binary search into a single string-index
+     * read. For properties like General_Category=Letter (R≈680)
+     * that's the difference between a ~0.9s and a ~0.15s sweep on
+     * a 1.1M-codepoint test262 input.
+     *
+     * @param list<array{int,int}> $ranges
+     */
+    private static function propertyMembershipTable(string $key, array $ranges): string
+    {
+        static $cache = [];
+        if (isset($cache[$key])) {
+            // Promote to MRU by re-inserting (preserves insertion order).
+            $val = $cache[$key];
+            unset($cache[$key]);
+            $cache[$key] = $val;
+            return $val;
+        }
+        // Single allocation of the 1.1MB buffer, then in-place byte
+        // writes for each range. PHP keeps the string in a single
+        // buffer after the initial `str_repeat`, so per-byte writes
+        // do not reallocate.
+        $table = str_repeat("\0", 0x110000);
+        foreach ($ranges as $r) {
+            $start = $r[0];
+            $end = $r[1];
+            for ($cp = $start; $cp <= $end; $cp++) {
+                $table[$cp] = "\1";
+            }
+        }
+        // Cap memory: each entry is 1.1MB so 32 entries ~= 35MB. The
+        // test262 property-escape corpus uses ~6 unique keys per test
+        // and the runner periodically calls gc_mem_caches; this LRU
+        // cap simply prevents the cache from growing across hundreds
+        // of distinct properties within a single PHP process.
+        $cache[$key] = $table;
+        if (count($cache) > 32) {
+            // Drop the least-recently-used (head of the array).
+            array_shift($cache);
+        }
+        return $table;
+    }
+
+    /**
+     * Walk the UTF-8 input once, decoding each codepoint inline and
+     * looking up its membership in a 0x110000-byte property table.
+     * Returns true iff:
+     *   - propertyNegated XOR (codepoint is in property) holds for
+     *     every codepoint, and
+     *   - the codepoint count satisfies the quantifier's min/max.
+     *
+     * Lone surrogates encoded as CESU-8 (0xED 0xA0-0xBF 0x80-0xBF) decode
+     * to D800-DFFF code points so the property test still gets the right
+     * value for the test262 surrogate ranges.
+     *
+     * The input is processed in ~64KB chunks via `unpack('C*', ...)`. The
+     * single unpack per chunk amortizes far better than per-byte `ord()`
+     * calls (each `ord()` is a PHP function-call frame); for the 4MB
+     * test262 inputs this halves wall time versus the ord-loop form.
+     */
+    private static function sweepAnchoredProperty(
+        string $input,
+        string $table,
+        bool $propertyNegated,
+        int $min,
+        ?int $max,
+    ): bool {
+        $len = strlen($input);
+        $count = 0;
+        $pos = 0;
+        // Match byte literal: "\1" if testing membership, "\0" if
+        // testing non-membership. The mismatch case is the early-out.
+        $miss = $propertyNegated ? "\1" : "\0";
+        while ($pos < $len) {
+            // Find the end of a UTF-8-aligned chunk. The chunk size cap
+            // (~64KB) keeps the per-chunk unpack array bounded so we
+            // don't materialise a 1.1M-entry integer array all at once.
+            $chunkEnd = $pos + 65536;
+            if ($chunkEnd > $len) {
+                $chunkEnd = $len;
+            }
+            // Back up the chunk boundary off any continuation byte so a
+            // multibyte sequence isn't split between chunks. The lead
+            // byte rule is: high two bits === 10 means continuation.
+            while ($chunkEnd < $len && (ord($input[$chunkEnd]) & 0xC0) === 0x80) {
+                $chunkEnd--;
+            }
+            $bytes = unpack('C*', substr($input, $pos, $chunkEnd - $pos));
+            $bLen = count($bytes);
+            $j = 1;
+            while ($j <= $bLen) {
+                $b = $bytes[$j];
+                if ($b < 0x80) {
+                    $cp = $b;
+                    $j++;
+                } elseif (($b & 0xE0) === 0xC0 && $j + 1 <= $bLen) {
+                    $cp = (($b & 0x1F) << 6) | ($bytes[$j + 1] & 0x3F);
+                    $j += 2;
+                } elseif (($b & 0xF0) === 0xE0 && $j + 2 <= $bLen) {
+                    $cp = (($b & 0x0F) << 12)
+                        | (($bytes[$j + 1] & 0x3F) << 6)
+                        | ($bytes[$j + 2] & 0x3F);
+                    $j += 3;
+                } elseif (($b & 0xF8) === 0xF0 && $j + 3 <= $bLen) {
+                    $cp = (($b & 0x07) << 18)
+                        | (($bytes[$j + 1] & 0x3F) << 12)
+                        | (($bytes[$j + 2] & 0x3F) << 6)
+                        | ($bytes[$j + 3] & 0x3F);
+                    $j += 4;
+                } else {
+                    $cp = $b;
+                    $j++;
+                }
+                // For \p{X}+$ every codepoint must be in the set; for
+                // \P{X}+$ every codepoint must be OUT of the set. A
+                // single mismatch means the anchored pattern can't
+                // match: no backtracking helps because ^ pins us to
+                // position 0.
+                if ($table[$cp] === $miss) {
+                    return false;
+                }
+                $count++;
+                if ($max !== null && $count > $max) {
+                    return false;
+                }
+            }
+            $pos = $chunkEnd;
+        }
+        return $count >= $min;
     }
 
     /**
