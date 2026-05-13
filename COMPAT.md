@@ -4,19 +4,19 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-05-13T07:10:33+00:00`
+- Snapshot time: `2026-05-13T07:23:22+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `d3473f7` (dirty)
+- Git: `main` @ `939ac4c` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 50350 | 62 | 94 | 0 | 602 | 0 | 50412 | 50506 | 51108 | 99.9% |
+| 50358 | 62 | 86 | 0 | 602 | 0 | 50420 | 50506 | 51108 | 99.9% |
 
 ## Top-Level Areas
 
@@ -26,8 +26,8 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins | INCOMPLETE | 22668 | 1 | 60 | 0 | 602 | 0 | 100.0% |
 | harness | PARTIAL | 106 | 10 | 0 | 0 | 0 | 0 | 91.4% |
 | intl402 | PARTIAL | 1564 | 2 | 0 | 0 | 0 | 0 | 99.9% |
-| language | PARTIAL | 23382 | 1 | 1 | 0 | 0 | 0 | 100.0% |
-| staging | PARTIAL | 1552 | 48 | 32 | 0 | 0 | 0 | 97.0% |
+| language | PARTIAL | 23383 | 1 | 0 | 0 | 0 | 0 | 100.0% |
+| staging | PARTIAL | 1559 | 48 | 25 | 0 | 0 | 0 | 97.0% |
 
 ## Group Coverage
 
@@ -162,7 +162,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/directive-prologue | PASS | 62 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/eval-code | PASS | 347 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/export | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| language/expressions | PASS | 11022 | 0 | 1 | 0 | 0 | 0 | 100.0% |
+| language/expressions | PASS | 11023 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/function-code | PASS | 217 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/future-reserved-words | PASS | 55 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/global-code | PASS | 42 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -189,7 +189,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/explicit-resource-management | PASS | 54 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/set-methods | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| staging/sm | PARTIAL | 1353 | 45 | 30 | 0 | 0 | 0 | 96.8% |
+| staging/sm | PARTIAL | 1360 | 45 | 23 | 0 | 0 | 0 | 96.8% |
 | staging/source-phase-imports | PASS | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/upsert | PASS | 71 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
@@ -197,26 +197,26 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| built-ins/decodeURIComponent | NORMAL | 70.184s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
-| built-ins/decodeURI | NORMAL | 70.017s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.869s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Anatolian_Hieroglyphs.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Armenian.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.191s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Palmyrene.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Pau_Cin_Hau.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Phags_Pa.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.157s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Rejang.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Runic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Samaritan.js` |
-| language/expressions | NORMAL | 58.629s | 25 | `test262/test/language/expressions/call/spread-sngl-iter.js`<br>`test262/test/language/expressions/call/spread-sngl-literal.js`<br>...<br>`test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js`<br>`test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 58.529s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gothic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Grantha.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Greek.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.918s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Myanmar.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Nabataean.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Nag_Mundari.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.887s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Dives_Akuru.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Dogra.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Duployan.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.753s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Rejang.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Runic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Samaritan.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.324s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hanunoo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hatran.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hebrew.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.108s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Elymaic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ethiopic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Garay.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.089s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Miao.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Modi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Mongolian.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.045s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khitan_Small_Script.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khmer.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khojki.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.014s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bopomofo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Brahmi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Braille.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 56.960s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lao.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lepcha.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 56.529s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Gothic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Grantha.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Greek.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 55.815s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Newa.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nko.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nushu.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 55.774s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bamum.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bassa_Vah.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Batak.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 55.469s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Viet.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Takri.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tamil.js` |
+| built-ins/decodeURI | NORMAL | 87.516s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
+| built-ins/decodeURIComponent | NORMAL | 87.106s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
+| language/expressions | NORMAL | 74.205s | 25 | `test262/test/language/expressions/call/spread-sngl-iter.js`<br>`test262/test/language/expressions/call/spread-sngl-literal.js`<br>...<br>`test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js`<br>`test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.905s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Viet.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Takri.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tamil.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.745s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cherokee.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Chorasmian.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Common.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.520s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Medefaidrin.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Meetei_Mayek.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mende_Kikakui.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.417s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Medefaidrin.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Meetei_Mayek.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Mende_Kikakui.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.291s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Permic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Persian.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Sogdian.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 58.656s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Elymaic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ethiopic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Garay.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 58.190s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khitan_Small_Script.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khmer.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khojki.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 57.550s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/ID_Start.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Join_Control.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 57.546s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lao.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lepcha.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 57.379s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hanunoo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hatran.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hebrew.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 57.148s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Vai.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Vithkuqi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Wancho.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 57.105s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypriot.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypro_Minoan.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cyrillic.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 57.001s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Myanmar.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nabataean.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nag_Mundari.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 56.978s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tai_Viet.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Takri.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tamil.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 56.479s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Rejang.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Runic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Samaritan.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 56.401s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Brahmi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Braille.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 56.214s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hanunoo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hatran.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hebrew.js` |
 
 ## Runner Caveats
 
