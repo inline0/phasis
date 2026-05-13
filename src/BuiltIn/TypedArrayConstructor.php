@@ -1043,7 +1043,45 @@ class TypedArrayConstructor
                 if ($len === 0) {
                     return new JsString('');
                 }
-                // Determine the separator using the locale list separator.
+                // Resolve "Invoke(element, 'toLocaleString')" against the
+                // CURRENT realm's Number.prototype so a redefined
+                // toLocaleString on the active realm's Number.prototype
+                // wins even when the receiver is a cross-realm typed
+                // array (per staging/sm/TypedArray/toLocaleString).
+                $currentRealm = \PhpJs\Engine::getCurrentRealm();
+                $realmNumberProto = null;
+                $realmStringProto = null;
+                $realmBoolProto = null;
+                if ($currentRealm !== null) {
+                    $env = $currentRealm->getGlobalEnv();
+                    if ($env->has('Number')) {
+                        $numCtor = $env->get('Number');
+                        if ($numCtor instanceof JsObject) {
+                            $p = $numCtor->get('prototype');
+                            if ($p instanceof JsObject) {
+                                $realmNumberProto = $p;
+                            }
+                        }
+                    }
+                    if ($env->has('String')) {
+                        $strCtor = $env->get('String');
+                        if ($strCtor instanceof JsObject) {
+                            $p = $strCtor->get('prototype');
+                            if ($p instanceof JsObject) {
+                                $realmStringProto = $p;
+                            }
+                        }
+                    }
+                    if ($env->has('Boolean')) {
+                        $boolCtor = $env->get('Boolean');
+                        if ($boolCtor instanceof JsObject) {
+                            $p = $boolCtor->get('prototype');
+                            if ($p instanceof JsObject) {
+                                $realmBoolProto = $p;
+                            }
+                        }
+                    }
+                }
                 $separator = ',';
                 $parts = [];
                 for ($i = 0; $i < $len; $i++) {
@@ -1054,9 +1092,29 @@ class TypedArrayConstructor
                         // Per spec: Invoke(element, "toLocaleString").
                         // Auto-box primitives to access the method, but call with
                         // the original primitive as `this` so type checks pass.
-                        $boxed = ($el instanceof JsObject)
-                            ? $el
-                            : TypeConversion::toObject($el);
+                        if ($el instanceof JsObject) {
+                            $boxed = $el;
+                        } elseif ($el instanceof JsNumber && $realmNumberProto !== null) {
+                            $boxed = new JsObject($realmNumberProto);
+                            $boxed->defineOwnProperty(
+                                '[[PrimitiveValue]]',
+                                \PhpJs\Object\PropertyDescriptor::data($el, false, false, false),
+                            );
+                        } elseif ($el instanceof JsString && $realmStringProto !== null) {
+                            $boxed = new JsObject($realmStringProto);
+                            $boxed->defineOwnProperty(
+                                '[[PrimitiveValue]]',
+                                \PhpJs\Object\PropertyDescriptor::data($el, false, false, false),
+                            );
+                        } elseif ($el instanceof JsBoolean && $realmBoolProto !== null) {
+                            $boxed = new JsObject($realmBoolProto);
+                            $boxed->defineOwnProperty(
+                                '[[PrimitiveValue]]',
+                                \PhpJs\Object\PropertyDescriptor::data($el, false, false, false),
+                            );
+                        } else {
+                            $boxed = TypeConversion::toObject($el);
+                        }
                         $tlsFn = $boxed->get('toLocaleString');
                         if ($tlsFn instanceof JsFunction) {
                             // Call with original value as `this`, not the wrapper.
