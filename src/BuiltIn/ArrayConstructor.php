@@ -1980,6 +1980,8 @@ class ArrayConstructor
      * Falls back to %Object.prototype% from the constructor's realm when
      * `ctor.prototype` is not an Object (per GetPrototypeFromConstructor
      * step 4: GetFunctionRealm → realm's intrinsic).
+     *
+     * @param array<mixed> $args
      */
     private static function constructWith(JsFunction $ctor, array $args): JsObject
     {

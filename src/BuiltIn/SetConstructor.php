@@ -649,6 +649,8 @@ class SetConstructor
     /**
      * Iterate the keys of a set-record by calling its .keys() method
      * and consuming the resulting iterator.
+     *
+     * @param array<mixed> $rec
      */
     private static function iterateSetRecord(array $rec, callable $callback): void
     {

@@ -224,6 +224,8 @@ class AtomicsObject
 
     /**
      * Atomics.load(typedArray, index).
+     *
+     * @param list<JsValue> $args
      */
     private static function loadFn(JsValue $this_, array $args): JsValue
     {
@@ -243,6 +245,8 @@ class AtomicsObject
     /**
      * Atomics.store(typedArray, index, value).
      * Returns the coerced value (not the value read from the array).
+     *
+     * @param list<JsValue> $args
      */
     private static function storeFn(JsValue $this_, array $args): JsValue
     {
@@ -308,6 +312,8 @@ class AtomicsObject
 
     /**
      * Atomics.exchange(typedArray, index, value).
+     *
+     * @param list<JsValue> $args
      */
     private static function exchangeFn(JsValue $this_, array $args): JsValue
     {
@@ -344,6 +350,8 @@ class AtomicsObject
 
     /**
      * Atomics.compareExchange(typedArray, index, expectedValue, replacementValue).
+     *
+     * @param list<JsValue> $args
      */
     private static function compareExchangeFn(JsValue $this_, array $args): JsValue
     {
@@ -457,6 +465,8 @@ class AtomicsObject
      * Single-threaded: no real blocking is possible.
      * If the current value does not match the expected value, return "not-equal".
      * If it matches, return "timed-out" (we cannot actually suspend).
+     *
+     * @param list<JsValue> $args
      */
     private static function waitFn(JsValue $this_, array $args): JsValue
     {
@@ -540,6 +550,8 @@ class AtomicsObject
      *
      * Single-threaded: there are never any waiters.
      * Always returns 0.
+     *
+     * @param list<JsValue> $args
      */
     private static function notifyFn(JsValue $this_, array $args): JsValue
     {
@@ -596,6 +608,8 @@ class AtomicsObject
      * resolves to "ok" when Atomics.notify wakes the waiter, or "timed-out"
      * if a finite timeout elapses (we don't model elapsed wall-clock time;
      * finite timeouts resolve to "timed-out" via a microtask).
+     *
+     * @param list<JsValue> $args
      */
     private static function waitAsyncFn(JsValue $this_, array $args): JsValue
     {
@@ -707,6 +721,8 @@ class AtomicsObject
      *
      * Per spec: a hint to the implementation that the caller is in a spin-wait loop.
      * Single-threaded: this is a no-op. Always returns undefined.
+     *
+     * @param list<JsValue> $args
      */
     private static function pauseFn(JsValue $this_, array $args): JsValue
     {
@@ -732,6 +748,8 @@ class AtomicsObject
      * Atomics.isLockFree(size).
      *
      * Returns true for sizes 1, 2, 4, 8 (matching native atomic operation widths).
+     *
+     * @param list<JsValue> $args
      */
     private static function isLockFreeFn(JsValue $this_, array $args): JsValue
     {

@@ -478,6 +478,8 @@ class JsPromise extends JsObject
 
     /**
      * Implements Promise.prototype.catch(onRejected).
+     *
+     * @param array<mixed> $args
      */
     public function catchHandler(array $args): self
     {
@@ -486,6 +488,8 @@ class JsPromise extends JsObject
 
     /**
      * Implements Promise.prototype.finally(onFinally).
+     *
+     * @param array<mixed> $args
      */
     public function finallyHandler(array $args): self
     {

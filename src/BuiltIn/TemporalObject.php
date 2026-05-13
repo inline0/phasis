@@ -3776,7 +3776,7 @@ class TemporalObject
                         return JsNumber::of((float) $cp[$field]);
                     }
                 }
-                return JsNumber::of((float) ($parts[$field] ?? 0));
+                return JsNumber::of((float) $parts[$field]);
             });
         }
         self::defineGetter($proto, 'monthCode', function (JsValue $this_): JsValue {
@@ -5738,6 +5738,8 @@ class TemporalObject
      * Return all possible epoch nanoseconds for the given wall clock components
      * in the given time zone. Empty when the wall time falls in a DST gap; one
      * entry for normal times; two for folds.
+     *
+     * @return list<string>
      */
     private static function getPossibleEpochNanoseconds(
         int $y,
@@ -6354,6 +6356,9 @@ class TemporalObject
         return $canonical;
     }
 
+    /**
+     * @return array<string, int|string>
+     */
     private static function zonedDateTimeParts(JsValue $zdt): array
     {
         $ns = self::getSlotString($zdt, '[[EpochNanoseconds]]');
@@ -6665,7 +6670,11 @@ class TemporalObject
         return self::isoIsLeapYear($year) ? 366 : 365;
     }
 
-    /** Compute a midpoint date for month-boundary clamping in date differences. */
+    /**
+     * Compute a midpoint date for month-boundary clamping in date differences.
+     *
+     * @return array{0: int, 1: int, 2: int}
+     */
     private static function computeMonthMidpoint(
         int $sign,
         int $y1,
@@ -7258,6 +7267,8 @@ class TemporalObject
      * minutes: max ceil(2^53 / 60)
      * seconds: max 2^53 - 1
      * ms/us/ns balance must not push seconds beyond 2^53.
+     *
+     * @param array<mixed> $fields
      */
     private static function validateDurationRange(array $fields): void
     {
@@ -10794,6 +10805,8 @@ class TemporalObject
      * Validate monthCode syntax only (M followed by 2 digits, optionally L).
      * Rejects purely malformed codes like "m01", "M1", "L99M".
      * Returns [month_number, is_leap] without checking calendar validity.
+     *
+     * @return array{0: int, 1: bool}
      */
     private static function parseMonthCodeSyntax(string $mc): array
     {
@@ -11390,6 +11403,9 @@ class TemporalObject
         return null;
     }
 
+    /**
+     * @return array{year: int, month: int, day: int, hour: int, minute: int, second: int, millisecond: int, microsecond: int, nanosecond: int}
+     */
     private static function epochNsToISOParts(string $ns, string $tz): array
     {
         // Convert epoch nanoseconds to date/time parts in the given timezone.
@@ -12624,6 +12640,8 @@ class TemporalObject
      * ICU. Returns null if conversion is unavailable. Currently supports
      * hebrew, islamic*, persian, indian, ethioaa, ethiopic, coptic, buddhist,
      * japanese, roc, chinese, dangi.
+     *
+     * @return array<string, bool|int|string>|null
      */
     private static function isoToCalendarParts(string $calendar, int $y, int $m, int $d): ?array
     {
@@ -12788,6 +12806,8 @@ class TemporalObject
      * Calendar-aware (years, months, days) for two ISO dates with sml ≤ lrg.
      * Walks via ICU add(YEAR/MONTH) so leap months and variable year lengths
      * are honored. Returns null when ICU is unavailable or arithmetic fails.
+     *
+     * @return array{0: int, 1: int, 2: int}|null
      */
     private static function calendarYearsMonthsDaysBetween(
         string $calendar,
@@ -13225,6 +13245,8 @@ class TemporalObject
      * Temporal.PlainMonthDay's reference-year purposes. Per spec, this is the
      * largest ISO date <= 1972-12-31 whose calendar fields match. Returns
      * null when the calendar cannot be resolved.
+     *
+     * @return array{year: int, month: int, day: int}|null
      */
     private static function pmdReferenceIsoFor(string $cal, ?string $monthCode, ?int $monthNum, int $day): ?array
     {
@@ -13348,6 +13370,8 @@ class TemporalObject
      * via ICU. Returns null if conversion is unavailable. Caller is
      * responsible for choosing between monthCode and a 1-indexed month
      * number; for ICU we always need a 0-indexed integer month.
+     *
+     * @return array{year: int, month: int, day: int}|null
      */
     private static function calendarPartsToIso(string $calendar, int $year, ?string $monthCode, ?int $monthNum, int $day): ?array
     {
@@ -13693,6 +13717,8 @@ class TemporalObject
      * Returns ['year' => , 'month' => , 'day' => ]. ICU month index 5 is
      * Adar I (leap years only); in non-leap years the caller must NOT pass
      * icuMonth=5.
+     *
+     * @return array{year: int, month: int, day: int}
      */
     private static function hebrewToIsoDate(int $hYear, int $icuMonth, int $hDay): array
     {
@@ -13718,6 +13744,8 @@ class TemporalObject
 
     /**
      * Convert days-since-1970-01-01 to an ISO date.
+     *
+     * @return array{year: int, month: int, day: int}
      */
     private static function isoDateFromDays(int $days): array
     {
@@ -13737,6 +13765,8 @@ class TemporalObject
 
     /**
      * Convert an ISO date to Hebrew (AM year, ICU month index, day).
+     *
+     * @return array{year: int, icuMonth: int, day: int}
      */
     private static function isoToHebrewDate(int $isoY, int $isoM, int $isoD): array
     {
@@ -14478,7 +14508,11 @@ class TemporalObject
         return $icuMonth + 1;
     }
 
-    /** Map a chronological index (0-indexed) back to (icuMonth, isLeap). */
+    /**
+     * Map a chronological index (0-indexed) back to (icuMonth, isLeap).
+     *
+     * @return array{icuMonth: int, isLeap: bool}|null
+     */
     private static function chineseIcuFromChronoIdx(int $extYear, int $chronoIdx): ?array
     {
         $info = self::chineseYearInfo($extYear);
@@ -16287,6 +16321,9 @@ class TemporalObject
         };
     }
 
+    /**
+     * @param array<mixed> $allowed
+     */
     private static function getTemporalUnit(JsObject $options, string $key, array $allowed, bool $required): string
     {
         $val = $options->get($key);
@@ -16565,7 +16602,11 @@ class TemporalObject
         return (int) $num;
     }
 
-    /** Constrain time fields to valid ranges. */
+    /**
+     * Constrain time fields to valid ranges.
+     *
+     * @return array{0: int, 1: int, 2: int, 3: int, 4: int, 5: int}
+     */
     private static function constrainISOTime(int $h, int $min, int $s, int $ms, int $us, int $ns): array
     {
         $h = max(0, min(23, $h));
@@ -16600,6 +16641,9 @@ class TemporalObject
         }
     }
 
+    /**
+     * @return array{0: int, 1: int, 2: int}
+     */
     private static function constrainISODate(int $y, int $m, int $d): array
     {
         // Months <= 0 are always invalid even with constrain.
@@ -16802,6 +16846,8 @@ class TemporalObject
      * Delegate Temporal.Duration.prototype.toLocaleString to a
      * freshly constructed Intl.DurationFormat instance, calling
      * its format(this) so locale-aware output matches V8.
+     *
+     * @param array<mixed> $args
      */
     private static function durationToLocaleString(
         JsValue $this_,
@@ -16896,6 +16942,8 @@ class TemporalObject
      * Japanese imperial era table: each entry is [era, startY, startM, startD,
      * baseISOYear]. The last era continues forward; eras before meiji fall
      * back to japanese-inverse (BCE-style).
+     *
+     * @return list<array{0: string, 1: int, 2: int, 3: int, 4: int}>
      */
     private static function japaneseEras(): array
     {
@@ -16923,6 +16971,9 @@ class TemporalObject
         return null;
     }
 
+    /**
+     * @return array{0: string, 1: int, 2: int, 3: int, 4: int}|null
+     */
     private static function japaneseEraFor(int $y, int $m, int $d): ?array
     {
         foreach (self::japaneseEras() as $era) {
@@ -17190,6 +17241,8 @@ class TemporalObject
      * defaulting the date+time components when no relevant option
      * was supplied, so a lone {timeZoneName: "short"} still emits
      * the full datetime context around the zone label.
+     *
+     * @param array<mixed> $args
      */
     private static function temporalToLocaleString(
         JsValue $this_,

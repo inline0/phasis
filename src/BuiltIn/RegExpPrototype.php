@@ -76,6 +76,9 @@ class RegExpPrototype
         return false;
     }
 
+    /**
+     * @param array<mixed> $groups
+     */
     public static function recordLegacyMatch(
         string $input,
         string $lastMatch,
@@ -1184,6 +1187,10 @@ class RegExpPrototype
         return $result;
     }
 
+    /**
+     * @param array<mixed> $matches
+     * @return array<mixed>
+     */
     private static function applyRepeatedGroupFixes(
         JsObject $regexp,
         array $matches,

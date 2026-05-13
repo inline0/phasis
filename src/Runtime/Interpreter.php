@@ -303,6 +303,9 @@ class Interpreter
     }
 
     /** Check whether a list of statements begins with a "use strict" directive. */
+    /**
+     * @param array<mixed> $statements
+     */
     private function hasUseStrictDirective(array $statements): bool
     {
         foreach ($statements as $stmt) {
@@ -3050,6 +3053,9 @@ class Interpreter
         return false;
     }
 
+    /**
+     * @param array<mixed> $statements
+     */
     private function validateEvalBody(array $statements): void
     {
         foreach ($statements as $stmt) {
@@ -4728,6 +4734,9 @@ class Interpreter
     }
 
     /** @return JsValue|TailCallThunk */
+    /**
+     * @param array<mixed> $args
+     */
     private function callFunctionInner(
         JsFunction $fn,
         JsValue $thisValue,
@@ -4901,6 +4910,9 @@ class Interpreter
      * @param list<JsValue> $args
      */
     /** @return JsValue|TailCallThunk */
+    /**
+     * @param array<mixed> $args
+     */
     private function executeFunction(
         JsFunction $fn,
         JsValue $thisValue,
@@ -5848,6 +5860,8 @@ class Interpreter
      * fiber, follows AwaitSuspension markers through PromiseResolve,
      * and either schedules a microtask to continue or settles the outer
      * Promise when the fiber finishes.
+     *
+     * @param \Fiber<mixed, mixed, mixed, mixed> $fiber
      */
     private function driveAsyncFiber(
         \Fiber $fiber,
@@ -5919,6 +5933,8 @@ class Interpreter
     /**
      * Resolve the awaited value (folding promise/thenable chains via
      * PromiseResolve) and resume the fiber once it settles.
+     *
+     * @param \Fiber<mixed, mixed, mixed, mixed> $fiber
      */
     public function settleAwaitedAndResume(
         \Fiber $fiber,
@@ -6376,6 +6392,10 @@ class Interpreter
         }
     }
 
+    /**
+     * @param array<mixed> $args
+     * @param array<mixed> $params
+     */
     private function bindParameters(array $params, array $args, Environment $env, ?bool $hasParamExpressions = null): void
     {
         // Per spec §10.2.1: when there are parameter default expressions,
@@ -8909,6 +8929,8 @@ class Interpreter
      *   immediately to the caller without draining microtasks; the
      *   caller is responsible for draining once every sibling body has
      *   started.
+     *
+     * @param array<mixed> $body
      */
     public function executeModuleBody(array $body, Environment $moduleEnv, bool $alreadyHoisted = false, ?\Closure $onAsyncStart = null): JsValue
     {
@@ -18456,6 +18478,8 @@ class Interpreter
     /**
      * Full unsigned long division. Returns [quotient, remainder] as decimal strings.
      * Uses digit-by-digit algorithm: at each step remainder < b, so q is 0-9.
+     *
+     * @return array{0: string, 1: string}
      */
     private static function bigStrDivModFull(string $a, string $b): array
     {
@@ -18801,6 +18825,8 @@ class Interpreter
     /**
      * Divide two non-negative decimal integer strings.
      * Returns [$quotient, $remainder] as strings.
+     *
+     * @return array{0: string, 1: string}
      */
     private function bigStrDivMod(string $a, string $divisor): array
     {
@@ -19750,6 +19776,7 @@ class Interpreter
      *
      * @param array<int|string, array{0: ?string, 1: int}> $matches
      * @return array<int|string, array{0: ?string, 1: int}>
+     * @param array<mixed> $analysis
      */
     public static function fixNullableNonCapturingGroupCaptures(
         array $matches,

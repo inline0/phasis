@@ -9,6 +9,7 @@ class Pattern extends Node
 {
     /**
      * @param list<string> $groupNames Distinct named groups in source order.
+     * @param array<mixed> $indexToName
      */
     public function __construct(
         public readonly Node $body,

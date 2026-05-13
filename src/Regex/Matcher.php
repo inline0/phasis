@@ -31,7 +31,11 @@ use PhpJs\Regex\Ast\Sequence;
  */
 class Matcher
 {
-    /** Input as array of code-units (uint16) in non-unicode mode, or code points in /u. */
+    /**
+     * Input as array of code-units (uint16) in non-unicode mode, or code points in /u.
+     *
+     * @var list<int>
+     */
     private array $input;
     private int $inputLen;
     private bool $ignoreCase;
@@ -84,6 +88,8 @@ class Matcher
      *    'captures' => list<?array{0:int,1:int,2:string}>]
      * where each capture is [start, end, value] or null if it didn't
      * participate. Returns null when no match found.
+     *
+     * @return array{index: int, end: int, captures: list<?array{0:int,1:int,2:string}>}|null
      */
     public function match(string $inputUtf8, int $startCodeUnit): ?array
     {
@@ -455,6 +461,7 @@ class Matcher
 
     /**
      * @param array<int, ?array{0:int,1:int}> $captures
+     * @return array{index: int, end: int, captures: list<?array{0:int,1:int,2:string}>}
      */
     private function buildResult(int $startCu, int $endCu, array $captures, string $inputUtf8): array
     {

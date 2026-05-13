@@ -39,11 +39,17 @@ class DisposableStackConstructor
      */
     private static ?\SplObjectStorage $asyncDisposableInstances = null;
 
+    /**
+     * @return \SplObjectStorage<JsObject, true>
+     */
     private static function getDisposableInstances(): \SplObjectStorage
     {
         return self::$disposableInstances ??= new \SplObjectStorage();
     }
 
+    /**
+     * @return \SplObjectStorage<JsObject, true>
+     */
     private static function getAsyncDisposableInstances(): \SplObjectStorage
     {
         return self::$asyncDisposableInstances ??= new \SplObjectStorage();

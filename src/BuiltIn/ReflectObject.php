@@ -747,6 +747,9 @@ class ReflectObject
     }
 
     /** Validate that the first argument is an object. */
+    /**
+     * @param array<mixed> $args
+     */
     private static function requireObject(array $args, string $method): JsObject
     {
         $target = $args[0] ?? JsUndefined::instance();

@@ -16,6 +16,7 @@ namespace PhpJs\Value;
  */
 class JsWeakRef extends JsObject
 {
+    /** @var \WeakReference<JsObject>|null */
     private ?\WeakReference $weakRef = null;
     private ?JsSymbol $symbolRef = null;
 

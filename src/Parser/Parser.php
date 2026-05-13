@@ -100,13 +100,25 @@ class Parser
     private bool $strictMode = false;
     private string $source = '';
 
-    /** Tracks nodes that were wrapped in parentheses, for IsIdentifierRef checks. */
+    /**
+     * Tracks nodes that were wrapped in parentheses, for IsIdentifierRef checks.
+     *
+     * @var \SplObjectStorage<\PhpJs\Ast\Node, null>
+     */
     private \SplObjectStorage $parenthesized;
 
-    /** Tracks ArrayExpressions where a trailing comma followed a rest element. */
+    /**
+     * Tracks ArrayExpressions where a trailing comma followed a rest element.
+     *
+     * @var \SplObjectStorage<\PhpJs\Ast\Node, null>
+     */
     private \SplObjectStorage $arrayExpressionsWithTrailingCommaAfterRest;
 
-    /** Tracks string Literal nodes that contain a legacy octal escape. */
+    /**
+     * Tracks string Literal nodes that contain a legacy octal escape.
+     *
+     * @var \SplObjectStorage<\PhpJs\Ast\Node, null>
+     */
     private \SplObjectStorage $stringsWithLegacyOctal;
 
     public function __construct(string $source)
@@ -2488,6 +2500,9 @@ class Parser
         }
     }
 
+    /**
+     * @param array<mixed> $params
+     */
     private function validateStrictDirectiveWithNonSimpleParams(
         array $params,
         Node $body,
@@ -3887,6 +3902,9 @@ class Parser
         return new SwitchCase($location, $test, $consequent);
     }
 
+    /**
+     * @param array<mixed> $cases
+     */
     private function parseSwitchStatementValidateCases(array $cases): void
     {
         // Per §14.12.1 Early Errors: a CaseBlock can have at most one

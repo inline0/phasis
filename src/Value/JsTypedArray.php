@@ -1187,7 +1187,11 @@ class JsTypedArray extends JsObject
         return implode($separator, $parts);
     }
 
-    /** Convert all elements to a list of JsValues. */
+    /**
+     * Convert all elements to a list of JsValues.
+     *
+     * @return list<JsValue>
+     */
     public function toList(): array
     {
         $result = [];

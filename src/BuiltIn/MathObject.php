@@ -541,6 +541,8 @@ class MathObject
      * Decompose a finite IEEE-754 double into an exact rational numerator/denominator.
      * Returns [numeratorStr, denominatorStr] where both are bcmath-safe integer strings.
      * denominator is always a power of two. Caller must handle NaN/Inf/-0 separately.
+     *
+     * @return array{0: string, 1: string}
      */
     private static function doubleToRational(float $x): array
     {

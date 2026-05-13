@@ -23,7 +23,7 @@ class JsFinalizationRegistry extends JsObject
     /**
      * Each entry: [weakRef (WeakReference|null), target (JsSymbol|null), heldValue, unregisterToken (JsValue|null)].
      *
-     * @var list<array{0: ?\WeakReference, 1: ?JsSymbol, 2: JsValue, 3: ?JsValue}>
+     * @var list<array{0: ?\WeakReference<JsObject>, 1: ?JsSymbol, 2: JsValue, 3: ?JsValue}>
      */
     private array $cells = [];
 

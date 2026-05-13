@@ -294,6 +294,9 @@ class IteratorConstructor
         return $helper;
     }
 
+    /**
+     * @return array{0: JsValue, 1: bool}
+     */
     private static function iteratorStep(JsObject $it, JsValue $nx, bool &$done): array
     {
         if ($done) {
@@ -633,6 +636,9 @@ class IteratorConstructor
 
     // Eager methods
 
+    /**
+     * @return array{0: JsObject, 1: JsFunction}
+     */
     private static function validateEager(JsValue $this_, string $name, JsValue $fn): array
     {
         if (!$this_ instanceof JsObject) {

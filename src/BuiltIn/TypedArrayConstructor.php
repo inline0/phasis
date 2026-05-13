@@ -1478,6 +1478,8 @@ class TypedArrayConstructor
     /**
      * Construct a typed array from arguments. Handles all constructor overloads:
      * (length), (typedArray), (arrayBuffer, byteOffset, length), (arrayLike).
+     *
+     * @param array<mixed> $args
      */
     private static function constructTypedArray(
         string $typeName,

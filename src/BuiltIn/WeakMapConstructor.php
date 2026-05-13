@@ -77,6 +77,9 @@ class WeakMapConstructor
         return false;
     }
 
+    /**
+     * @param array<mixed> $args
+     */
     private static function populateFromArgs(JsWeakMap $map, array $args): void
     {
         if (empty($args)) {

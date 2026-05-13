@@ -199,6 +199,9 @@ class IntlObject
     /**
      * Resolve locale: pick best available from the requested list.
      * Returns the resolved locale string.
+     *
+     * @param array<mixed> $allowedExtensions
+     * @param array<mixed> $requestedLocales
      */
     private static function resolveLocale(array $requestedLocales, ?array $allowedExtensions = null): string
     {
@@ -8406,6 +8409,9 @@ class IntlObject
         return false;
     }
 
+    /**
+     * @return array<string, mixed>|null
+     */
     private static function parseLocaleTag(string $tag): ?array
     {
         if (self::isStructurallyInvalidLanguageTag($tag)) {
@@ -9232,6 +9238,9 @@ class IntlObject
         return implode('-', $out);
     }
 
+    /**
+     * @param array<mixed> $parsed
+     */
     private static function reconstructLocaleTag(array $parsed): string
     {
         $parts = [];
@@ -9616,6 +9625,9 @@ class IntlObject
     }
 
     /** Build a "language-script-region" comparison key. */
+    /**
+     * @param array<mixed> $parsed
+     */
     private static function languageScriptRegionTriple(array $parsed): string
     {
         return ($parsed['language'] ?? '')
@@ -9626,6 +9638,8 @@ class IntlObject
     /**
      * Re-attach variants / extensions / private-use tags from the
      * maximized parse onto a shorter base tag string.
+     *
+     * @param array<mixed> $parsed
      */
     private static function reapplyTrailing(array $parsed, string $base): string
     {
@@ -11518,6 +11532,9 @@ class IntlObject
     }
 
     /** Build a JS-side duration object from a parsed ISO record. */
+    /**
+     * @param array<mixed> $values
+     */
     private static function durationRecordToObject(array $values): JsObject
     {
         $obj = new JsObject();
@@ -12440,6 +12457,7 @@ class IntlObject
      * with display:"auto").
      *
      * @param array<string, float> $values
+     * @param array<mixed> $clockSkip
      */
     private static function renderClockSegment(
         JsObject $df,

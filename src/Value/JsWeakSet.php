@@ -16,6 +16,7 @@ use PhpJs\BuiltIn\SymbolConstructor;
  */
 class JsWeakSet extends JsObject
 {
+    /** @var \WeakMap<JsObject, true> */
     private \WeakMap $objectMembers;
     /** @var array<int, true> Indexed by JsSymbol object id. */
     private array $symbolMembers = [];

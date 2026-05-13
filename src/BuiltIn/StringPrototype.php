@@ -1947,6 +1947,10 @@ class StringPrototype
         return $count;
     }
 
+    /**
+     * @param array<mixed> $captures
+     * @param array<mixed> $namedCaptures
+     */
     public static function getSubstitution(
         string $matched,
         string $str,
