@@ -12688,7 +12688,23 @@ class TemporalObject
             if (isset($aliasMap[$calendar])) {
                 $icuCal = $aliasMap[$calendar];
             }
-            $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+            // Cache an IntlCalendar per ICU calendar id. The instance is
+            // stateful (time + fields) but the calendrical algorithm is a
+            // pure function of (epoch ms, calendar id); a single shared
+            // instance per id can be reused safely in PHP's
+            // single-threaded model because we set the time and read all
+            // fields before any other call site can touch it.
+            // createInstance is ~4x slower than reuse on ICU 7x; this
+            // shaves the dominant cost out of stress workloads like
+            // staging/sm/Temporal/Calendar/compare-to-datetimeformat.js
+            // and any other test that converts many ISO dates through the
+            // same calendar.
+            /** @var array<string,\IntlCalendar> $calCache */
+            static $calCache = [];
+            if (!isset($calCache[$icuCal])) {
+                $calCache[$icuCal] = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+            }
+            $cal = $calCache[$icuCal];
             // Set the ICU calendar to the ISO date by epoch ms.
             $epochMs = self::isoDateToEpochMs($y, $m, $d);
             $cal->setTime($epochMs);

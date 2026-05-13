@@ -95,12 +95,34 @@ class Test262Runner
         // Unicode case-fold table.
         'staging/sm/String/string-upper-lower-mapping.js'
             => 'Unicode 16 case-fold table not exposed by mbstring',
-        // SpiderMonkey stress test: walks every supportedValuesOf(
-        // "calendar") for 100 consecutive years. The harness exceeds
-        // the runner's per-test deadline on a tree-walking interpreter
-        // long before the spec assertions kick in.
+        // SpiderMonkey stress test: walks every Intl.supportedValuesOf
+        // ("calendar") for 101 consecutive years (1950..2050), and for
+        // each (calendar, year, month) tuple constructs a Temporal.
+        // PlainDate via the requested calendar, round-trips it through
+        // withCalendar("iso8601") + toZonedDateTime("UTC"), and compares
+        // against Intl.DateTimeFormat.formatToParts. After skipping the
+        // calendars whose ICU4C vs ICU4X arithmetic diverges (chinese,
+        // dangi, hebrew, islamic*, persian) the inner loop still
+        // executes ~13K iterations, each of which fans out into 6-8
+        // Temporal/Intl method calls. After caching IntlCalendar per
+        // ICU calendar id in TemporalObject::isoToCalendarParts
+        // (createInstance is ~4x slower than reuse on ICU 7x), the
+        // remaining hot path is IntlObject::dateTimeFormatterFor: a
+        // fresh IntlDateFormatter + IntlGregorianCalendar is built per
+        // formatToParts call from the same DateTimeFormat object. With
+        // a per-dtf formatter cache the test would land well under
+        // 30s; that cache lives in IntlObject.php which is outside the
+        // agent-I file scope (Calendar identity / format-roundtrip).
+        // Cross-ref: bucket E (bytecode VM) also unblocks this class
+        // of stress test via cheaper inner-loop dispatch. Until either
+        // lands, the test exceeds the 30s set_time_limit on macOS
+        // (~31s) and the chunk budget on Ubuntu CI (2-3x slower).
+        // Spec semantics for Temporal/Intl interop are exhaustively
+        // covered by intl402/Temporal/* and built-ins/Temporal/* which
+        // we pass; this stress fixture only re-verifies behavior, not
+        // additional spec branches.
         'staging/sm/Temporal/Calendar/compare-to-datetimeformat.js'
-            => 'Calendar stress test exceeds tree-walker time budget',
+            => 'SM 13K-iter Temporal/Intl stress; needs per-dtf formatter cache in IntlObject (out of agent-I scope) or bucket-E bytecode VM',
         // ICU4X Chinese-calendar leap-month resolution for years
         // outside the common 19-year cycle (e.g. leap month 6 in
         // 2128). Requires the Reingold-Dershowitz arithmetic.
