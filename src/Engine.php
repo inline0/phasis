@@ -1397,6 +1397,21 @@ class Engine
             }
             $seen[$oid] = true;
             $result = [];
+            // Revoked Proxy: any trap (including ownKeys) throws TypeError.
+            // Returning an empty result keeps Engine::eval() from surfacing
+            // that throw to the PHP caller for tests whose final expression
+            // happens to evaluate to a revoked proxy. JS-side behaviour is
+            // unchanged: the proxy is still observably revoked.
+            if ($value instanceof \PhpJs\Value\JsProxy && $value->isRevoked()) {
+                return $result;
+            }
+            // Reading a live proxy's keys / properties is observable and
+            // could throw from user-supplied traps; same as a getter, we
+            // skip conversion entirely to avoid surfacing host-side side
+            // effects through the eval result.
+            if ($value instanceof \PhpJs\Value\JsProxy) {
+                return $result;
+            }
             foreach ($value->getOwnPropertyNames() as $key) {
                 // Use the property descriptor so an accessor whose
                 // get() throws does not propagate up through the
