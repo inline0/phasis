@@ -8410,9 +8410,15 @@ class Interpreter
         // and schedule a microtask before resuming. The driver returns
         // the resolved value via Fiber::resume; rejection is delivered
         // by Fiber::throw with a JsThrowable.
+        //
+        // Async-arrow lexical envs are tagged kind='arrow' for `this`,
+        // `new.target`, and `arguments` inheritance purposes; the actual
+        // executeAsyncFunction Fiber still wraps the body. isInAsyncContext
+        // walks past arrow frames so an await in an async arrow correctly
+        // routes through the suspension path rather than synchronously
+        // unwrapping a pending promise to undefined.
         $fiber = \Fiber::getCurrent();
-        $kind = $env->getEnclosingFunctionKind();
-        if ($fiber !== null && ($kind === 'async' || $kind === 'async-generator')) {
+        if ($fiber !== null && $this->isInAsyncContext($env)) {
             try {
                 $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
             } catch (\PhpJs\Exceptions\JsThrowable $e) {
@@ -8426,6 +8432,34 @@ class Interpreter
         // Top-level await and awaits in our synchronous (non-fiber)
         // contexts fall back to the inline drain-and-unwrap strategy.
         return $this->resolveAwaitedValue($value);
+    }
+
+    /**
+     * Determine whether the current lexical scope is inside an async
+     * function (async or async-generator) for await-suspension purposes.
+     *
+     * Async arrow functions set kind='arrow' on their own env (so that
+     * `this`, `new.target`, and `arguments` look up the enclosing
+     * non-arrow frame). The parser only admits `await` inside async
+     * lexical contexts, so an arrow-only walk to the root means the
+     * await belongs to an async arrow that's already wrapped in an
+     * executeAsyncFunction Fiber: suspension routes back to that fiber,
+     * which is what we want. Module top-level await sets kind='async'
+     * on the module env, so it's covered too.
+     */
+    private function isInAsyncContext(Environment $env): bool
+    {
+        $kind = $env->getEnclosingNonArrowFunctionKind();
+        if ($kind === null) {
+            // Either we're at global scope (no await context), or every
+            // intervening function frame is an arrow. The await is only
+            // syntactically valid in the second case (the arrow itself is
+            // async), and that arrow runs inside an executeAsyncFunction
+            // Fiber. Suspending here delivers the AwaitSuspension to the
+            // right driver.
+            return $env->getEnclosingFunctionKind() === 'arrow';
+        }
+        return $kind === 'async' || $kind === 'async-generator';
     }
 
     /**
