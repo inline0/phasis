@@ -2365,14 +2365,38 @@ class StringPrototype
 
     private static function fromCharCode(): \Closure
     {
-        return function (JsValue $this_, array $args): JsValue {
+        return static function (JsValue $this_, array $args): JsValue {
+            // Hot path for decodeURI UTF-8 sweeps: arguments are usually
+            // small JsNumber integer values produced by bit ops, so skip
+            // the full ToUint16 dispatch (toNumber + fmod) and inline the
+            // truncation to a 16-bit unsigned code unit. utf16CodeUnitToUtf8
+            // is also inlined to avoid a static-method call per char.
             $str = '';
             foreach ($args as $arg) {
-                $code = \PhpJs\Spec\TypeConversion::toUint16($arg);
-                // Use utf16CodeUnitToUtf8 to handle surrogates (U+D800-U+DFFF)
-                // which mb_chr rejects as invalid UTF-8. Surrogates are stored
-                // internally as CESU-8 3-byte sequences.
-                $str .= JsString::utf16CodeUnitToUtf8($code);
+                if ($arg instanceof JsNumber) {
+                    $n = $arg->value;
+                    if (is_nan($n) || is_infinite($n) || $n === 0.0) {
+                        $code = 0;
+                    } else {
+                        // Sign-aware truncate then mask to 16 bits.
+                        $trunc = ($n > 0) ? (int) $n : -(int) -$n;
+                        $code = $trunc & 0xFFFF;
+                    }
+                } else {
+                    $code = \PhpJs\Spec\TypeConversion::toUint16($arg);
+                }
+                // Inline utf16CodeUnitToUtf8: 3-byte UTF-8/CESU-8 for any
+                // codepoint >= 0x800 (BMP non-ASCII + surrogates), 2-byte
+                // for 0x80-0x7FF, 1-byte for 0x00-0x7F.
+                if ($code < 0x80) {
+                    $str .= chr($code);
+                } elseif ($code < 0x800) {
+                    $str .= chr(0xC0 | ($code >> 6)) . chr(0x80 | ($code & 0x3F));
+                } else {
+                    $str .= chr(0xE0 | ($code >> 12))
+                         . chr(0x80 | (($code >> 6) & 0x3F))
+                         . chr(0x80 | ($code & 0x3F));
+                }
             }
             return new JsString($str);
         };

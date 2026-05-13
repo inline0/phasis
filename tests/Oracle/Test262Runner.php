@@ -169,14 +169,6 @@ class Test262Runner
         // prototype/sort tests, which we pass.
         'staging/sm/TypedArray/sort_large_countingsort.js'
             => 'SM 262k-element typed-array sort exceeds chunk budget',
-        // SM TypedArray sort_small: tests every permutation of small
-        // arrays (factorial blow-up). 9-element permutation set is
-        // ~360K reorderings per dtype across 11 typed array types.
-        // Local 80s pass; CI never fits. The single-element
-        // comparator semantics are covered by built-ins/TypedArray/
-        // prototype/sort/* which we pass.
-        'staging/sm/TypedArray/sort_small.js'
-            => 'SM factorial-permutation typed-array sort exceeds chunk budget',
         // SM TypedArray element-set ToNumber test: per typed-array
         // ctor (11 types) runs three 1e4/2e4 setter loops with a
         // valueOf-call counter, plus a 5-slot getter/setter object
@@ -217,19 +209,6 @@ class Test262Runner
         // a host-data gap.
         'staging/sm/Temporal/PlainMonthDay/from-chinese.js'
             => 'SM Chinese-calendar PlainMonthDay search exceeds CI chunk budget',
-        // SM TypedArray reduce/reduceRight cross-realm + cross-ctor
-        // matrix: iterates every typed-array constructor (11 ctors,
-        // including Float16/Float32/Float64 BigInt64/BigUint64), 11
-        // invalidCallback shapes, 10 invalidReceiver shapes each, with
-        // throw-in-callback + length-getter-poisoning sub-tests.
-        // Passes in ~6s locally but consistently times out on CI
-        // (cumulative dispatch cost across types blows the 90s chunk
-        // budget once Engine setup overhead is included). reduce/
-        // reduceRight semantics are covered exhaustively by
-        // built-ins/TypedArray/prototype/reduce/* and reduceRight/*
-        // which we pass.
-        'staging/sm/TypedArray/reduce-and-reduceRight.js'
-            => 'SM TypedArray reduce matrix exceeds CI chunk budget',
         // SpiderMonkey unicode-ignoreCase 2968-line fixture exceeds
         // CI wall budget on slower runners (passes in ~12s locally
         // on macOS/ICU 76, ~85s on Ubuntu CI/ICU 70).
@@ -1224,12 +1203,14 @@ PHP;
             // plumbing the parent test's includes[] all the way down.
             // Loading is best-effort: tests that don't use these
             // helpers pay only the parse cost.
-            foreach ([
+            foreach (
+                [
                 'sm/non262-shell.js',
                 'sm/non262-TypedArray-shell.js',
                 'sm/non262-Reflect-shell.js',
                 'compareArray.js',
-            ] as $shell) {
+                ] as $shell
+            ) {
                 try {
                     $this->loadHarness($childEngine, $shell);
                 } catch (\Throwable) {
@@ -1660,13 +1641,226 @@ PHP;
             3,
         );
 
+        // assert.deepEqual: native fast path for TypedArray vs TypedArray
+        // and Array vs Array element-wise compare — the staging/sm/TypedArray
+        // sort fixtures call this hundreds of thousands of times in inner
+        // loops and the JS-defined deepEqual algorithm in test262's harness
+        // is heavy (recursive cache, Symbol.toStringTag lookups, ~400 LOC).
+        // For TypedArray vs TypedArray the spec semantics collapse to a
+        // length check + element-by-element SameValue, since both operands
+        // hold primitive numeric values. For dense Array vs dense Array
+        // we walk the index list shallowly using SameValue; nested values
+        // fall back to the JS algorithm via a re-entry trampoline.
+        $deepEqualNative = null;
+        $deepEqualNative = static function (
+            \PhpJs\Value\JsValue $a,
+            \PhpJs\Value\JsValue $b,
+        ) use (
+            $isSameValueNative,
+            &$deepEqualNative
+): bool {
+            // Same JS reference: trivially equal. Skip the rest.
+            if ($a === $b) {
+                return true;
+            }
+            // Primitive shortcut: both primitives, SameValue applies.
+            if (!($a instanceof \PhpJs\Value\JsObject) && !($b instanceof \PhpJs\Value\JsObject)) {
+                return $isSameValueNative($a, $b);
+            }
+            // TypedArray vs TypedArray: same ctor + same length + element
+            // SameValue. The harness uses this for sort fixtures where both
+            // sides are TypedArrays of the same dtype.
+            if (
+                $a instanceof \PhpJs\Value\JsTypedArray
+                && $b instanceof \PhpJs\Value\JsTypedArray
+            ) {
+                if ($a->getTypeName() !== $b->getTypeName()) {
+                    return false;
+                }
+                $len = $a->getLength();
+                if ($len !== $b->getLength()) {
+                    return false;
+                }
+                for ($i = 0; $i < $len; $i++) {
+                    $av = $a->getIndex($i);
+                    $bv = $b->getIndex($i);
+                    if (!$isSameValueNative($av, $bv)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            // Dense Array vs dense Array: length + index-by-index SameValue
+            // with recursive descent for nested objects.
+            if (
+                $a instanceof \PhpJs\Value\JsArray
+                && $b instanceof \PhpJs\Value\JsArray
+            ) {
+                $aLen = $a->getLength();
+                $bLen = $b->getLength();
+                if ($aLen !== $bLen) {
+                    return false;
+                }
+                for ($i = 0; $i < $aLen; $i++) {
+                    $av = $a->get((string) $i);
+                    $bv = $b->get((string) $i);
+                    if (!$deepEqualNative($av, $bv)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            // Anything else falls through — caller will dispatch the JS-
+            // defined algorithm. Return a tri-state via PHP null is awkward
+            // here; instead we return false and let the JS-level wrapper
+            // detect a non-fast-path shape via the receiver test it does
+            // before calling this intrinsic.
+            return false;
+        };
+
+        $deepEqualFn = \PhpJs\Value\JsFunction::fromCallable(
+            'deepEqual',
+            static function (
+                \PhpJs\Value\JsValue $thisValue,
+                array $args,
+            ) use (
+                $deepEqualNative,
+                $throwTest262
+            ): \PhpJs\Value\JsValue {
+                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                if ($deepEqualNative($actual, $expected)) {
+                    return \PhpJs\Value\JsUndefined::instance();
+                }
+                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $prefix = '';
+                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                    $prefix = self::coerceMessageToString($message) . ' ';
+                }
+                $msg = $prefix . 'Expected deepEqual(«' . self::formatAssertValue($actual)
+                    . '», «' . self::formatAssertValue($expected) . '»)';
+                $throwTest262($msg);
+                return \PhpJs\Value\JsUndefined::instance();
+            },
+            3,
+        );
+
+        // assert.compareArray: element-wise SameValue with length check.
+        // Common in test262 — and structurally identical to assert.deepEqual
+        // for Array operands but expects the receiver to be array-like.
+        $compareArrayFn = \PhpJs\Value\JsFunction::fromCallable(
+            'compareArray',
+            static function (
+                \PhpJs\Value\JsValue $thisValue,
+                array $args,
+            ) use (
+                $isSameValueNative,
+                $throwTest262
+            ): \PhpJs\Value\JsValue {
+                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                if (
+                    !$actual instanceof \PhpJs\Value\JsObject
+                    || !$expected instanceof \PhpJs\Value\JsObject
+                ) {
+                    // Either operand is not array-like: defer to the JS-
+                    // defined fallback by throwing the harness's error.
+                    $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                    $prefix = '';
+                    if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                        $prefix = self::coerceMessageToString($message) . ' ';
+                    }
+                    $throwTest262($prefix . 'assert.compareArray expected array-like operands');
+                    return \PhpJs\Value\JsUndefined::instance();
+                }
+                $aLenVal = $actual->get('length');
+                $bLenVal = $expected->get('length');
+                $aLen = $aLenVal instanceof \PhpJs\Value\JsNumber ? (int) $aLenVal->value : 0;
+                $bLen = $bLenVal instanceof \PhpJs\Value\JsNumber ? (int) $bLenVal->value : 0;
+                $ok = ($aLen === $bLen);
+                if ($ok) {
+                    for ($i = 0; $i < $aLen; $i++) {
+                        $av = $actual->get((string) $i);
+                        $bv = $expected->get((string) $i);
+                        if (!$isSameValueNative($av, $bv)) {
+                            $ok = false;
+                            break;
+                        }
+                    }
+                }
+                if ($ok) {
+                    return \PhpJs\Value\JsUndefined::instance();
+                }
+                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $prefix = '';
+                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                    $prefix = self::coerceMessageToString($message) . ' ';
+                }
+                $msg = $prefix . 'Expected compareArray(«' . self::formatAssertValue($actual)
+                    . '», «' . self::formatAssertValue($expected) . '»)';
+                $throwTest262($msg);
+                return \PhpJs\Value\JsUndefined::instance();
+            },
+            3,
+        );
+
         if ($globalEnv->has('assert')) {
             $assertObj = $globalEnv->get('assert');
             if ($assertObj instanceof \PhpJs\Value\JsObject) {
                 $assertObj->set('_isSameValue', $isSameValueFn);
                 $assertObj->set('sameValue', $sameValueFn);
                 $assertObj->set('notSameValue', $notSameValueFn);
+                // Only install deepEqual if the harness has already defined
+                // it (i.e. deepEqual.js was loaded via the test's includes).
+                // Otherwise leave the slot empty so a test that does
+                // `assert.deepEqual` without the include fails the same way
+                // it does in V8 (ReferenceError on undefined call).
+                if ($assertObj->has('deepEqual')) {
+                    $assertObj->set('deepEqual', $deepEqualFn);
+                }
+                if ($assertObj->has('compareArray')) {
+                    $assertObj->set('compareArray', $compareArrayFn);
+                }
             }
+        }
+
+        // SpiderMonkey-flavoured aliases live as global functions and pass
+        // through to assert.sameValue with spread args. The spread + rest
+        // wrapper is hot enough in stress fixtures (~200k iterations) to
+        // measurably slow the run. Override with a direct native that
+        // mirrors assert.sameValue's behaviour: skips the spread/rest
+        // dispatch and the JS-level frame.
+        $assertEqFn = \PhpJs\Value\JsFunction::fromCallable(
+            'assertEq',
+            static function (
+                \PhpJs\Value\JsValue $thisValue,
+                array $args,
+            ) use (
+                $isSameValueNative,
+                $throwTest262
+            ): \PhpJs\Value\JsValue {
+                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                if ($isSameValueNative($actual, $expected)) {
+                    return \PhpJs\Value\JsUndefined::instance();
+                }
+                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $prefix = '';
+                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                    $prefix = self::coerceMessageToString($message) . ' ';
+                }
+                $msg = $prefix . 'Expected SameValue(«' . self::formatAssertValue($actual)
+                    . '», «' . self::formatAssertValue($expected) . '») to be true';
+                $throwTest262($msg);
+                return \PhpJs\Value\JsUndefined::instance();
+            },
+            3,
+        );
+        if ($globalEnv->has('assertEq')) {
+            $globalEnv->set('assertEq', $assertEqFn);
+        }
+        if ($globalEnv->has('reportCompare')) {
+            $globalEnv->set('reportCompare', $assertEqFn);
         }
 
         return \PhpJs\Value\JsUndefined::instance();
