@@ -12674,6 +12674,22 @@ class TemporalObject
                 'isLeapMonth' => $isLeapMonth,
             ];
         }
+        // Ethiopic / ethioaa: pure-PHP 13-month arithmetic (CI-independent).
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            $e = self::isoToEthiopicDate($y, $m, $d);
+            $eYear = $e['year'];
+            $eMonth = $e['month'];
+            $eDay = $e['day'];
+            $monthCode = 'M' . str_pad((string) $eMonth, 2, '0', STR_PAD_LEFT);
+            $userYear = self::ethiopicUserYear($calendar, $eYear);
+            return [
+                'year' => $userYear,
+                'month' => $eMonth,
+                'monthCode' => $monthCode,
+                'day' => $eDay,
+                'isLeapMonth' => false,
+            ];
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12766,6 +12782,18 @@ class TemporalObject
         int $lrgD,
         string $largestUnit,
     ): ?array {
+        // Ethiopic / ethioaa: deterministic 13-month walk, no ICU needed.
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            return self::ethiopicYearsMonthsDaysBetween(
+                $smlY,
+                $smlM,
+                $smlD,
+                $lrgY,
+                $lrgM,
+                $lrgD,
+                $largestUnit,
+            );
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12899,6 +12927,12 @@ class TemporalObject
             $thisDays = self::isoDateToDays($isoY, $isoM, $isoD);
             return $thisDays - $startDays + 1;
         }
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
+            $startDays = self::ethiopicNewYearDay($e['year']);
+            $thisDays = self::isoDateToDays($isoY, $isoM, $isoD);
+            return $thisDays - $startDays + 1;
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12934,6 +12968,10 @@ class TemporalObject
             $h = self::isoToHebrewDate($isoY, $isoM, $isoD);
             return self::hebrewDaysInMonth($h['year'], $h['icuMonth']);
         }
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
+            return self::ethiopicDaysInMonth($e['year'], $e['month']);
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12968,6 +13006,10 @@ class TemporalObject
             $h = self::isoToHebrewDate($isoY, $isoM, $isoD);
             return self::hebrewYearLength($h['year']);
         }
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
+            return self::ethiopicYearLength($e['year']);
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12999,11 +13041,12 @@ class TemporalObject
         if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return 12;
         }
+        // Ethiopic / Coptic / EthioAA always have 13 months.
+        if (in_array($calendar, ['coptic', 'ethiopic', 'ethioaa', 'ethiopic-amete-alem'], true)) {
+            return 13;
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
-        }
-        if (in_array($calendar, ['coptic', 'ethiopic', 'ethioaa'], true)) {
-            return 13;
         }
         // Hebrew: 13 in leap years, 12 otherwise.
         if ($calendar === 'hebrew') {
@@ -13030,6 +13073,10 @@ class TemporalObject
                 return null;
             }
             return self::isHebrewLeapYear($parts['year']);
+        }
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
+            return self::isEthiopicLeapYear($e['year']);
         }
         if (!class_exists('IntlCalendar', false)) {
             return null;
@@ -13101,12 +13148,10 @@ class TemporalObject
      */
     private static function calendarDaysInMonth(string $calendar, int $year, ?string $monthCode, ?int $monthNum): ?int
     {
-        if (!class_exists('IntlCalendar', false)) {
-            return null;
-        }
         // Route through calendarPartsToIso so chinese/dangi extended_year +
         // leap_month resolution is applied (setDate alone uses FIELD_YEAR
-        // which is the 60-cycle position, not the actual year).
+        // which is the 60-cycle position, not the actual year). Ethiopic
+        // and Hebrew never require ICU, so they work even without intl.
         $iso = self::calendarPartsToIso($calendar, $year, $monthCode, $monthNum, 1);
         if ($iso !== null) {
             return self::calendarDaysInMonthForIso(
@@ -13115,6 +13160,9 @@ class TemporalObject
                 $iso['month'],
                 $iso['day'],
             );
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
         }
         return null;
     }
@@ -13130,6 +13178,25 @@ class TemporalObject
         if ($cal === 'iso8601' || in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
             $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
             return ['year' => 1972, 'month' => $m, 'day' => $day];
+        }
+        // Ethiopic / ethioaa: pure-PHP. Find the ethiopic year whose
+        // M-d for ISO 1972-12-31 yields the largest ISO <= 1972-12-31.
+        if ($cal === 'ethiopic' || $cal === 'ethioaa' || $cal === 'ethiopic-amete-alem') {
+            $refE = self::isoToEthiopicDate(1972, 12, 31);
+            $approxYear = self::ethiopicUserYear($cal, $refE['year']);
+            for ($tryDay = $day; $tryDay >= 1; $tryDay--) {
+                for ($delta = 1; $delta >= -8; $delta--) {
+                    $tryYear = $approxYear + $delta;
+                    $iso = self::calendarPartsToIso($cal, $tryYear, $monthCode, $monthNum, $tryDay);
+                    if ($iso === null) {
+                        continue;
+                    }
+                    if ($iso['year'] <= 1972) {
+                        return $iso;
+                    }
+                }
+            }
+            return null;
         }
         if (!class_exists('IntlCalendar', false)) {
             return null;
@@ -13303,6 +13370,25 @@ class TemporalObject
         }
         if ($icuMonth === null) {
             return null;
+        }
+        // Ethiopic / ethioaa: pure-PHP 13-month arithmetic.
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            if ($isLeapMonth) {
+                // Ethiopic has no leap months.
+                return null;
+            }
+            // icuMonth resolved above is 0-indexed from monthCode/monthNum.
+            // For ethiopic that maps 1:1 to spec month (M01..M13) → icuMonth 0..12.
+            $eMonth = $icuMonth + 1;
+            if ($eMonth < 1 || $eMonth > 13) {
+                return null;
+            }
+            $canonYear = self::ethiopicCanonicalYear($calendar, $year);
+            $dim = self::ethiopicDaysInMonth($canonYear, $eMonth);
+            if ($day < 1 || $day > $dim) {
+                return null;
+            }
+            return self::ethiopicToIsoDate($canonYear, $eMonth, $day);
         }
         // Hebrew: bypass ICU. ICU's getActualMaximum reports stale month
         // lengths for some years, which causes Cheshvan/Kislev to come back
@@ -13647,6 +13733,382 @@ class TemporalObject
             return self::isHebrewLeapYear($year) && $icuMonth === 5;
         }
         return false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Ethiopic / ethioaa calendar (pure-PHP, ICU-independent)
+    //
+    // 13-month calendar: months 1..12 = 30 days each, month 13 (Pagume) =
+    // 5 or 6 days. Leap rule: year y is leap when y mod 4 == 3
+    // (Reingold-Dershowitz "Calendrical Calculations" §3). Ethiopic year 1
+    // EE begins 1 Meskerem = ISO 8 AD Aug 27 Gregorian proleptic (= Julian
+    // Aug 29, 8 AD). Days from ISO 1970-01-01 to that date = -716367.
+    // ethioaa = ethiopic + 5500 (same arithmetic, shifted year label).
+    // -----------------------------------------------------------------------
+
+    /** Days from ISO 1970-01-01 to 1 Meskerem 1 EE (Aug 27, 8 AD Gregorian). */
+    private const ETHIOPIC_EPOCH_DAYS = -716367;
+
+    /** ethioaa = ethiopic + 5500 (Amete Alem precedes Amete Mihret by 5500 EE). */
+    private const ETHIOAA_YEAR_OFFSET = 5500;
+
+    /** True if the given ethiopic year is a leap year (y mod 4 == 3). */
+    private static function isEthiopicLeapYear(int $year): bool
+    {
+        $r = $year % 4;
+        if ($r < 0) {
+            $r += 4;
+        }
+        return $r === 3;
+    }
+
+    /** Days in the given ethiopic year (365 or 366). */
+    private static function ethiopicYearLength(int $year): int
+    {
+        return self::isEthiopicLeapYear($year) ? 366 : 365;
+    }
+
+    /** Days in the given ethiopic month: 30 for 1..12, 5 or 6 for 13. */
+    private static function ethiopicDaysInMonth(int $year, int $month): int
+    {
+        if ($month >= 1 && $month <= 12) {
+            return 30;
+        }
+        if ($month === 13) {
+            return self::isEthiopicLeapYear($year) ? 6 : 5;
+        }
+        return 0;
+    }
+
+    /**
+     * Days from ISO 1970-01-01 to 1 Meskerem of the given ethiopic year.
+     * For 1 Meskerem 1 EE this is ETHIOPIC_EPOCH_DAYS.
+     */
+    private static function ethiopicNewYearDay(int $year): int
+    {
+        $y1 = $year - 1;
+        if ($y1 >= 0) {
+            // Number of leap years in [1..y1] is floor((y1 - 3) / 4) + 1
+            // if y1 >= 3, else 0.
+            $leaps = $y1 >= 3 ? intdiv($y1 - 3, 4) + 1 : 0;
+            return self::ETHIOPIC_EPOCH_DAYS + 365 * $y1 + $leaps;
+        }
+        // year <= 0: walk forward summing year lengths.
+        $days = self::ETHIOPIC_EPOCH_DAYS;
+        for ($yy = $year; $yy < 1; $yy++) {
+            $days -= self::ethiopicYearLength($yy);
+        }
+        return $days;
+    }
+
+    /**
+     * Convert (ethiopic year, month 1..13, day 1..30) to ISO ['year','month','day'].
+     *
+     * @return array{year: int, month: int, day: int}
+     */
+    private static function ethiopicToIsoDate(int $year, int $month, int $day): array
+    {
+        $days = self::ethiopicNewYearDay($year);
+        for ($m = 1; $m < $month; $m++) {
+            $days += self::ethiopicDaysInMonth($year, $m);
+        }
+        $days += $day - 1;
+        return self::isoDateFromDays($days);
+    }
+
+    /**
+     * Convert ISO (y,m,d) to ['year' => ethiopicYear, 'month' => 1..13, 'day' => 1..30].
+     *
+     * @return array{year: int, month: int, day: int}
+     */
+    private static function isoToEthiopicDate(int $isoY, int $isoM, int $isoD): array
+    {
+        $days = self::isoDateToDays($isoY, $isoM, $isoD);
+        // Approximate ethiopic year via 4-year cycle.
+        $offset = $days - self::ETHIOPIC_EPOCH_DAYS;
+        $year = intdiv($offset, 1461) * 4 + 1;
+        // Refine.
+        while (self::ethiopicNewYearDay($year + 1) <= $days) {
+            $year++;
+        }
+        while (self::ethiopicNewYearDay($year) > $days) {
+            $year--;
+        }
+        $dayOfYear = $days - self::ethiopicNewYearDay($year); // 0-indexed
+        if ($dayOfYear < 360) {
+            $month = intdiv($dayOfYear, 30) + 1;
+            $dayOfMonth = ($dayOfYear % 30) + 1;
+        } else {
+            $month = 13;
+            $dayOfMonth = $dayOfYear - 360 + 1;
+        }
+        return ['year' => $year, 'month' => $month, 'day' => $dayOfMonth];
+    }
+
+    /**
+     * Resolve a user-supplied ethiopic / ethioaa year to the canonical
+     * ethiopic year (ethioaa year y → ethiopic year y - 5500).
+     */
+    private static function ethiopicCanonicalYear(string $calendar, int $userYear): int
+    {
+        if ($calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            return $userYear - self::ETHIOAA_YEAR_OFFSET;
+        }
+        return $userYear;
+    }
+
+    /**
+     * Map an internal ethiopic year to the user-visible year for the given
+     * calendar (ethioaa users see year + 5500).
+     */
+    private static function ethiopicUserYear(string $calendar, int $ethiopicYear): int
+    {
+        if ($calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            return $ethiopicYear + self::ETHIOAA_YEAR_OFFSET;
+        }
+        return $ethiopicYear;
+    }
+
+    /**
+     * Compute (years, months, days) between two ISO dates in the ethiopic
+     * calendar's terms, where smlY/M/D <= lrgY/M/D. Mirrors the
+     * spec's DifferenceISODate semantics for a 13-month calendar.
+     *
+     * @return array{0: int, 1: int, 2: int}|null
+     */
+    private static function ethiopicYearsMonthsDaysBetween(
+        int $smlY,
+        int $smlM,
+        int $smlD,
+        int $lrgY,
+        int $lrgM,
+        int $lrgD,
+        string $largestUnit,
+    ): ?array {
+        $smlE = self::isoToEthiopicDate($smlY, $smlM, $smlD);
+        $endDays = self::isoDateToDays($lrgY, $lrgM, $lrgD);
+
+        $years = 0;
+        if ($largestUnit === 'year') {
+            $cand = $smlE['year'];
+            while (true) {
+                $probeIso = self::ethiopicToIsoDate(
+                    $cand + 1,
+                    $smlE['month'],
+                    min($smlE['day'], self::ethiopicDaysInMonth($cand + 1, $smlE['month'])),
+                );
+                $probeDays = self::isoDateToDays(
+                    $probeIso['year'],
+                    $probeIso['month'],
+                    $probeIso['day'],
+                );
+                if ($probeDays > $endDays) {
+                    break;
+                }
+                $cand++;
+                $years++;
+            }
+        }
+
+        $anchorY = $smlE['year'] + $years;
+        $anchorM = $smlE['month'];
+        $anchorD = min($smlE['day'], self::ethiopicDaysInMonth($anchorY, $anchorM));
+
+        $months = 0;
+        if ($largestUnit !== 'day' && $largestUnit !== 'week') {
+            while (true) {
+                $nextM = $anchorM + 1;
+                $nextY = $anchorY;
+                if ($nextM > 13) {
+                    $nextM = 1;
+                    $nextY++;
+                }
+                $nextD = min($smlE['day'], self::ethiopicDaysInMonth($nextY, $nextM));
+                $probeIso = self::ethiopicToIsoDate($nextY, $nextM, $nextD);
+                $probeDays = self::isoDateToDays(
+                    $probeIso['year'],
+                    $probeIso['month'],
+                    $probeIso['day'],
+                );
+                if ($probeDays > $endDays) {
+                    break;
+                }
+                $anchorY = $nextY;
+                $anchorM = $nextM;
+                $anchorD = $nextD;
+                $months++;
+            }
+        }
+
+        $anchorIso = self::ethiopicToIsoDate($anchorY, $anchorM, $anchorD);
+        $anchorDays = self::isoDateToDays(
+            $anchorIso['year'],
+            $anchorIso['month'],
+            $anchorIso['day'],
+        );
+        $days = $endDays - $anchorDays;
+        if ($days < 0) {
+            return null;
+        }
+        return [$years, $months, $days];
+    }
+
+    /**
+     * Ethiopic addition: add (years, months) in ethiopic terms then constrain
+     * the day. Returns [isoY, isoM, isoD] in the proleptic Gregorian calendar.
+     *
+     * @return array{0: int, 1: int, 2: int}
+     */
+    private static function ethiopicAddYearsMonthsIso(
+        int $isoY,
+        int $isoM,
+        int $isoD,
+        int $years,
+        int $months,
+        string $overflow,
+    ): array {
+        $e = self::isoToEthiopicDate($isoY, $isoM, $isoD);
+        $startDay = $e['day'];
+        $newY = $e['year'] + $years;
+        $newM = $e['month'] + $months;
+        // Normalize month overflow with 13 months per year.
+        while ($newM > 13) {
+            $newM -= 13;
+            $newY++;
+        }
+        while ($newM < 1) {
+            $newM += 13;
+            $newY--;
+        }
+        $dim = self::ethiopicDaysInMonth($newY, $newM);
+        $newD = $startDay;
+        if ($newD > $dim) {
+            if ($overflow === 'reject') {
+                throw new RangeError("Day {$startDay} out of range after calendar arithmetic");
+            }
+            $newD = $dim;
+        }
+        $iso = self::ethiopicToIsoDate($newY, $newM, $newD);
+        return [$iso['year'], $iso['month'], $iso['day']];
+    }
+
+    /**
+     * Hebrew addition: add (years, months) in hebrew terms then constrain
+     * the day. Avoids ICU's leap-month boundary errors on older ICU.
+     *
+     * Algorithm:
+     *   1) Add `years` while preserving the monthCode. ICU month indices
+     *      0..4 and 6..12 are stable across leap and non-leap years (they
+     *      map to monthCodes M01..M05 and M06..M12 respectively). Only
+     *      ICU index 5 (Adar I / M05L) is leap-only — when crossing into
+     *      a non-leap year we constrain it to ICU 6 (M06 = Adar).
+     *   2) Add `months` chronologically, treating leap years as having 13
+     *      months and non-leap years as 12, so M05L counts as one month
+     *      between Shevat and Adar.
+     *
+     * @return array{0: int, 1: int, 2: int}
+     */
+    private static function hebrewAddYearsMonthsIso(
+        int $isoY,
+        int $isoM,
+        int $isoD,
+        int $years,
+        int $months,
+        string $overflow,
+    ): array {
+        $h = self::isoToHebrewDate($isoY, $isoM, $isoD);
+        $newY = $h['year'] + $years;
+        $newIcuMonth = $h['icuMonth'];
+        $startDay = $h['day'];
+
+        // Constrain leap-only Adar I into Adar when crossing into a non-leap year.
+        if (!self::isHebrewLeapYear($newY) && $newIcuMonth === 5) {
+            $newIcuMonth = 6;
+        }
+
+        // Apply remaining month delta chronologically.
+        if ($months !== 0) {
+            $pos = self::hebrewChronoPosFromIcu($newY, $newIcuMonth);
+            $pos += $months;
+            while (true) {
+                $monthsInY = self::isHebrewLeapYear($newY) ? 13 : 12;
+                if ($pos > $monthsInY) {
+                    $pos -= $monthsInY;
+                    $newY++;
+                    continue;
+                }
+                if ($pos < 1) {
+                    $newY--;
+                    $monthsInPrev = self::isHebrewLeapYear($newY) ? 13 : 12;
+                    $pos += $monthsInPrev;
+                    continue;
+                }
+                break;
+            }
+            $newIcuMonth = self::hebrewIcuFromChronoPos($newY, $pos);
+        }
+
+        $dim = self::hebrewDaysInMonth($newY, $newIcuMonth);
+        $newD = $startDay;
+        if ($newD > $dim) {
+            if ($overflow === 'reject') {
+                throw new RangeError("Day {$startDay} out of range after calendar arithmetic");
+            }
+            $newD = $dim;
+        }
+        $iso = self::hebrewToIsoDate($newY, $newIcuMonth, $newD);
+        return [$iso['year'], $iso['month'], $iso['day']];
+    }
+
+    /**
+     * Convert an ICU hebrew month index (0..12) to a chronological position
+     * (1..N within the year, where N is 12 or 13 depending on leap status).
+     *   Non-leap year: ICU 0..4 → pos 1..5; ICU 6..12 → pos 6..12.
+     *   Leap year:     ICU 0..5 → pos 1..6 (5=AdarI=6); ICU 6 (AdarII) → 7;
+     *                  ICU 7..12 → pos 8..13.
+     */
+    private static function hebrewChronoPosFromIcu(int $year, int $icuMonth): int
+    {
+        $isLeap = self::isHebrewLeapYear($year);
+        if (!$isLeap) {
+            if ($icuMonth <= 4) {
+                return $icuMonth + 1; // 0..4 → 1..5
+            }
+            if ($icuMonth >= 6) {
+                return $icuMonth; // 6..12 → 6..12
+            }
+            // ICU index 5 should not occur in non-leap years; clamp.
+            return 6;
+        }
+        if ($icuMonth <= 5) {
+            return $icuMonth + 1; // 0..5 → 1..6
+        }
+        return $icuMonth + 1; // 6..12 → 7..13
+    }
+
+    /**
+     * Inverse of hebrewChronoPosFromIcu.
+     */
+    private static function hebrewIcuFromChronoPos(int $year, int $pos): int
+    {
+        $isLeap = self::isHebrewLeapYear($year);
+        if (!$isLeap) {
+            if ($pos >= 1 && $pos <= 5) {
+                return $pos - 1;
+            }
+            // pos 6..12 → ICU 6..12. Drop pos 13 to Elul (12).
+            if ($pos >= 6 && $pos <= 12) {
+                return $pos;
+            }
+            return 12;
+        }
+        if ($pos >= 1 && $pos <= 6) {
+            return $pos - 1; // 1..6 → ICU 0..5
+        }
+        if ($pos >= 7 && $pos <= 13) {
+            return $pos - 1; // 7..13 → ICU 6..12
+        }
+        return 12;
     }
 
     // -----------------------------------------------------------------------
@@ -14157,13 +14619,19 @@ class TemporalObject
         $days += $extraDays;
 
         // For non-iso/gregory-like calendars, route year/month addition
-        // through ICU so the calendar's actual month/year boundaries
-        // (e.g. coptic's 13-month year, hebrew's 12 vs 13, chinese
-        // sexagenary leap months) are honoured. For ISO/gregory/roc/
-        // japanese, fall through to ISO arithmetic below.
+        // through the calendar-aware adder so the calendar's actual
+        // month/year boundaries (e.g. coptic's 13-month year, hebrew's
+        // 12 vs 13, chinese sexagenary leap months) are honoured. For
+        // ISO/gregory/roc/japanese, fall through to ISO arithmetic.
+        // Hebrew and Ethiopic have pure-PHP paths that don't need intl;
+        // every other calendar still requires the intl extension.
+        $isPureCal = $cal === 'hebrew'
+            || $cal === 'ethiopic'
+            || $cal === 'ethioaa'
+            || $cal === 'ethiopic-amete-alem';
         $useCalendarMath = $cal !== 'iso8601'
             && !in_array($cal, ['gregory', 'roc', 'japanese'], true)
-            && extension_loaded('intl')
+            && ($isPureCal || extension_loaded('intl'))
             && ($years !== 0 || $months !== 0);
         if ($useCalendarMath) {
             $isoAfter = self::calendarAddYearsMonthsIso($cal, $y, $m, $d, $years, $months, $overflow);
@@ -14234,6 +14702,28 @@ class TemporalObject
         int $months,
         string $overflow,
     ): ?array {
+        // Ethiopic / ethioaa: deterministic 13-month add (no ICU).
+        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
+            return self::ethiopicAddYearsMonthsIso(
+                $isoY,
+                $isoM,
+                $isoD,
+                $years,
+                $months,
+                $overflow,
+            );
+        }
+        // Hebrew: deterministic via pure-PHP isoToHebrewDate / hebrewToIsoDate.
+        if ($calendar === 'hebrew') {
+            return self::hebrewAddYearsMonthsIso(
+                $isoY,
+                $isoM,
+                $isoD,
+                $years,
+                $months,
+                $overflow,
+            );
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -15838,14 +16328,11 @@ class TemporalObject
                 }
                 return null;
             case 'ethiopic':
-                $eraIdx = self::icuEraIndexForIso($cal, $isoYear, $isoMonth, $isoDay);
-                if ($eraIdx === 1) {
-                    return 'ethiopic';
-                }
-                if ($eraIdx === 0) {
-                    return 'ethioaa';
-                }
-                return null;
+                // Pure-PHP: ethiopic (Amete Mihret) for canonical year >= 1,
+                // ethioaa (Amete Alem) for canonical year < 1. ICU 70 disagrees
+                // with the spec on the boundary so don't use it.
+                $e = self::isoToEthiopicDate($isoYear, $isoMonth, $isoDay);
+                return $e['year'] >= 1 ? 'ethiopic' : 'ethioaa';
             case 'ethioaa':
             case 'ethiopic-amete-alem':
                 // Ethiopic Amete Alem has only one era (always positive
@@ -15912,9 +16399,16 @@ class TemporalObject
                 }
                 return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
             case 'coptic':
-            case 'ethiopic':
                 $year = self::icuYearForIso($cal, $isoYear, $isoMonth, $isoDay);
                 return $year;
+            case 'ethiopic':
+                $e = self::isoToEthiopicDate($isoYear, $isoMonth, $isoDay);
+                if ($e['year'] >= 1) {
+                    return $e['year'];
+                }
+                // Pre-EE 1: era flips to ethioaa; eraYear is the AA year
+                // (AA year = ethiopic year + 5500).
+                return $e['year'] + self::ETHIOAA_YEAR_OFFSET;
             case 'ethioaa':
             case 'ethiopic-amete-alem':
                 // Ethiopic Amete Alem: era / eraYear are undefined.

@@ -229,26 +229,13 @@ class Test262Runner
         // SpiderMonkey unicode-ignoreCase 2968-line fixture exceeds
         // CI wall budget on slower runners (passes in ~12s locally
         // on macOS/ICU 76, ~85s on Ubuntu CI/ICU 70).
-        // ICU lunisolar/Ethiopic boundaries differ between ICU 70
-        // (Ubuntu CI) and ICU 76 (Unicode 16 reference).
+        // Chinese-calendar leap-month placement differs between ICU 70
+        // (Ubuntu CI) and ICU 76 (Unicode 16 reference). ethiopic /
+        // ethioaa / hebrew-leap-month no longer need ICU at all
+        // (TemporalObject ships pure-PHP arithmetic for those), so their
+        // entries are dropped here.
         'staging/Intl402/Temporal/old/addition-across-lunisolar-leap-months-chinese.js'
             => 'Chinese-calendar leap-month placement differs between CI ICU 70 and reference ICU 76',
-        'staging/Intl402/Temporal/old/non-iso-calendars-ethioaa.js'
-            => 'ethioaa-calendar boundaries differ between CI ICU 70 and reference ICU 76',
-        // Hebrew leap-month placement differs between CI ICU 70 (Ubuntu)
-        // and ICU 76+ (Unicode 16 reference); same root cause as the
-        // Chinese fixture already blocklisted above. CI compat chunk
-        // running addition-across-...-hebrew through non-iso-calendars-
-        // dangi consistently reports 1 fail with the chinese sibling
-        // already skipped, narrowing the failure to the hebrew variant.
-        'staging/Intl402/Temporal/old/addition-across-lunisolar-leap-months-hebrew.js'
-            => 'Hebrew-calendar leap-month placement differs between CI ICU 70 and reference ICU 76',
-        // Ethiopic calendar boundaries differ between ICU 70 and ICU 76+
-        // for the same reason as the already-blocklisted ethioaa sibling.
-        // CI chunk covering ethioaa through dst-corner-cases reports
-        // 1 fail with ethioaa already skipped, narrowing to ethiopic.
-        'staging/Intl402/Temporal/old/non-iso-calendars-ethiopic.js'
-            => 'Ethiopic-calendar boundaries differ between CI ICU 70 and reference ICU 76',
         // staging/Intl402 calendar snapshots that disagree with ICU 74
         // (Ubuntu CI) but match ICU 76+/macOS ICU 78:
         //  - non-iso-calendars-iso8601.js: iso8601 month formatted as
