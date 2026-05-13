@@ -737,6 +737,7 @@ function finalizeCompatWorker(array $worker, bool $timedOut): array
             'message' => '',
             'stderrPath' => $worker['stderrPath'],
             'stdout' => trim($stdout),
+            'failures' => is_array($payload['failures'] ?? null) ? $payload['failures'] : [],
         ];
     }
 
@@ -904,6 +905,11 @@ function finalizeCompatChunk(
     ];
     if ($summary['fail'] > 0 && isset($chunk['files']) && is_array($chunk['files'])) {
         $resultPayload['files'] = $chunk['files'];
+    }
+    // Surface per-test failure paths + messages in the chunk artifact so the
+    // root-cause is visible without re-running the chunk locally.
+    if (!empty($summary['failures'])) {
+        $resultPayload['failures'] = $summary['failures'];
     }
     writeJsonFile($resultPath, $resultPayload);
 

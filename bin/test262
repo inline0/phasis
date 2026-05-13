@@ -120,16 +120,27 @@ if ($filesFrom !== null) {
     $testResults = $runner->runDirectory($testDir);
 }
 
+$failingTests = [];
 foreach ($testResults as $testResult) {
     $result->add($testResult);
     $count++;
 
     if ($testResult->status === \PhpJs\Tests\Oracle\TestStatus::Fail) {
+        $relative = str_replace($suiteDir . '/', '', $testResult->testPath);
+        $failingTests[] = ['path' => $relative, 'message' => $testResult->message ?? ''];
         if ($showFailures) {
-            $relative = str_replace($suiteDir . '/', '', $testResult->testPath);
             echo "FAIL: {$relative}\n";
             if ($testResult->message) {
                 echo "      {$testResult->message}\n";
+            }
+        } elseif ($json) {
+            // Always emit failing paths to stderr in JSON mode so CI shard
+            // logs surface the actual failing paths. The compat-report aggregator
+            // only reads JSON counts from stdout; this stderr line is for humans
+            // inspecting the workflow logs to identify which tests need attention.
+            fwrite(STDERR, "FAIL: {$relative}\n");
+            if ($testResult->message) {
+                fwrite(STDERR, "      " . substr($testResult->message, 0, 200) . "\n");
             }
         }
     }
@@ -168,6 +179,7 @@ if ($json) {
         'passRate' => round($result->passRate(), 1),
         'category' => $category,
         'filesFrom' => $filesFrom,
+        'failures' => $failingTests,
     ], JSON_UNESCAPED_SLASHES) . "\n";
 } elseif ($report) {
     echo $result->report() . "\n";
