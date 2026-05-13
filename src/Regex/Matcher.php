@@ -1471,10 +1471,15 @@ class Matcher
             // (Ubuntu CI) doesn't know but ICU 76+ does. Override the
             // host-foldCase so /ui matching is host-independent. Add
             // more here when test262 turns up additional mismatches.
+            // Map each pair member to the same canonical form that
+            // ICU 76+ uses. fold() must be idempotent and produce one
+            // representative per equivalence class, so both directions
+            // of each pair fold to the same target — otherwise charsEqual
+            // sees fold(a) != fold(b) and rejects the match.
             $override = match ($cp) {
                 0x1FD3 => 0x0390,
                 0x1FE3 => 0x03B0,
-                0xFB06 => 0xFB05,
+                0xFB05 => 0xFB06,
                 default => null,
             };
             if ($override !== null) {
@@ -1591,6 +1596,27 @@ class Matcher
                 if ($c >= $lo && $c <= $hi) {
                     $matched = true;
                     break 2;
+                }
+            }
+        }
+        if (!$matched && $this->unicode) {
+            // Per spec CharacterSetMatcher: canonicalize the set member
+            // too, not just the candidate. The candidates list already
+            // contains canonicalize($cu); now check whether each range
+            // endpoint canonicalizes to a value in the candidates list.
+            // Most range endpoints are ASCII or non-folded so this is
+            // cheap; the wider sweep catches Unicode 16 fold pairs
+            // (e.g. /[ΐ]/ui matching "ΐ") that the unidirectional
+            // canonicalize($cu) miss.
+            foreach ($cc->ranges as [$lo, $hi]) {
+                if ($lo === $hi) {
+                    $foldedLo = $this->canonicalize($lo);
+                    foreach ($candidates as $c) {
+                        if ($c === $foldedLo) {
+                            $matched = true;
+                            break 2;
+                        }
+                    }
                 }
             }
         }

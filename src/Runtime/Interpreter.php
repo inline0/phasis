@@ -20141,6 +20141,16 @@ class Interpreter
         // matcher routes all lookups through IntlChar (ICU) for a
         // consistent data source.
         $hasUnicodePropertyEscape = false;
+        // Unicode 16 added simple/common case-fold equivalences that
+        // older ICU (Ubuntu CI ships ICU 70 / 74) doesn't know.
+        // When /ui (or /vi) is set, patterns containing one of the
+        // affected codepoints route through the custom matcher whose
+        // Matcher::canonicalize() applies the host-independent
+        // override table. PCRE2 would otherwise miss the fold pair
+        // on the older ICU and produce a no-match where ICU 76+
+        // says match.
+        $hasUnicode16FoldCodepoint = false;
+        $needUnicode16FoldScan = $isCaseless && $isUnicode;
         // Track which group has captures inside it for quantifier
         // detection. We approximate by scanning for `(...){n,m}`-like
         // shapes that contain captures.
@@ -20208,6 +20218,9 @@ class Interpreter
                                 if ($cp >= 0xD800 && $cp <= 0xDFFF) {
                                     $hasLoneSurrogateEscape = true;
                                 }
+                                if ($needUnicode16FoldScan && self::isUnicode16FoldCodepoint($cp)) {
+                                    $hasUnicode16FoldCodepoint = true;
+                                }
                             }
                         }
                     } elseif ($next === 'u' && $i + 5 < $len) {
@@ -20216,6 +20229,9 @@ class Interpreter
                             $cp = (int) hexdec($hex);
                             if ($needNonAsciiScan && $cp > 0x7F) {
                                 $hasNonAsciiInIWithoutU = true;
+                            }
+                            if ($needUnicode16FoldScan && self::isUnicode16FoldCodepoint($cp)) {
+                                $hasUnicode16FoldCodepoint = true;
                             }
                             // A high surrogate followed by an
                             // adjacent low surrogate is a valid
@@ -20489,6 +20505,28 @@ class Interpreter
         if ($isCaseless && !$isUnicode) {
             $caselessNeedsCustom = self::patternMentionsCaseDivergentLetter($pattern);
         }
+        // Literal Unicode 16 fold codepoints appear in the pattern as
+        // UTF-8 bytes when the pattern source uses String.fromCodePoint
+        // (the SM unicode-ignoreCase fixture uses this exact shape).
+        // The escape-aware scan above only inspects \uXXXX / \u{X}
+        // forms; sweep here for the literal UTF-8 encodings too.
+        if (!$hasUnicode16FoldCodepoint && $needUnicode16FoldScan) {
+            // U+0390, U+03B0 (2-byte), U+1FD3, U+1FE3, U+FB05, U+FB06 (3-byte).
+            static $foldUtf8Needles = [
+                "\xCE\x90",  // U+0390
+                "\xCE\xB0",  // U+03B0
+                "\xE1\xBF\x93",  // U+1FD3
+                "\xE1\xBF\xA3",  // U+1FE3
+                "\xEF\xAC\x85",  // U+FB05
+                "\xEF\xAC\x86",  // U+FB06
+            ];
+            foreach ($foldUtf8Needles as $needle) {
+                if (str_contains($pattern, $needle)) {
+                    $hasUnicode16FoldCodepoint = true;
+                    break;
+                }
+            }
+        }
         return $hasLookbehindWithCapture
             || $hasQuantifiedCapture
             || $hasDotInNonUnicode
@@ -20497,7 +20535,27 @@ class Interpreter
             || $hasWordToken
             || $hasAstralInUnicode
             || $hasLoneSurrogateEscape
+            || $hasUnicode16FoldCodepoint
             || $caselessNeedsCustom;
+    }
+
+    /**
+     * Returns true iff the codepoint is involved in a Unicode 16
+     * simple/common case-fold equivalence that older ICU (70/74) on
+     * Ubuntu CI doesn't yet recognise. Matcher::canonicalize keeps
+     * a host-independent override for these; patternNeedsCustomMatcher
+     * routes /iu patterns mentioning any of them to the custom matcher
+     * so the override actually takes effect (PCRE2 would silently miss
+     * the fold pair on the older ICU).
+     */
+    private static function isUnicode16FoldCodepoint(int $cp): bool
+    {
+        return match ($cp) {
+            0x0390, 0x1FD3,
+            0x03B0, 0x1FE3,
+            0xFB05, 0xFB06 => true,
+            default => false,
+        };
     }
 
     /**
