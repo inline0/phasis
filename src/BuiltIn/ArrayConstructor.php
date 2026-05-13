@@ -1857,8 +1857,16 @@ class ArrayConstructor
                 }
             }
 
-            // Re-read length each time for mutable iteration.
-            $len = self::getLen($array);
+            // Re-read length each time for mutable iteration. Per spec
+            // 23.2.5.1.1 TypedArray iterators source [[ArrayLength]] from
+            // the internal slot, NOT the observable `length` property, so
+            // a defineProperty override on length cannot fake the
+            // iteration count.
+            if ($array instanceof \PhpJs\Value\JsTypedArray) {
+                $len = $array->getLength();
+            } else {
+                $len = self::getLen($array);
+            }
 
             $result = new JsObject();
             if ($index < $len) {
