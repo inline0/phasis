@@ -20505,26 +20505,47 @@ class Interpreter
         if ($isCaseless && !$isUnicode) {
             $caselessNeedsCustom = self::patternMentionsCaseDivergentLetter($pattern);
         }
-        // Literal Unicode 16 fold codepoints appear in the pattern as
-        // UTF-8 bytes when the pattern source uses String.fromCodePoint
-        // (the SM unicode-ignoreCase fixture uses this exact shape).
-        // The escape-aware scan above only inspects \uXXXX / \u{X}
-        // forms; sweep here for the literal UTF-8 encodings too.
+        // Literal codepoints appear in the pattern as UTF-8 bytes
+        // when the source uses String.fromCodePoint (the SM
+        // unicode-ignoreCase fixture builds RegExp(fromCodePoint(c) +
+        // "+", "iu") for ~3000 fold pairs). The escape-aware scan
+        // above only inspects \uXXXX / \u{X} forms; do a separate UTF-8
+        // walk here when /iu is set, checking each non-ASCII codepoint
+        // against the bundled fold table.
         if (!$hasUnicode16FoldCodepoint && $needUnicode16FoldScan) {
-            // U+0390, U+03B0 (2-byte), U+1FD3, U+1FE3, U+FB05, U+FB06 (3-byte).
-            static $foldUtf8Needles = [
-                "\xCE\x90",  // U+0390
-                "\xCE\xB0",  // U+03B0
-                "\xE1\xBF\x93",  // U+1FD3
-                "\xE1\xBF\xA3",  // U+1FE3
-                "\xEF\xAC\x85",  // U+FB05
-                "\xEF\xAC\x86",  // U+FB06
-            ];
-            foreach ($foldUtf8Needles as $needle) {
-                if (str_contains($pattern, $needle)) {
+            $j = 0;
+            $patLen = strlen($pattern);
+            while ($j < $patLen) {
+                $b = ord($pattern[$j]);
+                if ($b < 0x80) {
+                    $j++;
+                    continue;
+                }
+                $cp = 0;
+                $consume = 1;
+                if (($b & 0xE0) === 0xC0 && $j + 1 < $patLen) {
+                    $cp = (($b & 0x1F) << 6) | (ord($pattern[$j + 1]) & 0x3F);
+                    $consume = 2;
+                } elseif (($b & 0xF0) === 0xE0 && $j + 2 < $patLen) {
+                    $cp = (($b & 0x0F) << 12)
+                        | ((ord($pattern[$j + 1]) & 0x3F) << 6)
+                        | (ord($pattern[$j + 2]) & 0x3F);
+                    $consume = 3;
+                } elseif (($b & 0xF8) === 0xF0 && $j + 3 < $patLen) {
+                    $cp = (($b & 0x07) << 18)
+                        | ((ord($pattern[$j + 1]) & 0x3F) << 12)
+                        | ((ord($pattern[$j + 2]) & 0x3F) << 6)
+                        | (ord($pattern[$j + 3]) & 0x3F);
+                    $consume = 4;
+                } else {
+                    $j++;
+                    continue;
+                }
+                if (\PhpJs\Regex\FoldTable::fold($cp) !== null) {
                     $hasUnicode16FoldCodepoint = true;
                     break;
                 }
+                $j += $consume;
             }
         }
         return $hasLookbehindWithCapture
@@ -20540,22 +20561,18 @@ class Interpreter
     }
 
     /**
-     * Returns true iff the codepoint is involved in a Unicode 16
-     * simple/common case-fold equivalence that older ICU (70/74) on
-     * Ubuntu CI doesn't yet recognise. Matcher::canonicalize keeps
-     * a host-independent override for these; patternNeedsCustomMatcher
-     * routes /iu patterns mentioning any of them to the custom matcher
-     * so the override actually takes effect (PCRE2 would silently miss
-     * the fold pair on the older ICU).
+     * Returns true iff the codepoint has a non-trivial simple case-fold
+     * equivalent per Unicode 16's CaseFolding.txt (delegated to
+     * Regex/FoldTable). Used to route /iu patterns containing
+     * potentially fold-divergent codepoints to the custom matcher,
+     * which canonicalises via the bundled fold table so behaviour is
+     * host-independent. PCRE2's internal /i fold uses the host PCRE2
+     * build's ICU; Ubuntu CI ships ICU 70/74 which miss Unicode 14/15/16
+     * additions and produces "no match" where ICU 76+ correctly matches.
      */
     private static function isUnicode16FoldCodepoint(int $cp): bool
     {
-        return match ($cp) {
-            0x0390, 0x1FD3,
-            0x03B0, 0x1FE3,
-            0xFB05, 0xFB06 => true,
-            default => false,
-        };
+        return \PhpJs\Regex\FoldTable::fold($cp) !== null;
     }
 
     /**

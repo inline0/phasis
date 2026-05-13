@@ -1471,17 +1471,14 @@ class Matcher
             // (Ubuntu CI) doesn't know but ICU 76+ does. Override the
             // host-foldCase so /ui matching is host-independent. Add
             // more here when test262 turns up additional mismatches.
-            // Map each pair member to the same canonical form that
-            // ICU 76+ uses. fold() must be idempotent and produce one
-            // representative per equivalence class, so both directions
-            // of each pair fold to the same target — otherwise charsEqual
-            // sees fold(a) != fold(b) and rejects the match.
-            $override = match ($cp) {
-                0x1FD3 => 0x0390,
-                0x1FE3 => 0x03B0,
-                0xFB05 => 0xFB06,
-                default => null,
-            };
+            // Full ICU 78 (Unicode 16) simple case-fold table.
+            // Consulted before IntlChar so host ICU drift can't change
+            // match results — Ubuntu CI ships ICU 70/74 which miss
+            // a few hundred Unicode 14/15/16 fold equivalences that
+            // our table covers. On hosts that already know these
+            // pairs the override result matches the host result, so
+            // it's a no-op in steady state.
+            $override = FoldTable::fold($cp);
             if ($override !== null) {
                 return $override;
             }

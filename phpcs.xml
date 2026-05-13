@@ -6,6 +6,7 @@
     <file>tests</file>
 
     <exclude-pattern>src/Regex/Unicode16Tables.php</exclude-pattern>
+    <exclude-pattern>src/Regex/FoldTable.php</exclude-pattern>
 
     <arg name="colors"/>
     <arg value="sp"/>

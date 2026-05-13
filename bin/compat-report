@@ -935,7 +935,7 @@ function finalizeCompatChunk(
  */
 function buildChunkSummary(array $chunk, array $result, ?string $logRelative): array
 {
-    return [
+    $summary = [
         'kind' => $result['kind'],
         'pass' => $result['pass'],
         'fail' => $result['fail'],
@@ -949,6 +949,10 @@ function buildChunkSummary(array $chunk, array $result, ?string $logRelative): a
         'message' => $result['message'],
         'logFile' => $logRelative,
     ];
+    if (!empty($result['failures'])) {
+        $summary['failures'] = $result['failures'];
+    }
+    return $summary;
 }
 
 /**
