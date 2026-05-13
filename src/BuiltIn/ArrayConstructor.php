@@ -827,11 +827,11 @@ class ArrayConstructor
                         $to++;
                     }
                 }
-                if ($a instanceof JsArray) {
-                    $a->setLength($to);
-                } else {
-                    $a->set('length', JsNumber::of((float) $to));
-                }
+                // Per spec §23.1.3.8 Array.prototype.filter: no final
+                // `Set(A, "length", to)`. CreateDataPropertyOrThrow on
+                // sequential integer keys already updates a JsArray's
+                // length automatically; a non-Array species result
+                // (e.g. Proxy) keeps whatever length the species set.
                 return $a;
             },
             1

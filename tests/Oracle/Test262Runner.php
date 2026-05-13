@@ -57,7 +57,6 @@ class Test262Runner
         'built-ins/Function/internals/Construct/derived-this-uninitialized-realm.js',
         'built-ins/Function/proto-from-ctor-realm-prototype.js',
         'built-ins/Proxy/revocable/tco-fn-realm.js',
-        'staging/sm/Array/species.js',
         'staging/sm/ArrayBuffer/slice-species.js',
         'staging/sm/Function/arguments-iterator.js',
         'staging/sm/Proxy/proxy-with-revoked-arguments.js',
