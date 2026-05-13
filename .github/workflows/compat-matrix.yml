@@ -213,12 +213,29 @@ jobs:
           # per-chunk timeout.
           JOBS=4
           CHUNK=25
+          # Per-chunk wall budget. 90s covers most JS-tree-walker tests
+          # at CI's ~3x interpreter slowdown vs local. The "staging"
+          # shard holds the SpiderMonkey perf-stress fixtures
+          # (DST cache, sort_large, element-setting, nullish-coalescing,
+          # toSpliced-dense, compare-to-datetimeformat) where individual
+          # tests legitimately need 100-200s on CI; bump that shard's
+          # budget to 300s so the isolated-chunk promotion in
+          # config/support.php gives each stress test its own breathing
+          # room. property-escapes uses CHUNK=5 for finer-grain shards.
           TIMEOUT=90
           case '${{ matrix.shard.id }}' in
             builtins-RegExp-property-escapes-*)
               JOBS=8
               CHUNK=5
               TIMEOUT=60
+              ;;
+            staging)
+              # DST cache stress tests need ~140s local → ~420s CI per
+              # isolated chunk (8 parts). Bump to 600s to give them
+              # headroom; other staging tests still finish in seconds,
+              # so the worst-case shard wall is bounded by the DST 8
+              # parts running in parallel under JOBS=4.
+              TIMEOUT=600
               ;;
           esac
           # Build --files-prefix / --files-exclude-prefix from optional

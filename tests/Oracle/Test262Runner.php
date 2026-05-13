@@ -113,34 +113,6 @@ class Test262Runner
      * @var array<string, string>
      */
     private const HOST_GAP_BLOCKLIST = [
-        // SpiderMonkey stress test: walks every Intl.supportedValuesOf
-        // ("calendar") for 101 consecutive years (1950..2050), and for
-        // each (calendar, year, month) tuple constructs a Temporal.
-        // PlainDate via the requested calendar, round-trips it through
-        // withCalendar("iso8601") + toZonedDateTime("UTC"), and compares
-        // against Intl.DateTimeFormat.formatToParts. After skipping the
-        // calendars whose ICU4C vs ICU4X arithmetic diverges (chinese,
-        // dangi, hebrew, islamic*, persian) the inner loop still
-        // executes ~13K iterations, each of which fans out into 6-8
-        // Temporal/Intl method calls. After caching IntlCalendar per
-        // ICU calendar id in TemporalObject::isoToCalendarParts
-        // (createInstance is ~4x slower than reuse on ICU 7x), the
-        // remaining hot path is IntlObject::dateTimeFormatterFor: a
-        // fresh IntlDateFormatter + IntlGregorianCalendar is built per
-        // formatToParts call from the same DateTimeFormat object. With
-        // a per-dtf formatter cache the test would land well under
-        // 30s; that cache lives in IntlObject.php which is outside the
-        // agent-I file scope (Calendar identity / format-roundtrip).
-        // Cross-ref: bucket E (bytecode VM) also unblocks this class
-        // of stress test via cheaper inner-loop dispatch. Until either
-        // lands, the test exceeds the 30s set_time_limit on macOS
-        // (~31s) and the chunk budget on Ubuntu CI (2-3x slower).
-        // Spec semantics for Temporal/Intl interop are exhaustively
-        // covered by intl402/Temporal/* and built-ins/Temporal/* which
-        // we pass; this stress fixture only re-verifies behavior, not
-        // additional spec branches.
-        'staging/sm/Temporal/Calendar/compare-to-datetimeformat.js'
-            => 'SM 13K-iter Temporal/Intl stress; needs per-dtf formatter cache in IntlObject (out of agent-I scope) or bucket-E bytecode VM',
         // ICU4X Chinese-calendar leap-month resolution for years
         // outside the common 19-year cycle (e.g. leap month 6 in
         // 2128). Requires the Reingold-Dershowitz arithmetic.
@@ -163,50 +135,6 @@ class Test262Runner
             => 'Sputnik 1M-iter decodeURI sweep exceeds CI 90s chunk budget despite optimization',
         'built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js'
             => 'Sputnik 1M-iter decodeURIComponent sweep exceeds CI 90s chunk budget despite optimization',
-        // SpiderMonkey DST-offset-cache stress test (split into 8
-        // parts). Each part is an O(n^4) probe of the canonical DST
-        // cache (~38 timestamps to the 4th power = 2M cache hits per
-        // part). After landing the direct-hashmap DST cache (~80
-        // distinct timestamps; O(1) per lookup), the [[DateValue]] /
-        // [[IsDate]] internal-slot migration that bypasses the
-        // PropertyMap, and the bytecode VM's date.construct /
-        // date.setTime / date.getTimezoneOffset fast paths in
-        // DateConstructor::vmFastNewDate + vmFastDateSetTime +
-        // vmFastDateGetTimezoneOffset, local pass time fell from
-        // ~240s/part to ~130s/part. The residual cost is JS-level
-        // function-dispatch overhead x 2.7M calls per fraction
-        // (tzOffsetFromUnixTimestamp + clearDSTOffsetCache + assertEq
-        // x 4 per inner iter), which the tree-walking VM cannot
-        // amortize further without deeper engine work. CI's 3x
-        // slowdown still puts each part at ~390s wall, beyond the 90s
-        // chunk budget. DST behaviour is covered by
-        // intl402/DateTimeFormat and built-ins/Date tests, which we
-        // pass.
-        'staging/sm/Date/dst-offset-caching-1-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        'staging/sm/Date/dst-offset-caching-2-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        'staging/sm/Date/dst-offset-caching-3-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        'staging/sm/Date/dst-offset-caching-4-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        'staging/sm/Date/dst-offset-caching-5-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        'staging/sm/Date/dst-offset-caching-6-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        'staging/sm/Date/dst-offset-caching-7-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        'staging/sm/Date/dst-offset-caching-8-of-8.js'
-            => 'SM O(n^4) DST cache stress exceeds chunk budget',
-        // SM TypedArray sort stress: large counting-sort variant
-        // builds a 262144-element Uint16Array, writes all 65536
-        // distinct values, then runs the engine's sort. Tree-walker
-        // takes ~66s locally; CI fails the chunk budget. The same
-        // sort semantics are covered by the much smaller
-        // sort-tonumber, sort-comparefn-*, and built-ins/TypedArray/
-        // prototype/sort tests, which we pass.
-        'staging/sm/TypedArray/sort_large_countingsort.js'
-            => 'SM 262k-element typed-array sort exceeds chunk budget',
         // SM TypedArray element-set ToNumber test: per typed-array
         // ctor (11 types) runs three 1e4/2e4 setter loops with a
         // valueOf-call counter, plus a 5-slot getter/setter object
@@ -217,25 +145,6 @@ class Test262Runner
         // entries, which we pass.
         'staging/sm/TypedArray/element-setting-converts-using-ToNumber.js'
             => 'SM 700K-iter ToNumber round-trip exceeds chunk budget',
-        // SM nullish-coalescing fixture: wraps 13 assertions in a
-        // helper and runs it 1e5 times before the actual operator-
-        // precedence tests. ~1.3M assert.sameValue dispatches even
-        // through the native fast-path; local ~27s and CI ~80s, far
-        // over the 90s chunk budget the matrix runner enforces.
-        // ?? operator semantics are covered by language/expressions/
-        // coalesce/* (which we pass) and the post-loop precedence
-        // assertions in this test would only exercise the parser
-        // (validated by language/expressions/coalesce/syntax-* too).
-        'staging/sm/expressions/nullish-coalescing.js'
-            => 'SM 1e5-iter assert loop exceeds chunk budget',
-        // SM toSpliced-dense exhaustive matrix: 21 starts x 7
-        // deletes x 7 insert counts iterates ~14K Array.prototype
-        // toSpliced calls, each invoking a fresh allocator + range
-        // assertion fan-out. Local ~24s; CI ~70s, exceeds the 90s
-        // chunk budget once paired. toSpliced semantics are covered
-        // by built-ins/Array/prototype/toSpliced/* which we pass.
-        'staging/sm/Array/toSpliced-dense.js'
-            => 'SM 14k-iter exhaustive toSpliced sweep exceeds chunk budget',
         // (from-chinese.js, addition-across-lunisolar-leap-months-chinese.js,
         // and non-iso-calendars-chinese.js are no longer blocklisted: php-js
         // now ships a pure-PHP Reingold-Dershowitz-equivalent table for the
@@ -479,6 +388,25 @@ class Test262Runner
             || str_ends_with($testPath, '/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js')
         ) {
             $timeLimit = max($timeLimit, 75);
+        }
+        // SpiderMonkey JS-loop stress fixtures: ~30s+ local on the tree
+        // walker because of per-iteration call dispatch overhead. The
+        // staging shard in compat-matrix.yml gets TIMEOUT=300 and these
+        // tests are isolated into their own single-test chunks via
+        // config/support.php, so they have a 300s budget on CI (≈100s
+        // local equivalent) to run end-to-end.
+        $stressStaging = [
+            '/staging/sm/expressions/nullish-coalescing.js',
+            '/staging/sm/Array/toSpliced-dense.js',
+            '/staging/sm/TypedArray/sort_large_countingsort.js',
+            '/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js',
+            '/staging/sm/Temporal/Calendar/compare-to-datetimeformat.js',
+        ];
+        foreach ($stressStaging as $suffix) {
+            if (str_ends_with($testPath, $suffix)) {
+                $timeLimit = max($timeLimit, 240);
+                break;
+            }
         }
         set_time_limit($timeLimit);
 
