@@ -1601,6 +1601,22 @@ final class JsToPhp
                     $callRaw = $this->emitFunctionValuedCall($decl->init);
                     $this->flushPending();
                     $this->emitLine($this->slotVar($name) . ' = ' . $callRaw . ';');
+                } elseif ($kind === 'numeric' && $decl->init instanceof CallExpression) {
+                    // `let r = callExpr()` where r's static type defaults
+                    // to numeric. emitExpression would emit the call THEN
+                    // a runtime `instanceof JsNumber` check that throws
+                    // Bailout for any non-numeric return. The call's side
+                    // effects (counter++, Atomics.notify, etc.) have
+                    // already executed by the time the Bailout fires, and
+                    // the tree-walker fallback re-runs the entire function
+                    // body, double-invoking the callee. Bail at compile
+                    // time so the function never enters phpCompiled in the
+                    // first place: the tree-walker runs once, side effects
+                    // happen once, semantics stay spec-correct. We accept
+                    // the perf hit for default-numeric-typed init-from-call
+                    // patterns because we can't statically prove the
+                    // callee returns a JsNumber.
+                    throw new Bailout('let X = callExpr() with default numeric type');
                 } else {
                     $val = $this->emitExpression($decl->init);
                     $this->flushPending();
