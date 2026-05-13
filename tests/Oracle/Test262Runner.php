@@ -99,9 +99,6 @@ class Test262Runner
      */
     private const CROSS_REALM_BLOCKLIST = [
         'staging/sm/TypedArray/constructor-buffer-sequence.js',
-        'staging/sm/TypedArray/every-and-some.js',
-        'staging/sm/TypedArray/forEach.js',
-        'staging/sm/TypedArray/map-and-filter.js',
     ];
 
     /**

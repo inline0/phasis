@@ -552,13 +552,26 @@ final class TypeConversion
 
         // Create a wrapper object with the primitive stored internally,
         // linked to the appropriate prototype if available.
+        //
+        // Resolve the prototype from the active realm's constructor first
+        // (mirroring JsArray::__construct). The static caches on JsBoolean /
+        // JsNumber / JsString are last-write-wins: when a child realm is
+        // built via $262.createRealm(), its install() overwrites the static
+        // with the child's prototype. Subsequent toObject() calls back in
+        // the parent would then create wrappers whose [[Prototype]] points
+        // at the CHILD realm's Number.prototype, so `wrapper instanceof
+        // Number` (using the parent's Number) returns false. This breaks
+        // assert.deepEqual's isBoxed() check (staging/sm/TypedArray/
+        // every-and-some.js calls `assert.deepEqual(this, Object(1))` in
+        // the callback of arr.every(cb, 1), expecting both sides to be
+        // detected as boxed Number wrappers and compared by valueOf).
         $wrapperProto = null;
         if ($value instanceof JsBoolean) {
-            $wrapperProto = JsBoolean::getBooleanPrototype();
+            $wrapperProto = self::resolveRealmPrototype('Boolean') ?? JsBoolean::getBooleanPrototype();
         } elseif ($value instanceof JsNumber) {
-            $wrapperProto = JsNumber::getNumberPrototype();
+            $wrapperProto = self::resolveRealmPrototype('Number') ?? JsNumber::getNumberPrototype();
         } elseif ($value instanceof JsString) {
-            $wrapperProto = JsString::getStringPrototype();
+            $wrapperProto = self::resolveRealmPrototype('String') ?? JsString::getStringPrototype();
         }
         $wrapper = new JsObject($wrapperProto);
         $wrapper->defineOwnProperty(
@@ -621,13 +634,41 @@ final class TypeConversion
 
         // Symbol wrappers get Symbol.prototype
         if ($value instanceof JsSymbol) {
-            $symProto = JsSymbol::getSymbolPrototype();
+            $symProto = self::resolveRealmPrototype('Symbol') ?? JsSymbol::getSymbolPrototype();
             if ($symProto !== null) {
                 $wrapper->setPrototype($symProto);
             }
         }
 
         return $wrapper;
+    }
+
+    /**
+     * Look up the [[Prototype]] object that the active realm's constructor
+     * exposes as `<name>.prototype`. Returns null when no interpreter is
+     * active, the global env has no such binding, or the binding is not a
+     * constructor function. Used by toObject to make primitive boxing
+     * (`Object(1)`, `Object("s")`, …) hand back wrappers whose prototype
+     * chain matches whichever realm is currently executing, even when a
+     * child realm built via $262.createRealm() has clobbered the global
+     * JsNumber / JsString / JsBoolean / JsSymbol static prototype caches.
+     */
+    private static function resolveRealmPrototype(string $ctorName): ?JsObject
+    {
+        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        if ($interp === null) {
+            return null;
+        }
+        $env = $interp->getGlobalEnv();
+        if (!$env->has($ctorName)) {
+            return null;
+        }
+        $ctor = $env->get($ctorName);
+        if (!$ctor instanceof JsObject) {
+            return null;
+        }
+        $proto = $ctor->get('prototype');
+        return $proto instanceof JsObject ? $proto : null;
     }
 
     /**
