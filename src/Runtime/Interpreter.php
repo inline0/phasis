@@ -5738,10 +5738,14 @@ class Interpreter
             return JsUndefined::instance();
         }
         // Try to get the this binding. If it is still in TDZ, throw ReferenceError.
+        // Per spec 10.2.2 [[Construct]] step 13/15: the callee context is
+        // popped before the GetThisBinding check, so the ReferenceError is
+        // built from the CALLER realm's intrinsics.
         try {
             return $fnEnv->get('this');
         } catch (\Throwable) {
-            throw new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
+            $err = new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
+            throw new \PhpJs\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
         }
     }
 
@@ -5761,15 +5765,24 @@ class Interpreter
         if ($value instanceof JsObject) {
             return $value;
         }
-        // If the constructor explicitly returned a non-object, non-undefined value, throw TypeError.
+        // Per spec 10.2.2 [[Construct]] steps 13-14: pop the callee context
+        // BEFORE the "non-Object return" / "this uninitialized" check, so
+        // the TypeError / ReferenceError that surfaces here is constructed
+        // from the CALLER realm's intrinsics (`$this->engineRealm`). The
+        // callee realm switch in callFunction is purely an
+        // Engine::currentInterpreter swap; `$this` is always the caller's
+        // interpreter, so phpExceptionToJsValue on it produces the
+        // caller-realm error the test262 cross-realm tests assert.
         if (!$value instanceof JsUndefined) {
-            throw new TypeError('Derived constructors may only return object or undefined');
+            $err = new TypeError('Derived constructors may only return object or undefined');
+            throw new \PhpJs\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
         }
         // Returning undefined (or bare return): same as implicit return, check this binding.
         try {
             return $fnEnv->get('this');
         } catch (\Throwable) {
-            throw new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
+            $err = new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
+            throw new \PhpJs\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
         }
     }
 
