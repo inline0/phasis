@@ -25,15 +25,61 @@ class Test262Runner
      * @var list<string>
      */
     private const AGENT_ALLOWLIST = [
+        'built-ins/Atomics/notify/bigint/notify-all-on-loc.js',
+        'built-ins/Atomics/notify/count-defaults-to-infinity-missing.js',
+        'built-ins/Atomics/notify/count-defaults-to-infinity-undefined.js',
+        'built-ins/Atomics/notify/negative-count.js',
+        'built-ins/Atomics/notify/notify-all-on-loc.js',
+        'built-ins/Atomics/notify/notify-all.js',
+        'built-ins/Atomics/notify/notify-nan.js',
+        'built-ins/Atomics/notify/notify-one.js',
+        'built-ins/Atomics/notify/notify-renotify-noop.js',
+        'built-ins/Atomics/notify/notify-two.js',
         'built-ins/Atomics/notify/notify-with-no-agents-waiting.js',
         'built-ins/Atomics/notify/notify-with-no-matching-agents-waiting.js',
+        'built-ins/Atomics/notify/notify-zero.js',
+        'built-ins/Atomics/notify/undefined-index-defaults-to-zero.js',
+        'built-ins/Atomics/wait/bigint/false-for-timeout-agent.js',
+        'built-ins/Atomics/wait/bigint/nan-for-timeout.js',
+        'built-ins/Atomics/wait/bigint/negative-timeout-agent.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-no-operation.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-add.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-and.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-compareExchange.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-exchange.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-or.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-store.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-sub.js',
+        'built-ins/Atomics/wait/bigint/no-spurious-wakeup-on-xor.js',
         'built-ins/Atomics/wait/bigint/value-not-equal.js',
+        'built-ins/Atomics/wait/bigint/waiterlist-block-indexedposition-wake.js',
+        'built-ins/Atomics/wait/bigint/was-woken-before-timeout.js',
+        'built-ins/Atomics/wait/false-for-timeout-agent.js',
+        'built-ins/Atomics/wait/good-views.js',
+        'built-ins/Atomics/wait/nan-for-timeout.js',
+        'built-ins/Atomics/wait/negative-timeout-agent.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-no-operation.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-add.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-and.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-compareExchange.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-exchange.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-or.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-store.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-sub.js',
+        'built-ins/Atomics/wait/no-spurious-wakeup-on-xor.js',
+        'built-ins/Atomics/wait/null-for-timeout-agent.js',
+        'built-ins/Atomics/wait/object-for-timeout-agent.js',
         'built-ins/Atomics/wait/poisoned-object-for-timeout-throws-agent.js',
         'built-ins/Atomics/wait/symbol-for-index-throws-agent.js',
         'built-ins/Atomics/wait/symbol-for-timeout-throws-agent.js',
         'built-ins/Atomics/wait/symbol-for-value-throws-agent.js',
+        'built-ins/Atomics/wait/true-for-timeout-agent.js',
+        'built-ins/Atomics/wait/undefined-for-timeout.js',
+        'built-ins/Atomics/wait/undefined-index-defaults-to-zero.js',
         'built-ins/Atomics/wait/value-not-equal.js',
         'built-ins/Atomics/wait/wait-index-value-not-equal.js',
+        'built-ins/Atomics/wait/waiterlist-block-indexedposition-wake.js',
+        'built-ins/Atomics/wait/was-woken-before-timeout.js',
     ];
 
     /**
@@ -291,12 +337,28 @@ class Test262Runner
             }
         }
 
+        // Allowlist short-circuit: tests that scaffold via $262.agent
+        // but pass under the Fiber simulator (the worker exits early
+        // via input validation, a deterministic timeout, or a no-op
+        // notify path that resolves without needing real preemptive
+        // concurrency). Run them through the normal pipeline regardless
+        // of what the spin-loop / waitAsync heuristics below would
+        // otherwise flag.
+        $allowlisted = false;
+        foreach (self::AGENT_ALLOWLIST as $rel) {
+            if (str_ends_with($testPath, '/' . $rel)) {
+                $allowlisted = true;
+                break;
+            }
+        }
+
         // Tests that orchestrate multiple agents via the $262.agent host
         // are simulated cooperatively (see AgentHost). Spin-loop on
         // shared atomic and waitAsync patterns can't be simulated, so
         // skip those. Everything else runs through the fiber simulator.
         if (
-            (strpos($source, '$262.agent.start') !== false
+            !$allowlisted
+            && (strpos($source, '$262.agent.start') !== false
                 || strpos($source, '$262.agent.broadcast') !== false)
             && preg_match(
                 '/while\s*\(\s*Atomics\.(load|compareExchange|exchange)\(/',
@@ -331,7 +393,8 @@ class Test262Runner
         // chain. Until that's resolved we keep the skip in place rather
         // than let these tests infinite-loop.
         if (
-            !getenv('PHPJS_BYPASS_AGENT_HEURISTIC')
+            !$allowlisted
+            && !getenv('PHPJS_BYPASS_AGENT_HEURISTIC')
             && (strpos($source, '$262.agent.start') !== false
                 || strpos($source, '$262.agent.broadcast') !== false)
             && (
