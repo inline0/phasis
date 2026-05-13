@@ -240,10 +240,11 @@ jobs:
             builtins-lower-de)
               # The Sputnik decodeURI / decodeURIComponent A2.5_T1
               # fixtures run ~983K iterations each (~32s local
-              # tree-walker → ~96s on CI's 3x-slower runner). Bump to
-              # 180s so each isolated test fits comfortably; the rest
-              # of built-ins/d (Date) finishes in seconds.
-              TIMEOUT=180
+              # tree-walker → 96-200s on CI depending on runner load).
+              # Bump to 300s so each isolated test fits even on a busy
+              # runner; the rest of built-ins/d (Date) finishes in
+              # seconds, so the shard wall doesn't grow.
+              TIMEOUT=300
               ;;
           esac
           # Build --files-prefix / --files-exclude-prefix from optional
