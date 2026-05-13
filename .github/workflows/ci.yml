@@ -40,6 +40,10 @@ jobs:
             echo "composer install attempt $i failed; sleeping 10s..."
             sleep 10
           done
+          if [ ! -f vendor/autoload.php ]; then
+            echo "vendor/autoload.php missing after 3 install attempts; failing"
+            exit 1
+          fi
 
       - name: PHPStan
         run: php -d memory_limit=512M vendor/bin/phpstan analyse --memory-limit=512M

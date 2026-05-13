@@ -158,13 +158,21 @@ jobs:
       - name: Install dependencies
         # Wrap composer install in a 3-attempt retry: occasional
         # mirror flakes on GH runners have caused entire runs to fail
-        # at this step (run 25758154888 / 25759842734).
+        # at this step (run 25758154888 / 25759842734). Hard-exits if
+        # all attempts fail or if vendor/autoload.php is missing
+        # afterward — a silent failure here turns every chunk into a
+        # crash and every test into a phantom-block in the merge
+        # output (run 25768949070 exposed this gap).
         run: |
           for i in 1 2 3; do
             composer install --no-interaction --prefer-dist && break
             echo "composer install attempt $i failed; sleeping 10s..."
             sleep 10
           done
+          if [ ! -f vendor/autoload.php ]; then
+            echo "vendor/autoload.php missing after 3 install attempts; failing"
+            exit 1
+          fi
 
       - name: Check test262 submodule
         run: |
@@ -266,13 +274,21 @@ jobs:
       - name: Install dependencies
         # Wrap composer install in a 3-attempt retry: occasional
         # mirror flakes on GH runners have caused entire runs to fail
-        # at this step (run 25758154888 / 25759842734).
+        # at this step (run 25758154888 / 25759842734). Hard-exits if
+        # all attempts fail or if vendor/autoload.php is missing
+        # afterward — a silent failure here turns every chunk into a
+        # crash and every test into a phantom-block in the merge
+        # output (run 25768949070 exposed this gap).
         run: |
           for i in 1 2 3; do
             composer install --no-interaction --prefer-dist && break
             echo "composer install attempt $i failed; sleeping 10s..."
             sleep 10
           done
+          if [ ! -f vendor/autoload.php ]; then
+            echo "vendor/autoload.php missing after 3 install attempts; failing"
+            exit 1
+          fi
 
       - name: Download all shard artifacts
         uses: actions/download-artifact@v6

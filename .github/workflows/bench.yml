@@ -51,6 +51,10 @@ jobs:
             echo "composer install attempt $i failed; sleeping 10s..."
             sleep 10
           done
+          if [ ! -f vendor/autoload.php ]; then
+            echo "vendor/autoload.php missing after 3 install attempts; failing"
+            exit 1
+          fi
 
       - name: Run benchmark
         run: ./bin/bench-report --runs ${{ github.event.inputs.runs || '5' }}
