@@ -1510,37 +1510,53 @@ class TypedArrayConstructor
 
         // new TypedArray(buffer, byteOffset, length).
         if ($arg0 instanceof JsArrayBuffer) {
-            // Per spec: byteOffset = ToIndex(byteOffset).
+            // Per spec §23.2.5.1 InitializeTypedArrayFromArrayBuffer:
+            // AllocateTypedArray (which reads `constructor.prototype` via
+            // OrdinaryCreateFromConstructor) runs FIRST, before ToIndex on
+            // byteOffset / length. Force the proto getter to fire now —
+            // staging/sm/TypedArray/constructor-buffer-sequence asserts
+            // that a throwing prototype getter wins over a poisoned-value
+            // byteOffset or a detached-buffer check.
+            $resolvedProto = $getProto();
+
+            // Per spec InitializeTypedArrayFromArrayBuffer §23.2.5.1.2 step ordering:
+            //  step 2: offset = ToIndex(byteOffset)
+            //  step 3: if offset modulo elementSize ≠ 0 → RangeError
+            //  step 4: if length is not undefined, newLength = ToIndex(length)
+            //  step 5: if IsDetachedBuffer(buffer) → TypeError
+            //  step 6: range checks (offset + newLength * bpe vs bufLen)
+            //  step 11.a: if bufLen % bpe ≠ 0 → RangeError (length omitted, fixed buffer)
+
+            // step 2: byteOffset = ToIndex(byteOffset).
             $offsetArg = $args[1] ?? JsUndefined::instance();
             $byteOffset = TypeConversion::toIndex($offsetArg);
 
-            // Per spec: IsDetachedBuffer check after ToIndex(byteOffset).
+            // step 3: offset-divisibility check before IsDetached.
+            if ($byteOffset % $bpe !== 0) {
+                throw new RangeError("Start offset of {$typeName} should be a multiple of {$bpe}");
+            }
+
+            $lengthExplicit = isset($args[2]) && !$args[2] instanceof JsUndefined;
+
+            // step 4: ToIndex(length) before IsDetached. The valueOf()
+            // during ToIndex may detach the buffer; we re-check immediately
+            // after.
+            $length = null;
+            if ($lengthExplicit) {
+                $length = TypeConversion::toIndex($args[2]);
+            }
+
+            // step 5: IsDetachedBuffer check, after both coercions.
             if ($arg0->isDetached()) {
                 throw new TypeError(
                     'Cannot construct a typed array on a detached ArrayBuffer'
                 );
             }
 
-            if ($byteOffset % $bpe !== 0) {
-                throw new RangeError("Start offset of {$typeName} should be a multiple of {$bpe}");
-            }
-
             $bufLen = $arg0->getByteLength();
             $isResizable = $arg0->isResizable();
-            $lengthExplicit = isset($args[2]) && !$args[2] instanceof JsUndefined;
 
             if ($lengthExplicit) {
-                // Per spec step 13a: newLength = ToIndex(length).
-                // The valueOf() during ToIndex may detach the buffer, so
-                // re-check IsDetachedBuffer immediately after the coercion
-                // (test262 ctors-bigint/buffer-arg/length-to-number-detachbuffer).
-                $length = TypeConversion::toIndex($args[2]);
-                if ($arg0->isDetached()) {
-                    throw new TypeError(
-                        'Cannot construct a typed array on a detached ArrayBuffer'
-                    );
-                }
-
                 $newByteLength = $length * $bpe;
                 if ($byteOffset + $newByteLength > $bufLen) {
                     throw new RangeError('Invalid typed array length');
