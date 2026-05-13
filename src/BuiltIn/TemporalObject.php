@@ -4713,7 +4713,6 @@ class TemporalObject
                 $epochSecStr = bcsub($epochSecStr, '1', 0);
             }
             $epochSec = (int) $epochSecStr;
-            $hasNonZeroSubSec = $remainder !== '0';
             try {
                 $tzObj = self::resolveTimeZone($tz);
             } catch (\Throwable) {
@@ -4748,7 +4747,7 @@ class TemporalObject
                 $bound = min(max($epochSec, 0) + $maxSec, PHP_INT_MAX - $chunk);
                 while ($cur < $bound) {
                     $end = min($cur + $chunk, $bound);
-                    $transitions = $tzObj->getTransitions($cur, $end);
+                    $transitions = self::getTzTransitions($tz, $tzObj, $cur, $end);
                     if (count($transitions) > 1) {
                         for ($j = 1; $j < count($transitions); $j++) {
                             $t = $transitions[$j];
@@ -4768,32 +4767,35 @@ class TemporalObject
                     $cur = $end + 1;
                 }
             } else {
-                // Probing window must include the input second when
-                // ns has a sub-second remainder so "previous" can
-                // locate a transition that fired at the same second.
-                $startProbe = $hasNonZeroSubSec ? $epochSec : $epochSec - 1;
-                $cur = $startProbe;
+                // Probe window upper bound includes the input second
+                // unconditionally. Strict "earlier than $ns" is
+                // enforced by the full-nanosecond comparison below,
+                // not by the second-grain window cutoff. The previous
+                // version used a seconds-only predicate gated on
+                // hasNonZeroSubSec, which collapsed three distinct
+                // sub-second positions into two cases and let the
+                // next transition leak in for the +1ns case crossing
+                // a DST boundary (Europe/Berlin 2021 spring returned
+                // for an input at 2020 autumn + 1ns).
+                $cur = $epochSec;
                 $chunk = 200 * 365 * 86400;
                 $bound = max($epochSec - $maxSec, PHP_INT_MIN + $chunk);
                 while ($cur > $bound) {
                     $start = max($cur - $chunk, $bound);
-                    $transitions = $tzObj->getTransitions($start, $cur);
+                    $transitions = self::getTzTransitions($tz, $tzObj, $start, $cur);
                     if (count($transitions) > 1) {
                         $candidate = null;
                         for ($j = 1; $j < count($transitions); $j++) {
                             $t = $transitions[$j];
-                            $ts = $t['ts'];
-                            $isStrictlyEarlier = $hasNonZeroSubSec
-                                ? $ts <= $epochSec
-                                : $ts < $epochSec;
-                            if (!$isStrictlyEarlier) {
+                            $tsNs = bcmul((string) $t['ts'], '1000000000', 0);
+                            if (bccomp($tsNs, $ns, 0) >= 0) {
                                 continue;
                             }
                             $prev = $transitions[$j - 1];
                             if ($prev['offset'] === $t['offset']) {
                                 continue;
                             }
-                            $candidate = $ts;
+                            $candidate = $t['ts'];
                         }
                         if ($candidate !== null) {
                             $found = $candidate;
@@ -11056,6 +11058,60 @@ class TemporalObject
         }
 
         throw new RangeError("Invalid time zone: {$tz}");
+    }
+
+    /**
+     * Return zone transitions within the [$start, $end] window. When
+     * the zone is in the vendored tzdata snapshot bundle, consult the
+     * bundle for host-independent transition values (test262 probes
+     * specific historical and DST rows that lag on Ubuntu CI tzdata
+     * but match macOS and the test reference). Falls through to PHP's
+     * DateTimeZone::getTransitions for any zone not in the bundle.
+     *
+     * Output mirrors PHP's getTransitions shape: a synthetic
+     * state-at-start row first (ts = $start, with the active offset
+     * and isdst from the most recent earlier transition), followed by
+     * the actual transitions in (start, end]. Each row carries at
+     * minimum 'ts' (int), 'offset' (int), 'isdst' (bool).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function getTzTransitions(string $tz, \DateTimeZone $tzObj, int $start, int $end): array
+    {
+        static $bundle = null;
+        if ($bundle === null) {
+            $path = dirname(__DIR__, 2) . '/config/tzdata-snapshot.php';
+            $bundle = is_file($path) ? require $path : [];
+            if (!is_array($bundle)) {
+                $bundle = [];
+            }
+        }
+        // Resolve through the IANA link table so legacy names hit the
+        // same bundle entry as their canonical target.
+        $canon = self::ianaLinkCanonical($tz);
+        $lookup = $canon ?? $tz;
+        if (!isset($bundle[$lookup])) {
+            return $tzObj->getTransitions($start, $end);
+        }
+        $rows = $bundle[$lookup];
+        // Find the state-at-start row: the most recent transition at
+        // or before $start. Bundle rows are sorted ascending by ts.
+        $stateOffset = $rows[0]['offset'];
+        $stateIsDst = $rows[0]['isdst'];
+        $out = [];
+        foreach ($rows as $r) {
+            if ($r['ts'] <= $start) {
+                $stateOffset = $r['offset'];
+                $stateIsDst = $r['isdst'];
+                continue;
+            }
+            if ($r['ts'] > $end) {
+                break;
+            }
+            $out[] = ['ts' => $r['ts'], 'offset' => $r['offset'], 'isdst' => $r['isdst']];
+        }
+        array_unshift($out, ['ts' => $start, 'offset' => $stateOffset, 'isdst' => $stateIsDst]);
+        return $out;
     }
 
     /**

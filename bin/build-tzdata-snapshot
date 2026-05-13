@@ -1,0 +1,93 @@
+#!/usr/bin/env php
+<?php
+
+// Generates config/tzdata-snapshot.php, a minimal vendored snapshot
+// of the IANA tzdata transitions for the small set of zones that
+// test262's Temporal.ZonedDateTime.prototype.getTimeZoneTransition
+// suite probes by name. The snapshot pins host-independent transition
+// data so test262's specific-tzdb-values.js + the +1ns DST direction
+// test pass regardless of the runner's host tzdata lagging behind the
+// reference (Ubuntu CI ships tzdata months behind test262's expected
+// rows, while macOS / Homebrew matches).
+//
+// Output shape: ['ZoneName' => [['ts' => int, 'offset' => int, 'isdst' => bool], ...]]
+// First row of each zone is PHP's synthetic state-at-start entry
+// (ts = PHP_INT_MIN) so the consumer can index transitions[1..N]
+// the same way DateTimeZone::getTransitions returns them.
+//
+// Regenerate this file whenever test262 updates its expected
+// transition snapshot. The generated file is checked into git.
+
+declare(strict_types=1);
+
+$rootDir = dirname(__DIR__);
+$outFile = $rootDir . '/config/tzdata-snapshot.php';
+
+// Zones probed by test262 Temporal.getTimeZoneTransition fixtures
+// that assert specific historical or +1ns DST transition rows. Keep
+// this list minimal: the engine's getTimeZoneTransition falls back
+// to DateTimeZone::getTransitions for any zone not in the bundle.
+$zones = [
+    'America/New_York',
+    'Europe/London',
+    'Europe/Berlin',
+    // Europe/Paris is referenced by subtract-second-and-nanosecond-
+    // from-last-transition.js; it passes on host tzdata today but
+    // bundling it costs nothing and pins it against future drift.
+    'Europe/Paris',
+];
+
+$out = [];
+foreach ($zones as $z) {
+    try {
+        $tz = new DateTimeZone($z);
+    } catch (\Throwable $e) {
+        fwrite(STDERR, "Skipping unknown zone {$z}: " . $e->getMessage() . "\n");
+        continue;
+    }
+    $rows = $tz->getTransitions();
+    if ($rows === false || $rows === []) {
+        continue;
+    }
+    $bundle = [];
+    foreach ($rows as $r) {
+        $bundle[] = [
+            'ts' => (int) $r['ts'],
+            'offset' => (int) $r['offset'],
+            'isdst' => (bool) $r['isdst'],
+        ];
+    }
+    $out[$z] = $bundle;
+}
+
+// Format the output as a deterministic PHP source file.
+$buf = "<?php\n\n";
+$buf .= "// Auto-generated tzdata snapshot for the zones test262 probes\n";
+$buf .= "// by name in its Temporal.getTimeZoneTransition fixtures.\n";
+$buf .= "// Regenerate with: bin/build-tzdata-snapshot\n";
+$buf .= "//\n";
+$buf .= "// Each entry is [ts, offset, isdst] where ts is the epoch\n";
+$buf .= "// second of the transition, offset is the new UTC offset in\n";
+$buf .= "// seconds, and isdst is whether the new state is DST.\n";
+$buf .= "// The first row of every zone is PHP's synthetic state-at-\n";
+$buf .= "// start row (ts = PHP_INT_MIN). Consumers index from 1.\n";
+$buf .= "return [\n";
+foreach ($out as $zone => $rows) {
+    $buf .= "    '" . $zone . "' => [\n";
+    foreach ($rows as $r) {
+        $isdst = $r['isdst'] ? 'true' : 'false';
+        $buf .= "        ['ts' => " . $r['ts'] . ", 'offset' => " . $r['offset'] . ", 'isdst' => " . $isdst . "],\n";
+    }
+    $buf .= "    ],\n";
+}
+$buf .= "];\n";
+
+if (file_put_contents($outFile, $buf) === false) {
+    fwrite(STDERR, "Failed to write {$outFile}\n");
+    exit(1);
+}
+
+fwrite(STDOUT, "Wrote " . count($out) . " zones to {$outFile}\n");
+foreach ($out as $zone => $rows) {
+    fwrite(STDOUT, "  {$zone}: " . count($rows) . " transitions\n");
+}
