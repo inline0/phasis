@@ -6246,9 +6246,24 @@ class Interpreter
             // was reverted.)
         }
         // Link Symbol.iterator to Array.prototype[Symbol.iterator] if available.
+        // Resolve through this realm's globalEnv rather than JsArray's
+        // process-wide static so a sibling realm cannot leak its Array
+        // intrinsic into a cross-realm arguments object.
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
         $arrayIterFn = null;
-        $arrayProto = JsArray::getGlobalPrototype();
+        $arrayProto = null;
+        if ($this->globalEnv->has('Array')) {
+            $arrayCtor = $this->globalEnv->get('Array');
+            if ($arrayCtor instanceof JsObject) {
+                $protoCandidate = $arrayCtor->get('prototype');
+                if ($protoCandidate instanceof JsObject) {
+                    $arrayProto = $protoCandidate;
+                }
+            }
+        }
+        if ($arrayProto === null) {
+            $arrayProto = JsArray::getGlobalPrototype();
+        }
         if ($arrayProto !== null && $arrayProto->hasBySymbol($iterSym)) {
             $iterVal = $arrayProto->getBySymbol($iterSym);
             if ($iterVal instanceof JsFunction) {
