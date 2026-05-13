@@ -821,44 +821,295 @@ class StringPrototype
     }
 
     /**
-     * Apply mb_strtoupper / mb_strtolower while preserving CESU-8 lone-surrogate
-     * sequences (3-byte 0xED [0xA0-0xBF] [0x80-0xBF]). mb_* treats these as
-     * invalid UTF-8 and substitutes "?" — splitting around them and casing the
-     * surrounding valid UTF-8 segments individually keeps lone surrogates
-     * round-tripping through toUpperCase / toLowerCase.
+     * Apply Unicode 16.0.0 Default Case Conversion (per ECMA-262 toUpperCase
+     * and toLowerCase). Host mbstring / ICU 74 (Ubuntu CI) lags Unicode 16
+     * case mappings, so we bundle the authoritative BMP tables in
+     * UnicodeCaseTables and walk codepoints ourselves whenever the input
+     * contains non-ASCII bytes. Pure-ASCII strings keep the existing
+     * C-level fast path via strtoupper / strtolower.
+     *
+     * Lone-surrogate (CESU-8) byte sequences 0xED [0xA0-0xBF] [0x80-0xBF]
+     * are passed through unchanged. These are unpaired UTF-16 surrogates
+     * the lexer encoded into the UTF-8 string and they have no case
+     * mapping.
+     *
+     * Final_Sigma (Unicode 3.13 conditional, unconditional in locale-
+     * default toLowerCase) is implemented inline so that "ΕΣ" lowercases
+     * to "ες" rather than "εσ", matching the behaviour ICU produced when
+     * we delegated the whole string to mb_strtolower.
      */
     private static function caseFoldPreserveSurrogates(string $str, bool $upper): string
     {
         $len = strlen($str);
+        if ($len === 0) {
+            return '';
+        }
+
+        // ASCII fast path: if every byte is < 0x80, strtolower / strtoupper
+        // suffice and match the Unicode 16 mapping for U+0000..U+007F.
+        $nonAscii = false;
+        for ($i = 0; $i < $len; $i++) {
+            if (ord($str[$i]) >= 0x80) {
+                $nonAscii = true;
+                break;
+            }
+        }
+        if (!$nonAscii) {
+            return $upper ? strtoupper($str) : strtolower($str);
+        }
+
+        // Decode UTF-8 (with CESU-8 lone-surrogate pass-through) into an
+        // array of scalar code points. Lone surrogates are kept as their
+        // 0xD800..0xDFFF code-point value so we can re-encode them
+        // unchanged.
+        $cps = self::decodeUtf8WithSurrogates($str);
+        $n = count($cps);
+
         $result = '';
-        $segStart = 0;
-        $i = 0;
-        while ($i < $len) {
-            if (
-                ord($str[$i]) === 0xED
-                && $i + 2 < $len
-                && (ord($str[$i + 1]) & 0xE0) === 0xA0
-            ) {
-                if ($i > $segStart) {
-                    $seg = substr($str, $segStart, $i - $segStart);
-                    $result .= $upper
-                        ? mb_strtoupper($seg, 'UTF-8')
-                        : mb_strtolower($seg, 'UTF-8');
-                }
-                $result .= substr($str, $i, 3);
-                $i += 3;
-                $segStart = $i;
+        $table = $upper ? UnicodeCaseTables::UPPER : UnicodeCaseTables::LOWER;
+        for ($i = 0; $i < $n; $i++) {
+            $cp = $cps[$i];
+
+            // Pass through lone surrogates verbatim. No case mapping.
+            if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                $result .= self::encodeCesu8Surrogate($cp);
                 continue;
             }
+
+            // ASCII fast path inside the walk.
+            if ($cp < 0x80) {
+                if ($upper) {
+                    if ($cp >= 0x61 && $cp <= 0x7A) {
+                        $cp -= 0x20;
+                    }
+                } else {
+                    if ($cp >= 0x41 && $cp <= 0x5A) {
+                        $cp += 0x20;
+                    }
+                }
+                $result .= chr($cp);
+                continue;
+            }
+
+            // Final_Sigma: U+03A3 (capital sigma) lowercases to U+03C2
+            // when preceded by a sequence of one or more cased
+            // characters with intervening case-ignorable characters, and
+            // NOT followed by such a sequence. See SpecialCasing.txt and
+            // Unicode UAX #29.
+            if (!$upper && $cp === 0x03A3) {
+                if (self::isFinalSigmaContext($cps, $i)) {
+                    $result .= "\xCF\x82"; // U+03C2
+                    continue;
+                }
+            }
+
+            if (isset($table[$cp])) {
+                foreach ($table[$cp] as $outCp) {
+                    $result .= self::encodeUtf8($outCp);
+                }
+                continue;
+            }
+
+            // BMP codepoint with no entry in the bundled Unicode 16
+            // table: mapping is identity. Do NOT consult host
+            // mb_strtoupper / mb_strtolower because ICU may add spurious
+            // case pairs (e.g. U+A7CE <-> U+A7CF on ICU 78) that Unicode
+            // 16 does not recognise.
+            if ($cp < 0x10000) {
+                $result .= self::encodeUtf8($cp);
+                continue;
+            }
+
+            // Supplementary (non-BMP) codepoint outside the bundled BMP
+            // table. Fall back to host mb_* so SMP letters still
+            // case-map.
+            $ch = self::encodeUtf8($cp);
+            $result .= $upper
+                ? mb_strtoupper($ch, 'UTF-8')
+                : mb_strtolower($ch, 'UTF-8');
+        }
+
+        return $result;
+    }
+
+    /**
+     * Decode a UTF-8 byte string (potentially containing CESU-8 lone
+     * surrogates) into an array of scalar code points. Lone surrogates
+     * are preserved as their 0xD800..0xDFFF value.
+     *
+     * @return array<int, int>
+     */
+    private static function decodeUtf8WithSurrogates(string $str): array
+    {
+        $cps = [];
+        $len = strlen($str);
+        $i = 0;
+        while ($i < $len) {
+            $b0 = ord($str[$i]);
+            if ($b0 < 0x80) {
+                $cps[] = $b0;
+                $i++;
+                continue;
+            }
+            if (($b0 & 0xE0) === 0xC0 && $i + 1 < $len) {
+                $b1 = ord($str[$i + 1]);
+                $cps[] = (($b0 & 0x1F) << 6) | ($b1 & 0x3F);
+                $i += 2;
+                continue;
+            }
+            if (($b0 & 0xF0) === 0xE0 && $i + 2 < $len) {
+                $b1 = ord($str[$i + 1]);
+                $b2 = ord($str[$i + 2]);
+                $cps[] = (($b0 & 0x0F) << 12) | (($b1 & 0x3F) << 6) | ($b2 & 0x3F);
+                $i += 3;
+                continue;
+            }
+            if (($b0 & 0xF8) === 0xF0 && $i + 3 < $len) {
+                $b1 = ord($str[$i + 1]);
+                $b2 = ord($str[$i + 2]);
+                $b3 = ord($str[$i + 3]);
+                $cps[] = (($b0 & 0x07) << 18) | (($b1 & 0x3F) << 12)
+                    | (($b2 & 0x3F) << 6) | ($b3 & 0x3F);
+                $i += 4;
+                continue;
+            }
+            // Malformed byte: emit U+FFFD and advance.
+            $cps[] = 0xFFFD;
             $i++;
         }
-        if ($segStart < $len) {
-            $seg = substr($str, $segStart);
-            $result .= $upper
-                ? mb_strtoupper($seg, 'UTF-8')
-                : mb_strtolower($seg, 'UTF-8');
+        return $cps;
+    }
+
+    private static function encodeUtf8(int $cp): string
+    {
+        if ($cp < 0x80) {
+            return chr($cp);
         }
-        return $result;
+        if ($cp < 0x800) {
+            return chr(0xC0 | ($cp >> 6)) . chr(0x80 | ($cp & 0x3F));
+        }
+        if ($cp < 0x10000) {
+            return chr(0xE0 | ($cp >> 12))
+                . chr(0x80 | (($cp >> 6) & 0x3F))
+                . chr(0x80 | ($cp & 0x3F));
+        }
+        return chr(0xF0 | ($cp >> 18))
+            . chr(0x80 | (($cp >> 12) & 0x3F))
+            . chr(0x80 | (($cp >> 6) & 0x3F))
+            . chr(0x80 | ($cp & 0x3F));
+    }
+
+    /** CESU-8 encoding (3 bytes) for a U+D800..U+DFFF lone surrogate. */
+    private static function encodeCesu8Surrogate(int $cp): string
+    {
+        return chr(0xE0 | ($cp >> 12))
+            . chr(0x80 | (($cp >> 6) & 0x3F))
+            . chr(0x80 | ($cp & 0x3F));
+    }
+
+    /**
+     * Test whether the sigma at code-point index $i in $cps satisfies
+     * the Final_Sigma condition from Unicode SpecialCasing.txt:
+     *   Before: at least one cased character with intervening
+     *           case-ignorable characters.
+     *   After:  no cased character with intervening case-ignorable
+     *           characters.
+     *
+     * @param array<int, int> $cps
+     */
+    private static function isFinalSigmaContext(array $cps, int $i): bool
+    {
+        $hasBeforeCased = false;
+        for ($j = $i - 1; $j >= 0; $j--) {
+            $cp = $cps[$j];
+            if (self::isCaseIgnorable($cp)) {
+                continue;
+            }
+            if (self::isCased($cp)) {
+                $hasBeforeCased = true;
+            }
+            break;
+        }
+        if (!$hasBeforeCased) {
+            return false;
+        }
+        $n = count($cps);
+        for ($j = $i + 1; $j < $n; $j++) {
+            $cp = $cps[$j];
+            if (self::isCaseIgnorable($cp)) {
+                continue;
+            }
+            if (self::isCased($cp)) {
+                return false;
+            }
+            break;
+        }
+        return true;
+    }
+
+    /**
+     * Cased = derived property Cased (Lu | Ll | Lt | Other_Lowercase |
+     * Other_Uppercase). ASCII A-Z / a-z take the fast path; for BMP we
+     * trust the bundled Unicode 16 UPPER/LOWER tables (any codepoint
+     * with a non-identity case mapping is cased, plus U+0345 which is
+     * Other_Lowercase); for supplementary codepoints we defer to
+     * IntlChar::hasBinaryProperty(PROPERTY_CASED) when available.
+     */
+    private static function isCased(int $cp): bool
+    {
+        if (($cp >= 0x41 && $cp <= 0x5A) || ($cp >= 0x61 && $cp <= 0x7A)) {
+            return true;
+        }
+        if ($cp < 0x80) {
+            return false;
+        }
+        // U+0345 COMBINING GREEK YPOGEGRAMMENI: Other_Lowercase, Cased.
+        // Has no case mapping itself, so the bundled tables miss it.
+        if ($cp === 0x0345) {
+            return true;
+        }
+        if (
+            $cp < 0x10000
+            && (isset(UnicodeCaseTables::UPPER[$cp])
+                || isset(UnicodeCaseTables::LOWER[$cp]))
+        ) {
+            return true;
+        }
+        if (class_exists(\IntlChar::class)) {
+            return \IntlChar::hasBinaryProperty($cp, \IntlChar::PROPERTY_CASED);
+        }
+        return false;
+    }
+
+    /**
+     * Case_Ignorable = Mn | Me | Cf | Lm | Sk plus Word_Break
+     * {MidLetter, MidNumLet, Single_Quote}. The Final_Sigma rule only
+     * needs to skip combining marks (Mn/Me) and formatting (Cf) in
+     * practice for the SpiderMonkey-style fixtures; defer to IntlChar
+     * where available, with a small ASCII / common-codepoint shortcut.
+     */
+    private static function isCaseIgnorable(int $cp): bool
+    {
+        if ($cp === 0x0027 || $cp === 0x002E || $cp === 0x003A || $cp === 0x00B7) {
+            return true;
+        }
+        if (
+            $cp === 0x05F4 || $cp === 0x2018 || $cp === 0x2019
+            || $cp === 0x2024 || $cp === 0x2027 || $cp === 0xFE13
+            || $cp === 0xFE52 || $cp === 0xFE55 || $cp === 0xFF07
+            || $cp === 0xFF0E || $cp === 0xFF1A
+        ) {
+            return true;
+        }
+        if (class_exists(\IntlChar::class)) {
+            $gc = \IntlChar::charType($cp);
+            return $gc === \IntlChar::CHAR_CATEGORY_NON_SPACING_MARK
+                || $gc === \IntlChar::CHAR_CATEGORY_ENCLOSING_MARK
+                || $gc === \IntlChar::CHAR_CATEGORY_FORMAT_CHAR
+                || $gc === \IntlChar::CHAR_CATEGORY_MODIFIER_LETTER
+                || $gc === \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL;
+        }
+        return false;
     }
 
     private static function toLocaleLowerCase(): \Closure
