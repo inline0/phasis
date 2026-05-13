@@ -2682,9 +2682,24 @@ class TypedArrayConstructor
                             !$srcBuffer->isDetached()
                             && !$dstBuffer->isDetached()
                         ) {
-                            $srcData = $srcBuffer->getData();
-                            $bytes = substr($srcData, $srcOffset, $byteCount);
-                            $dstBuffer->writeBytes($dstOffset, $bytes);
+                            // Per spec §23.2.3.27 step 18.d: copy bytes
+                            // FORWARD one at a time so overlapping src/dst
+                            // regions in the same buffer (species-returned
+                            // view aliasing the source) match the spec's
+                            // "while targetByteIndex < limit" iteration
+                            // exactly. When buffers differ, no overlap is
+                            // possible — fall back to the bulk copy.
+                            if ($srcBuffer === $dstBuffer) {
+                                $data = $srcBuffer->getData();
+                                for ($k = 0; $k < $byteCount; $k++) {
+                                    $data[$dstOffset + $k] = $data[$srcOffset + $k];
+                                }
+                                $srcBuffer->setData($data);
+                            } else {
+                                $srcData = $srcBuffer->getData();
+                                $bytes = substr($srcData, $srcOffset, $byteCount);
+                                $dstBuffer->writeBytes($dstOffset, $bytes);
+                            }
                         }
                     } else {
                         for ($i = 0; $i < $copyCount; $i++) {
