@@ -65,7 +65,6 @@ class Test262Runner
         'staging/sm/TypedArray/map-and-filter.js',
         'staging/sm/TypedArray/slice-bitwise-same.js',
         'staging/sm/TypedArray/toLocaleString.js',
-        'staging/sm/extensions/cross-global-eval-is-indirect.js',
     ];
 
     /**

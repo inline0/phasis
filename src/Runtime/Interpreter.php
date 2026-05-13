@@ -2350,7 +2350,16 @@ class Interpreter
             } catch (ReferenceError) {
                 $callee = null;
             }
-            if ($callee instanceof JsFunction && $callee->getName() === 'eval' && $callee->isNative()) {
+            // Per spec 12.3.4.1 step 3.a.i: SameValue(func, %eval%) where
+            // %eval% is the *current realm's* eval intrinsic. If the eval
+            // binding has been reassigned to another realm's eval (e.g.
+            // `var eval = other.eval`), the call falls through to indirect
+            // eval, which executes in the callee realm's global scope.
+            $isCurrentRealmEval = $callee instanceof JsFunction
+                && $callee->getName() === 'eval'
+                && $callee->isNative()
+                && ($callee->realm === null || $callee->realm === $this->engineRealm);
+            if ($isCurrentRealmEval) {
                 // Per spec 12.3.4.1 step 3.a: evaluate all arguments (including
                 // spreads) to get argList, then use the first element as evalText.
                 // If argList is empty, return undefined.
