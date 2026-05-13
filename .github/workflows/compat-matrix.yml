@@ -237,6 +237,14 @@ jobs:
               # parts running in parallel under JOBS=4.
               TIMEOUT=600
               ;;
+            builtins-lower-de)
+              # The Sputnik decodeURI / decodeURIComponent A2.5_T1
+              # fixtures run ~983K iterations each (~32s local
+              # tree-walker → ~96s on CI's 3x-slower runner). Bump to
+              # 180s so each isolated test fits comfortably; the rest
+              # of built-ins/d (Date) finishes in seconds.
+              TIMEOUT=180
+              ;;
           esac
           # Build --files-prefix / --files-exclude-prefix from optional
           # matrix fields. Both are whitespace-separated so one shard can

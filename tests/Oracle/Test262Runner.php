@@ -119,22 +119,10 @@ class Test262Runner
         // V8 itself crashes on this fixture in some builds.
         'staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js'
             => 'Chinese-calendar uncommon-leap-month arithmetic not implemented',
-        // Sputnik UTF-8 sweep A2.5_T1 for decodeURI / decodeURIComponent.
-        // Pure-PHP fast paths in GlobalObject::specDecode + VM CALL bypass
-        // drop the ~983K-iter sweep to ~22s under PHP 8.5 tracing JIT,
-        // ~32s under the plain tree-walker locally. CI's runner is 3x
-        // slower than local (~96s for 32s of work) which exceeds the 90s
-        // chunk budget. Re-added to the blocklist; CI marked them as
-        // 'blocked' (chunk timeout) rather than 'skip' which counts the
-        // same way against compliance but is noisier. Local runs (with
-        // PHPJS_AUDIT_BYPASS_HOSTGAP=1) confirm the pure-PHP impl is
-        // spec-correct; spec semantics also covered by S15.1.3.1_A2.1..A2.4
-        // and the wider built-ins/decodeURI / decodeURIComponent suites
-        // which we pass.
-        'built-ins/decodeURI/S15.1.3.1_A2.5_T1.js'
-            => 'Sputnik 1M-iter decodeURI sweep exceeds CI 90s chunk budget despite optimization',
-        'built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js'
-            => 'Sputnik 1M-iter decodeURIComponent sweep exceeds CI 90s chunk budget despite optimization',
+        // (Sputnik UTF-8 sweep A2.5_T1 for decodeURI / decodeURIComponent
+        // is no longer blocked: the builtins-lower-de shard's TIMEOUT
+        // is bumped to 180s in .github/workflows/compat-matrix.yml so
+        // the isolated single-test chunks fit on CI's 3x-slower runner.)
         // SM TypedArray element-set ToNumber test: per typed-array
         // ctor (11 types) runs three 1e4/2e4 setter loops with a
         // valueOf-call counter, plus a 5-slot getter/setter object
