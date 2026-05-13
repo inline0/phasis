@@ -75,6 +75,30 @@ final class AgentHost
      */
     private array $waiting = [];
 
+    /**
+     * Worker fibers cooperatively suspended inside a busy-spin Atomics.load
+     * / compareExchange / exchange loop on a shared slot, waiting for any
+     * write to (buffer, index) to wake them. Filled by onLoadSpin, drained
+     * by onStoreNotify.
+     *
+     * @var list<array{buffer: JsSharedArrayBuffer, index: int, fiber: \Fiber}>
+     */
+    private array $spinSuspended = [];
+
+    /**
+     * Tracks the last value each worker fiber observed reading a given
+     * (buffer, index) slot. A second consecutive load returning the same
+     * value while inside the worker fiber is the signal that the fiber
+     * is spinning, so onLoadSpin suspends it until a write fires
+     * onStoreNotify for that slot.
+     *
+     * Keys: spl_object_id(fiber) . ':' . spl_object_id(buffer) . ':' . index
+     * Values: serialised "last value" string (numeric or BigInt).
+     *
+     * @var array<string, string>
+     */
+    private array $lastLoadValue = [];
+
     /** @var list<string> FIFO of reports from $262.agent.report. */
     private array $reports = [];
 
@@ -291,6 +315,14 @@ final class AgentHost
         AtomicsObject::setSyncNotifyHook(
             static fn(JsArrayBuffer $b, int $i, int $c): int => $host->onAtomicsNotify($b, $i, $c),
         );
+        AtomicsObject::setLoadSpinHook(
+            static fn(JsTypedArray $ta, int $i, JsValue $v): ?JsValue => $host->onLoadSpin($ta, $i, $v),
+        );
+        AtomicsObject::setStoreNotifyHook(
+            static function (JsTypedArray $ta, int $i) use ($host): void {
+                $host->onStoreNotify($ta, $i);
+            },
+        );
 
         // Expose a virtual-clock setTimeout. atomicsHelper.js gates its
         // own polyfill on `this.setTimeout === undefined`, so installing a
@@ -407,10 +439,14 @@ final class AgentHost
         AtomicsObject::setSyncWaitHook(null);
         AtomicsObject::setSyncNotifyHook(null);
         AtomicsObject::setWaitAsyncTimeoutHook(null);
+        AtomicsObject::setLoadSpinHook(null);
+        AtomicsObject::setStoreNotifyHook(null);
         \PhpJs\Value\JsPromise::setPostDrainHook(null);
         $this->pendingSources = [];
         $this->agents = [];
         $this->waiting = [];
+        $this->spinSuspended = [];
+        $this->lastLoadValue = [];
         $this->reports = [];
         $this->currentFiber = null;
         $this->callbackTarget = null;
@@ -499,6 +535,100 @@ final class AgentHost
         }
         $this->waiting = $remaining;
         return $woken;
+    }
+
+    /**
+     * Hook called by AtomicsObject::loadFn / compareExchangeFn /
+     * exchangeFn after reading the value from a shared slot. When called
+     * from inside a worker fiber and a second consecutive load on the
+     * same (buffer, index) returns the same value, suspend the fiber
+     * until onStoreNotify fires for that slot. The returned value is the
+     * value the caller should observe (either the freshly read value
+     * passed in, or the post-resume value).
+     */
+    public function onLoadSpin(JsTypedArray $ta, int $index, JsValue $value): ?JsValue
+    {
+        $fiber = $this->currentFiber;
+        if ($fiber === null) {
+            return null;
+        }
+        $buffer = $ta->getBuffer();
+        if (!$buffer instanceof JsSharedArrayBuffer) {
+            return null;
+        }
+
+        $key = spl_object_id($fiber) . ':' . spl_object_id($buffer) . ':' . $index;
+        $serial = self::serialiseAtomicValue($value);
+        $previous = $this->lastLoadValue[$key] ?? null;
+
+        if ($previous !== $serial) {
+            // First load on this slot (or value differs from last load):
+            // record + return as-is. The caller's loop will either exit
+            // or come back here, at which point the second consecutive
+            // identical load triggers the suspend below.
+            $this->lastLoadValue[$key] = $serial;
+            return null;
+        }
+
+        // Same value as last time: assume a busy spin and suspend. Do NOT
+        // shortcut the loop by returning a different value — the caller's
+        // operation already wrote (or skipped writing) before the hook
+        // fired, so we have to let the loop iterate again so it can call
+        // the atomic op afresh now that another agent has updated the
+        // slot. We therefore return the originally-observed value and
+        // clear the lastLoadValue tracker so the next iteration's first
+        // call re-records.
+        $this->spinSuspended[] = [
+            'buffer' => $buffer,
+            'index' => $index,
+            'fiber' => $fiber,
+        ];
+        unset($this->lastLoadValue[$key]);
+        \Fiber::suspend();
+        return null;
+    }
+
+    /**
+     * Hook called by AtomicsObject after every write to a shared slot.
+     * Wakes any worker fibers spin-suspended on the same (buffer, index).
+     */
+    public function onStoreNotify(JsTypedArray $ta, int $index): void
+    {
+        $buffer = $ta->getBuffer();
+        if (!$buffer instanceof JsSharedArrayBuffer) {
+            return;
+        }
+        if (count($this->spinSuspended) === 0) {
+            return;
+        }
+        $remaining = [];
+        $toResume = [];
+        foreach ($this->spinSuspended as $entry) {
+            if ($entry['buffer'] === $buffer && $entry['index'] === $index) {
+                $toResume[] = $entry['fiber'];
+                continue;
+            }
+            $remaining[] = $entry;
+        }
+        $this->spinSuspended = $remaining;
+        foreach ($toResume as $fiber) {
+            $this->runFiber($fiber, null);
+        }
+    }
+
+    /**
+     * Stringify an atomic slot value for fiber-load deduplication. Plain
+     * numbers and BigInts both reduce to a stable string.
+     */
+    private static function serialiseAtomicValue(JsValue $value): string
+    {
+        if ($value instanceof JsNumber) {
+            return 'n:' . $value->value;
+        }
+        if ($value instanceof \PhpJs\Value\JsBigInt) {
+            return 'b:' . $value->value;
+        }
+        return 'o:' . spl_object_id($value);
     }
 
     /**
@@ -618,6 +748,18 @@ final class AgentHost
      */
     private function drainTimedOutFibers(): void
     {
+        // First, surface any worker fibers still parked in a busy-spin
+        // load by resuming them so they observe the latest value. This
+        // lets a worker that's spinning while main has run out of writes
+        // make forward progress (e.g. by hitting an Atomics.wait that
+        // then gets resolved via the timeout path below).
+        if (count($this->spinSuspended) > 0) {
+            $entries = $this->spinSuspended;
+            $this->spinSuspended = [];
+            foreach ($entries as $entry) {
+                $this->runFiber($entry['fiber'], null);
+            }
+        }
         if (count($this->waiting) === 0) {
             return;
         }

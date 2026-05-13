@@ -322,24 +322,15 @@ class Test262Runner
         }
 
         // Tests that orchestrate multiple agents via the $262.agent host
-        // are simulated cooperatively (see AgentHost). Spin-loop on
-        // shared atomic and waitAsync patterns can't be simulated, so
-        // skip those. Everything else runs through the fiber simulator.
-        if (
-            !$allowlisted
-            && (strpos($source, '$262.agent.start') !== false
-                || strpos($source, '$262.agent.broadcast') !== false)
-            && preg_match(
-                '/while\s*\(\s*Atomics\.(load|compareExchange|exchange)\(/',
-                $source
-            ) === 1
-        ) {
-            return new TestResult(
-                $testPath,
-                TestStatus::Skip,
-                'Worker spin-loop on shared atomic needs preemptive scheduling',
-            );
-        }
+        // were previously skipped when they used spin-loop patterns on
+        // shared atomic slots (`while (Atomics.load/compareExchange/
+        // exchange(...))`). The AgentHost now installs cooperative
+        // load-spin and store-notify hooks (see onLoadSpin /
+        // onStoreNotify) so a worker fiber repeatedly reading the same
+        // value from a shared slot suspends until any agent writes to
+        // that slot. Set PHPJS_BYPASS_AGENT_HEURISTIC=1 to re-audit (it
+        // is currently a no-op since the skip branch is gone).
+
         // Multi-agent waitAsync tests now run through the Fiber simulator.
         // The infrastructure in AgentHost handles them: virtual-clock
         // setTimeout / clearTimeout, a post-microtask-drain hook that

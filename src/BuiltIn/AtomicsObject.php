@@ -78,6 +78,30 @@ class AtomicsObject
      */
     private static ?\Closure $waitAsyncTimeoutHook = null;
 
+    /**
+     * Optional hook invoked by Atomics.load / compareExchange / exchange
+     * after the value has been read (and any conditional write applied).
+     * The hook gets the typed array + index + the value that's about to
+     * be returned to the caller and can either return null (caller keeps
+     * the value as-is) or a fresh JsValue to substitute. The AgentHost
+     * uses this to cooperatively suspend a worker fiber that's busy-spin
+     * polling on a shared atomic slot until the main agent (or another
+     * fiber) writes a new value to that (buffer, index).
+     *
+     * @var \Closure(JsTypedArray, int, JsValue): ?JsValue|null
+     */
+    private static ?\Closure $loadSpinHook = null;
+
+    /**
+     * Optional hook invoked after every write to a shared atomic slot
+     * (store, exchange, successful compareExchange, add/sub/and/or/xor).
+     * The AgentHost uses this to wake any worker fibers that have been
+     * suspended in $loadSpinHook waiting for a write to the same slot.
+     *
+     * @var \Closure(JsTypedArray, int): void|null
+     */
+    private static ?\Closure $storeNotifyHook = null;
+
     public static function setSyncWaitHook(?\Closure $hook): void
     {
         self::$syncWaitHook = $hook;
@@ -91,6 +115,16 @@ class AtomicsObject
     public static function setWaitAsyncTimeoutHook(?\Closure $hook): void
     {
         self::$waitAsyncTimeoutHook = $hook;
+    }
+
+    public static function setLoadSpinHook(?\Closure $hook): void
+    {
+        self::$loadSpinHook = $hook;
+    }
+
+    public static function setStoreNotifyHook(?\Closure $hook): void
+    {
+        self::$storeNotifyHook = $hook;
     }
 
     /** Integer typed array type names that Atomics operates on. */
@@ -196,7 +230,14 @@ class AtomicsObject
         $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance());
         $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
 
-        return $ta->getIndex($index);
+        $value = $ta->getIndex($index);
+        if (self::$loadSpinHook !== null) {
+            $hookResult = (self::$loadSpinHook)($ta, $index, $value);
+            if ($hookResult instanceof JsValue) {
+                return $hookResult;
+            }
+        }
+        return $value;
     }
 
     /**
@@ -218,6 +259,10 @@ class AtomicsObject
         }
 
         $ta->setIndex($index, $value);
+
+        if (self::$storeNotifyHook !== null) {
+            (self::$storeNotifyHook)($ta, $index);
+        }
 
         return $coerced;
     }
@@ -253,6 +298,10 @@ class AtomicsObject
                 $ta->setIndex($index, JsNumber::of((float) $resultNum));
             }
 
+            if (self::$storeNotifyHook !== null) {
+                (self::$storeNotifyHook)($ta, $index);
+            }
+
             return $oldValue;
         };
     }
@@ -280,6 +329,16 @@ class AtomicsObject
 
         $ta->setIndex($index, $value);
 
+        if (self::$storeNotifyHook !== null) {
+            (self::$storeNotifyHook)($ta, $index);
+        }
+        if (self::$loadSpinHook !== null) {
+            $hookResult = (self::$loadSpinHook)($ta, $index, $oldValue);
+            if ($hookResult instanceof JsValue) {
+                return $hookResult;
+            }
+        }
+
         return $oldValue;
     }
 
@@ -298,6 +357,7 @@ class AtomicsObject
 
         // Read current value.
         $current = $ta->getIndex($index);
+        $didWrite = false;
 
         if ($isBigInt) {
             $expectedBig = TypeConversion::toBigInt($expected);
@@ -311,6 +371,7 @@ class AtomicsObject
             $expectedTruncBig = self::truncateBigIntForElementType($typeName, $expectedBig->value);
             if ($currentBig->value === $expectedTruncBig) {
                 $ta->setIndex($index, $replacementBig);
+                $didWrite = true;
             }
         } else {
             $expectedNum = (int) TypeConversion::toIntegerOrInfinity($expected);
@@ -325,6 +386,17 @@ class AtomicsObject
             $expectedTruncated = self::truncateForElementType($typeName, $expectedNum);
             if ($currentNum === $expectedTruncated) {
                 $ta->setIndex($index, JsNumber::of($replacementNum));
+                $didWrite = true;
+            }
+        }
+
+        if ($didWrite && self::$storeNotifyHook !== null) {
+            (self::$storeNotifyHook)($ta, $index);
+        }
+        if (self::$loadSpinHook !== null) {
+            $hookResult = (self::$loadSpinHook)($ta, $index, $current);
+            if ($hookResult instanceof JsValue) {
+                return $hookResult;
             }
         }
 
