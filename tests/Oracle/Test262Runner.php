@@ -368,21 +368,26 @@ class Test262Runner
         // (config/support.php), so widening the per-test budget here
         // does not steal time from neighbour tests.
         $timeLimit = (int) (getenv('PHPJS_TEST_TIME_LIMIT') ?: 30);
+        // SpiderMonkey DST cache stress (8 parts). Each part runs
+        // ~2.7M getTimezoneOffset calls. Local ~140s; CI shards take
+        // ~240s+ depending on runner load. The staging shard's chunk
+        // TIMEOUT is 600s, so give the per-test set_time_limit 540s
+        // to fit even slow CI runs.
         if (strpos($source, 'runDSTOffsetCachingTestsFraction') !== false) {
-            $timeLimit = max($timeLimit, 120);
+            $timeLimit = max($timeLimit, 540);
         }
+        // Sputnik decodeURI / decodeURIComponent ~1M-iter sweeps. CI
+        // runs them in the builtins-lower-de shard with TIMEOUT=300;
+        // per-test budget 270s.
         if (
             str_ends_with($testPath, '/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js')
             || str_ends_with($testPath, '/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js')
         ) {
-            $timeLimit = max($timeLimit, 75);
+            $timeLimit = max($timeLimit, 270);
         }
-        // SpiderMonkey JS-loop stress fixtures: ~30s+ local on the tree
-        // walker because of per-iteration call dispatch overhead. The
-        // staging shard in compat-matrix.yml gets TIMEOUT=300 and these
-        // tests are isolated into their own single-test chunks via
-        // config/support.php, so they have a 300s budget on CI (≈100s
-        // local equivalent) to run end-to-end.
+        // SpiderMonkey JS-loop stress fixtures: ~30s-100s local on the
+        // tree walker. Staging shard chunk TIMEOUT=600s; per-test
+        // budget 540s.
         $stressStaging = [
             '/staging/sm/expressions/nullish-coalescing.js',
             '/staging/sm/Array/toSpliced-dense.js',
@@ -392,7 +397,7 @@ class Test262Runner
         ];
         foreach ($stressStaging as $suffix) {
             if (str_ends_with($testPath, $suffix)) {
-                $timeLimit = max($timeLimit, 240);
+                $timeLimit = max($timeLimit, 540);
                 break;
             }
         }
