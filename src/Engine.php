@@ -747,13 +747,21 @@ class Engine
             // Per spec 22.2.3.1: IsRegExp check using @@match. If matcher is
             // undefined, fall back to whether the argument has the
             // [[RegExpMatcher]] internal slot (we use [[PCREPattern]] for
-            // that purpose).
+            // that purpose). Per spec, internal slots are NOT inherited
+            // through Proxy targets: a Proxy wrapping a regex does not
+            // itself have [[RegExpMatcher]]. Restrict the fallback to
+            // direct JsObject receivers so a proxy whose @@match handler
+            // returns undefined fails IsRegExp (spec sec-isregexp step 5).
             $patternIsRegExp = false;
             if ($arg0 instanceof \PhpJs\Value\JsObject) {
                 $matchSymbol = \PhpJs\BuiltIn\SymbolConstructor::match();
                 $matchProp = $arg0->getBySymbol($matchSymbol);
                 if ($matchProp instanceof \PhpJs\Value\JsUndefined) {
-                    $patternIsRegExp = $arg0->getOwnPropertyDescriptor('[[PCREPattern]]') !== null;
+                    if ($arg0 instanceof \PhpJs\Value\JsProxy) {
+                        $patternIsRegExp = false;
+                    } else {
+                        $patternIsRegExp = $arg0->getOwnPropertyDescriptor('[[PCREPattern]]') !== null;
+                    }
                 } else {
                     $patternIsRegExp = \PhpJs\Spec\TypeConversion::toBoolean($matchProp);
                 }
