@@ -4849,7 +4849,21 @@ class Interpreter
             // Non-constructable: generators can't be called with new.
             $fn->setNonConstructable();
         } else {
-            $proto = new JsObject();
+            // Resolve %Object.prototype% for THIS realm so a sibling
+            // Engine cannot leak its Object.prototype through the
+            // process-wide JsObject::$globalPrototype static. Test
+            // built-ins/Function/proto-from-ctor-realm-prototype
+            // asserts Object.getPrototypeOf(fn.prototype) ===
+            // realmA.Object.prototype when the Function was made in
+            // realmA via Reflect.construct.
+            $objProto = null;
+            if ($this->globalEnv->has('__ObjectPrototype__')) {
+                $candidate = $this->globalEnv->get('__ObjectPrototype__');
+                if ($candidate instanceof JsObject) {
+                    $objProto = $candidate;
+                }
+            }
+            $proto = new JsObject($objProto);
             // Per spec, constructor is writable, non-enumerable, configurable.
             $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
         }

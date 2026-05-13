@@ -53,7 +53,6 @@ class Test262Runner
      */
     private const CROSS_REALM_BLOCKLIST = [
         'annexB/built-ins/RegExp/prototype/compile/this-cross-realm-instance.js',
-        'built-ins/Function/proto-from-ctor-realm-prototype.js',
         'staging/sm/Reflect/set.js',
         'staging/sm/TypedArray/constructor-buffer-sequence.js',
         'staging/sm/TypedArray/every-and-some.js',
