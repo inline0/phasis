@@ -248,6 +248,11 @@ class JsTypedArray extends JsObject
 
     /**
      * Create a typed array from a length (allocates a new buffer).
+     *
+     * The allocated buffer's [[Prototype]] is the currently-active
+     * realm's %ArrayBuffer.prototype% rather than the process-wide
+     * static $defaultPrototype, which a later Engine install would
+     * otherwise overwrite cross-realm.
      */
     public static function fromLength(
         string $typeName,
@@ -255,8 +260,34 @@ class JsTypedArray extends JsObject
         ?JsObject $prototype = null,
     ): self {
         $bpe = self::TYPES[$typeName][0];
-        $buffer = new JsArrayBuffer($length * $bpe);
+        $bufferProto = self::resolveCurrentRealmArrayBufferProto();
+        $buffer = new JsArrayBuffer($length * $bpe, $bufferProto);
         return new self($typeName, $buffer, 0, $length, $prototype);
+    }
+
+    /**
+     * Look up the currently-active realm's %ArrayBuffer.prototype%
+     * intrinsic so internally-allocated buffers carry their owning
+     * realm's prototype chain. Returns null when no interpreter is
+     * bound (very early bootstrap); the JsArrayBuffer constructor
+     * falls back to the static default in that case.
+     */
+    private static function resolveCurrentRealmArrayBufferProto(): ?JsObject
+    {
+        $realm = \PhpJs\Engine::getCurrentRealm();
+        if ($realm === null) {
+            return null;
+        }
+        $env = $realm->getGlobalEnv();
+        if (!$env->has('ArrayBuffer')) {
+            return null;
+        }
+        $ab = $env->get('ArrayBuffer');
+        if (!$ab instanceof JsObject) {
+            return null;
+        }
+        $proto = $ab->get('prototype');
+        return $proto instanceof JsObject ? $proto : null;
     }
 
     /**
