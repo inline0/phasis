@@ -88,13 +88,6 @@ class Test262Runner
      * @var array<string, string>
      */
     private const HOST_GAP_BLOCKLIST = [
-        // Unicode 16.0.0 case-fold mappings (e.g. U+A7CF -> U+A7CE)
-        // require ICU >= 76. PHP's mbstring on macOS ships an older
-        // ICU; Node 22 also drops the same entries the SpiderMonkey
-        // generated fixture asserts. Pure-PHP fix needs an embedded
-        // Unicode case-fold table.
-        'staging/sm/String/string-upper-lower-mapping.js'
-            => 'Unicode 16 case-fold table not exposed by mbstring',
         // SpiderMonkey stress test: walks every Intl.supportedValuesOf
         // ("calendar") for 101 consecutive years (1950..2050), and for
         // each (calendar, year, month) tuple constructs a Temporal.
