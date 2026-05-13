@@ -2666,8 +2666,30 @@ class TypedArrayConstructor
                     // (possibly resized) source buffer.
                     $effectiveEnd = min($end, $currentLen);
                     $copyCount = max(0, $effectiveEnd - $begin);
-                    for ($i = 0; $i < $copyCount; $i++) {
-                        $result->setIndex($i, $this_->getIndex($begin + $i));
+                    // Per spec 23.2.3.27 step 18: when source and result
+                    // have the same element type, use CopyDataBlockBytes
+                    // (byte-for-byte). For float arrays this preserves
+                    // exact NaN bit patterns; setIndex's ToNumber path
+                    // would otherwise canonicalise SNaN to QNaN.
+                    if ($result->getTypeName() === $this_->getTypeName()) {
+                        $bpe = $this_->getBytesPerElement();
+                        $srcBuffer = $this_->getBuffer();
+                        $dstBuffer = $result->getBuffer();
+                        $srcOffset = $this_->getByteOffset() + $begin * $bpe;
+                        $dstOffset = $result->getByteOffset();
+                        $byteCount = $copyCount * $bpe;
+                        if (
+                            !$srcBuffer->isDetached()
+                            && !$dstBuffer->isDetached()
+                        ) {
+                            $srcData = $srcBuffer->getData();
+                            $bytes = substr($srcData, $srcOffset, $byteCount);
+                            $dstBuffer->writeBytes($dstOffset, $bytes);
+                        }
+                    } else {
+                        for ($i = 0; $i < $copyCount; $i++) {
+                            $result->setIndex($i, $this_->getIndex($begin + $i));
+                        }
                     }
                 }
                 return $result;

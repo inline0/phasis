@@ -60,7 +60,6 @@ class Test262Runner
         'staging/sm/TypedArray/every-and-some.js',
         'staging/sm/TypedArray/forEach.js',
         'staging/sm/TypedArray/map-and-filter.js',
-        'staging/sm/TypedArray/slice-bitwise-same.js',
     ];
 
     /**
