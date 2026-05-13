@@ -372,7 +372,12 @@ class ObjectConstructor
                     } else {
                         $builtinTag = 'Object';
                     }
-                } elseif (!$isProxy && $o->hasOwnProperty('[[IsDate]]')) {
+                } elseif (
+                    !$isProxy && (
+                        $o->getInternalProperty('[[IsDate]]') === true
+                        || $o->hasOwnProperty('[[IsDate]]')
+                    )
+                ) {
                     $builtinTag = 'Date';
                 } elseif (!$isProxy && $o->hasOwnProperty('[[PCREPattern]]')) {
                     $builtinTag = 'RegExp';

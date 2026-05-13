@@ -29,6 +29,11 @@ class DateConstructor
     {
         $proto = self::createPrototype();
 
+        // Cache %Date.prototype% so the bytecode VM's date.construct fast
+        // path (see vmFastNewDate) skips a prototype property lookup on
+        // every `new Date(...)`.
+        self::$datePrototype = $proto;
+
         $constructor = JsFunction::fromCallable('Date', function (JsValue $this_, array $args) use ($proto): JsValue {
             // Called as a function (without new): always return the current date string.
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
@@ -46,14 +51,20 @@ class DateConstructor
                 $this_->setPrototype($useProto);
             }
             $timeValue = self::constructTimeValue($args);
-            $this_->defineOwnProperty(
-                '[[DateValue]]',
-                PropertyDescriptor::data(JsNumber::of($timeValue), true, false, true),
-            );
-            $this_->defineOwnProperty('[[IsDate]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
+            // Internal slots bypass the property map: direct hashmap
+            // writes that the matching reads in isDateObject() /
+            // dateValueOf() pick up in O(1).
+            $this_->setInternalProperty('[[DateValue]]', $timeValue);
+            $this_->setInternalProperty('[[IsDate]]', true);
             return $this_;
         }, 7);
         $constructor->setConstructable();
+        // Tag for the bytecode VM's NEW_CALL fast path. Only the original
+        // Date constructor short-circuits; subclasses still flow through
+        // vmNewExpression so [[NewTarget]] / prototype semantics stay
+        // intact.
+        $constructor->builtinKind = 'date.construct';
+        self::$dateConstructor = $constructor;
 
         // Static methods.
         $constructor->defineOwnProperty('now', PropertyDescriptor::data(
@@ -126,8 +137,7 @@ class DateConstructor
 
             // If the argument is another Date object, copy its time value.
             if ($val instanceof JsObject && self::isDateObject($val)) {
-                $inner = $val->get('[[DateValue]]');
-                return $inner instanceof JsNumber ? $inner->value : NAN;
+                return self::dateValueOf($val);
             }
 
             $prim = TypeConversion::toPrimitive($val);
@@ -637,8 +647,49 @@ class DateConstructor
         if ($value instanceof \PhpJs\Value\JsProxy) {
             return false;
         }
+        // Fast path: the internal-slot table is a direct array lookup,
+        // significantly cheaper than walking the property map. Falls back
+        // to the property-keyed marker for Dates produced before the fast
+        // path existed (or via the slow init path).
+        if ($value->getInternalProperty('[[IsDate]]') === true) {
+            return true;
+        }
         $marker = $value->get('[[IsDate]]');
         return $marker instanceof JsBoolean && $marker->value;
+    }
+
+    /**
+     * Store the canonical [[DateValue]] internal slot. The SM dst-offset-
+     * caching stress harness drives this and {@see dateValueOf()} multiple
+     * millions of times per fraction, so both write and read are inlined
+     * as direct `$internalSlots[$name]` operations instead of full
+     * property-map descriptor sets/gets.
+     */
+    private static function setDateValue(JsObject $obj, float $tv): void
+    {
+        $obj->setInternalProperty('[[DateValue]]', $tv);
+    }
+
+    /**
+     * Read the canonical [[DateValue]] internal slot. Returns NAN when the
+     * slot has never been written (defensive; a Date constructed through
+     * any of the documented paths always has it).
+     */
+    private static function dateValueOf(JsObject $obj): float
+    {
+        $tv = $obj->getInternalProperty('[[DateValue]]');
+        if (is_float($tv) || is_int($tv)) {
+            return (float) $tv;
+        }
+        if ($tv instanceof JsNumber) {
+            return $tv->value;
+        }
+        // Legacy path: Dates constructed via setters that wrote
+        // [[DateValue]] as a real property descriptor still round-trip
+        // through here. Keep both fallbacks so existing flows stay
+        // correct.
+        $legacy = $obj->get('[[DateValue]]');
+        return $legacy instanceof JsNumber ? $legacy->value : NAN;
     }
 
     /** Extract the internal time value (ms since epoch) from a Date object. */
@@ -647,8 +698,7 @@ class DateConstructor
         if (!$this_ instanceof JsObject || !self::isDateObject($this_)) {
             throw new TypeError('this is not a Date object');
         }
-        $tv = $this_->get('[[DateValue]]');
-        return $tv instanceof JsNumber ? $tv->value : NAN;
+        return self::dateValueOf($this_);
     }
 
     /**
@@ -746,6 +796,118 @@ class DateConstructor
     }
 
     /**
+     * Cached %Date.prototype% snapshot used by the bytecode VM's
+     * date.construct fast path (see vmFastNewDate). Populated once at
+     * install time so `new Date(...)` does not pay a prototype property
+     * lookup per call.
+     */
+    private static ?JsObject $datePrototype = null;
+
+    /**
+     * Cached Date constructor reference. The fast path verifies the
+     * callee identity matches before short-circuiting; a subclass like
+     * `class Foo extends Date {}` must still flow through
+     * vmNewExpression so it picks up its own prototype.
+     */
+    private static ?JsFunction $dateConstructor = null;
+
+    /**
+     * VM fast path for `date.setTime(<number>)`. Returns null if the
+     * receiver is not a real Date (so the slow path can raise the
+     * spec-mandated TypeError) or the argument is not numeric (so
+     * ToNumber on a JS object can still run with proper observable
+     * side effects). The SM dst-offset-caching stress harness drives
+     * this with plain numbers; sliding past the closure dispatch and
+     * the property-key strncmp drops ~1µs per call.
+     *
+     * @param list<JsValue> $args
+     */
+    public static function vmFastDateSetTime(JsValue $receiver, array $args): ?JsValue
+    {
+        if (!$receiver instanceof JsObject) {
+            return null;
+        }
+        if ($receiver->getInternalProperty('[[IsDate]]') !== true) {
+            return null;
+        }
+        $arg = $args[0] ?? null;
+        if ($arg === null) {
+            $tv = NAN;
+        } elseif ($arg instanceof JsNumber) {
+            $tv = $arg->value;
+        } else {
+            return null;
+        }
+        $tv = self::timeClip($tv);
+        $receiver->setInternalProperty('[[DateValue]]', $tv);
+        return JsNumber::of($tv);
+    }
+
+    /**
+     * VM fast path for `date.getTimezoneOffset()` on a real Date.
+     * Returns null when the receiver does not match (slow path then
+     * raises the spec TypeError).
+     */
+    public static function vmFastDateGetTimezoneOffset(JsValue $receiver): ?JsValue
+    {
+        if (!$receiver instanceof JsObject) {
+            return null;
+        }
+        $tv = $receiver->getInternalProperty('[[DateValue]]');
+        if (!is_float($tv) && !is_int($tv)) {
+            // Legacy descriptor-stored value: defer to the slow path
+            // which knows how to unwrap both shapes.
+            return null;
+        }
+        if ($receiver->getInternalProperty('[[IsDate]]') !== true) {
+            return null;
+        }
+        $tvF = (float) $tv;
+        if (is_nan($tvF)) {
+            return JsNumber::of(NAN);
+        }
+        $offsetSec = self::localOffsetSeconds($tvF);
+        return JsNumber::of((float) (-$offsetSec / 60));
+    }
+
+    /**
+     * VM fast path for `new Date(<ms>)` with a numeric or absent
+     * argument. Returns null when the input does not match the fast
+     * shape so the VM falls back to vmNewExpression.
+     *
+     * The SM dst-offset-caching stress harness drives this ~2.7M times
+     * per fraction (4-deep loop over ~38 timestamps); skipping
+     * [[NewTarget]] property set/get/delete, the prototype lookup, and
+     * the callFunction trampoline collapses per-call cost to a single
+     * JsObject allocation plus two internal-slot writes.
+     *
+     * @param list<JsValue> $args
+     */
+    public static function vmFastNewDate(JsFunction $callee, array $args): ?JsObject
+    {
+        if ($callee !== self::$dateConstructor) {
+            return null;
+        }
+        $argc = count($args);
+        if ($argc === 0) {
+            $tv = self::nowMs();
+        } elseif ($argc === 1) {
+            $v = $args[0];
+            if (!$v instanceof JsNumber) {
+                return null;
+            }
+            $val = $v->value;
+            $tv = is_finite($val) ? self::timeClip($val) : NAN;
+        } else {
+            return null;
+        }
+        $obj = new JsObject(self::$datePrototype);
+        $obj->setInternalProperty('[[DateValue]]', $tv);
+        $obj->setInternalProperty('[[IsDate]]', true);
+        return $obj;
+    }
+
+    /**
      * Currently cached IANA name (matches date_default_timezone_get()).
      */
     private static ?string $tzCacheName = null;
@@ -795,6 +957,32 @@ class DateConstructor
     private static int $tzHotOff1 = 0;
 
     /**
+     * Direct ts-second to offset-second cache, populated lazily on every
+     * resolved lookup. The SM dst-offset-caching stress harness only
+     * queries ~80 distinct timestamps in its inner loop (38
+     * TEST_TIMESTAMPS plus their "opposite" mirrors plus 0 and
+     * MAX_UNIX_TIMET), so once warm every call is a single hashmap probe
+     * rather than a segment-bound check plus a binary search. Cleared
+     * lock-step with the transition cache whenever the active zone
+     * changes.
+     *
+     * Capped at TZ_DIRECT_CACHE_LIMIT entries: scripts that query a
+     * wide cloud of distinct timestamps (millisecond-resolution sweeps)
+     * must not balloon the cache. When the cap is hit we stop filling
+     * it and keep relying on the segment cache (still O(log N)).
+     *
+     * @var array<int, int>
+     */
+    private static array $tzDirectCache = [];
+
+    /**
+     * Soft cap on $tzDirectCache. 4096 comfortably covers the SM stress
+     * harness (~80 timestamps) and any plausible interactive workload
+     * while keeping memory bounded for pathological inputs.
+     */
+    private const TZ_DIRECT_CACHE_LIMIT = 4096;
+
+    /**
      * Default expansion of the transition window on a cache miss, in seconds.
      * 30 years on each side keeps the cached array small (~60 transitions for
      * any DST-using zone) while spanning the vast majority of the inputs the
@@ -825,6 +1013,7 @@ class DateConstructor
             self::$tzHotTo0 = PHP_INT_MIN;
             self::$tzHotFrom1 = PHP_INT_MAX;
             self::$tzHotTo1 = PHP_INT_MIN;
+            self::$tzDirectCache = [];
         }
         return self::$tzCacheObject;
     }
@@ -842,11 +1031,25 @@ class DateConstructor
     {
         $tsSec = (int) floor($tv / 1000);
 
-        // SpiderMonkey-style hot-window probes: most consecutive calls fall
-        // inside a recently seen constant-offset interval, so check those
-        // first before re-resolving the time zone or binary-searching the
-        // transition table.
+        // Tier 1: direct ts-second hashmap. The SM dst-offset-caching
+        // stress harness queries the same ~80 timestamps in a 4-deep
+        // loop ~2.7M times per fraction; once warm a single isset +
+        // array fetch answers every call. Validity tracks the segment
+        // cache: cleared in cachedLocalTimeZone() whenever the
+        // underlying zone changes.
+        if (isset(self::$tzDirectCache[$tsSec])) {
+            return self::$tzDirectCache[$tsSec];
+        }
+
+        // Tier 2: SpiderMonkey-style hot-window probes. A fresh
+        // timestamp that falls inside a recently observed constant-
+        // offset interval bypasses the binary search entirely. Useful
+        // when the direct map is dropped (e.g. on overflow) or before
+        // it warms.
         if ($tsSec >= self::$tzHotFrom0 && $tsSec <= self::$tzHotTo0) {
+            if (count(self::$tzDirectCache) < self::TZ_DIRECT_CACHE_LIMIT) {
+                self::$tzDirectCache[$tsSec] = self::$tzHotOff0;
+            }
             return self::$tzHotOff0;
         }
         if ($tsSec >= self::$tzHotFrom1 && $tsSec <= self::$tzHotTo1) {
@@ -861,6 +1064,9 @@ class DateConstructor
             self::$tzHotFrom0 = $f;
             self::$tzHotTo0 = $t;
             self::$tzHotOff0 = $o;
+            if (count(self::$tzDirectCache) < self::TZ_DIRECT_CACHE_LIMIT) {
+                self::$tzDirectCache[$tsSec] = $o;
+            }
             return $o;
         }
 
@@ -907,6 +1113,14 @@ class DateConstructor
         self::$tzHotFrom0 = $segFrom;
         self::$tzHotTo0 = $segTo;
         self::$tzHotOff0 = $offset;
+
+        // Memoize the exact ts in the direct cache so subsequent
+        // identical probes (the dominant pattern in tight loops) skip
+        // every tier above. Capped to keep memory bounded if the caller
+        // sweeps a wide range of distinct timestamps.
+        if (count(self::$tzDirectCache) < self::TZ_DIRECT_CACHE_LIMIT) {
+            self::$tzDirectCache[$tsSec] = $offset;
+        }
 
         return $offset;
     }
@@ -963,7 +1177,9 @@ class DateConstructor
         self::$tzCacheRangeTo = $to;
         // Boundary positions may have shifted; clear the hot slots so the
         // next probe re-records a segment that is now consistent with the
-        // refreshed transition table.
+        // refreshed transition table. The direct cache stays valid for the
+        // same tz (offsets at a specific ts are stable across window
+        // expansion), so we deliberately keep it across an expand.
         self::$tzHotFrom0 = PHP_INT_MAX;
         self::$tzHotTo0 = PHP_INT_MIN;
         self::$tzHotFrom1 = PHP_INT_MAX;
@@ -1061,10 +1277,23 @@ class DateConstructor
     {
         $proto = new JsObject();
 
-        $d = static fn (string $n, \Closure $fn, int $len = 0) => $proto->defineOwnProperty(
-            $n,
-            PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
-        );
+        // The dst-offset-caching harness drives these two methods through
+        // the bytecode VM's CALL_METHOD fast path, so tag them with a
+        // builtinKind that the VM can recognise without a string
+        // comparison on the method name. Other methods are left
+        // untagged.
+        $tag = static function (string $n, \Closure $fn, int $len, ?string $kind = null) use ($proto): void {
+            $jsFn = JsFunction::fromCallable($n, $fn, $len);
+            if ($kind !== null) {
+                $jsFn->builtinKind = $kind;
+            }
+            $proto->defineOwnProperty(
+                $n,
+                PropertyDescriptor::data($jsFn, true, false, true),
+            );
+        };
+        $d = static fn (string $n, \Closure $fn, int $len = 0) => $tag($n, $fn, $len);
+        $dKind = static fn (string $n, \Closure $fn, int $len, string $kind) => $tag($n, $fn, $len, $kind);
 
         // --- Getters (local time) ---
 
@@ -1141,7 +1370,7 @@ class DateConstructor
             return JsNumber::of((float) $ms);
         });
 
-        $d('getTimezoneOffset', function (JsValue $this_): JsValue {
+        $dKind('getTimezoneOffset', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
                 return JsNumber::of(NAN);
@@ -1155,7 +1384,7 @@ class DateConstructor
             $offsetSec = self::localOffsetSeconds($tv);
             // JS returns minutes with sign inverted.
             return JsNumber::of((float) (-$offsetSec / 60));
-        });
+        }, 0, 'date.getTimezoneOffset');
 
         // --- Getters (UTC) ---
 
@@ -1229,7 +1458,7 @@ class DateConstructor
 
         // --- Setters (local time) ---
 
-        $d('setTime', function (JsValue $this_, array $args): JsValue {
+        $dKind('setTime', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject || !self::isDateObject($this_)) {
                 throw new TypeError('this is not a Date object');
             }
@@ -1245,10 +1474,9 @@ class DateConstructor
                 $tv = TypeConversion::toNumber($arg0);
             }
             $tv = self::timeClip($tv);
-            $clamped = JsNumber::of($tv);
-            $this_->set('[[DateValue]]', $clamped);
-            return $clamped;
-        }, 1);
+            self::setDateValue($this_, $tv);
+            return JsNumber::of($tv);
+        }, 1, 'date.setTime');
 
         $d('setMilliseconds', function (JsValue $this_, array $args): JsValue {
             return self::setterLocal($this_, $args, 'ms');
@@ -1359,7 +1587,7 @@ class DateConstructor
             $yearArg = $args[0] ?? JsUndefined::instance();
             $y = TypeConversion::toNumber($yearArg);
             if (is_nan($y)) {
-                $this_->set('[[DateValue]]', JsNumber::of(NAN));
+                self::setDateValue($this_, NAN);
                 return JsNumber::of(NAN);
             }
             $yi = (int) $y;
@@ -1381,7 +1609,7 @@ class DateConstructor
                 (int) $local->format('j'),
             );
             $newTv = self::timeClip((float) $newDate->getTimestamp() * 1000 + $ms);
-            $this_->set('[[DateValue]]', JsNumber::of($newTv));
+            self::setDateValue($this_, $newTv);
             return JsNumber::of($newTv);
         }, 1);
 
@@ -1608,8 +1836,7 @@ class DateConstructor
                 if (!$this_ instanceof JsObject || !self::isDateObject($this_)) {
                     throw new TypeError('this is not a Date object');
                 }
-                $dvVal = $this_->get('[[DateValue]]');
-                $tv = ($dvVal instanceof JsNumber) ? $dvVal->value : NAN;
+                $tv = self::dateValueOf($this_);
                 if (is_nan($tv)) {
                     throw new \PhpJs\Exceptions\RangeError('Invalid time value');
                 }
@@ -1663,7 +1890,7 @@ class DateConstructor
         // If any coerced argument is NaN, the result is NaN
         foreach ($coerced as $c) {
             if (is_nan($c)) {
-                $this_->set('[[DateValue]]', JsNumber::of(NAN));
+                self::setDateValue($this_, NAN);
                 return JsNumber::of(NAN);
             }
         }
@@ -1763,11 +1990,11 @@ class DateConstructor
         // We avoid mktime because it misinterprets years 0-99 (adds 1900 or 2000).
         $ts = self::composeLocalTimestamp($y, $m, $dt, $h, $min, $sec);
         if ($ts === null) {
-            $this_->set('[[DateValue]]', JsNumber::of(NAN));
+            self::setDateValue($this_, NAN);
             return JsNumber::of(NAN);
         }
         $newTv = self::timeClip((float) $ts * 1000.0 + (float) $ms);
-        $this_->set('[[DateValue]]', JsNumber::of($newTv));
+        self::setDateValue($this_, $newTv);
         return JsNumber::of($newTv);
     }
 
@@ -1897,7 +2124,7 @@ class DateConstructor
             $monthIdx = $field === 'year' ? 1 : 0;
             $rawMonth = (float) ($coerced[$monthIdx] ?? $m);
             if (!is_finite($rawYear + floor($rawMonth / 12.0))) {
-                $this_->set('[[DateValue]]', JsNumber::of(NAN));
+                self::setDateValue($this_, NAN);
                 return JsNumber::of(NAN);
             }
         }
@@ -1905,11 +2132,11 @@ class DateConstructor
         // We avoid gmmktime because it misinterprets years 0-99 (adds 1900 or 2000).
         $ts = self::composeUtcTimestamp($y, $m, $dt, $h, $min, $sec);
         if ($ts === null) {
-            $this_->set('[[DateValue]]', JsNumber::of(NAN));
+            self::setDateValue($this_, NAN);
             return JsNumber::of(NAN);
         }
         $newTv = self::timeClip((float) $ts * 1000.0 + (float) $ms);
-        $this_->set('[[DateValue]]', JsNumber::of($newTv));
+        self::setDateValue($this_, $newTv);
         return JsNumber::of($newTv);
     }
 

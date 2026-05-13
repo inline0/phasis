@@ -1355,6 +1355,27 @@ final class VM
                             $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
                             $callee = $stack[$base - 1];
                             $sp = $base - 1;
+                            // Fast path for `new Date(<number>)`. The SM
+                            // dst-offset-caching stress harness builds
+                            // millions of throwaway Date objects per
+                            // fraction; routing them through the full
+                            // [[NewTarget]] + callFunction trampoline
+                            // dominated the inner-loop cost. The helper
+                            // returns null when the shape does not
+                            // match, so subclass / string / multi-arg
+                            // construction still flows through the
+                            // canonical vmNewExpression path.
+                            if (
+                                $callee instanceof JsFunction
+                                && $callee->builtinKind === 'date.construct'
+                            ) {
+                                $fastDate = \PhpJs\BuiltIn\DateConstructor::vmFastNewDate($callee, $args);
+                                if ($fastDate !== null) {
+                                    $stack[$sp++] = $fastDate;
+                                    $pc += 2;
+                                    break;
+                                }
+                            }
                             $stack[$sp++] = $this->interp->vmNewExpression($callee, $args, $env);
                             $pc += 2;
                             break;
@@ -1426,6 +1447,29 @@ final class VM
                                 }
                             }
                             $kind = $method->builtinKind;
+                            // Date.prototype hot paths used by the SM
+                            // dst-offset-caching stress harness. Both
+                            // helpers return null when the receiver
+                            // shape does not match, in which case the
+                            // dispatch falls through to the normal
+                            // callFunction path.
+                            if ($kind !== null && $kind[0] === 'd' && str_starts_with($kind, 'date.')) {
+                                if ($kind === 'date.getTimezoneOffset') {
+                                    $fast = \PhpJs\BuiltIn\DateConstructor::vmFastDateGetTimezoneOffset($receiver);
+                                    if ($fast !== null) {
+                                        $stack[$sp++] = $fast;
+                                        $pc += 2;
+                                        break;
+                                    }
+                                } elseif ($kind === 'date.setTime') {
+                                    $fast = \PhpJs\BuiltIn\DateConstructor::vmFastDateSetTime($receiver, $args);
+                                    if ($fast !== null) {
+                                        $stack[$sp++] = $fast;
+                                        $pc += 2;
+                                        break;
+                                    }
+                                }
+                            }
                             // String.prototype.split inline lives in
                             // a helper so the dispatch-loop body stays
                             // small enough for PHP 8.5's tracing JIT

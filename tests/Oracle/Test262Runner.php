@@ -163,10 +163,22 @@ class Test262Runner
         // SpiderMonkey DST-offset-cache stress test (split into 8
         // parts). Each part is an O(n^4) probe of the canonical DST
         // cache (~38 timestamps to the 4th power = 2M cache hits per
-        // part). Local pass time ~240s/part on a 120s-per-test budget;
-        // CI is 3x slower so even one part dwarfs the 90s chunk
-        // deadline. DST behaviour is covered by intl402/DateTimeFormat
-        // and built-ins/Date tests, which we pass.
+        // part). After landing the direct-hashmap DST cache (~80
+        // distinct timestamps; O(1) per lookup), the [[DateValue]] /
+        // [[IsDate]] internal-slot migration that bypasses the
+        // PropertyMap, and the bytecode VM's date.construct /
+        // date.setTime / date.getTimezoneOffset fast paths in
+        // DateConstructor::vmFastNewDate + vmFastDateSetTime +
+        // vmFastDateGetTimezoneOffset, local pass time fell from
+        // ~240s/part to ~130s/part. The residual cost is JS-level
+        // function-dispatch overhead x 2.7M calls per fraction
+        // (tzOffsetFromUnixTimestamp + clearDSTOffsetCache + assertEq
+        // x 4 per inner iter), which the tree-walking VM cannot
+        // amortize further without deeper engine work. CI's 3x
+        // slowdown still puts each part at ~390s wall, beyond the 90s
+        // chunk budget. DST behaviour is covered by
+        // intl402/DateTimeFormat and built-ins/Date tests, which we
+        // pass.
         'staging/sm/Date/dst-offset-caching-1-of-8.js'
             => 'SM O(n^4) DST cache stress exceeds chunk budget',
         'staging/sm/Date/dst-offset-caching-2-of-8.js'
