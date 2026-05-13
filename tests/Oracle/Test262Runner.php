@@ -1641,16 +1641,142 @@ PHP;
                 $assertObj->set('_isSameValue', $isSameValueFn);
                 $assertObj->set('sameValue', $sameValueFn);
                 $assertObj->set('notSameValue', $notSameValueFn);
-                // Only install deepEqual if the harness has already defined
-                // it (i.e. deepEqual.js was loaded via the test's includes).
-                // Otherwise leave the slot empty so a test that does
-                // `assert.deepEqual` without the include fails the same way
-                // it does in V8 (ReferenceError on undefined call).
+                // The native deepEqual / compareArray shims only handle the
+                // TypedArray-vs-TypedArray and Array-vs-Array fast paths the
+                // stress fixtures hit; for everything else (Map, Set, plain
+                // Object, arguments-object, BigInt-Symbol mixes) they would
+                // produce wrong results or wrong error messages. Wrap them
+                // so the native path returns when it can confirm equality;
+                // on any unknown shape or inequality, delegate to the JS-
+                // defined harness function (kept under _origDeepEqual /
+                // _origCompareArray) so the error message format matches
+                // exactly what the harness self-tests assert.
                 if ($assertObj->has('deepEqual')) {
-                    $assertObj->set('deepEqual', $deepEqualFn);
+                    $origDeepEqual = $assertObj->get('deepEqual');
+                    if (!$origDeepEqual instanceof \PhpJs\Value\JsFunction) {
+                        $origDeepEqual = null;
+                    } else {
+                        $assertObj->set('_origDeepEqual', $origDeepEqual);
+                    }
+                    $wrappedDeepEqual = \PhpJs\Value\JsFunction::fromCallable(
+                        'deepEqual',
+                        function (
+                            \PhpJs\Value\JsValue $thisValue,
+                            array $args,
+                        ) use (
+                            $deepEqualNative,
+                            $origDeepEqual,
+                            $assertObj
+                        ): \PhpJs\Value\JsValue {
+                            $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                            $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                            // Only consume the native fast path when both
+                            // operands are shapes the native walker fully
+                            // understands (TypedArray pair or plain Array
+                            // pair with primitive-only entries at this
+                            // level). Anything else routes to the JS impl.
+                            $useFastPath = (
+                                ($actual instanceof \PhpJs\Value\JsTypedArray
+                                    && $expected instanceof \PhpJs\Value\JsTypedArray)
+                                || ($actual instanceof \PhpJs\Value\JsArray
+                                    && $expected instanceof \PhpJs\Value\JsArray)
+                            );
+                            if ($useFastPath && $deepEqualNative($actual, $expected)) {
+                                return \PhpJs\Value\JsUndefined::instance();
+                            }
+                            // Fallback: call the JS-defined assert.deepEqual
+                            // so the error-format and edge-case semantics
+                            // (Map, Set, Symbol, circular, ...) match the
+                            // harness spec exactly.
+                            if ($origDeepEqual === null) {
+                                return \PhpJs\Value\JsUndefined::instance();
+                            }
+                            return $origDeepEqual->call($assertObj, $args);
+                        },
+                        3,
+                    );
+                    // Forward any own properties the harness attached to the
+                    // original deepEqual (e.g. `_compare`, `format`) so that
+                    // tests like deepEqual-mapset that call them keep working.
+                    if ($origDeepEqual !== null) {
+                        foreach ($origDeepEqual->ownKeys() as $k) {
+                            if (in_array($k, ['name', 'length', 'caller', 'callee', 'arguments', 'prototype'], true)) {
+                                continue;
+                            }
+                            $wrappedDeepEqual->set($k, $origDeepEqual->get($k));
+                        }
+                    }
+                    $assertObj->set('deepEqual', $wrappedDeepEqual);
                 }
                 if ($assertObj->has('compareArray')) {
-                    $assertObj->set('compareArray', $compareArrayFn);
+                    $origCompareArray = $assertObj->get('compareArray');
+                    if (!$origCompareArray instanceof \PhpJs\Value\JsFunction) {
+                        $origCompareArray = null;
+                    } else {
+                        $assertObj->set('_origCompareArray', $origCompareArray);
+                    }
+                    $wrappedCompareArray = \PhpJs\Value\JsFunction::fromCallable(
+                        'compareArray',
+                        function (
+                            \PhpJs\Value\JsValue $thisValue,
+                            array $args,
+                        ) use (
+                            $isSameValueNative,
+                            $origCompareArray,
+                            $assertObj
+                        ): \PhpJs\Value\JsValue {
+                            $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                            $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                            // Same fast path constraints as deepEqual:
+                            // dense JsArray vs dense JsArray of equal
+                            // length and primitive entries. Anything else
+                            // routes to the JS-defined assert.compareArray
+                            // so nullish checks, format(), and the message
+                            // template stay byte-identical to the harness.
+                            if (
+                                $actual instanceof \PhpJs\Value\JsArray
+                                && $expected instanceof \PhpJs\Value\JsArray
+                            ) {
+                                $aLen = $actual->getLength();
+                                $bLen = $expected->getLength();
+                                if ($aLen === $bLen) {
+                                    $allMatch = true;
+                                    for ($i = 0; $i < $aLen; $i++) {
+                                        $av = $actual->get((string) $i);
+                                        $bv = $expected->get((string) $i);
+                                        if (
+                                            $av instanceof \PhpJs\Value\JsObject
+                                            || $bv instanceof \PhpJs\Value\JsObject
+                                        ) {
+                                            $allMatch = false;
+                                            break;
+                                        }
+                                        if (!$isSameValueNative($av, $bv)) {
+                                            $allMatch = false;
+                                            break;
+                                        }
+                                    }
+                                    if ($allMatch) {
+                                        return \PhpJs\Value\JsUndefined::instance();
+                                    }
+                                }
+                            }
+                            if ($origCompareArray === null) {
+                                return \PhpJs\Value\JsUndefined::instance();
+                            }
+                            return $origCompareArray->call($assertObj, $args);
+                        },
+                        3,
+                    );
+                    if ($origCompareArray !== null) {
+                        foreach ($origCompareArray->ownKeys() as $k) {
+                            if (in_array($k, ['name', 'length', 'caller', 'callee', 'arguments', 'prototype'], true)) {
+                                continue;
+                            }
+                            $wrappedCompareArray->set($k, $origCompareArray->get($k));
+                        }
+                    }
+                    $assertObj->set('compareArray', $wrappedCompareArray);
                 }
             }
         }
