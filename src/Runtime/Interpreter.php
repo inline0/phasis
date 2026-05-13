@@ -20541,7 +20541,7 @@ class Interpreter
                     $j++;
                     continue;
                 }
-                if (\PhpJs\Regex\FoldTable::fold($cp) !== null) {
+                if (\PhpJs\Regex\FoldTable::participates($cp)) {
                     $hasUnicode16FoldCodepoint = true;
                     break;
                 }
@@ -20572,7 +20572,7 @@ class Interpreter
      */
     private static function isUnicode16FoldCodepoint(int $cp): bool
     {
-        return \PhpJs\Regex\FoldTable::fold($cp) !== null;
+        return \PhpJs\Regex\FoldTable::participates($cp);
     }
 
     /**
