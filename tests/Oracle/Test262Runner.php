@@ -368,52 +368,15 @@ class Test262Runner
                 'Worker spin-loop on shared atomic needs preemptive scheduling',
             );
         }
-        // Multi-agent waitAsync tests need cross-fiber microtask scheduling
-        // we don't yet have: the .then(async (agentCount) => {...}) handler
-        // body runs in an async-arrow Fiber, but the polled getReportAsync
-        // setTimeout(loop, 1000) chain restarts itself when an early
-        // getReport call sees an empty report queue, and the resume path
-        // out of the second `await getReportAsync()` re-enters the polling
-        // loop instead of letting $DONE fire. The AgentHost now provides:
-        //   - a virtual-clock setTimeout / clearTimeout (bypasses the
-        //     atomicsHelper.js Date.now polyfill spin) — see install()
-        //   - a post-microtask-drain hook that fires due timers and
-        //     restarts the drain loop — see advanceVirtualClock()
-        //   - an Atomics.waitAsync timeout hook so a worker-side
-        //     waitAsync(... TIMEOUT) doesn't race-resolve as "timed-out"
-        //     before main can call notify — see AtomicsObject::setWaitAsyncTimeoutHook
-        // That covers the setTimeout half but the remaining gap is in the
-        // engine's evalAwaitExpression: when an async arrow is resumed
-        // via the .then-attached resume Fiber and its body issues another
-        // await, the fiber is the right one to suspend but the post-drain
-        // hook can no longer fire the next setTimeout from outside the
-        // chain. Until that's resolved we keep the skip in place rather
-        // than let these tests infinite-loop.
-        if (
-            !$allowlisted
-            && !getenv('PHPJS_BYPASS_AGENT_HEURISTIC')
-            && (strpos($source, '$262.agent.start') !== false
-                || strpos($source, '$262.agent.broadcast') !== false)
-            && (
-                strpos($source, 'waitAsync') !== false
-                || strpos($source, 'getReportAsync') !== false
-                || strpos($source, 'safeBroadcastAsync') !== false
-            )
-        ) {
-            // Set PHPJS_BYPASS_AGENT_HEURISTIC=1 to exercise the multi-agent
-            // waitAsync path during local development. Most of these tests
-            // still hang or fail because of a pre-existing JsToPhp bailout
-            // double-call quirk (a non-numeric `let r = fn()` inside a hot
-            // function runs `fn()` twice: once on the compiled fast path
-            // before bailout, once in the tree-walker fallback). The
-            // evalAwaitExpression fix in this branch unblocks the suspension
-            // path itself; the residual hang is unrelated.
-            return new TestResult(
-                $testPath,
-                TestStatus::Skip,
-                'Multi-agent waitAsync needs cross-fiber microtask scheduling',
-            );
-        }
+        // Multi-agent waitAsync tests now run through the Fiber simulator.
+        // The infrastructure in AgentHost handles them: virtual-clock
+        // setTimeout / clearTimeout, a post-microtask-drain hook that
+        // advances time and fires due timers, and an Atomics.waitAsync
+        // timeout hook so a worker-side waitAsync(... TIMEOUT) doesn't
+        // race-resolve as "timed-out" before main can call notify. The
+        // residual JsToPhp double-call quirk that previously caused these
+        // to hang was fixed by bail-on-let-with-callExpr (cd2b265), so
+        // the heuristic skip is no longer needed.
 
         // Audited cross-realm blocklist: only these specific paths
         // genuinely depend on multi-realm semantics our single-realm
