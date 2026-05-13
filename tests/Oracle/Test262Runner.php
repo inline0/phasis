@@ -340,7 +340,8 @@ class Test262Runner
         // chain. Until that's resolved we keep the skip in place rather
         // than let these tests infinite-loop.
         if (
-            (strpos($source, '$262.agent.start') !== false
+            !getenv('PHPJS_BYPASS_AGENT_HEURISTIC')
+            && (strpos($source, '$262.agent.start') !== false
                 || strpos($source, '$262.agent.broadcast') !== false)
             && (
                 strpos($source, 'waitAsync') !== false
@@ -348,6 +349,14 @@ class Test262Runner
                 || strpos($source, 'safeBroadcastAsync') !== false
             )
         ) {
+            // Set PHPJS_BYPASS_AGENT_HEURISTIC=1 to exercise the multi-agent
+            // waitAsync path during local development. Most of these tests
+            // still hang or fail because of a pre-existing JsToPhp bailout
+            // double-call quirk (a non-numeric `let r = fn()` inside a hot
+            // function runs `fn()` twice: once on the compiled fast path
+            // before bailout, once in the tree-walker fallback). The
+            // evalAwaitExpression fix in this branch unblocks the suspension
+            // path itself; the residual hang is unrelated.
             return new TestResult(
                 $testPath,
                 TestStatus::Skip,
@@ -1033,10 +1042,10 @@ PHP;
             // helpers pay only the parse cost.
             foreach (
                 [
-                'sm/non262-shell.js',
-                'sm/non262-TypedArray-shell.js',
-                'sm/non262-Reflect-shell.js',
-                'compareArray.js',
+                    'sm/non262-shell.js',
+                    'sm/non262-TypedArray-shell.js',
+                    'sm/non262-Reflect-shell.js',
+                    'compareArray.js',
                 ] as $shell
             ) {
                 try {
