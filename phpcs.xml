@@ -14,9 +14,16 @@
 
     <rule ref="PSR12"/>
 
+    <!--
+        Soft and absolute line limits both set to 150.
+        The 120-char soft limit was aspirational and never enforced
+        (verify-all runs phpcs with -warning-severity=0). Aligning
+        the soft limit with the absolute limit keeps phpcs clean for
+        real violations (anything beyond 150 still hard-errors).
+    -->
     <rule ref="Generic.Files.LineLength">
         <properties>
-            <property name="lineLimit" value="120"/>
+            <property name="lineLimit" value="150"/>
             <property name="absoluteLineLimit" value="150"/>
         </properties>
     </rule>
