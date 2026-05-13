@@ -6362,7 +6362,7 @@ class Parser
         }
         $literal = new Literal($token->location, $token->value, $token->value, verbatim: $verbatim);
         if ($token->rawValue === 'legacy-octal') {
-            $this->stringsWithLegacyOctal->attach($literal);
+            $this->stringsWithLegacyOctal->offsetSet($literal, null);
         }
         return $literal;
     }
@@ -6662,7 +6662,7 @@ class Parser
         }
 
         // Mark the expression as parenthesized so IsIdentifierRef returns false.
-        $this->parenthesized->attach($expr);
+        $this->parenthesized->offsetSet($expr, null);
 
         return $expr;
     }
@@ -6911,7 +6911,7 @@ class Parser
         $this->expect(TokenType::RightBracket);
         $expr = new ArrayExpression($location, $elements);
         if ($trailingCommaAfterRest) {
-            $this->arrayExpressionsWithTrailingCommaAfterRest->attach($expr);
+            $this->arrayExpressionsWithTrailingCommaAfterRest->offsetSet($expr, null);
         }
         return $expr;
     }
