@@ -1105,8 +1105,9 @@ PHP;
                 ) use ($childEngine): \PhpJs\Value\JsValue {
                     return $childEngine->getInterpreter()->callFunction($fn, $thisValue, $args);
                 });
+                $result = \PhpJs\Value\JsUndefined::instance();
                 try {
-                    $childEngine->getInterpreter()->execute(
+                    $result = $childEngine->getInterpreter()->execute(
                         (new \PhpJs\Parser\Parser($src))->parse(),
                     );
                     \PhpJs\Value\JsPromise::drainMicrotasks();
@@ -1119,7 +1120,9 @@ PHP;
                         \PhpJs\Value\JsFunction::setInterpreterInstance($prevInstance);
                     }
                 }
-                return \PhpJs\Value\JsUndefined::instance();
+                return $result instanceof \PhpJs\Value\JsValue
+                    ? $result
+                    : \PhpJs\Value\JsUndefined::instance();
             },
         );
         $wrapper->set('evalScript', $evalScriptFn);
