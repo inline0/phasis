@@ -61,7 +61,6 @@ class Test262Runner
         'staging/sm/TypedArray/constructor-buffer-sequence.js',
         'staging/sm/TypedArray/every-and-some.js',
         'staging/sm/TypedArray/forEach.js',
-        'staging/sm/TypedArray/iterator.js',
         'staging/sm/TypedArray/map-and-filter.js',
         'staging/sm/TypedArray/slice-bitwise-same.js',
         'staging/sm/TypedArray/toLocaleString.js',
