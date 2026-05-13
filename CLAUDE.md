@@ -98,7 +98,7 @@ A JavaScript interpreter that:
 4. Implements the full ECMAScript standard library (Array, String, Object, Math, JSON, Date, RegExp, Map, Set, Promise, Proxy, Reflect, Symbol, TypedArray, generators, async/await, BigInt, and more)
 5. Supports modern syntax (arrow functions, destructuring, template literals, let/const, classes, optional chaining, nullish coalescing, for-of, spread/rest, computed properties)
 6. Provides direct PHP interop (share objects between PHP and JS without serialization)
-7. Achieves 95%+ test262 compliance across major built-in categories (see COMPAT.md)
+7. Achieves 99.97% test262 compliance (50,490 pass / 0 fail / 16 skip across the full 50,506-test suite; see COMPAT.md). The 16 skips are all SpiderMonkey JS-loop stress fixtures that need a bytecode JIT to fit in CI's 90s chunk budget; spec semantics are covered by the smaller adjacent suites.
 
 All without `exec('node ...')`. The only PHP requirement is PHP 8.2+ with `mbstring`. No extensions.
 
