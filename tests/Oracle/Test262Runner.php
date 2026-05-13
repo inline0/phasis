@@ -435,20 +435,6 @@ class Test262Runner
         // -CharacterClass) now SyntaxError correctly per the recent
         // parser fix; these positive forms still fall through to the
         // partial-set expansion and miss some required matches.
-        'built-ins/RegExp/property-escapes/generated/strings/Basic_Emoji.js'
-            => 'Unicode 16 emoji-sequence data not bundled; vFlagPropertyOfStringsSet only has partial coverage',
-        'built-ins/RegExp/property-escapes/generated/strings/Emoji_Keycap_Sequence.js'
-            => 'Unicode 16 emoji-sequence data not bundled; vFlagPropertyOfStringsSet only has partial coverage',
-        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji.js'
-            => 'Unicode 16 emoji-sequence data not bundled; vFlagPropertyOfStringsSet only has partial coverage',
-        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_Flag_Sequence.js'
-            => 'Unicode 16 emoji-sequence data not bundled; vFlagPropertyOfStringsSet only has partial coverage',
-        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_Modifier_Sequence.js'
-            => 'Unicode 16 emoji-sequence data not bundled; vFlagPropertyOfStringsSet only has partial coverage',
-        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_Tag_Sequence.js'
-            => 'Unicode 16 emoji-sequence data not bundled; vFlagPropertyOfStringsSet only has partial coverage',
-        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_ZWJ_Sequence.js'
-            => 'Unicode 16 emoji-sequence data not bundled; vFlagPropertyOfStringsSet only has partial coverage',
         // Additional shard-variance perf entries that crossed the wall
         // budget on this CI run; same shape as the cluster above.
         'built-ins/RegExp/property-escapes/generated/Script_-_Coptic.js'

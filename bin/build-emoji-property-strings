@@ -1,0 +1,214 @@
+#!/usr/bin/env php
+<?php
+// Parses test262's Unicode-16 emoji property-of-strings fixtures and
+// emits config/regex_property_strings.php with the full matchStrings
+// for every \p{StringProperty} the engine should support under /v.
+//
+// Each fixture under built-ins/RegExp/property-escapes/generated/strings
+// has a testPropertyOfStrings({ regExp, expression, matchStrings: [...] })
+// block. We extract the property name from the description, parse the
+// matchStrings array as a list of JS string literals, and emit each
+// codepoint of every string as a \u{HEX} escape so the engine's
+// PCRE2 translator turns them into \x{HEX} at compile time.
+
+declare(strict_types=1);
+
+$rootDir = dirname(__DIR__);
+$fixturesDir = $rootDir . '/test262/test/built-ins/RegExp/property-escapes/generated/strings';
+if (!is_dir($fixturesDir)) {
+    fwrite(STDERR, "Fixtures dir not found: $fixturesDir\n");
+    exit(1);
+}
+
+$properties = [];
+$processed = 0;
+$skipped = 0;
+
+foreach (glob($fixturesDir . '/*.js') as $path) {
+    $base = basename($path, '.js');
+    // Skip negative-variant fixtures (-negative-u, -negative-P,
+    // -negative-CharacterClass); they assert SyntaxError, not match.
+    if (str_contains($base, '-negative-')) {
+        continue;
+    }
+    $source = file_get_contents($path);
+    if ($source === false) {
+        $skipped++;
+        continue;
+    }
+    $key = extractPropertyKey($source);
+    if ($key === null) {
+        $skipped++;
+        continue;
+    }
+    $strings = extractMatchStrings($source);
+    if ($strings === null) {
+        $skipped++;
+        continue;
+    }
+    $properties[$key] = $strings;
+    $processed++;
+}
+
+ksort($properties);
+
+$out = "<?php\n\n"
+    . "// Auto-generated property-of-strings sets for /v-flag.\n"
+    . "// Source: test262/test/built-ins/RegExp/property-escapes/generated/strings/\n"
+    . "// Regenerate with: bin/build-emoji-property-strings\n"
+    . "// Each codepoint is in JS \\u{HEX} form so the outer pattern\n"
+    . "// translator converts it to PCRE \\x{HEX}.\n"
+    . "return [\n";
+foreach ($properties as $key => $strings) {
+    $out .= "    " . var_export($key, true) . " => [\n";
+    foreach ($strings as $s) {
+        $out .= "        " . var_export($s, true) . ",\n";
+    }
+    $out .= "    ],\n";
+}
+$out .= "];\n";
+
+$outPath = $rootDir . '/config/regex_property_strings.php';
+file_put_contents($outPath, $out);
+
+fwrite(STDERR, "Processed $processed fixtures, skipped $skipped.\n");
+fwrite(STDERR, "Wrote " . count($properties) . " emoji-string properties to $outPath\n");
+
+/**
+ * Pull the canonical property name out of the fixture's description
+ * comment: 'Unicode property escapes for `Basic_Emoji` (property of
+ * strings)' -> 'Basic_Emoji'.
+ */
+function extractPropertyKey(string $source): ?string
+{
+    if (!preg_match('/Unicode property escapes for `([^`]+)`/', $source, $m)) {
+        return null;
+    }
+    return $m[1];
+}
+
+/**
+ * Parse the matchStrings array. Returns each entry encoded as a
+ * sequence of \u{HEX} JS escapes covering every codepoint in the
+ * original literal.
+ *
+ * @return list<string>|null
+ */
+function extractMatchStrings(string $source): ?array
+{
+    if (!preg_match('/matchStrings\s*:\s*\[/', $source, $m, PREG_OFFSET_CAPTURE)) {
+        return null;
+    }
+    $start = $m[0][1] + strlen($m[0][0]);
+    // Find matching ']' (no nested brackets in matchStrings so a
+    // simple scan suffices, but escape sequences contain double-quoted
+    // strings — walk character by character).
+    $depth = 1;
+    $i = $start;
+    $len = strlen($source);
+    while ($i < $len && $depth > 0) {
+        $c = $source[$i];
+        if ($c === '"') {
+            // Skip past quoted string.
+            $i++;
+            while ($i < $len && $source[$i] !== '"') {
+                if ($source[$i] === '\\') {
+                    $i += 2;
+                } else {
+                    $i++;
+                }
+            }
+            $i++;
+            continue;
+        }
+        if ($c === '[') {
+            $depth++;
+        } elseif ($c === ']') {
+            $depth--;
+            if ($depth === 0) {
+                break;
+            }
+        }
+        $i++;
+    }
+    $arrayBody = substr($source, $start, $i - $start);
+
+    // Extract each double-quoted string literal.
+    if (!preg_match_all('/"((?:[^"\\\\]|\\\\.)*)"/', $arrayBody, $hits)) {
+        return [];
+    }
+    $out = [];
+    foreach ($hits[1] as $literal) {
+        $codepoints = decodeJsLiteralToCodepoints($literal);
+        if ($codepoints === null) {
+            continue;
+        }
+        $parts = [];
+        foreach ($codepoints as $cp) {
+            $parts[] = sprintf('\\u{%X}', $cp);
+        }
+        $out[] = implode('', $parts);
+    }
+    return $out;
+}
+
+/**
+ * Decode a JS string literal body (between the outer quotes, escapes
+ * preserved) into a list of codepoints. Recognises \uXXXX, \u{HEX},
+ * \xXX, \n/\r/\t/\\, and bare characters.
+ *
+ * @return list<int>|null
+ */
+function decodeJsLiteralToCodepoints(string $literal): ?array
+{
+    $cps = [];
+    $len = strlen($literal);
+    $i = 0;
+    while ($i < $len) {
+        $c = $literal[$i];
+        if ($c !== '\\') {
+            $cps[] = ord($c);
+            $i++;
+            continue;
+        }
+        if ($i + 1 >= $len) {
+            return null;
+        }
+        $n = $literal[$i + 1];
+        if ($n === 'u' && $i + 2 < $len && $literal[$i + 2] === '{') {
+            $close = strpos($literal, '}', $i + 3);
+            if ($close === false) {
+                return null;
+            }
+            $cps[] = hexdec(substr($literal, $i + 3, $close - ($i + 3)));
+            $i = $close + 1;
+            continue;
+        }
+        if ($n === 'u' && $i + 5 < $len) {
+            $cps[] = hexdec(substr($literal, $i + 2, 4));
+            $i += 6;
+            continue;
+        }
+        if ($n === 'x' && $i + 3 < $len) {
+            $cps[] = hexdec(substr($literal, $i + 2, 2));
+            $i += 4;
+            continue;
+        }
+        $esc = match ($n) {
+            'n' => 10,
+            'r' => 13,
+            't' => 9,
+            '\\' => 92,
+            '"' => 34,
+            "'" => 39,
+            '0' => 0,
+            default => null,
+        };
+        if ($esc === null) {
+            return null;
+        }
+        $cps[] = $esc;
+        $i += 2;
+    }
+    return $cps;
+}
