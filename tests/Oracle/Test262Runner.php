@@ -233,8 +233,6 @@ class Test262Runner
         // SpiderMonkey unicode-ignoreCase 2968-line fixture exceeds
         // CI wall budget on slower runners (passes in ~12s locally
         // on macOS/ICU 76, ~85s on Ubuntu CI/ICU 70).
-        'staging/sm/RegExp/unicode-ignoreCase.js'
-            => 'SpiderMonkey unicode-ignoreCase stress fixture exceeds CI wall budget on slower runners',
         // ICU lunisolar/Ethiopic boundaries differ between ICU 70
         // (Ubuntu CI) and ICU 76 (Unicode 16 reference).
         'staging/Intl402/Temporal/old/addition-across-lunisolar-leap-months-chinese.js'
@@ -288,8 +286,6 @@ class Test262Runner
         // pairs. ICU 70 (CI) lacks the U+1FD3 / U+1FE3 / U+FB05-FB06
         // folding equivalence that ICU 76 (Unicode 16) introduced; local
         // ICU 78 matches the test reference and the test passes there.
-        'built-ins/RegExp/unicode_full_case_folding.js'
-            => 'Unicode case-folding pairs differ between CI ICU 70 and Unicode 16 reference',
         // Chunk 2 — Changes_When_NFKC_Casefolded through Extended_Pictographic:
         // Chunk 3 — Script_Extensions for J-L scripts:
         // Additional locally-detected drifts: properties that pass on

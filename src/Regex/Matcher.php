@@ -1226,6 +1226,19 @@ class Matcher
             if ($cp < 0x80) {
                 return $cp;
             }
+            // Unicode 16 simple/common case-fold pairs that ICU 74
+            // (Ubuntu CI) doesn't know but ICU 76+ does. Override the
+            // host-foldCase so /ui matching is host-independent. Add
+            // more here when test262 turns up additional mismatches.
+            $override = match ($cp) {
+                0x1FD3 => 0x0390,
+                0x1FE3 => 0x03B0,
+                0xFB06 => 0xFB05,
+                default => null,
+            };
+            if ($override !== null) {
+                return $override;
+            }
             if (class_exists(\IntlChar::class)) {
                 return \IntlChar::foldCase($cp);
             }
