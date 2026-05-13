@@ -28,20 +28,20 @@ class ArrayConstructor
     {
         // Reset global prototype so a new engine instance does not inherit stale prototype.
         JsArray::resetGlobalPrototype();
-        self::resetArrayIteratorPrototype();
 
         // Initialize %ArrayIteratorPrototype% with %IteratorPrototype% as parent.
         $iteratorPrototype = $env->has('__IteratorPrototype__')
             ? $env->get('__IteratorPrototype__')
             : null;
-        $arrayIterProto = self::getArrayIteratorPrototype(
+        $arrayIterProto = self::buildArrayIteratorPrototype(
             $iteratorPrototype instanceof JsObject ? $iteratorPrototype : null,
         );
-        // Stash on the realm env so cross-realm iterator creation can route
-        // through the *active realm's* %ArrayIteratorPrototype% rather than
-        // the last-built static. iter from main's [].values() must keep
-        // walking main's prototype chain even after createRealm rebuilt the
-        // static for the child realm.
+        // Stash on the realm env so cross-realm iterator creation routes
+        // through the *active realm's* %ArrayIteratorPrototype%. iter from
+        // main's [].values() must keep walking main's prototype chain even
+        // after createRealm built a fresh prototype for the child realm.
+        // Per-realm storage replaces the old static cache, which leaked the
+        // last-built prototype across realms.
         $env->defineVar('__ArrayIteratorPrototype__', $arrayIterProto);
         $constructor = JsFunction::fromCallable('Array', function (JsValue $this_, array $args): JsValue {
             // Resolve the prototype to install on the new array: subclasses carry a
@@ -1791,19 +1791,16 @@ class ArrayConstructor
         return $targetIndex;
     }
 
-    /** %ArrayIteratorPrototype%: shared prototype for all array iterators. */
-    private static ?JsObject $arrayIteratorPrototype = null;
-
     /**
-     * Get or create the %ArrayIteratorPrototype% intrinsic.
-     * Its [[Prototype]] is %IteratorPrototype%.
+     * Build a fresh %ArrayIteratorPrototype% intrinsic for the current realm.
+     *
+     * Its [[Prototype]] is %IteratorPrototype%. Each Engine instance owns a
+     * distinct prototype object so cross-realm iterators retain identity
+     * against their owning realm's intrinsic (see iterator-next-with-detached
+     * in test262 staging/sm/TypedArray).
      */
-    public static function getArrayIteratorPrototype(?JsObject $iteratorPrototype = null): JsObject
+    public static function buildArrayIteratorPrototype(?JsObject $iteratorPrototype = null): JsObject
     {
-        if (self::$arrayIteratorPrototype !== null) {
-            return self::$arrayIteratorPrototype;
-        }
-
         $proto = new JsObject($iteratorPrototype);
 
         // next method on the prototype. Validates internal slots via hidden property.
@@ -1889,14 +1886,7 @@ class ArrayConstructor
             PropertyDescriptor::data(new JsString('Array Iterator'), false, false, true),
         );
 
-        self::$arrayIteratorPrototype = $proto;
         return $proto;
-    }
-
-    /** Reset the shared array iterator prototype (for engine reset). */
-    public static function resetArrayIteratorPrototype(): void
-    {
-        self::$arrayIteratorPrototype = null;
     }
 
     /** Public entry point for creating array iterators (used by JsArray Symbol.iterator). */
@@ -1908,9 +1898,10 @@ class ArrayConstructor
     /** Create an iterator object for keys, values, or entries. */
     private static function createArrayIterator(JsObject $array, string $kind): JsObject
     {
-        // Look up %ArrayIteratorPrototype% on the active realm's globalEnv
-        // first. The static slot below is a last-built fallback used during
-        // very early bootstrap (before the realm-env binding is available).
+        // Look up %ArrayIteratorPrototype% on the active realm's globalEnv.
+        // Each Engine stores its own prototype; if no realm env is available
+        // (very early bootstrap or detached call) build a fresh one rather
+        // than reuse a stale process-global cache.
         $proto = null;
         $interp = \PhpJs\Engine::getCurrentInterpreter();
         if ($interp !== null) {
@@ -1923,7 +1914,17 @@ class ArrayConstructor
             }
         }
         if ($proto === null) {
-            $proto = self::$arrayIteratorPrototype;
+            $iteratorProto = null;
+            if ($interp !== null) {
+                $env = $interp->getGlobalEnv();
+                if ($env->has('__IteratorPrototype__')) {
+                    $stashedIter = $env->get('__IteratorPrototype__');
+                    if ($stashedIter instanceof JsObject) {
+                        $iteratorProto = $stashedIter;
+                    }
+                }
+            }
+            $proto = self::buildArrayIteratorPrototype($iteratorProto);
         }
         $iterator = new JsObject($proto);
 

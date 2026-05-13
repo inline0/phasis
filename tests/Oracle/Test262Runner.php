@@ -62,7 +62,6 @@ class Test262Runner
         'staging/sm/ArrayBuffer/slice-species.js',
         'staging/sm/Function/arguments-iterator.js',
         'staging/sm/Proxy/proxy-with-revoked-arguments.js',
-        'staging/sm/Reflect/set.js',
         'staging/sm/RegExp/constructor-constructor.js',
         'staging/sm/TypedArray/constructor-ArrayBuffer-species-wrap.js',
         'staging/sm/TypedArray/constructor-buffer-sequence.js',
@@ -108,24 +107,6 @@ class Test262Runner
         // V8 itself crashes on this fixture in some builds.
         'staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js'
             => 'Chinese-calendar uncommon-leap-month arithmetic not implemented',
-        // Cross-realm detached-buffer test depends on per-realm
-        // %ArrayIteratorPrototype% identity: the iterator's next
-        // function should throw the *caller realm's* TypeError, not
-        // the shared static prototype's. Our runtime caches
-        // ArrayConstructor::$arrayIteratorPrototype as a single
-        // static slot (reset on each Engine construction), so once a
-        // child realm rebuilds the slot the parent's iterators pick
-        // up a next function tagged with the child's realm. The
-        // realm-mismatch wrap then surfaces a child-realm TypeError
-        // even for same-realm calls. A correct fix requires moving
-        // the iterator prototype to per-engine storage (mirroring
-        // %IteratorPrototype% in __IteratorPrototype__), then
-        // threading every CreateArrayIterator call site through the
-        // owning realm. That's a structural refactor across
-        // ArrayConstructor + TypedArrayConstructor + every cached
-        // static prototype, not a pointwise fix.
-        'staging/sm/TypedArray/iterator-next-with-detached.js'
-            => 'Cross-realm %ArrayIteratorPrototype% identity needs per-engine intrinsic storage',
         // Sputnik UTF-8 sweep: iterates 0xF0-0xF4 x 0x80-0xBF x
         // 0x80-0xBF x 0x80-0xBF = ~1.3M decodeURI calls, each one a
         // full Test262Error path + ToString. Local pass time ~97s on

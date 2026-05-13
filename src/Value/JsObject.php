@@ -344,14 +344,17 @@ class JsObject implements JsValue
                 if ($existingDesc->writable === false) {
                     return false;
                 }
-                // Update value on the receiver's existing descriptor.
-                // Per spec step 2.d: return the result of [[DefineOwnProperty]].
-                return $receiver->defineOwnProperty($name, new PropertyDescriptor(
-                    value: $value,
-                    writable: $existingDesc->writable,
-                    enumerable: $existingDesc->enumerable,
-                    configurable: $existingDesc->configurable,
-                ));
+                // Per spec §10.1.9.2 OrdinarySetWithOwnDescriptor step 3.c-d:
+                // let valueDesc be the PropertyDescriptor { [[Value]]: V }
+                // and return ? Receiver.[[DefineOwnProperty]](P, valueDesc).
+                // The descriptor passed to [[DefineOwnProperty]] must contain
+                // ONLY [[Value]]; other fields are absent so that ordinary
+                // [[DefineOwnProperty]] merges with the existing flags and
+                // Proxy traps observe the minimal {value} shape.
+                return $receiver->defineOwnProperty(
+                    $name,
+                    new PropertyDescriptor(value: $value),
+                );
             }
             // Receiver does not have property P. Per spec
             // OrdinarySetWithOwnDescriptor step 2.e: return the result of
