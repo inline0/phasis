@@ -310,6 +310,7 @@ class StringPrototype
 
             // Static methods on String constructor — non-enumerable per spec.
             $fromCharCodeFn = JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1);
+            $fromCharCodeFn->builtinKind = 'string.fromCharCode';
             $existing->defineOwnProperty(
                 'fromCharCode',
                 \PhpJs\Object\PropertyDescriptor::data($fromCharCodeFn, true, false, true),

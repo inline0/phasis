@@ -148,17 +148,18 @@ class Test262Runner
         // V8 itself crashes on this fixture in some builds.
         'staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js'
             => 'Chinese-calendar uncommon-leap-month arithmetic not implemented',
-        // Sputnik UTF-8 sweep: iterates 0xF0-0xF4 x 0x80-0xBF x
-        // 0x80-0xBF x 0x80-0xBF = ~1.3M decodeURI calls, each one a
-        // full Test262Error path + ToString. Local pass time ~97s on
-        // a 30s-per-test deadline; CI is consistently 3x slower than
-        // local so a 90s chunk budget can never accommodate it.
-        // decodeURI semantics are exhaustively covered by the
-        // adjacent A2.1-A2.4 tests, which we pass.
-        'built-ins/decodeURI/S15.1.3.1_A2.5_T1.js'
-            => 'Sputnik 1.3M-iter decodeURI sweep exceeds chunk budget',
-        'built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js'
-            => 'Sputnik 1.3M-iter decodeURIComponent sweep exceeds chunk budget',
+        // (Removed: Sputnik UTF-8 sweep A2.5_T1 for decodeURI /
+        // decodeURIComponent. Pure-PHP fast paths in GlobalObject::
+        // specDecode (12-char `%XX%XX%XX%XX` form, hex2bin bulk
+        // decode, inline CESU-8 emit) plus a VM CALL bypass for the
+        // global URI built-ins (encodeURI / decodeURI / encodeURI
+        // Component / decodeURIComponent skip callFunction's
+        // realm-switch + trampoline + class-ctor guard) drop the
+        // ~983K-iter sweep to ~22s under PHP 8.5 tracing JIT and
+        // well within the per-test budget. The isolated chunk
+        // promotion in config/support.php gives each test its own
+        // 90s chunk; the bumped 75s per-test set_time_limit covers
+        // non-JIT CI's 3x interpreter slowdown.)
         // SpiderMonkey DST-offset-cache stress test (split into 8
         // parts). Each part is an O(n^4) probe of the canonical DST
         // cache (~38 timestamps to the 4th power = 2M cache hits per
@@ -447,10 +448,22 @@ class Test262Runner
         // well above the default 100K so these tests can complete.
         $engine->setLimit('maxLoopIterations', 2_000_000);
         // Hard time limit per test: env override, default 30s, with
-        // a 120s bump for SM DST cache stress tests (O(n^4) probe).
+        // a 120s bump for SM DST cache stress tests (O(n^4) probe) and
+        // for the Sputnik decodeURI / decodeURIComponent UTF-8 sweep
+        // (A2.5_T1), which iterates ~983K four-byte percent-encoded
+        // sequences through the global URI built-ins. Both are
+        // promoted to their own chunk via test262_isolated_tests
+        // (config/support.php), so widening the per-test budget here
+        // does not steal time from neighbour tests.
         $timeLimit = (int) (getenv('PHPJS_TEST_TIME_LIMIT') ?: 30);
         if (strpos($source, 'runDSTOffsetCachingTestsFraction') !== false) {
             $timeLimit = max($timeLimit, 120);
+        }
+        if (
+            str_ends_with($testPath, '/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js')
+            || str_ends_with($testPath, '/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js')
+        ) {
+            $timeLimit = max($timeLimit, 75);
         }
         set_time_limit($timeLimit);
 

@@ -147,41 +147,75 @@ class GlobalObject
         // UTF-16 code units and must throw URIError for lone surrogates
         // (encode) or malformed percent-encoded UTF-8 sequences (decode).
 
+        // Inline a JsString short-circuit so the hot Sputnik decode sweep
+        // (`decodeURI(hexB1_B2_B3_B4)`) skips the full TypeConversion::
+        // toString dispatch when the argument is already a primitive
+        // string, which it is for any code path that builds the input via
+        // string concatenation. Falls back to the spec coercion for any
+        // non-string argument.
         $encodeCompFn = JsFunction::fromCallable(
             'encodeURIComponent',
             function (JsValue $this_, array $args) use ($env): JsValue {
-                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                if (!isset($args[0])) {
+                    $str = 'undefined';
+                } elseif ($args[0] instanceof JsString) {
+                    $str = $args[0]->value;
+                } else {
+                    $str = TypeConversion::toString($args[0]);
+                }
                 return new JsString(self::specEncode($str, false, $env));
             },
             1,
         );
+        $encodeCompFn->builtinKind = 'global.encodeURIComponent';
         $env->defineVar('encodeURIComponent', $encodeCompFn);
         $decodeCompFn = JsFunction::fromCallable(
             'decodeURIComponent',
             function (JsValue $this_, array $args) use ($env): JsValue {
-                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                if (!isset($args[0])) {
+                    $str = 'undefined';
+                } elseif ($args[0] instanceof JsString) {
+                    $str = $args[0]->value;
+                } else {
+                    $str = TypeConversion::toString($args[0]);
+                }
                 return new JsString(self::specDecode($str, false, $env));
             },
             1,
         );
+        $decodeCompFn->builtinKind = 'global.decodeURIComponent';
         $env->defineVar('decodeURIComponent', $decodeCompFn);
         $encodeUriFn = JsFunction::fromCallable(
             'encodeURI',
             function (JsValue $this_, array $args) use ($env): JsValue {
-                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                if (!isset($args[0])) {
+                    $str = 'undefined';
+                } elseif ($args[0] instanceof JsString) {
+                    $str = $args[0]->value;
+                } else {
+                    $str = TypeConversion::toString($args[0]);
+                }
                 return new JsString(self::specEncode($str, true, $env));
             },
             1,
         );
+        $encodeUriFn->builtinKind = 'global.encodeURI';
         $env->defineVar('encodeURI', $encodeUriFn);
         $decodeUriFn = JsFunction::fromCallable(
             'decodeURI',
             function (JsValue $this_, array $args) use ($env): JsValue {
-                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                if (!isset($args[0])) {
+                    $str = 'undefined';
+                } elseif ($args[0] instanceof JsString) {
+                    $str = $args[0]->value;
+                } else {
+                    $str = TypeConversion::toString($args[0]);
+                }
                 return new JsString(self::specDecode($str, true, $env));
             },
             1,
         );
+        $decodeUriFn->builtinKind = 'global.decodeURI';
         $env->defineVar('decodeURI', $decodeUriFn);
 
         // escape/unescape (AnnexB)
@@ -1611,6 +1645,61 @@ class GlobalObject
         $firstPercent = strpos($str, '%');
         if ($firstPercent === false) {
             return $str;
+        }
+
+        // Ultra-fast path: exactly 12 characters of the shape `%XX%XX%XX%XX`
+        // encoding a single 4-byte UTF-8 sequence in the supplementary plane.
+        // Sputnik's S15.1.3.1_A2.5_T1 / S15.1.3.2_A2.5_T1 stress tests fire
+        // ~1M of these per run. Skipping the generic walker (hex map
+        // indirection, byte-at-a-time validation, six chr() concatenations)
+        // drops the inner loop cost dramatically. Falls through to the spec
+        // path on any mismatch so semantics never diverge; the spec walker
+        // still owns every error case.
+        if (
+            $len === 12
+            && $firstPercent === 0
+            && $str[3] === '%'
+            && $str[6] === '%'
+            && $str[9] === '%'
+        ) {
+            $bytes = @hex2bin(
+                $str[1] . $str[2]
+                . $str[4] . $str[5]
+                . $str[7] . $str[8]
+                . $str[10] . $str[11]
+            );
+            if ($bytes !== false && strlen($bytes) === 4) {
+                $b0 = ord($bytes[0]);
+                if (($b0 & 0xF8) === 0xF0) {
+                    $b1 = ord($bytes[1]);
+                    $b2 = ord($bytes[2]);
+                    $b3 = ord($bytes[3]);
+                    if (
+                        ($b1 & 0xC0) === 0x80
+                        && ($b2 & 0xC0) === 0x80
+                        && ($b3 & 0xC0) === 0x80
+                    ) {
+                        $codePoint = (($b0 & 0x07) << 18)
+                            | (($b1 & 0x3F) << 12)
+                            | (($b2 & 0x3F) << 6)
+                            | ($b3 & 0x3F);
+                        if ($codePoint >= 0x10000 && $codePoint <= 0x10FFFF) {
+                            // Encode as a CESU-8 surrogate pair (two 3-byte
+                            // sequences) so JsString sees UTF-16 code units.
+                            $cp = $codePoint - 0x10000;
+                            $hi = 0xD800 | ($cp >> 10);
+                            $lo = 0xDC00 | ($cp & 0x3FF);
+                            return chr(0xE0 | ($hi >> 12))
+                                . chr(0x80 | (($hi >> 6) & 0x3F))
+                                . chr(0x80 | ($hi & 0x3F))
+                                . chr(0xE0 | ($lo >> 12))
+                                . chr(0x80 | (($lo >> 6) & 0x3F))
+                                . chr(0x80 | ($lo & 0x3F));
+                        }
+                    }
+                }
+            }
+            // Fall through to spec walker for the error / out-of-range branches.
         }
 
         $result = $firstPercent > 0 ? substr($str, 0, $firstPercent) : '';

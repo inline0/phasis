@@ -896,6 +896,8 @@ final class VM
                                 $lv = $l->value;
                                 $rv = $r->value;
                                 $stack[$sp++] = ($lv === $rv && !is_nan($lv)) ? $true : $false;
+                            } elseif ($l instanceof JsString && $r instanceof JsString) {
+                                $stack[$sp++] = $l->value === $r->value ? $true : $false;
                             } else {
                                 $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $true : $false;
                             }
@@ -908,6 +910,8 @@ final class VM
                                 $lv = $l->value;
                                 $rv = $r->value;
                                 $stack[$sp++] = ($lv !== $rv || is_nan($lv)) ? $true : $false;
+                            } elseif ($l instanceof JsString && $r instanceof JsString) {
+                                $stack[$sp++] = $l->value === $r->value ? $false : $true;
                             } else {
                                 $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $false : $true;
                             }
@@ -1210,6 +1214,33 @@ final class VM
                                     (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
                                 );
                             }
+                            // Fast path for the global URI built-ins (encodeURI,
+                            // decodeURI, encodeURIComponent, decodeURIComponent).
+                            // These are single-realm, never callable as
+                            // constructors, never generators / async, and have
+                            // no tail-call semantics. The Sputnik UTF-8 sweep
+                            // tests fire ~1M decodeURI calls each, so skipping
+                            // the callFunction realm switch, trampoline, and
+                            // callFunctionInner class-ctor guard drops the
+                            // per-call PHP cost to a single closure invocation.
+                            $kind = $callee->builtinKind;
+                            if (
+                                $kind !== null
+                                && $kind[0] === 'g'
+                                && (
+                                    $kind === 'global.decodeURI'
+                                    || $kind === 'global.decodeURIComponent'
+                                    || $kind === 'global.encodeURI'
+                                    || $kind === 'global.encodeURIComponent'
+                                )
+                            ) {
+                                $native = $callee->getNativeCallable();
+                                if ($native !== null) {
+                                    $stack[$sp++] = $native($undef, $args, $this->interp);
+                                    $pc += 2;
+                                    break;
+                                }
+                            }
                             // Fast path: VM-compiled callee with the canSkipEnvAlloc
                             // shape. Skip callFunction's tail-call trampoline and
                             // callFunctionInner's kind dispatcher — both of which
@@ -1410,15 +1441,20 @@ final class VM
                                     break;
                                 }
                             }
-                            // JSON.parse / JSON.stringify dispatch goes
-                            // straight to the native callable, skipping
-                            // callFunction's tail-call trampoline +
-                            // class-constructor guard. These are static
-                            // built-in helpers, never callable as
-                            // constructors, so the bypass is safe.
+                            // JSON.parse / JSON.stringify / String.
+                            // fromCharCode dispatch goes straight to the
+                            // native callable, skipping callFunction's
+                            // tail-call trampoline + class-constructor
+                            // guard. These are static built-in helpers,
+                            // never callable as constructors, so the
+                            // bypass is safe. fromCharCode is on this
+                            // path because Sputnik's UTF-8 decode sweep
+                            // (S15.1.3.1_A2.5_T1) fires ~1M calls per
+                            // run inside its hot comparison loop.
                             if (
                                 $kind === 'json.parse'
                                 || $kind === 'json.stringify'
+                                || $kind === 'string.fromCharCode'
                             ) {
                                 $native = $method->getNativeCallable();
                                 if ($native !== null) {
