@@ -58,7 +58,6 @@ class Test262Runner
         'built-ins/Function/proto-from-ctor-realm-prototype.js',
         'built-ins/Proxy/revocable/tco-fn-realm.js',
         'staging/sm/Function/arguments-iterator.js',
-        'staging/sm/Proxy/proxy-with-revoked-arguments.js',
         'staging/sm/Reflect/set.js',
         'staging/sm/TypedArray/constructor-buffer-sequence.js',
         'staging/sm/TypedArray/every-and-some.js',
