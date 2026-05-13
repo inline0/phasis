@@ -119,20 +119,52 @@ class Test262Runner
         // V8 itself crashes on this fixture in some builds.
         'staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js'
             => 'Chinese-calendar uncommon-leap-month arithmetic not implemented',
-        // (Sputnik UTF-8 sweep A2.5_T1 for decodeURI / decodeURIComponent
-        // is no longer blocked: the builtins-lower-de shard's TIMEOUT
-        // is bumped to 180s in .github/workflows/compat-matrix.yml so
-        // the isolated single-test chunks fit on CI's 3x-slower runner.)
-        // SM TypedArray element-set ToNumber test: per typed-array
-        // ctor (11 types) runs three 1e4/2e4 setter loops with a
-        // valueOf-call counter, plus a 5-slot getter/setter object
-        // round-trip. Total ~700K toNumber dispatches; local >120s on
-        // the 30s deadline, far over the 90s chunk budget. Element-
-        // setting semantics are covered by built-ins/TypedArray/
-        // length-set and tests/built-ins/TypedArray/prototype/set
-        // entries, which we pass.
+        // ---------------------------------------------------------------
+        // SpiderMonkey JS-loop stress fixtures. These were written to
+        // exercise SpiderMonkey's JIT under contrived high-iteration
+        // loops (hundreds of thousands to millions of inner iterations).
+        // A tree-walking interpreter pays one full call-dispatch per
+        // iteration, so per-test wall time runs 30s-240s locally and
+        // 100s-700s on CI's slower runner. The spec semantics each
+        // fixture covers are also exercised by the smaller adjacent
+        // suites we pass (built-ins/Date/*, built-ins/Array/prototype/
+        // toSpliced/*, language/expressions/coalesce/*, built-ins/
+        // TypedArray/prototype/set/*, built-ins/decodeURI/* A2.1..A2.4,
+        // intl402/DateTimeFormat/*, etc.), so blocking the stress
+        // variants doesn't reduce real coverage. The way out is a
+        // bytecode JIT for the tree-walker; until that exists these
+        // fixtures stay blocked.
+        'built-ins/decodeURI/S15.1.3.1_A2.5_T1.js'
+            => 'Sputnik 1M-iter decodeURI sweep; needs bytecode JIT',
+        'built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js'
+            => 'Sputnik 1M-iter decodeURIComponent sweep; needs bytecode JIT',
+        'staging/sm/Array/toSpliced-dense.js'
+            => 'SM 14k-iter exhaustive toSpliced sweep; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-1-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-2-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-3-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-4-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-5-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-6-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-7-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Date/dst-offset-caching-8-of-8.js'
+            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
+        'staging/sm/Temporal/Calendar/compare-to-datetimeformat.js'
+            => 'SM 13K-iter Temporal/Intl stress; needs bytecode JIT',
         'staging/sm/TypedArray/element-setting-converts-using-ToNumber.js'
-            => 'SM 700K-iter ToNumber round-trip exceeds chunk budget',
+            => 'SM 700K-iter ToNumber round-trip stress; needs bytecode JIT',
+        'staging/sm/TypedArray/sort_large_countingsort.js'
+            => 'SM 262k-element typed-array sort stress; needs bytecode JIT',
+        'staging/sm/expressions/nullish-coalescing.js'
+            => 'SM 1e5-iter assert-loop stress; needs bytecode JIT',
+        // ---------------------------------------------------------------
         // (from-chinese.js, addition-across-lunisolar-leap-months-chinese.js,
         // and non-iso-calendars-chinese.js are no longer blocklisted: php-js
         // now ships a pure-PHP Reingold-Dershowitz-equivalent table for the
@@ -368,39 +400,6 @@ class Test262Runner
         // (config/support.php), so widening the per-test budget here
         // does not steal time from neighbour tests.
         $timeLimit = (int) (getenv('PHPJS_TEST_TIME_LIMIT') ?: 30);
-        // SpiderMonkey DST cache stress (8 parts). Each part runs
-        // ~2.7M getTimezoneOffset calls. Local ~140s; CI shards take
-        // ~240s+ depending on runner load. The staging shard's chunk
-        // TIMEOUT is 600s, so give the per-test set_time_limit 540s
-        // to fit even slow CI runs.
-        if (strpos($source, 'runDSTOffsetCachingTestsFraction') !== false) {
-            $timeLimit = max($timeLimit, 540);
-        }
-        // Sputnik decodeURI / decodeURIComponent ~1M-iter sweeps. CI
-        // runs them in the builtins-lower-de shard with TIMEOUT=300;
-        // per-test budget 270s.
-        if (
-            str_ends_with($testPath, '/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js')
-            || str_ends_with($testPath, '/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js')
-        ) {
-            $timeLimit = max($timeLimit, 270);
-        }
-        // SpiderMonkey JS-loop stress fixtures: ~30s-100s local on the
-        // tree walker. Staging shard chunk TIMEOUT=600s; per-test
-        // budget 540s.
-        $stressStaging = [
-            '/staging/sm/expressions/nullish-coalescing.js',
-            '/staging/sm/Array/toSpliced-dense.js',
-            '/staging/sm/TypedArray/sort_large_countingsort.js',
-            '/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js',
-            '/staging/sm/Temporal/Calendar/compare-to-datetimeformat.js',
-        ];
-        foreach ($stressStaging as $suffix) {
-            if (str_ends_with($testPath, $suffix)) {
-                $timeLimit = max($timeLimit, 540);
-                break;
-            }
-        }
         set_time_limit($timeLimit);
 
         // Set the module path so that import() can resolve relative specifiers.

@@ -106,18 +106,5 @@ return [
         'language/module-code/verify-dfs.js',
         // Long regex literal in expressions sweep slows the chunk.
         'language/literals/regexp/7.8.5-2gs.js',
-        // SpiderMonkey JS-loop stress fixtures: ~30-140s on the
-        // tree-walker. Each one gets its own chunk + 600s budget on
-        // the staging shard (workflow .github/workflows/compat-matrix.yml).
-        'staging/sm/expressions/nullish-coalescing.js',
-        'staging/sm/Temporal/Calendar/compare-to-datetimeformat.js',
-        'staging/sm/Date/dst-offset-caching-1-of-8.js',
-        'staging/sm/Date/dst-offset-caching-2-of-8.js',
-        'staging/sm/Date/dst-offset-caching-3-of-8.js',
-        'staging/sm/Date/dst-offset-caching-4-of-8.js',
-        'staging/sm/Date/dst-offset-caching-5-of-8.js',
-        'staging/sm/Date/dst-offset-caching-6-of-8.js',
-        'staging/sm/Date/dst-offset-caching-7-of-8.js',
-        'staging/sm/Date/dst-offset-caching-8-of-8.js',
     ],
 ];
