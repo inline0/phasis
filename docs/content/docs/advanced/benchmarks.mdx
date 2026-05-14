@@ -57,9 +57,9 @@ Built-in fast paths (Array.map, JSON.parse, …) bypass the AST entirely for the
 
 For most embedding workloads, V8-vs-Phasis perf doesn't matter:
 
-- **Templating** — a typical SSR template runs in <10 ms even on Phasis.
+- **Templating** — a typical SSR template runs in under 10 ms even on Phasis.
 - **Validation rules** — user-supplied JS for form validation finishes in microseconds.
-- **Data transformations** — a `[1..1000].map(transform)` typically clocks in at <100 ms.
+- **Data transformations** — a `[1..1000].map(transform)` typically clocks in under 100 ms.
 - **Sandbox runners** — running short user-supplied scripts with a 1 s cap is comfortable for the host.
 
 It does matter for:
