@@ -4269,12 +4269,20 @@ trait ExpressionEvaluation
 
             // Tag the environment with the function kind so
             // EvalDeclarationInstantiation can enforce restrictions
-            // and so evalAwaitExpression knows whether the current
-            // call frame is suspendable async.
-            if ($fn->isArrow()) {
-                $fnEnv->setFunctionKind('arrow');
-            } elseif ($fn->isAsync()) {
+            // and so evalAwaitExpression / for-await unwrap know whether
+            // the current call frame is suspendable async. Async-ness
+            // takes precedence over arrow-ness here: an async arrow
+            // function STILL runs inside a fiber and must be tagged
+            // 'async' so awaits suspend via Fiber::suspend rather than
+            // falling back to the synchronous awaitValue path (which
+            // returns the unresolved sentinel for never-settling
+            // promises, breaking for-await of a pending stream). Arrow
+            // semantics (no own this/arguments/new.target) are tracked
+            // by the isArrow flag on JsFunction itself, not by this kind.
+            if ($fn->isAsync()) {
                 $fnEnv->setFunctionKind('async');
+            } elseif ($fn->isArrow()) {
+                $fnEnv->setFunctionKind('arrow');
             } else {
                 $fnEnv->setFunctionKind('function');
             }

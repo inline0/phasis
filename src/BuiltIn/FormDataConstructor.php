@@ -102,15 +102,21 @@ class FormDataConstructor
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);
                 }
 
-                // We accept a `form` argument per spec but have no DOM, so
-                // we simply ignore it. Throw only on null (which the spec
-                // tags as a non-throwing case in browsers but our brand check
-                // is friendlier to skip).
+                // Per WebIDL the optional argument is `HTMLFormElement?`.
+                // We don't ship a DOM, so any non-undefined value (including
+                // null) fails the type check and surfaces as a TypeError —
+                // matching browser behavior. WPT verifies this with
+                // `new FormData(null)` and `new FormData("string")`.
+                $form = $args[0] ?? JsUndefined::instance();
+                if (!$form instanceof JsUndefined) {
+                    throw new TypeError(
+                        "Failed to construct 'FormData': parameter 1 is not of "
+                        . "type 'HTMLFormElement'."
+                    );
+                }
+
                 $this_->setInternalProperty('[[IsFormData]]', true);
                 $this_->setInternalProperty('[[FormDataEntries]]', []);
-
-                // Silence the form arg presence; left untouched.
-                unset($args);
                 return $this_;
             },
             0,
@@ -406,12 +412,22 @@ class FormDataConstructor
             }
 
             // Default filename per xhr spec: "blob" when none supplied and
-            // the value is a Blob (not a File).
+            // the value is a Blob (not a File). The historical "/" → ":"
+            // replacement was removed from the spec (matches the
+            // File-constructor.any.js fixture).
             $name = $filenameStr ?? 'blob';
-            // Per spec, "/" in the name is replaced with ":".
-            $name = str_replace('/', ':', $name);
 
-            return BlobConstructor::createFile($bytes, $name, $type);
+            // When the input was already a File, preserve its lastModified
+            // — only the filename changes per the spec.
+            $lastMod = null;
+            if (BlobConstructor::isFile($value)) {
+                $lm = $value->getInternalProperty('[[LastModified]]');
+                if (is_int($lm)) {
+                    $lastMod = $lm;
+                }
+            }
+
+            return BlobConstructor::createFile($bytes, $name, $type, $lastMod);
         }
 
         // Non-Blob: stringify.

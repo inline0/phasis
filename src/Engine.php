@@ -1408,6 +1408,7 @@ class Engine
     private static function resetStaticIntrinsics(): void
     {
         \Phasis\BuiltIn\RegExpPrototype::resetStringIteratorProto();
+        \Phasis\BuiltIn\Streams\ReadableStream::resetAsyncIteratorPrototype();
     }
 
     /**

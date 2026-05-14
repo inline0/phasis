@@ -159,22 +159,41 @@ JS);
         $this->assertSame(1, $result);
     }
 
-    public function testDispatchEventThrowsOnSecondDispatch(): void
+    public function testDispatchEventAllowsRedispatchAfterCompletion(): void
     {
+        // Per the DOM spec the "dispatch flag" is cleared after dispatch
+        // completes. Only RE-ENTRANT dispatch (during the same dispatch's
+        // listener invocation) is forbidden. WPT pins the
+        // re-dispatch-allowed case via EventTarget-constructible.
         $engine = new Engine();
         $result = $engine->eval(<<<'JS'
 const t = new EventTarget();
 const e = new Event("x");
+let count = 0;
+t.addEventListener("x", () => count++);
 t.dispatchEvent(e);
-let msg = null;
-try {
-  t.dispatchEvent(e);
-} catch (err) {
-  msg = err instanceof TypeError;
-}
-msg;
+t.dispatchEvent(e);
+count;
 JS);
-        $this->assertTrue($result);
+        $this->assertSame(2, $result);
+    }
+
+    public function testDispatchEventThrowsOnReentrantDispatch(): void
+    {
+        // Re-entrant dispatch (calling dispatchEvent on the SAME event
+        // from inside a listener) IS still rejected with a TypeError.
+        $engine = new Engine();
+        $result = $engine->eval(<<<'JS'
+const t = new EventTarget();
+const e = new Event("x");
+let caught = null;
+t.addEventListener("x", () => {
+  try { t.dispatchEvent(e); } catch (err) { caught = err.name; }
+});
+t.dispatchEvent(e);
+caught;
+JS);
+        $this->assertSame('TypeError', $result);
     }
 
     public function testDispatchEventRequiresEvent(): void

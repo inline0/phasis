@@ -323,11 +323,15 @@ final class ReadableStream
                 if ($options instanceof JsObject) {
                     $mode = $options->get('mode');
                 }
-                if ($mode instanceof JsString && $mode->value === 'byob') {
-                    return \Phasis\BuiltIn\Streams\ByteStream::acquireBYOBReader($this_);
-                }
+                // Per WebIDL, the enum conversion runs ToString first
+                // (observable: WPT verifies `{ toString() { ... } }` is
+                // invoked). Then we validate against the allowed set.
                 if (!$mode instanceof JsUndefined) {
-                    throw new TypeError('Invalid reader mode');
+                    $modeStr = \Phasis\Spec\TypeConversion::toString($mode);
+                    if ($modeStr === 'byob') {
+                        return \Phasis\BuiltIn\Streams\ByteStream::acquireBYOBReader($this_);
+                    }
+                    throw new TypeError("Invalid reader mode: '{$modeStr}'");
                 }
                 return self::acquireDefaultReader($this_);
             },
@@ -779,15 +783,22 @@ final class ReadableStream
                     $sized = $sizeAlgo->call(JsUndefined::instance(), [$chunk]);
                     $size = (float) \Phasis\Spec\TypeConversion::toNumber($sized);
                 } catch (\Throwable $e) {
-                    self::defaultControllerError($controller, StreamHelpers::exceptionToJsValue($e));
-                    return;
+                    // Per spec, abrupt size completions must:
+                    //  1) error the controller with the SAME JsValue
+                    //  2) propagate the same JS error as the result of
+                    //     enqueue (re-throw the same JsThrowable).
+                    $jsErr = StreamHelpers::exceptionToJsValue($e);
+                    self::defaultControllerError($controller, $jsErr);
+                    throw new \Phasis\Exceptions\JsThrowable($jsErr);
                 }
             }
             try {
                 StreamHelpers::enqueueValueWithSize($controller, $chunk, $size);
             } catch (\Throwable $e) {
-                self::defaultControllerError($controller, StreamHelpers::exceptionToJsValue($e));
-                return;
+                // Same dual semantics for invalid sizes (NaN, Infinity, < 0)
+                $jsErr = StreamHelpers::exceptionToJsValue($e);
+                self::defaultControllerError($controller, $jsErr);
+                throw new \Phasis\Exceptions\JsThrowable($jsErr);
             }
         }
         self::defaultControllerCallPullIfNeeded($controller);
@@ -1050,22 +1061,31 @@ final class ReadableStream
         if (!$stream instanceof JsObject) {
             return;
         }
+        // Per spec §ReadableStreamReaderGenericRelease step 4: if the
+        // stream's state is "readable" reject reader.[[closedPromise]]
+        // with TypeError, ELSE set reader.[[closedPromise]] to a freshly-
+        // rejected promise. Either way, mark handled. Then step 5
+        // detaches the reader. The "replace with fresh rejected promise"
+        // path is observable: WPT verifies `r.closed !== oldClosed` after
+        // releaseLock on a closed/errored stream.
         $closedPromise = $reader->getInternalProperty('[[ClosedPromise]]');
+        $err = StreamHelpers::createTypeError('Reader was released');
         $state = $stream->getInternalProperty('[[State]]');
         if ($state === StreamHelpers::STATE_READABLE && $closedPromise instanceof JsPromise) {
-            $err = StreamHelpers::createTypeError('Reader was released');
             $closedPromise->reject($err);
             StreamHelpers::markPromiseHandled($closedPromise);
-        } elseif ($closedPromise instanceof JsPromise && $closedPromise->getState() === 'pending') {
-            $err = StreamHelpers::createTypeError('Reader was released');
-            $closedPromise->reject($err);
-            StreamHelpers::markPromiseHandled($closedPromise);
+        } else {
+            // For closed/errored streams the original closedPromise is
+            // already settled; replace with a new pre-rejected one so
+            // identity changes (per spec §release-reader).
+            $fresh = StreamHelpers::promiseRejected($err);
+            StreamHelpers::markPromiseHandled($fresh);
+            $reader->setInternalProperty('[[ClosedPromise]]', $fresh);
         }
 
         // Error pending read requests with TypeError.
         $requests = $reader->getInternalProperty('[[ReadRequests]]') ?? [];
         $reader->setInternalProperty('[[ReadRequests]]', []);
-        $err = StreamHelpers::createTypeError('Reader was released');
         foreach ($requests as $req) {
             ($req['reject'])($err);
         }
@@ -1078,20 +1098,67 @@ final class ReadableStream
     // Async iterator (values())
     // ------------------------------------------------------------------
 
-    /**
-     * Build the async iterator object returned by stream.values(), exposing
-     * next() / return() that respect [[PreventCancel]] / [[Reader]].
-     */
-    public static function createAsyncIterator(JsObject $stream, bool $preventCancel): JsObject
-    {
-        $reader = self::acquireDefaultReader($stream);
-        $iterProto = new JsObject();
-        $iterProto->setInternalProperty('[[StreamAsyncIterator]]', true);
-        $iterProto->setInternalProperty('[[Reader]]', $reader);
-        $iterProto->setInternalProperty('[[PreventCancel]]', $preventCancel);
-        $iterProto->setInternalProperty('[[IsFinished]]', false);
+    /** Cache for the stream async-iterator prototype object. */
+    private static ?JsObject $asyncIteratorPrototype = null;
 
-        $nextFn = JsFunction::fromCallable(
+    /** Reset the async-iterator prototype cache (called on Engine reset). */
+    public static function resetAsyncIteratorPrototype(): void
+    {
+        self::$asyncIteratorPrototype = null;
+    }
+
+    /**
+     * Build (or fetch the cached) prototype that backs the stream async
+     * iterator. Per the spec it inherits from %AsyncIteratorPrototype% so
+     * `Object.getPrototypeOf(stream.values())` chains to the shared
+     * AsyncIterator root.
+     */
+    private static function getAsyncIteratorPrototype(): JsObject
+    {
+        if (self::$asyncIteratorPrototype !== null) {
+            return self::$asyncIteratorPrototype;
+        }
+        // Locate %AsyncIteratorPrototype% via the binding installed by the
+        // global env. Fall back to a bare prototype if unavailable (no
+        // async generator support compiled in).
+        $parent = null;
+        $realm = \Phasis\Engine::getCurrentInterpreter()?->getRealm();
+        if ($realm !== null) {
+            $env = $realm->getGlobalEnv();
+            if ($env->has('__AsyncIteratorPrototype__')) {
+                $candidate = $env->get('__AsyncIteratorPrototype__');
+                if ($candidate instanceof JsObject) {
+                    $parent = $candidate;
+                }
+            }
+        }
+        $proto = $parent !== null ? new JsObject($parent) : new JsObject();
+
+        $nextFn = self::buildAsyncIterNext();
+        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, true, true));
+
+        $returnFn = self::buildAsyncIterReturn();
+        $proto->defineOwnProperty('return', PropertyDescriptor::data($returnFn, true, true, true));
+
+        $asyncIterFn = JsFunction::fromCallable(
+            '[Symbol.asyncIterator]',
+            static function (JsValue $this_): JsValue {
+                return $this_;
+            },
+            0,
+        );
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::asyncIterator(),
+            PropertyDescriptor::data($asyncIterFn, true, false, true)
+        );
+
+        self::$asyncIteratorPrototype = $proto;
+        return $proto;
+    }
+
+    private static function buildAsyncIterNext(): JsFunction
+    {
+        return JsFunction::fromCallable(
             'next',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
@@ -1127,9 +1194,11 @@ final class ReadableStream
             },
             0,
         );
-        $iterProto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+    }
 
-        $returnFn = JsFunction::fromCallable(
+    private static function buildAsyncIterReturn(): JsFunction
+    {
+        return JsFunction::fromCallable(
             'return',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
@@ -1163,21 +1232,25 @@ final class ReadableStream
             },
             1,
         );
-        $iterProto->defineOwnProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
-
-        $asyncIterFn = JsFunction::fromCallable(
-            '[Symbol.asyncIterator]',
-            function (JsValue $this_, array $args): JsValue {
-                return $this_;
-            },
-            0,
-        );
-        $iterProto->definePropertyBySymbol(
-            SymbolConstructor::asyncIterator(),
-            PropertyDescriptor::data($asyncIterFn, true, false, true)
-        );
-        return $iterProto;
     }
+
+    /**
+     * Build the async iterator INSTANCE returned by stream.values(). The
+     * instance carries per-iteration state internal slots; the methods
+     * (next/return) live on a shared prototype that chains to
+     * %AsyncIteratorPrototype% per the spec.
+     */
+    public static function createAsyncIterator(JsObject $stream, bool $preventCancel): JsObject
+    {
+        $reader = self::acquireDefaultReader($stream);
+        $iter = new JsObject(self::getAsyncIteratorPrototype());
+        $iter->setInternalProperty('[[StreamAsyncIterator]]', true);
+        $iter->setInternalProperty('[[Reader]]', $reader);
+        $iter->setInternalProperty('[[PreventCancel]]', $preventCancel);
+        $iter->setInternalProperty('[[IsFinished]]', false);
+        return $iter;
+    }
+
 
     // ------------------------------------------------------------------
     // ReadableStream.from(asyncIterable)

@@ -90,15 +90,208 @@ class EventTargetConstructor
     /** Internal-slot key for the Event brand. */
     public const SLOT_IS_EVENT = '[[IsEvent]]';
 
+    /**
+     * Shared "isTrusted" getter installed as an OWN accessor on every Event
+     * instance (per WebIDL [LegacyUnforgeable]). WPT verifies the getter is
+     * the same Function identity across distinct events.
+     */
+    private static ?JsFunction $isTrustedGetter = null;
+
     public static function install(Environment $env): void
     {
+        // Clear cross-engine cached function so the new realm builds its own.
+        self::$isTrustedGetter = null;
+
         $eventProto = self::createEventPrototype();
         $eventCtor = self::createEventConstructor($eventProto);
         $env->defineVar('Event', $eventCtor);
 
+        // CustomEvent extends Event and adds a `detail` accessor + init.
+        $customProto = self::createCustomEventPrototype($eventProto);
+        $customCtor = self::createCustomEventConstructor($customProto, $eventCtor);
+        $env->defineVar('CustomEvent', $customCtor);
+
         $targetProto = self::createEventTargetPrototype();
         $targetCtor = self::createEventTargetConstructor($targetProto);
         $env->defineVar('EventTarget', $targetCtor);
+
+        // Per the HTML spec, `window` (and the worker `self`) implements
+        // EventTarget. We expose addEventListener / removeEventListener /
+        // dispatchEvent on globalThis by linking globalThis to a hidden
+        // EventTarget receiver that owns the listener list. WPT tests
+        // that call `globalThis.removeEventListener("x", null)` etc.
+        // exercise this surface.
+        self::installGlobalEventTargetMethods($env, $targetProto);
+    }
+
+    /**
+     * Bind addEventListener / removeEventListener / dispatchEvent onto
+     * globalThis. Each method delegates to a shared backing EventTarget
+     * stored under an internal slot on globalThis so all calls land on
+     * the same listener list.
+     */
+    private static function installGlobalEventTargetMethods(Environment $env, JsObject $targetProto): void
+    {
+        // Backing EventTarget: a brand-new instance that holds the listener
+        // map for global-scope event listeners. Defined as a top-level var
+        // so Engine.php's bindings-sync loop projects it onto globalThis.
+        $backing = new JsObject($targetProto);
+        $backing->setInternalProperty(self::SLOT_IS_TARGET, true);
+        $backing->setInternalProperty(self::SLOT_LISTENERS, []);
+
+        foreach (
+            [
+                'addEventListener'    => 2,
+                'removeEventListener' => 2,
+                'dispatchEvent'       => 1,
+            ] as $methodName => $arity
+        ) {
+            // Skip if env already has a binding (some other built-in path
+            // installed it first).
+            if ($env->has($methodName)) {
+                continue;
+            }
+            $fn = JsFunction::fromCallable(
+                $methodName,
+                static function (JsValue $_this, array $args) use ($backing, $methodName): JsValue {
+                    return match ($methodName) {
+                        'addEventListener'    => self::addEventListener($backing, $args),
+                        'removeEventListener' => self::removeEventListener($backing, $args),
+                        'dispatchEvent'       => self::dispatchEvent($backing, $args),
+                    };
+                },
+                $arity,
+            );
+            $fn->setNonConstructable();
+            $env->defineVar($methodName, $fn);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // CustomEvent
+    // ------------------------------------------------------------------
+
+    private static function createCustomEventPrototype(JsObject $eventProto): JsObject
+    {
+        $proto = new JsObject($eventProto);
+
+        // `detail` getter — reads [[Detail]] slot, defaults to null.
+        $detailGetter = JsFunction::fromCallable(
+            'get detail',
+            static function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError("'detail' called on non-object");
+                }
+                $d = $this_->getInternalProperty('[[Detail]]');
+                return $d instanceof JsValue ? $d : JsNull::instance();
+            },
+            0,
+        );
+        $detailGetter->setNonConstructable();
+        $proto->defineOwnProperty(
+            'detail',
+            PropertyDescriptor::accessor($detailGetter, null, false, true),
+        );
+
+        // initCustomEvent(type, bubbles?, cancelable?, detail?) — legacy.
+        $initCustom = JsFunction::fromCallable(
+            'initCustomEvent',
+            static function (JsValue $this_, array $args): JsValue {
+                $self = self::requireEvent($this_, 'initCustomEvent');
+                if ($self->getInternalProperty('[[Dispatched]]') === true) {
+                    return JsUndefined::instance();
+                }
+                $type = TypeConversion::toString($args[0] ?? new JsString(''));
+                $bubbles = TypeConversion::toBoolean($args[1] ?? JsBoolean::of(false));
+                $cancelable = TypeConversion::toBoolean($args[2] ?? JsBoolean::of(false));
+                $detail = $args[3] ?? JsNull::instance();
+                $self->setInternalProperty('[[Type]]', $type);
+                $self->setInternalProperty('[[Bubbles]]', $bubbles);
+                $self->setInternalProperty('[[Cancelable]]', $cancelable);
+                $self->setInternalProperty('[[Target]]', null);
+                $self->setInternalProperty('[[StopPropagation]]', false);
+                $self->setInternalProperty('[[StopImmediate]]', false);
+                $self->setInternalProperty('[[DefaultPrevented]]', false);
+                $self->setInternalProperty('[[Detail]]', $detail);
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        $initCustom->setNonConstructable();
+        $proto->defineOwnProperty(
+            'initCustomEvent',
+            PropertyDescriptor::data($initCustom, true, false, true),
+        );
+
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('CustomEvent'), false, false, true),
+        );
+
+        return $proto;
+    }
+
+    private static function createCustomEventConstructor(
+        JsObject $proto,
+        JsFunction $eventCtor,
+    ): JsFunction {
+        $ctor = JsFunction::fromCallable(
+            'CustomEvent',
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                    throw new TypeError("Constructor CustomEvent requires 'new'");
+                }
+                if (!isset($args[0])) {
+                    throw new TypeError(
+                        "Failed to construct 'CustomEvent': 1 argument required, but only 0 present."
+                    );
+                }
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsObject) {
+                    $ntProto = $newTarget->get('prototype');
+                    $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);
+                }
+                $type = TypeConversion::toString($args[0]);
+                $bubbles = false;
+                $cancelable = false;
+                $composed = false;
+                $detail = JsNull::instance();
+                $init = $args[1] ?? JsUndefined::instance();
+                if ($init instanceof JsObject) {
+                    $bubbles = TypeConversion::toBoolean($init->get('bubbles'));
+                    $cancelable = TypeConversion::toBoolean($init->get('cancelable'));
+                    $composed = TypeConversion::toBoolean($init->get('composed'));
+                    $detailVal = $init->get('detail');
+                    if (!$detailVal instanceof JsUndefined) {
+                        $detail = $detailVal;
+                    }
+                }
+                self::initEventSlots($this_, $type, $bubbles, $cancelable, $composed);
+                $this_->setInternalProperty('[[Detail]]', $detail);
+                return $this_;
+            },
+            1,
+        );
+        $ctor->setConstructable();
+        $ctor->setPrototype($eventCtor);
+        $ctor->defineOwnProperty(
+            'prototype',
+            PropertyDescriptor::data($proto, false, false, false),
+        );
+        $proto->defineOwnProperty(
+            'constructor',
+            PropertyDescriptor::data($ctor, true, false, true),
+        );
+        // Per WebIDL, the constants are inherited via the prototype chain
+        // automatically since proto's prototype is eventProto. CustomEvent
+        // itself also exposes them.
+        foreach (self::phaseConstants() as $name => $value) {
+            $ctor->defineOwnProperty(
+                $name,
+                PropertyDescriptor::data(JsNumber::of((float) $value), false, true, false),
+            );
+        }
+        return $ctor;
     }
 
     // ------------------------------------------------------------------
@@ -233,6 +426,13 @@ class EventTargetConstructor
         $type = TypeConversion::toString($args[0] ?? JsUndefined::instance());
         $listener = $args[1] ?? JsNull::instance();
 
+        // Per WebIDL, the options dictionary is converted BEFORE the null-
+        // listener short-circuit (dictionary conversion is an observable
+        // step: a `{signal: null}` argument must still raise the AbortSignal
+        // type check even when the listener happens to be null). Parse
+        // options first so signal validation runs early.
+        [$capture, $once, $passive, $signal] = self::parseAddOptions($args[2] ?? JsUndefined::instance());
+
         // Per spec: a null listener is allowed (and is a no-op).
         if ($listener instanceof JsNull || $listener instanceof JsUndefined) {
             return JsUndefined::instance();
@@ -246,8 +446,6 @@ class EventTargetConstructor
                 . "parameter 2 is not of type 'EventListener'."
             );
         }
-
-        [$capture, $once, $passive, $signal] = self::parseAddOptions($args[2] ?? JsUndefined::instance());
 
         // If the signal is already aborted, do nothing.
         if ($signal !== null && self::signalIsAborted($signal)) {
@@ -400,9 +598,13 @@ class EventTargetConstructor
             }
         } finally {
             // Per spec, after dispatch finishes currentTarget is null,
-            // eventPhase is NONE, but target remains set.
+            // eventPhase is NONE, but target remains set. The "dispatch
+            // flag" is cleared so the event can be re-dispatched — only
+            // re-entrant dispatch (during this same dispatch's listener
+            // invocation) is forbidden.
             $event->setInternalProperty('[[CurrentTarget]]', null);
             $event->setInternalProperty('[[EventPhase]]', 0); // NONE
+            $event->setInternalProperty('[[Dispatched]]', false);
         }
 
         $defaultPrevented = $event->getInternalProperty('[[DefaultPrevented]]') === true;
@@ -526,9 +728,11 @@ class EventTargetConstructor
             if ($sigVal instanceof JsObject && $sigVal->has('aborted')) {
                 $signal = $sigVal;
             }
-            // If `signal` was passed but isn't an object, browsers throw
-            // "parameter signal is not of type AbortSignal". We follow.
-            if ($signal === null && !($sigVal instanceof JsUndefined) && !($sigVal instanceof JsNull)) {
+            // If `signal` was passed but isn't an AbortSignal, browsers
+            // throw "parameter signal is not of type AbortSignal". Null is
+            // treated as "given but invalid" per WebIDL — undefined alone
+            // means absent.
+            if ($signal === null && !($sigVal instanceof JsUndefined)) {
                 throw new TypeError(
                     "Failed to execute 'addEventListener' on 'EventTarget': "
                     . "member signal is not of type AbortSignal."
@@ -653,6 +857,32 @@ class EventTargetConstructor
      * Initialize event internal slots after the JS-visible prototype is
      * already wired up.
      */
+    /**
+     * Install the per-instance isTrusted accessor. Identity-stable: WPT
+     * verifies the getter equals itself across `new Event("x")` calls.
+     */
+    private static function installIsTrusted(JsObject $obj): void
+    {
+        if (self::$isTrustedGetter === null) {
+            $getter = JsFunction::fromCallable(
+                'get isTrusted',
+                static function (JsValue $this_): JsValue {
+                    if (!$this_ instanceof JsObject) {
+                        throw new TypeError("'isTrusted' called on non-object");
+                    }
+                    return JsBoolean::of($this_->getInternalProperty('[[IsTrusted]]') === true);
+                },
+                0,
+            );
+            $getter->setNonConstructable();
+            self::$isTrustedGetter = $getter;
+        }
+        $obj->defineOwnProperty(
+            'isTrusted',
+            PropertyDescriptor::accessor(self::$isTrustedGetter, null, false, true),
+        );
+    }
+
     private static function initEventSlots(
         JsObject $obj,
         string $type,
@@ -661,6 +891,7 @@ class EventTargetConstructor
         bool $composed,
     ): void {
         $obj->setInternalProperty(self::SLOT_IS_EVENT, true);
+        self::installIsTrusted($obj);
         $obj->setInternalProperty('[[Type]]', $type);
         $obj->setInternalProperty('[[Bubbles]]', $bubbles);
         $obj->setInternalProperty('[[Cancelable]]', $cancelable);
@@ -695,14 +926,86 @@ class EventTargetConstructor
         // how browsers expose Event attributes.
         self::defineReadOnlyGetter($proto, 'type', '[[Type]]', 'string');
         self::defineReadOnlyGetter($proto, 'target', '[[Target]]', 'nullable-object');
+        // srcElement is a legacy alias for target (per DOM spec §2.6).
+        self::defineReadOnlyGetter($proto, 'srcElement', '[[Target]]', 'nullable-object');
         self::defineReadOnlyGetter($proto, 'currentTarget', '[[CurrentTarget]]', 'nullable-object');
         self::defineReadOnlyGetter($proto, 'eventPhase', '[[EventPhase]]', 'number');
         self::defineReadOnlyGetter($proto, 'bubbles', '[[Bubbles]]', 'boolean');
         self::defineReadOnlyGetter($proto, 'cancelable', '[[Cancelable]]', 'boolean');
         self::defineReadOnlyGetter($proto, 'defaultPrevented', '[[DefaultPrevented]]', 'boolean');
         self::defineReadOnlyGetter($proto, 'composed', '[[Composed]]', 'boolean');
-        self::defineReadOnlyGetter($proto, 'isTrusted', '[[IsTrusted]]', 'boolean');
+        // isTrusted is installed as an OWN accessor on each Event instance
+        // (not on the prototype) per WebIDL [LegacyUnforgeable]. See
+        // initEventSlots() which calls installIsTrusted().
         self::defineReadOnlyGetter($proto, 'timeStamp', '[[TimeStamp]]', 'number');
+
+        // returnValue is a legacy accessor pair: get == !defaultPrevented;
+        // set: if the event is cancelable and the assigned value is false,
+        // signal "canceled flag" (i.e. preventDefault). Setting to true is
+        // a no-op. (DOM §2.6.)
+        $returnValueGetter = JsFunction::fromCallable(
+            'get returnValue',
+            static function (JsValue $this_): JsValue {
+                $self = self::requireEvent($this_, 'returnValue');
+                $prevented = $self->getInternalProperty('[[DefaultPrevented]]') === true;
+                return JsBoolean::of(!$prevented);
+            },
+            0,
+        );
+        $returnValueGetter->setNonConstructable();
+        $returnValueSetter = JsFunction::fromCallable(
+            'set returnValue',
+            static function (JsValue $this_, array $args): JsValue {
+                $self = self::requireEvent($this_, 'returnValue');
+                $val = $args[0] ?? JsUndefined::instance();
+                if (!TypeConversion::toBoolean($val)) {
+                    if ($self->getInternalProperty('[[Cancelable]]') === true) {
+                        $self->setInternalProperty('[[DefaultPrevented]]', true);
+                    }
+                }
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        $returnValueSetter->setNonConstructable();
+        $proto->defineOwnProperty(
+            'returnValue',
+            PropertyDescriptor::accessor($returnValueGetter, $returnValueSetter, false, true),
+        );
+
+        // initEvent(type, bubbles?, cancelable?) — legacy DOM method that
+        // re-initializes the event before dispatch. After dispatch is a
+        // no-op. We track the "dispatched" flag via [[CurrentTarget]] !=
+        // null OR [[EventPhase]] != 0 not strictly enough; the spec uses
+        // an explicit [[Dispatched]] flag set by dispatchEvent. We
+        // synthesize it via [[InvocationTargetInShadow]] which is unused.
+        $initEvent = JsFunction::fromCallable(
+            'initEvent',
+            static function (JsValue $this_, array $args): JsValue {
+                $self = self::requireEvent($this_, 'initEvent');
+                if ($self->getInternalProperty('[[Dispatched]]') === true) {
+                    return JsUndefined::instance();
+                }
+                $type = TypeConversion::toString($args[0] ?? new JsString(''));
+                $bubbles = TypeConversion::toBoolean($args[1] ?? JsBoolean::of(false));
+                $cancelable = TypeConversion::toBoolean($args[2] ?? JsBoolean::of(false));
+                $self->setInternalProperty('[[Type]]', $type);
+                $self->setInternalProperty('[[Bubbles]]', $bubbles);
+                $self->setInternalProperty('[[Cancelable]]', $cancelable);
+                $self->setInternalProperty('[[Target]]', null);
+                $self->setInternalProperty('[[StopPropagation]]', false);
+                $self->setInternalProperty('[[StopImmediate]]', false);
+                $self->setInternalProperty('[[DefaultPrevented]]', false);
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        $initEvent->setNonConstructable();
+        $proto->defineOwnProperty(
+            'initEvent',
+            PropertyDescriptor::data($initEvent, true, false, true),
+        );
+
 
         // composedPath() → no DOM tree, so always [target] when dispatched,
         // [] otherwise.

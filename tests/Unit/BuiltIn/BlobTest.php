@@ -233,16 +233,26 @@ JS);
         $this->assertSame([97, 98, 99], $engine->eval('globalThis.__arr;'));
     }
 
-    public function testBlobStreamThrowsTypeError(): void
+    public function testBlobStreamReturnsReadableByteStream(): void
     {
         $engine = new Engine();
+        // Blob.stream() returns a ReadableStream. The stream surface (
+        // getReader / Symbol.asyncIterator) is wired so async consumers
+        // can read the blob bytes. We assert the shape; the WPT
+        // Blob-stream.any.js fixture exercises the full async drain
+        // semantics end-to-end.
         $result = $engine->eval(<<<'JS'
 const b = new Blob(["abc"]);
-let err = null;
-try { b.stream(); } catch (e) { err = e.name + ":" + e.message.includes("ReadableStream"); }
-err;
+const s = b.stream();
+const shape = [
+    typeof s,
+    typeof s.getReader,
+    typeof s[Symbol.asyncIterator],
+    s instanceof ReadableStream,
+];
+shape.join(",");
 JS);
-        $this->assertSame('TypeError:true', $result);
+        $this->assertSame('object,function,function,true', $result);
     }
 
     public function testBlobToStringTag(): void

@@ -216,9 +216,11 @@ class BlobConstructor
                     $lastModified = (int) (microtime(true) * 1000);
                 }
 
-                // Per spec, "/" in name must be replaced with ":"
-                $name = str_replace('/', ':', $name);
-
+                // Per the current File API spec (Editor's Draft, late 2024),
+                // there is no character substitution applied to the
+                // fileName — earlier drafts required "/" → ":" but that
+                // step was removed. WPT pins this with a fixture that
+                // expects "dummy/foo" to round-trip unmodified.
                 $this_->setInternalProperty('[[IsBlob]]', true);
                 $this_->setInternalProperty('[[IsFile]]', true);
                 $this_->setInternalProperty('[[BlobBytes]]', $bytes);
@@ -371,18 +373,18 @@ class BlobConstructor
             PropertyDescriptor::data($textFn, true, false, true),
         );
 
-        // stream(): ReadableStream — not implemented yet.
-        // Phase F-7 of the Fetch Pack ships ReadableStream; until then,
-        // calling stream() raises a clear, spec-named TypeError so callers
-        // see a concrete signal rather than `undefined.getReader()`.
+        // stream(): ReadableStream. Wraps the Blob's bytes in a single
+        // chunk Uint8Array and pushes it through a default-controller
+        // ReadableStream. Empty Blobs produce a stream that closes
+        // immediately without yielding any chunks.
         $streamFn = JsFunction::fromCallable(
             'stream',
             function (JsValue $this_, array $args): JsValue {
                 self::assertBlob($this_, 'stream');
-                throw new TypeError(
-                    'Blob.prototype.stream() requires ReadableStream which is not yet '
-                    . 'implemented in Phasis; consume the Blob via arrayBuffer(), '
-                    . 'bytes(), or text() instead.'
+                /** @var JsObject $this_ */
+                $bytes = $this_->getInternalProperty('[[BlobBytes]]');
+                return \Phasis\BuiltIn\Streams\StreamHelpers::createReadableByteStreamFromBytes(
+                    is_string($bytes) ? $bytes : ''
                 );
             },
             0,

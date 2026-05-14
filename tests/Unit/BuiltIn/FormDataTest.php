@@ -329,14 +329,19 @@ JS);
         $this->assertSame('TypeError', $result);
     }
 
-    public function testFormDataAcceptsFormArgument(): void
+    public function testFormDataConstructorRejectsNonFormArgument(): void
     {
-        // We accept a form-like argument as a no-op; per spec, missing/null
-        // is acceptable, and we lazily ignore any object argument.
+        // Per WebIDL the optional argument is HTMLFormElement?. Since we
+        // do not implement HTMLFormElement, any non-undefined argument
+        // (including null and plain objects) must be rejected with a
+        // TypeError. WPT verifies this with `new FormData(null)` and
+        // `new FormData("string")`.
         $engine = new Engine();
-        $result = $engine->eval(
-            'new FormData({}).has("anything");'
-        );
-        $this->assertFalse($result);
+        $result = $engine->eval(<<<'JS'
+let err = null;
+try { new FormData({}); } catch (e) { err = e.name; }
+err;
+JS);
+        $this->assertSame('TypeError', $result);
     }
 }

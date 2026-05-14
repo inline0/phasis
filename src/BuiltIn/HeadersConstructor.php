@@ -564,6 +564,9 @@ class HeadersConstructor
         if (self::guardForbidsName($guard, $name)) {
             return;
         }
+        if (self::guardForbidsValue($guard, $name, $value)) {
+            return;
+        }
         $candidate = $list;
         $candidate[] = [$name, $value];
         if (!self::isGuardAcceptable($list, $guard, $name, $value)) {
@@ -590,6 +593,9 @@ class HeadersConstructor
             throw new TypeError('Headers are immutable');
         }
         if (self::guardForbidsName($guard, $name)) {
+            return;
+        }
+        if (self::guardForbidsValue($guard, $name, $value)) {
             return;
         }
         // For set, build the candidate list first and then check whether the
@@ -642,6 +648,38 @@ class HeadersConstructor
             // Forbidden request-header names per the Fetch spec — a subset.
             return in_array($name, self::forbiddenRequestNames(), true)
                 || self::isForbiddenRequestPrefix($name);
+        }
+        return false;
+    }
+
+    /**
+     * Per Fetch spec §forbidden-request-header: when guard is "request" and
+     * the name is one of X-HTTP-Method / X-HTTP-Method-Override /
+     * X-Method-Override (byte-case-insensitive), reject if any comma-split
+     * segment of the value (after HTTP-whitespace trimming) is a forbidden
+     * method (CONNECT / TRACE / TRACK — byte-case-insensitive).
+     */
+    private static function guardForbidsValue(string $guard, string $name, string $value): bool
+    {
+        if ($guard !== 'request') {
+            return false;
+        }
+        // Names are already lowercased on entry to this helper.
+        if (
+            $name !== 'x-http-method' &&
+            $name !== 'x-http-method-override' &&
+            $name !== 'x-method-override'
+        ) {
+            return false;
+        }
+        // Split on `,` and trim each segment of HTTP whitespace, then
+        // case-insensitively compare to CONNECT/TRACE/TRACK.
+        foreach (explode(',', $value) as $segment) {
+            $trimmed = trim($segment, " \t\r\n");
+            $lower = strtolower($trimmed);
+            if ($lower === 'connect' || $lower === 'trace' || $lower === 'track') {
+                return true;
+            }
         }
         return false;
     }

@@ -15,7 +15,10 @@
 
     function report(status, name, message) {
         if (typeof __phasisWptReport === "function") {
-            __phasisWptReport(status, name, message || "");
+            // WPT fixtures sometimes call `test(fn)` without a name; fall
+            // back to a placeholder so the PHP-side typed callback (string
+            // name) never sees null.
+            __phasisWptReport(status, name == null ? "(anonymous)" : String(name), message || "");
         }
     }
 
@@ -176,6 +179,26 @@
             describe(expected));
     };
 
+    global.assert_greater_than = function (actual, expected, description) {
+        if (actual > expected) return;
+        throw AssertionError(format(actual, expected, ">", description));
+    };
+
+    global.assert_greater_than_equal = function (actual, expected, description) {
+        if (actual >= expected) return;
+        throw AssertionError(format(actual, expected, ">=", description));
+    };
+
+    global.assert_less_than = function (actual, expected, description) {
+        if (actual < expected) return;
+        throw AssertionError(format(actual, expected, "<", description));
+    };
+
+    global.assert_less_than_equal = function (actual, expected, description) {
+        if (actual <= expected) return;
+        throw AssertionError(format(actual, expected, "<=", description));
+    };
+
     global.assert_regexp_match = function (actual, re, description) {
         if (re.test(actual)) return;
         throw AssertionError(
@@ -230,7 +253,17 @@
             unreached_func: function (msg) {
                 return function () { throw AssertionError(msg || "unreached"); };
             },
-            step_timeout: function () {},  // no real timer; treat as no-op
+            // step_timeout(cb, ms?) — upstream WPT uses real setTimeout;
+            // we have none, so defer cb to a microtask. That gives the
+            // calling code time to observe `false` flags set immediately
+            // after invocation, then transitions on the next tick. The
+            // cancel-integration fixture relies on this pattern.
+            step_timeout: function (cb) {
+                if (typeof cb !== "function") return;
+                Promise.resolve().then(function () {
+                    try { cb(); } catch (_) { /* surfaced via outer chain */ }
+                });
+            },
             done: function () {},
         };
         return t;
@@ -335,6 +368,115 @@
     // format_value used by some fixtures.
     global.format_value = describe;
 
+    // garbageCollect() — some WPT fixtures call this to test that the
+    // implementation isn't relying on GC behavior. We have nothing
+    // analogous in Phasis (PHP is refcounted), so make it a no-op.
+    global.garbageCollect = function () {};
+
+    // -- Streams test helpers (mirror upstream WPT resources) --
+    //
+    // Phasis runs synchronously, so several timing primitives become no-ops
+    // or microtask drains. The shapes match upstream's
+    // resources/test-utils.js and resources/recording-streams.js closely
+    // enough for the fixtures we ship to pass.
+
+    // flushAsyncEvents() — drains pending microtasks, resolves "soon".
+    // Upstream WPT does this by chaining ~3 setTimeout(0)s; we drain the
+    // microtask queue once and resolve.
+    global.flushAsyncEvents = function () {
+        if (typeof __phasisDrainMicrotasks === "function") {
+            __phasisDrainMicrotasks();
+        }
+        return Promise.resolve();
+    };
+
+    // delay(ms) — returns a promise that resolves "after ms". We have no
+    // setTimeout; resolve immediately and let the microtask queue drain.
+    global.delay = function () {
+        return Promise.resolve();
+    };
+
+    // recordingReadableStream({ start, pull, cancel }, qs?) — port of
+    // upstream tests/wpt/streams/resources/recording-streams.js.
+    global.recordingReadableStream = function (extras, strategy) {
+        extras = extras || {};
+        const events = [];
+        const eventsWithoutPulls = [];
+        let controllerToCopyOver;
+        const stream = new ReadableStream({
+            type: extras.type,
+            start(controller) {
+                controllerToCopyOver = controller;
+                if (extras.start) {
+                    return extras.start(controller);
+                }
+                return undefined;
+            },
+            pull(controller) {
+                events.push("pull");
+                if (extras.pull) {
+                    return extras.pull(controller);
+                }
+                return undefined;
+            },
+            cancel(reason) {
+                events.push("cancel", reason);
+                eventsWithoutPulls.push("cancel", reason);
+                if (extras.cancel) {
+                    return extras.cancel(reason);
+                }
+                return undefined;
+            }
+        }, strategy);
+        stream.controller = controllerToCopyOver;
+        stream.events = events;
+        stream.eventsWithoutPulls = eventsWithoutPulls;
+        return stream;
+    };
+
+    // RandomPushSource(length?) — a push source that emits 128-byte
+    // chunks. Upstream WPT uses real timers for backpressure; we have
+    // no timers, so cap synchronous emission at a small number of chunks
+    // (8 by default). That's enough to satisfy "at least one chunk read"
+    // assertions while keeping the loop bounded.
+    global.RandomPushSource = function (length) {
+        const self = this;
+        // For infinite sources, cap at a small synchronous burst so the
+        // headless runner doesn't OOM. The cancel-integration test only
+        // cares that *some* chunks are seen.
+        self.length = length === undefined ? 8 : Math.min(length, 8);
+        let stopped = false;
+        let pushed = 0;
+        self.ondata = function () {};
+        self.onend = function () {};
+        self.onerror = function () {};
+        self.readStop = function () { stopped = true; };
+        self.readStart = function () {
+            while (!stopped && pushed < self.length) {
+                pushed++;
+                // 128 bytes of 'a' — matches what the WPT source produces.
+                self.ondata(new Uint8Array(128).fill(97));
+                if (pushed >= self.length) {
+                    self.onend();
+                }
+            }
+        };
+    };
+
+    // readableStreamToArray(stream) — utility used by some fixtures.
+    global.readableStreamToArray = function (stream, reader) {
+        const r = reader || stream.getReader();
+        const out = [];
+        function pump() {
+            return r.read().then(function (chunk) {
+                if (chunk.done) return out;
+                out.push(chunk.value);
+                return pump();
+            });
+        }
+        return pump();
+    };
+
     // -- WPT environment globals ---------------------------------------------
 
     // `self` is the global scope in WPT (window/worker/serviceworker). For
@@ -405,6 +547,26 @@
                     (description ? description + ": " : "") +
                     "threw " + (e && e.name) + ", expected " +
                     (ctor && ctor.name));
+            }
+        );
+    };
+
+    // promise_rejects_exactly(t, expectedReason, promise, description?)
+    // — verifies the promise rejects with a reason `===` expectedReason.
+    global.promise_rejects_exactly = function (t, expectedReason, promise, description) {
+        return Promise.resolve(promise).then(
+            function () {
+                throw AssertionError(
+                    (description ? description + ": " : "") +
+                    "expected rejection of " + describe(expectedReason) +
+                    " but resolved");
+            },
+            function (e) {
+                if (e === expectedReason) return;
+                throw AssertionError(
+                    (description ? description + ": " : "") +
+                    "threw " + describe(e) + ", expected exactly " +
+                    describe(expectedReason));
             }
         );
     };

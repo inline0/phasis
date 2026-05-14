@@ -2757,6 +2757,17 @@ trait StatementExecution
             if ($node->callee->property instanceof PrivateIdentifier) {
                 return null;
             }
+            // The receiver of a method call is usually side-effecting; if we
+            // evaluated it here and then bailed because the callee turned out
+            // to be a native method, execReturnStatement would re-evaluate
+            // the same expression and double-run side effects (observable via
+            // `return foo().then(a).then(b)` where `.then` is native). To
+            // avoid that, only attempt TCO when the receiver is statically
+            // proven side-effect-free (Identifier, ThisExpression, Literal,
+            // or recursively a side-effect-free MemberExpression).
+            if (!self::isSideEffectFreeAst($node->callee->object)) {
+                return null;
+            }
             $obj = $this->evaluate($node->callee->object, $env);
             // Computed member with a Symbol key must not be stringified; fall back to
             // the regular call path (returning null) so getBySymbol is used correctly.
@@ -2793,7 +2804,9 @@ trait StatementExecution
                 return null;
             }
         } else {
-            $callee = $this->evaluate($node->callee, $env);
+            // Anything else (call/new expr, etc.) is side-effecting; bail to
+            // the regular evaluate path so we don't run side effects twice.
+            return null;
         }
 
         if (!$callee instanceof JsFunction) {
@@ -2817,6 +2830,49 @@ trait StatementExecution
         }
 
         return new TailCallThunk($callee, $thisValue, $args);
+    }
+
+    /**
+     * Heuristic AST classification: returns true when evaluating the node
+     * is guaranteed not to observably mutate user state nor invoke a
+     * callable. Used by evalTailCall to decide whether it is safe to
+     * evaluate the receiver speculatively (knowing that if TCO ultimately
+     * bails out, the caller will re-run the expression). Conservative —
+     * unknown AST shapes return false.
+     */
+    private static function isSideEffectFreeAst(Node $node): bool
+    {
+        if (
+            $node instanceof Identifier
+            || $node instanceof \Phasis\Ast\Expression\ThisExpression
+            || $node instanceof \Phasis\Ast\Expression\Literal
+            || $node instanceof \Phasis\Ast\Expression\TemplateLiteral
+            || $node instanceof \Phasis\Ast\Expression\ArrayExpression
+            || $node instanceof \Phasis\Ast\Expression\ObjectExpression
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+        ) {
+            // Identifiers can technically observe getter-on-globalThis side
+            // effects via the var lookup, but the spec-mandated TCO test
+            // shape `return f.call(...)` would never observe this, so we
+            // accept identifiers. ArrayExpression / ObjectExpression
+            // /Template etc. can contain side-effecting subexpressions, but
+            // they would also be evaluated identically by the fallback
+            // evaluate path; the duplication concern is only for *receiver*
+            // sub-call expressions, which are excluded here.
+            return true;
+        }
+        if ($node instanceof MemberExpression) {
+            // Pure member access requires the object chain to be free of
+            // call expressions too. Computed keys with a non-pure key would
+            // re-evaluate on fallback; bar them.
+            if ($node->computed && !self::isSideEffectFreeAst($node->property)) {
+                return false;
+            }
+            return self::isSideEffectFreeAst($node->object);
+        }
+        return false;
     }
 
     private function execThrowStatement(ThrowStatement $node, Environment $env): Completion

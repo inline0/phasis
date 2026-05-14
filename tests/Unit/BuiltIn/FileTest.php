@@ -123,14 +123,17 @@ JS);
         $this->assertSame('TypeError', $result);
     }
 
-    public function testFileSlashInNameNormalizedToColon(): void
+    public function testFileSlashInNamePreservedVerbatim(): void
     {
-        // Per File spec, "/" in name is replaced with ":".
+        // Per the current File API spec (Editor's Draft, late 2024) the
+        // historical "/" → ":" substitution was removed. WPT pins this
+        // with File-constructor.any.js — "dummy/foo" must round-trip
+        // unchanged.
         $engine = new Engine();
         $result = $engine->eval(
             'new File(["x"], "a/b/c.txt").name;'
         );
-        $this->assertSame('a:b:c.txt', $result);
+        $this->assertSame('a/b/c.txt', $result);
     }
 
     public function testFileNaNLastModifiedBecomesZero(): void
