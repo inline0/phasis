@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Runtime;
+namespace Phasis\Runtime;
 
-use PhpJs\Exceptions\ReferenceError;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\ReferenceError;
+use Phasis\Exceptions\TypeError;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class Reference
 {
@@ -186,14 +186,14 @@ class Reference
         // write that would create a new own property on the primitive must
         // fail; accessors (including proxy set traps) still run, observing
         // the primitive as the receiver.
-        $wrapper = \PhpJs\Spec\TypeConversion::toObject($this->base);
+        $wrapper = \Phasis\Spec\TypeConversion::toObject($this->base);
         $name = $this->resolvedName();
         $cursor = $wrapper;
         $handled = false;
         while ($cursor !== null) {
             // Proxies intercept [[Set]] directly rather than exposing
             // own property descriptors, so give them a turn at the chain.
-            if ($cursor instanceof \PhpJs\Value\JsProxy) {
+            if ($cursor instanceof \Phasis\Value\JsProxy) {
                 $handled = $cursor->internalSet($name, $value, $wrapper);
                 break;
             }
@@ -203,7 +203,7 @@ class Reference
                 continue;
             }
             if ($desc->isAccessorDescriptor()) {
-                if ($desc->set instanceof \PhpJs\Value\JsFunction) {
+                if ($desc->set instanceof \Phasis\Value\JsFunction) {
                     $desc->set->call($this->base, [$value]);
                     $handled = true;
                 }

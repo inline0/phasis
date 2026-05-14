@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * JavaScript SharedArrayBuffer object.
@@ -35,19 +35,19 @@ class JsSharedArrayBuffer extends JsArrayBuffer
     /** SharedArrayBuffer is never detachable per spec. */
     public function detach(): void
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot detach a SharedArrayBuffer');
+        throw new \Phasis\Exceptions\TypeError('Cannot detach a SharedArrayBuffer');
     }
 
     /** SharedArrayBuffer does not support transfer per spec. */
     public function transfer(?int $newLength = null): JsArrayBuffer
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot transfer a SharedArrayBuffer');
+        throw new \Phasis\Exceptions\TypeError('Cannot transfer a SharedArrayBuffer');
     }
 
     /** SharedArrayBuffer does not support transferToFixedLength per spec. */
     public function transferToFixedLength(?int $newLength = null): JsArrayBuffer
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot transfer a SharedArrayBuffer');
+        throw new \Phasis\Exceptions\TypeError('Cannot transfer a SharedArrayBuffer');
     }
 
     public function get(string $name): JsValue

@@ -43,9 +43,9 @@ if [[ -f "$SCENARIO_DIR/scenario.json" ]]; then
 fi
 
 if [[ "$MODE" == "exec" ]]; then
-    php "$ROOT_DIR/bin/php-js" "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1
+    php "$ROOT_DIR/bin/phasis" "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1
 else
-    php "$ROOT_DIR/bin/php-js" --ast "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1
+    php "$ROOT_DIR/bin/phasis" --ast "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1
 fi
 
 echo "Actual captured: $ACTUAL_FILE"

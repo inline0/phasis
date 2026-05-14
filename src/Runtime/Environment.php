@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Runtime;
+namespace Phasis\Runtime;
 
-use PhpJs\Exceptions\ReferenceError;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\ReferenceError;
+use Phasis\Exceptions\TypeError;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class Environment
 {
@@ -69,14 +69,14 @@ class Environment
      * also create/update properties on the linked object. Used for
      * the global environment to keep globalThis in sync with var bindings.
      */
-    private ?\PhpJs\Value\JsObject $linkedObject = null;
+    private ?\Phasis\Value\JsObject $linkedObject = null;
 
     /**
      * When set, this environment is a "with" object environment record.
      * Variable lookups first check this object (using [[Has]]) before
      * falling through to the parent scope. This enables Proxy has traps.
      */
-    private ?\PhpJs\Value\JsObject $withObject = null;
+    private ?\Phasis\Value\JsObject $withObject = null;
 
     /**
      * Tracks the kind of function this environment belongs to.
@@ -110,7 +110,7 @@ class Environment
      * `using` statement evaluator before being added; null/undefined are
      * silently skipped per spec sec-disposeresources.
      *
-     * @var list<array{0: \PhpJs\Value\JsObject, 1: bool}>
+     * @var list<array{0: \Phasis\Value\JsObject, 1: bool}>
      */
     private array $disposables = [];
 
@@ -123,12 +123,12 @@ class Environment
      * Link this environment to a global object so that var declarations
      * and assignments are mirrored as own properties on the object.
      */
-    public function linkGlobalObject(\PhpJs\Value\JsObject $obj): void
+    public function linkGlobalObject(\Phasis\Value\JsObject $obj): void
     {
         $this->linkedObject = $obj;
     }
 
-    public function getLinkedObject(): ?\PhpJs\Value\JsObject
+    public function getLinkedObject(): ?\Phasis\Value\JsObject
     {
         return $this->linkedObject;
     }
@@ -213,7 +213,7 @@ class Environment
         ) {
             $this->linkedObject->defineOwnProperty(
                 $name,
-                \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
+                \Phasis\Object\PropertyDescriptor::data($value, true, false, true),
             );
         }
     }
@@ -237,14 +237,14 @@ class Environment
                 // D is false for script-level declarations, true for eval-created ones.
                 $this->linkedObject->defineOwnProperty(
                     $name,
-                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, $configurable),
+                    \Phasis\Object\PropertyDescriptor::data($value, true, true, $configurable),
                 );
             } elseif ($existingProp->configurable) {
                 // Per spec CreateGlobalFunctionBinding step 5: if existing prop is
                 // configurable, replace with full descriptor.
                 $this->linkedObject->defineOwnProperty(
                     $name,
-                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, $configurable),
+                    \Phasis\Object\PropertyDescriptor::data($value, true, true, $configurable),
                 );
             } else {
                 // Per spec step 6: non-configurable existing property. Just update value.
@@ -280,7 +280,7 @@ class Environment
             if ($this->linkedObject !== null && !$this->linkedObject->hasOwnProperty($name)) {
                 $this->linkedObject->defineOwnProperty(
                     $name,
-                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, $configurable),
+                    \Phasis\Object\PropertyDescriptor::data($value, true, true, $configurable),
                 );
                 if ($configurable) {
                     $this->deletable[$name] = true;
@@ -368,7 +368,7 @@ class Environment
             ) {
                 $this->linkedObject->defineOwnProperty(
                     $name,
-                    \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
+                    \Phasis\Object\PropertyDescriptor::data($value, true, false, true),
                 );
             }
         } else {
@@ -491,7 +491,7 @@ class Environment
     public function get(
         string $name,
         bool $strict = false,
-        ?\PhpJs\Value\JsObject &$resolvedWithBase = null,
+        ?\Phasis\Value\JsObject &$resolvedWithBase = null,
     ): JsValue {
         // Hot path: own binding, no with/import/TDZ, not the global
         // object env. ~95% of variable reads hit this. isset is faster
@@ -896,11 +896,11 @@ class Environment
             return false;
         }
         $unscopables = $this->withObject->getBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::unscopables()
+            \Phasis\BuiltIn\SymbolConstructor::unscopables()
         );
-        if ($unscopables instanceof \PhpJs\Value\JsObject) {
+        if ($unscopables instanceof \Phasis\Value\JsObject) {
             $value = $unscopables->get($name);
-            return \PhpJs\Spec\TypeConversion::toBoolean($value);
+            return \Phasis\Spec\TypeConversion::toBoolean($value);
         }
         return false;
     }
@@ -1132,7 +1132,7 @@ class Environment
      * with-expression value. Variable lookups use [[Has]] on this
      * object, which enables Proxy has/get traps.
      */
-    public function createWithEnvironment(\PhpJs\Value\JsObject $obj): self
+    public function createWithEnvironment(\Phasis\Value\JsObject $obj): self
     {
         $child = new self($this);
         $child->withObject = $obj;
@@ -1145,7 +1145,7 @@ class Environment
      * Called when processing `using` or `await using` declarations
      * after the resource has been validated as a non-null object.
      */
-    public function addDisposable(\PhpJs\Value\JsObject $resource, bool $isAsync): void
+    public function addDisposable(\Phasis\Value\JsObject $resource, bool $isAsync): void
     {
         $this->disposables[] = [$resource, $isAsync];
     }
@@ -1154,7 +1154,7 @@ class Environment
      * Get the disposal stack for this environment (in registration order).
      * Caller should iterate in reverse for disposal.
      *
-     * @return list<array{0: \PhpJs\Value\JsObject, 1: bool}>
+     * @return list<array{0: \Phasis\Value\JsObject, 1: bool}>
      */
     public function getDisposables(): array
     {
@@ -1172,7 +1172,7 @@ class Environment
     /**
      * Transfer all disposables out of this environment (used by move()).
      *
-     * @return list<array{0: \PhpJs\Value\JsValue, 1: bool}>
+     * @return list<array{0: \Phasis\Value\JsValue, 1: bool}>
      */
     public function takeDisposables(): array
     {

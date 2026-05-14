@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * Represents an object with the [[IsHTMLDDA]] internal slot.

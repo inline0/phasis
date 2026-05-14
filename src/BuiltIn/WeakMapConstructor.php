@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
-use PhpJs\Value\JsWeakMap;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Exceptions\TypeError;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
+use Phasis\Value\JsWeakMap;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * WeakMap constructor and prototype methods.
@@ -71,7 +71,7 @@ class WeakMapConstructor
         if ($key instanceof JsObject) {
             return true;
         }
-        if ($key instanceof \PhpJs\Value\JsSymbol && !SymbolConstructor::isRegisteredSymbol($key)) {
+        if ($key instanceof \Phasis\Value\JsSymbol && !SymbolConstructor::isRegisteredSymbol($key)) {
             return true;
         }
         return false;

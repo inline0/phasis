@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Oracle;
+namespace Phasis\Tests\Oracle;
 
-use PhpJs\BuiltIn\AtomicsObject;
-use PhpJs\Engine;
-use PhpJs\Value\JsArrayBuffer;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsSharedArrayBuffer;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsTypedArray;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\BuiltIn\AtomicsObject;
+use Phasis\Engine;
+use Phasis\Value\JsArrayBuffer;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsSharedArrayBuffer;
+use Phasis\Value\JsString;
+use Phasis\Value\JsTypedArray;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Single-threaded cooperative simulation of the test262 `$262.agent` host.
@@ -203,7 +203,7 @@ final class AgentHost
                     $host->drainTimedOutFibers();
                 }
                 if (count($host->reports) === 0) {
-                    return \PhpJs\Value\JsNull::instance();
+                    return \Phasis\Value\JsNull::instance();
                 }
                 return new JsString((string) array_shift($host->reports));
             },
@@ -278,7 +278,7 @@ final class AgentHost
                 $v = $args[0] ?? JsUndefined::instance();
                 $s = $v instanceof JsString
                     ? $v->value
-                    : \PhpJs\Spec\TypeConversion::toString($v);
+                    : \Phasis\Spec\TypeConversion::toString($v);
                 $host->reports[] = $s;
                 return JsUndefined::instance();
             },
@@ -338,7 +338,7 @@ final class AgentHost
                 $delayArg = $args[1] ?? JsUndefined::instance();
                 $delay = 0.0;
                 if (!$delayArg instanceof JsUndefined) {
-                    $n = \PhpJs\Spec\TypeConversion::toNumber($delayArg);
+                    $n = \Phasis\Spec\TypeConversion::toNumber($delayArg);
                     if (!is_nan($n) && $n > 0.0) {
                         $delay = $n;
                     }
@@ -392,7 +392,7 @@ final class AgentHost
         // the virtual clock so a same-turn Atomics.notify still has a
         // chance to wake the waiter before the timeout fires.
         AtomicsObject::setWaitAsyncTimeoutHook(
-            static function (\PhpJs\Value\JsPromise $promise, float $timeoutMs) use ($host): void {
+            static function (\Phasis\Value\JsPromise $promise, float $timeoutMs) use ($host): void {
                 $id = ++$host->timerSeq;
                 $host->timerQueue[] = [
                     'fireAt' => $host->virtualNowMs + $timeoutMs,
@@ -400,7 +400,7 @@ final class AgentHost
                     'callback' => JsFunction::fromCallable(
                         '<waitAsync-timeout>',
                         static function (JsValue $this_, array $args) use ($promise): JsValue {
-                            if ($promise->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                            if ($promise->getState() === \Phasis\Value\JsPromise::STATE_PENDING) {
                                 AtomicsObject::dropWaitAsyncEntry($promise);
                                 $promise->resolve(new JsString('timed-out'));
                             }
@@ -413,7 +413,7 @@ final class AgentHost
                     // virtual clock doesn't advance past the original
                     // fireAt when there's nothing to dispatch.
                     'obsoleteCheck' => static function () use ($promise): bool {
-                        return $promise->getState() !== \PhpJs\Value\JsPromise::STATE_PENDING;
+                        return $promise->getState() !== \Phasis\Value\JsPromise::STATE_PENDING;
                     },
                 ];
             },
@@ -425,7 +425,7 @@ final class AgentHost
         // "timed-out" only when no more pending work — broadcasts, async
         // continuations — could resume them). Returns true when more work
         // was scheduled so the JsPromise drain loop keeps going.
-        \PhpJs\Value\JsPromise::setPostDrainHook(static function () use ($host): bool {
+        \Phasis\Value\JsPromise::setPostDrainHook(static function () use ($host): bool {
             return $host->advanceVirtualClock();
         });
     }
@@ -441,7 +441,7 @@ final class AgentHost
         AtomicsObject::setWaitAsyncTimeoutHook(null);
         AtomicsObject::setLoadSpinHook(null);
         AtomicsObject::setStoreNotifyHook(null);
-        \PhpJs\Value\JsPromise::setPostDrainHook(null);
+        \Phasis\Value\JsPromise::setPostDrainHook(null);
         $this->pendingSources = [];
         $this->agents = [];
         $this->waiting = [];
@@ -625,7 +625,7 @@ final class AgentHost
         if ($value instanceof JsNumber) {
             return 'n:' . $value->value;
         }
-        if ($value instanceof \PhpJs\Value\JsBigInt) {
+        if ($value instanceof \Phasis\Value\JsBigInt) {
             return 'b:' . $value->value;
         }
         return 'o:' . spl_object_id($value);

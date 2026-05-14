@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Runtime\Interpreter;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Runtime\Interpreter;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class ConsoleObject
 {

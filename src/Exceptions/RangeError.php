@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Exceptions;
+namespace Phasis\Exceptions;
 
 class RangeError extends RuntimeError
 {

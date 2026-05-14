@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Lexer;
+namespace Phasis\Lexer;
 
 enum TokenType: string
 {

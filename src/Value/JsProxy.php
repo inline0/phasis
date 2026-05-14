@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * JavaScript Proxy object.
@@ -274,7 +274,7 @@ class JsProxy extends JsObject
                     $callArgs[] = $argsArray->get((string) $i);
                 }
             } elseif ($argsArray instanceof JsObject) {
-                $len = (int) \PhpJs\Spec\TypeConversion::toNumber($argsArray->get('length'));
+                $len = (int) \Phasis\Spec\TypeConversion::toNumber($argsArray->get('length'));
                 for ($i = 0; $i < $len; $i++) {
                     $callArgs[] = $argsArray->get((string) $i);
                 }
@@ -380,7 +380,7 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('set');
         if ($trap !== null) {
             $result = $trap->call($handler, [$target, new JsString($name), $value, $receiver]);
-            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $booleanTrapResult = \Phasis\Spec\TypeConversion::toBoolean($result);
             if (!$booleanTrapResult) {
                 return false;
             }
@@ -490,7 +490,7 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('has');
         if ($trap !== null) {
             $result = $trap->call($handler, [$target, new JsString($name)]);
-            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $booleanTrapResult = \Phasis\Spec\TypeConversion::toBoolean($result);
             if (!$booleanTrapResult) {
                 // Validate invariants per spec 10.5.7 step 11.
                 $this->validateHasInvariants($name, $target);
@@ -542,7 +542,7 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('deleteProperty');
         if ($trap !== null) {
             $result = $trap->call($handler, [$target, new JsString($name)]);
-            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $booleanTrapResult = \Phasis\Spec\TypeConversion::toBoolean($result);
             if ($booleanTrapResult) {
                 // Validate invariants per spec 10.5.10 steps 13-15.
                 $this->validateDeleteInvariants($name, $target);
@@ -626,7 +626,7 @@ class JsProxy extends JsObject
         foreach ($trapResult as $k) {
             $tag = $k instanceof JsSymbol
                 ? 'Y:' . $k->getId()
-                : 'S:' . ($k instanceof JsString ? $k->value : \PhpJs\Spec\TypeConversion::toString($k));
+                : 'S:' . ($k instanceof JsString ? $k->value : \Phasis\Spec\TypeConversion::toString($k));
             if (isset($seen[$tag])) {
                 throw new TypeError("'ownKeys' on proxy: trap returned duplicate entries");
             }
@@ -810,7 +810,7 @@ class JsProxy extends JsObject
         if ($trap !== null) {
             $protoArg = $prototype ?? JsNull::instance();
             $result = $trap->call($handler, [$target, $protoArg]);
-            if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
+            if (!\Phasis\Spec\TypeConversion::toBoolean($result)) {
                 return false;
             }
             // Per spec step 10-14: if target is extensible, return true.
@@ -858,7 +858,7 @@ class JsProxy extends JsObject
         if ($trap !== null) {
             $descObj = self::descriptorToObject($desc);
             $result = $trap->call($handler, [$target, new JsString($name), $descObj]);
-            if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
+            if (!\Phasis\Spec\TypeConversion::toBoolean($result)) {
                 return false;
             }
             // Per spec 10.5.6 steps 17-22: validate invariants.
@@ -1086,7 +1086,7 @@ class JsProxy extends JsObject
         if ($trap !== null) {
             $descObj = self::descriptorToObject($desc);
             $result = $trap->call($handler, [$target, $symbol, $descObj]);
-            if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
+            if (!\Phasis\Spec\TypeConversion::toBoolean($result)) {
                 return false;
             }
             $this->validateDefinePropertyInvariants($symbol, $desc, $target);
@@ -1335,7 +1335,7 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('isExtensible');
         if ($trap !== null) {
             $result = $trap->call($handler, [$target]);
-            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $booleanTrapResult = \Phasis\Spec\TypeConversion::toBoolean($result);
             // Invariant: trap result must match target's extensible state.
             $targetResult = $target->isExtensible();
             if ($booleanTrapResult !== $targetResult) {
@@ -1363,7 +1363,7 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('preventExtensions');
         if ($trap !== null) {
             $result = $trap->call($handler, [$target]);
-            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $booleanTrapResult = \Phasis\Spec\TypeConversion::toBoolean($result);
             if ($booleanTrapResult) {
                 // Invariant: if trap returns true, target must actually be non-extensible.
                 if ($target->isExtensible()) {
@@ -1430,7 +1430,7 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('set');
         if ($trap !== null) {
             $result = $trap->call($handler, [$target, $symbol, $value, $this]);
-            $boolean = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $boolean = \Phasis\Spec\TypeConversion::toBoolean($result);
             if ($boolean) {
                 // Validate invariants per spec 10.5.9 step 14.
                 $this->validateSetInvariants($symbol, $value, $target);
@@ -1448,7 +1448,7 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('has');
         if ($trap !== null) {
             $result = $trap->call($handler, [$target, $symbol]);
-            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $booleanTrapResult = \Phasis\Spec\TypeConversion::toBoolean($result);
             if (!$booleanTrapResult) {
                 $this->validateHasInvariants($symbol, $target);
             }
@@ -1567,9 +1567,9 @@ class JsProxy extends JsObject
                     throw new TypeError('Cannot perform Construct on a proxy that has been revoked');
                 }
                 // Per spec: GetFunctionRealm(newTarget).%Object.prototype%.
-                $ntRealm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($nt);
+                $ntRealm = \Phasis\Spec\AbstractOperations::getFunctionRealm($nt);
                 if ($ntRealm !== null) {
-                    $proto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                    $proto = \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype(
                         $ntRealm->getGlobalEnv(),
                         'Object',
                     );
@@ -1586,7 +1586,7 @@ class JsProxy extends JsObject
             $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
             $newObj->defineOwnProperty(
                 '[[NewTarget]]',
-                \PhpJs\Object\PropertyDescriptor::data($nt, false, false, false),
+                \Phasis\Object\PropertyDescriptor::data($nt, false, false, false),
             );
             $result = $this->target->call($newObj, $args);
             if ($result instanceof JsObject) {
@@ -1614,7 +1614,7 @@ class JsProxy extends JsObject
         $keys = [];
         // Per CreateListFromArrayLike: read "length" and iterate indexed elements.
         $lenVal = $result->get('length');
-        $len = (int) \PhpJs\Spec\TypeConversion::toLength($lenVal);
+        $len = (int) \Phasis\Spec\TypeConversion::toLength($lenVal);
         for ($i = 0; $i < $len; $i++) {
             $elem = $result->get((string) $i);
             if ($elem instanceof JsSymbol) {
@@ -1623,7 +1623,7 @@ class JsProxy extends JsObject
                 $keys[] = $elem;
             } else {
                 throw new TypeError(
-                    \PhpJs\Spec\TypeConversion::toString($elem)
+                    \Phasis\Spec\TypeConversion::toString($elem)
                     . ' is not a valid property name'
                 );
             }
@@ -1644,10 +1644,10 @@ class JsProxy extends JsObject
     {
         // Per spec 6.2.4.4 FromPropertyDescriptor: ObjectCreate(%ObjectPrototype%)
         // — the *current realm's* Object.prototype, not the proxy target's.
-        $thisRealm = \PhpJs\Engine::getCurrentRealm();
+        $thisRealm = \Phasis\Engine::getCurrentRealm();
         $objProto = null;
         if ($thisRealm !== null) {
-            $objProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+            $objProto = \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype(
                 $thisRealm->getGlobalEnv(),
                 'Object',
             );
@@ -1681,14 +1681,14 @@ class JsProxy extends JsObject
         // enumerable, configurable, value, writable, get, set. The order is
         // observable through Proxy has/get traps and so must be exact.
         $enumerable = $obj->has('enumerable')
-            ? \PhpJs\Spec\TypeConversion::toBoolean($obj->get('enumerable'))
+            ? \Phasis\Spec\TypeConversion::toBoolean($obj->get('enumerable'))
             : null;
         $configurable = $obj->has('configurable')
-            ? \PhpJs\Spec\TypeConversion::toBoolean($obj->get('configurable'))
+            ? \Phasis\Spec\TypeConversion::toBoolean($obj->get('configurable'))
             : null;
         $value = $obj->has('value') ? $obj->get('value') : null;
         $writable = $obj->has('writable')
-            ? \PhpJs\Spec\TypeConversion::toBoolean($obj->get('writable'))
+            ? \Phasis\Spec\TypeConversion::toBoolean($obj->get('writable'))
             : null;
         $getter = null;
         $setter = null;
@@ -1741,10 +1741,10 @@ class JsProxy extends JsObject
      */
     private static function createArrayInCurrentRealm(array $args): JsArray
     {
-        $thisRealm = \PhpJs\Engine::getCurrentRealm();
+        $thisRealm = \Phasis\Engine::getCurrentRealm();
         $arrProto = null;
         if ($thisRealm !== null) {
-            $arrProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+            $arrProto = \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype(
                 $thisRealm->getGlobalEnv(),
                 'Array',
             );

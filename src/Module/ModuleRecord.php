@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Module;
+namespace Phasis\Module;
 
-use PhpJs\Value\JsObject;
+use Phasis\Value\JsObject;
 
 /**
  * Tracks a loaded module: its resolved path and namespace object.
@@ -58,7 +58,7 @@ class ModuleRecord
      * Program body queued for evaluation. Set by linkModule; consumed by
      * the top-level loadModule call after the whole graph is linked and
      * validated.
-     * @var array{program: \PhpJs\Ast\Program, moduleEnv: \PhpJs\Runtime\Environment, prevModulePath: ?string}|null
+     * @var array{program: \Phasis\Ast\Program, moduleEnv: \Phasis\Runtime\Environment, prevModulePath: ?string}|null
      */
     public ?array $pendingBody = null;
 
@@ -69,7 +69,7 @@ class ModuleRecord
      * dispatching every body, so a TLA module doesn't block its
      * siblings' synchronous evaluation.
      */
-    public ?\PhpJs\Value\JsPromise $evaluationPromise = null;
+    public ?\Phasis\Value\JsPromise $evaluationPromise = null;
 
     /**
      * Distinct absolute paths of every module this one imports
@@ -113,7 +113,7 @@ class ModuleRecord
      * sec-evaluatesync — a rejected evaluation promise propagates
      * forever).
      */
-    public ?\PhpJs\Value\JsValue $evaluationError = null;
+    public ?\Phasis\Value\JsValue $evaluationError = null;
 
     /** Count of importers that reached this module via the eager phase. */
     public int $eagerImporterCount = 0;

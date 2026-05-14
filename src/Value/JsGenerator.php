@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Exceptions\JsThrowable;
-use PhpJs\Exceptions\RuntimeError;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Exceptions\JsThrowable;
+use Phasis\Exceptions\RuntimeError;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * Represents a JavaScript generator object returned by calling a generator function.
@@ -100,7 +100,7 @@ class JsGenerator extends JsObject
 
         // Per spec 27.5.3.2 GeneratorValidate step 5: if state is "executing", throw TypeError.
         if ($this->executing) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Generator is already running',
             );
         }
@@ -181,7 +181,7 @@ class JsGenerator extends JsObject
 
         // Per spec 27.5.3.2 GeneratorValidate step 5: if state is "executing", throw TypeError.
         if ($this->executing) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Generator is already running',
             );
         }
@@ -254,7 +254,7 @@ class JsGenerator extends JsObject
 
         // Per spec 27.5.3.2 GeneratorValidate step 5: if state is "executing", throw TypeError.
         if ($this->executing) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Generator is already running',
             );
         }

@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
 
 class StringPrototype
 {
@@ -41,13 +41,13 @@ class StringPrototype
 
         $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method String Iterator.prototype.next called on incompatible receiver',
                 );
             }
             $slotDesc = $this_->getOwnPropertyDescriptor('[[StringIteratorData]]');
             if ($slotDesc === null) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method String Iterator.prototype.next called on incompatible receiver',
                 );
             }
@@ -313,14 +313,14 @@ class StringPrototype
             $fromCharCodeFn->builtinKind = 'string.fromCharCode';
             $existing->defineOwnProperty(
                 'fromCharCode',
-                \PhpJs\Object\PropertyDescriptor::data($fromCharCodeFn, true, false, true),
+                \Phasis\Object\PropertyDescriptor::data($fromCharCodeFn, true, false, true),
             );
             $fromCodePointFn = JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1);
             $existing->defineOwnProperty(
                 'fromCodePoint',
-                \PhpJs\Object\PropertyDescriptor::data($fromCodePointFn, true, false, true),
+                \Phasis\Object\PropertyDescriptor::data($fromCodePointFn, true, false, true),
             );
-            $existing->defineOwnProperty('raw', \PhpJs\Object\PropertyDescriptor::data(
+            $existing->defineOwnProperty('raw', \Phasis\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable('raw', self::rawFn(), 1),
                 true,
                 false,
@@ -333,7 +333,7 @@ class StringPrototype
         $iterFn = JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $this_): JsValue {
             // RequireObjectCoercible(this value), then ToString.
             if ($this_ instanceof JsNull || $this_ instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype[Symbol.iterator] called on null or undefined',
                 );
             }
@@ -346,8 +346,8 @@ class StringPrototype
         );
 
         // Register the prototype so TypeConversion::toObject can link String wrapper objects.
-        \PhpJs\Value\JsString::resetStringPrototype();
-        \PhpJs\Value\JsString::setStringPrototype($proto);
+        \Phasis\Value\JsString::resetStringPrototype();
+        \Phasis\Value\JsString::setStringPrototype($proto);
 
         // Store the prototype so the interpreter can access it for auto-boxing.
         $env->defineVar('__StringPrototype__', $proto);
@@ -359,11 +359,11 @@ class StringPrototype
             // String.raw`template` receives a template object as first arg, then substitutions.
             $template = $args[0] ?? JsUndefined::instance();
             if (!$template instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('String.raw: template argument must be an object');
+                throw new \Phasis\Exceptions\TypeError('String.raw: template argument must be an object');
             }
             $rawVal = $template->get('raw');
             if (!$rawVal instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('String.raw: template.raw must be an object');
+                throw new \Phasis\Exceptions\TypeError('String.raw: template.raw must be an object');
             }
             $rawLen = ($rawVal instanceof JsArray)
                 ? $rawVal->getLength()
@@ -454,7 +454,7 @@ class StringPrototype
     private static function extractString(JsValue $this_): string
     {
         if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'String.prototype method called on null or undefined',
             );
         }
@@ -639,7 +639,7 @@ class StringPrototype
 
             // Per spec step 3: throw TypeError if searchString is a RegExp.
             if (self::isRegExp($searchArg)) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.includes called with a RegExp searchString'
                 );
             }
@@ -670,7 +670,7 @@ class StringPrototype
 
             // Per spec: throw TypeError if searchString is a RegExp.
             if (self::isRegExp($searchArg)) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.startsWith called with a RegExp searchString'
                 );
             }
@@ -693,7 +693,7 @@ class StringPrototype
 
             // Per spec: throw TypeError if searchString is a RegExp.
             if (self::isRegExp($searchArg)) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.endsWith called with a RegExp searchString'
                 );
             }
@@ -1256,16 +1256,16 @@ class StringPrototype
      */
     private static function pickToLocaleCaseLocale(mixed $arg): ?string
     {
-        if ($arg === null || $arg instanceof \PhpJs\Value\JsUndefined) {
+        if ($arg === null || $arg instanceof \Phasis\Value\JsUndefined) {
             return null;
         }
         if ($arg instanceof JsString) {
             return $arg->value;
         }
-        if ($arg instanceof \PhpJs\Value\JsObject) {
+        if ($arg instanceof \Phasis\Value\JsObject) {
             // Array of locales: pick the first.
             $len = $arg->get('length');
-            if ($len instanceof \PhpJs\Value\JsNumber && $len->value > 0) {
+            if ($len instanceof \Phasis\Value\JsNumber && $len->value > 0) {
                 $first = $arg->get('0');
                 if ($first instanceof JsString) {
                     return $first->value;
@@ -1357,12 +1357,12 @@ class StringPrototype
                 if ($splitter instanceof JsFunction) {
                     return $splitter->call($separator, [$this_, $limitArg]);
                 }
-                if ($splitter instanceof \PhpJs\Value\JsHTMLDDA) {
+                if ($splitter instanceof \Phasis\Value\JsHTMLDDA) {
                     // HTMLDDA's [[Call]] returns null.
                     return JsNull::instance();
                 }
                 if (
-                    $splitter instanceof \PhpJs\Value\JsProxy
+                    $splitter instanceof \Phasis\Value\JsProxy
                     && $splitter->isCallable()
                 ) {
                     return $splitter->apply($separator, [$this_, $limitArg]);
@@ -1371,7 +1371,7 @@ class StringPrototype
                     !$splitter instanceof JsUndefined
                     && !$splitter instanceof JsNull
                 ) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'String.prototype.split: @@split is not callable'
                     );
                 }
@@ -1526,7 +1526,7 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             // Step 1: RequireObjectCoercible
             if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.replace called on null or undefined'
                 );
             }
@@ -1543,10 +1543,10 @@ class StringPrototype
                         if ($replacer instanceof JsFunction) {
                             return $replacer->call($searchArg, [$this_, $replArg]);
                         }
-                        if ($replacer instanceof \PhpJs\Value\JsHTMLDDA) {
+                        if ($replacer instanceof \Phasis\Value\JsHTMLDDA) {
                             return JsNull::instance();
                         }
-                        throw new \PhpJs\Exceptions\TypeError('Symbol.replace is not a function');
+                        throw new \Phasis\Exceptions\TypeError('Symbol.replace is not a function');
                     }
                 }
             }
@@ -1638,7 +1638,7 @@ class StringPrototype
                 : 0.0;
 
             if ($n < 0 || $n === INF) {
-                throw new \PhpJs\Exceptions\RangeError('Invalid count value');
+                throw new \Phasis\Exceptions\RangeError('Invalid count value');
             }
 
             $count = (int) $n;
@@ -1760,7 +1760,7 @@ class StringPrototype
                     return $prim;
                 }
             }
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'String.prototype.valueOf requires that \'this\' be a String',
             );
         };
@@ -1971,7 +1971,7 @@ class StringPrototype
         $i = 0;
         while ($i < $len) {
             if (strlen($result) > $maxLen) {
-                throw new \PhpJs\Exceptions\RangeError(
+                throw new \Phasis\Exceptions\RangeError(
                     'Invalid string length'
                 );
             }
@@ -2071,7 +2071,7 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             // Step 1: RequireObjectCoercible (throw if null/undefined, but do NOT call ToString yet).
             if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.replaceAll called on null or undefined'
                 );
             }
@@ -2094,13 +2094,13 @@ class StringPrototype
                         // Step 2b: Get flags, RequireObjectCoercible, then check for 'g'.
                         $flagsVal = $searchArg->get('flags');
                         if ($flagsVal instanceof JsUndefined || $flagsVal instanceof JsNull) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 'String.prototype.replaceAll called with a non-global RegExp argument'
                             );
                         }
                         $flags = TypeConversion::toString($flagsVal);
                         if (!str_contains($flags, 'g')) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 'String.prototype.replaceAll called with a non-global RegExp argument'
                             );
                         }
@@ -2115,10 +2115,10 @@ class StringPrototype
                         if ($replacer instanceof JsFunction) {
                             return $replacer->call($searchArg, [$this_, $replaceValue]);
                         }
-                        if ($replacer instanceof \PhpJs\Value\JsHTMLDDA) {
+                        if ($replacer instanceof \Phasis\Value\JsHTMLDDA) {
                             return JsNull::instance();
                         }
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             'Symbol.replace is not a function'
                         );
                     }
@@ -2181,7 +2181,7 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             // Step 1: RequireObjectCoercible
             if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.search called on null or undefined'
                 );
             }
@@ -2197,10 +2197,10 @@ class StringPrototype
                         if ($searcher instanceof JsFunction) {
                             return $searcher->call($searchArg, [$this_]);
                         }
-                        if ($searcher instanceof \PhpJs\Value\JsHTMLDDA) {
+                        if ($searcher instanceof \Phasis\Value\JsHTMLDDA) {
                             return JsNull::instance();
                         }
-                        throw new \PhpJs\Exceptions\TypeError('RegExp[Symbol.search] is not a function');
+                        throw new \Phasis\Exceptions\TypeError('RegExp[Symbol.search] is not a function');
                     }
                 }
             }
@@ -2213,7 +2213,7 @@ class StringPrototype
             $patternStr = $searchArg instanceof JsUndefined
                 ? ''
                 : TypeConversion::toString($searchArg);
-            $rx = \PhpJs\Engine::createRegExp($patternStr, '');
+            $rx = \Phasis\Engine::createRegExp($patternStr, '');
             if ($rx !== null) {
                 $searchSym = SymbolConstructor::search();
                 $searcher = $rx->getBySymbol($searchSym);
@@ -2238,7 +2238,7 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             // Step 1: RequireObjectCoercible
             if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.match called on null or undefined'
                 );
             }
@@ -2254,10 +2254,10 @@ class StringPrototype
                         if ($matcher instanceof JsFunction) {
                             return $matcher->call($searchArg, [$this_]);
                         }
-                        if ($matcher instanceof \PhpJs\Value\JsHTMLDDA) {
+                        if ($matcher instanceof \Phasis\Value\JsHTMLDDA) {
                             return JsNull::instance();
                         }
-                        throw new \PhpJs\Exceptions\TypeError('RegExp[Symbol.match] is not a function');
+                        throw new \Phasis\Exceptions\TypeError('RegExp[Symbol.match] is not a function');
                     }
                 }
             }
@@ -2332,7 +2332,7 @@ class StringPrototype
                     $patternStr = $searchArg instanceof JsUndefined
                         ? ''
                         : TypeConversion::toString($searchArg);
-                    $rx = \PhpJs\Engine::createRegExp($patternStr, '');
+                    $rx = \Phasis\Engine::createRegExp($patternStr, '');
                     if ($rx !== null) {
                         // Invoke @@match on the new regex.
                         $matchSym = SymbolConstructor::match();
@@ -2359,7 +2359,7 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             // Step 1: RequireObjectCoercible
             if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'String.prototype.matchAll called on null or undefined'
                 );
             }
@@ -2380,13 +2380,13 @@ class StringPrototype
                         // Step 2b: Get flags, RequireObjectCoercible(flags), check 'g'.
                         $flagsVal = $searchArg->get('flags');
                         if ($flagsVal instanceof JsUndefined || $flagsVal instanceof JsNull) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 'String.prototype.matchAll called with a non-global RegExp argument'
                             );
                         }
                         $flagsStr = TypeConversion::toString($flagsVal);
                         if (!str_contains($flagsStr, 'g')) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 'String.prototype.matchAll called with a non-global RegExp argument'
                             );
                         }
@@ -2399,10 +2399,10 @@ class StringPrototype
                         if ($matcher instanceof JsFunction) {
                             return $matcher->call($searchArg, [$this_]);
                         }
-                        if ($matcher instanceof \PhpJs\Value\JsHTMLDDA) {
+                        if ($matcher instanceof \Phasis\Value\JsHTMLDDA) {
                             return JsNull::instance();
                         }
-                        throw new \PhpJs\Exceptions\TypeError('Symbol.matchAll is not a function');
+                        throw new \Phasis\Exceptions\TypeError('Symbol.matchAll is not a function');
                     }
                 }
             }
@@ -2425,7 +2425,7 @@ class StringPrototype
 
             // Step 5: Let rx be ? RegExpCreate(R, "g").
             // Step 6: Return ? Invoke(rx, @@matchAll, S).
-            $rx = \PhpJs\Engine::createRegExp($R, 'g');
+            $rx = \Phasis\Engine::createRegExp($R, 'g');
             if ($rx !== null) {
                 $matchAllSym = SymbolConstructor::matchAll();
                 $matcher = $rx->getBySymbol($matchAllSym);
@@ -2433,7 +2433,7 @@ class StringPrototype
                     return $matcher->call($rx, [new JsString($str)]);
                 }
                 // Per spec, Invoke throws TypeError if the method is not callable.
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'RegExp.prototype[Symbol.matchAll] is not a function'
                 );
             }
@@ -2483,7 +2483,7 @@ class StringPrototype
                 return $result;
             };
             $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
             $iterator->setBySymbol($iterSym, JsFunction::fromCallable(
                 '[Symbol.iterator]',
                 function () use ($iterator): JsValue {
@@ -2542,7 +2542,7 @@ class StringPrototype
                     'NFD' => 4, // Normalizer::FORM_D
                     'NFKC' => 32, // Normalizer::FORM_KC
                     'NFKD' => 8, // Normalizer::FORM_KD
-                    default => throw new \PhpJs\Exceptions\RangeError(
+                    default => throw new \Phasis\Exceptions\RangeError(
                         'The normalization form should be one of NFC, NFD, NFKC, NFKD',
                     ),
                 };
@@ -2559,44 +2559,44 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $that = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $localesArg = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
-            $optionsArg = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+            $localesArg = $args[1] ?? \Phasis\Value\JsUndefined::instance();
+            $optionsArg = $args[2] ?? \Phasis\Value\JsUndefined::instance();
             // Delegate to Intl.Collator when available so locale /
             // options validation matches the spec exactly. localeCompare
             // is "Same as Intl.Collator(locales, options).compare(this, that)".
             if (class_exists(\Collator::class) && extension_loaded('intl')) {
-                $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+                $env = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv();
                 $intlObj = $env?->get('Intl', false);
-                if ($intlObj instanceof \PhpJs\Value\JsObject) {
+                if ($intlObj instanceof \Phasis\Value\JsObject) {
                     $colCtor = $intlObj->get('Collator');
-                    if ($colCtor instanceof \PhpJs\Value\JsFunction) {
+                    if ($colCtor instanceof \Phasis\Value\JsFunction) {
                         $colProto = $colCtor->get('prototype');
-                        $colObj = new \PhpJs\Value\JsObject(
-                            $colProto instanceof \PhpJs\Value\JsObject ? $colProto : null,
+                        $colObj = new \Phasis\Value\JsObject(
+                            $colProto instanceof \Phasis\Value\JsObject ? $colProto : null,
                         );
                         $colObj->defineOwnProperty(
                             '[[NewTarget]]',
-                            \PhpJs\Object\PropertyDescriptor::data($colCtor, false, false, false),
+                            \Phasis\Object\PropertyDescriptor::data($colCtor, false, false, false),
                         );
                         ($colCtor->getNativeCallable())($colObj, [$localesArg, $optionsArg]);
-                        $interp = \PhpJs\Engine::getCurrentInterpreter();
-                        $compareGetter = $colProto instanceof \PhpJs\Value\JsObject
+                        $interp = \Phasis\Engine::getCurrentInterpreter();
+                        $compareGetter = $colProto instanceof \Phasis\Value\JsObject
                             ? $colProto->getOwnPropertyDescriptor('compare')
                             : null;
                         if (
                             $interp !== null
                             && $compareGetter !== null
-                            && $compareGetter->get instanceof \PhpJs\Value\JsFunction
+                            && $compareGetter->get instanceof \Phasis\Value\JsFunction
                         ) {
                             $bound = $interp->callFunction(
                                 $compareGetter->get,
                                 $colObj,
                                 [],
                             );
-                            if ($bound instanceof \PhpJs\Value\JsFunction) {
+                            if ($bound instanceof \Phasis\Value\JsFunction) {
                                 $result = $interp->callFunction(
                                     $bound,
-                                    \PhpJs\Value\JsUndefined::instance(),
+                                    \Phasis\Value\JsUndefined::instance(),
                                     [new JsString($str), new JsString($that)],
                                 );
                                 if ($result instanceof JsNumber) {
@@ -2639,7 +2639,7 @@ class StringPrototype
                         $code = $trunc & 0xFFFF;
                     }
                 } else {
-                    $code = \PhpJs\Spec\TypeConversion::toUint16($arg);
+                    $code = \Phasis\Spec\TypeConversion::toUint16($arg);
                 }
                 // Inline utf16CodeUnitToUtf8: 3-byte UTF-8/CESU-8 for any
                 // codepoint >= 0x800 (BMP non-ASCII + surrogates), 2-byte
@@ -2666,12 +2666,12 @@ class StringPrototype
                 $num = TypeConversion::toNumber($arg);
                 // Step 2b: If not integral, throw RangeError (NaN, Infinity, fractional).
                 if (is_nan($num) || is_infinite($num) || floor($num) !== $num) {
-                    throw new \PhpJs\Exceptions\RangeError("Invalid code point {$num}");
+                    throw new \Phasis\Exceptions\RangeError("Invalid code point {$num}");
                 }
                 $code = (int) $num;
                 // Step 2c: If < 0 or > 0x10FFFF, throw RangeError.
                 if ($code < 0 || $code > 0x10FFFF) {
-                    throw new \PhpJs\Exceptions\RangeError("Invalid code point {$code}");
+                    throw new \Phasis\Exceptions\RangeError("Invalid code point {$code}");
                 }
                 if ($code >= 0xD800 && $code <= 0xDBFF) {
                     // Lone high surrogate: encode as CESU-8 so the byte
@@ -2700,18 +2700,18 @@ class StringPrototype
                 $cu = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
                 if ($cu >= 0xD800 && $cu <= 0xDBFF) {
                     if ($i + 1 >= $u16Len) {
-                        return new \PhpJs\Value\JsBoolean(false);
+                        return new \Phasis\Value\JsBoolean(false);
                     }
                     $next = ord($u16[($i + 1) * 2]) | (ord($u16[($i + 1) * 2 + 1]) << 8);
                     if ($next < 0xDC00 || $next > 0xDFFF) {
-                        return new \PhpJs\Value\JsBoolean(false);
+                        return new \Phasis\Value\JsBoolean(false);
                     }
                     $i++;
                 } elseif ($cu >= 0xDC00 && $cu <= 0xDFFF) {
-                    return new \PhpJs\Value\JsBoolean(false);
+                    return new \Phasis\Value\JsBoolean(false);
                 }
             }
-            return new \PhpJs\Value\JsBoolean(true);
+            return new \Phasis\Value\JsBoolean(true);
         };
     }
 

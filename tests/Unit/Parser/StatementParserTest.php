@@ -2,28 +2,28 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Unit\Parser;
+namespace Phasis\Tests\Unit\Parser;
 
-use PhpJs\Ast\Declaration\FunctionDeclaration;
-use PhpJs\Ast\Declaration\VariableDeclaration;
-use PhpJs\Ast\Expression\Identifier;
-use PhpJs\Ast\Expression\Literal;
-use PhpJs\Ast\Statement\BlockStatement;
-use PhpJs\Ast\Statement\BreakStatement;
-use PhpJs\Ast\Statement\ContinueStatement;
-use PhpJs\Ast\Statement\DoWhileStatement;
-use PhpJs\Ast\Statement\EmptyStatement;
-use PhpJs\Ast\Statement\ExpressionStatement;
-use PhpJs\Ast\Statement\ForInStatement;
-use PhpJs\Ast\Statement\ForOfStatement;
-use PhpJs\Ast\Statement\ForStatement;
-use PhpJs\Ast\Statement\IfStatement;
-use PhpJs\Ast\Statement\ReturnStatement;
-use PhpJs\Ast\Statement\SwitchStatement;
-use PhpJs\Ast\Statement\ThrowStatement;
-use PhpJs\Ast\Statement\TryStatement;
-use PhpJs\Ast\Statement\WhileStatement;
-use PhpJs\Parser\Parser;
+use Phasis\Ast\Declaration\FunctionDeclaration;
+use Phasis\Ast\Declaration\VariableDeclaration;
+use Phasis\Ast\Expression\Identifier;
+use Phasis\Ast\Expression\Literal;
+use Phasis\Ast\Statement\BlockStatement;
+use Phasis\Ast\Statement\BreakStatement;
+use Phasis\Ast\Statement\ContinueStatement;
+use Phasis\Ast\Statement\DoWhileStatement;
+use Phasis\Ast\Statement\EmptyStatement;
+use Phasis\Ast\Statement\ExpressionStatement;
+use Phasis\Ast\Statement\ForInStatement;
+use Phasis\Ast\Statement\ForOfStatement;
+use Phasis\Ast\Statement\ForStatement;
+use Phasis\Ast\Statement\IfStatement;
+use Phasis\Ast\Statement\ReturnStatement;
+use Phasis\Ast\Statement\SwitchStatement;
+use Phasis\Ast\Statement\ThrowStatement;
+use Phasis\Ast\Statement\TryStatement;
+use Phasis\Ast\Statement\WhileStatement;
+use Phasis\Parser\Parser;
 use PHPUnit\Framework\TestCase;
 
 class StatementParserTest extends TestCase
@@ -291,7 +291,7 @@ class StatementParserTest extends TestCase
 
     public function testSyntaxError(): void
     {
-        $this->expectException(\PhpJs\Exceptions\SyntaxError::class);
+        $this->expectException(\Phasis\Exceptions\SyntaxError::class);
         $this->parse('let = ;');
     }
 }

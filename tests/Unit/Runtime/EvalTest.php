@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Unit\Runtime;
+namespace Phasis\Tests\Unit\Runtime;
 
-use PhpJs\Engine;
-use PhpJs\Exceptions\SyntaxError;
+use Phasis\Engine;
+use Phasis\Exceptions\SyntaxError;
 use PHPUnit\Framework\TestCase;
 
 class EvalTest extends TestCase

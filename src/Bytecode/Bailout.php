@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
 /**
  * Internal exception used by JsToPhp's emitter to abort compilation

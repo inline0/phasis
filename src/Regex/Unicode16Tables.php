@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Regex;
+namespace Phasis\Regex;
 
 /**
  * Auto-generated Unicode 16.0.0 code-point ranges for ECMAScript

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 class JsBoolean implements JsValue
 {

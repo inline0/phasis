@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Regex\Ast;
+namespace Phasis\Regex\Ast;
 
 /** \1, \2, \k<name> */
 class Backreference extends Node

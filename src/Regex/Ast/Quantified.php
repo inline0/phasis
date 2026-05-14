@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Regex\Ast;
+namespace Phasis\Regex\Ast;
 
 /** A quantified atom: x*, x+, x?, x{n}, x{n,m}. */
 class Quantified extends Node

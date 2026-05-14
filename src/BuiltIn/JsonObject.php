@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class JsonObject
 {
@@ -115,19 +115,19 @@ class JsonObject
             $jsonString = TypeConversion::toString($input);
 
             if ($jsonString === '' || self::hasIllegalEndChars($jsonString)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'JSON.rawJSON: invalid raw JSON text'
                 );
             }
 
             $decoded = json_decode($jsonString, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'JSON.rawJSON: invalid JSON text'
                 );
             }
             if (is_array($decoded)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'JSON.rawJSON: raw JSON value must be a primitive, not an object or array'
                 );
             }
@@ -209,12 +209,12 @@ class JsonObject
             }
             return $value->value;
         }
-        if ($value instanceof \PhpJs\Value\JsBigInt) {
+        if ($value instanceof \Phasis\Value\JsBigInt) {
             // BigInt throws TypeError per spec — bail to spec path so
             // it produces the correct error message.
             return self::trivialBailout();
         }
-        if ($value instanceof \PhpJs\Value\JsSymbol) {
+        if ($value instanceof \Phasis\Value\JsSymbol) {
             // Top-level symbol → undefined per spec; the spec path
             // handles it but the bailout sentinel is fine — caller
             // falls through and the normal path returns undefined.
@@ -225,7 +225,7 @@ class JsonObject
             // delegates to the standard path which already does this.
             return self::trivialBailout();
         }
-        if ($value instanceof \PhpJs\Value\JsProxy) {
+        if ($value instanceof \Phasis\Value\JsProxy) {
             return self::trivialBailout();
         }
         if (!$value instanceof JsObject) {
@@ -357,9 +357,9 @@ class JsonObject
 
     private static function jsIsArray(JsValue $value): bool
     {
-        if ($value instanceof \PhpJs\Value\JsProxy) {
+        if ($value instanceof \Phasis\Value\JsProxy) {
             if ($value->isRevoked()) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Cannot perform \'IsArray\' on a proxy that has been revoked'
                 );
             }
@@ -378,7 +378,7 @@ class JsonObject
             return (int) TypeConversion::toNumber($lenVal);
         }
 
-        if ($value instanceof \PhpJs\Value\JsProxy) {
+        if ($value instanceof \Phasis\Value\JsProxy) {
             return self::arrayLikeLength($value->getTarget());
         }
 
@@ -418,7 +418,7 @@ class JsonObject
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof \PhpJs\Value\JsBigInt;
+        return $obj->get('[[PrimitiveValue]]') instanceof \Phasis\Value\JsBigInt;
     }
 
     /**
@@ -426,7 +426,7 @@ class JsonObject
      */
     private static function enumerableOwnPropertyNames(JsObject $obj): array
     {
-        if ($obj instanceof \PhpJs\Value\JsProxy) {
+        if ($obj instanceof \Phasis\Value\JsProxy) {
             return $obj->getOwnEnumerableKeys();
         }
 
@@ -464,7 +464,7 @@ class JsonObject
         $decoded = json_decode($text);
         if ($decoded === null && $trimmed !== 'null') {
             if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \PhpJs\Exceptions\SyntaxError('Unexpected token in JSON');
+                throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON');
             }
         }
         return self::phpToJsValue($decoded);
@@ -486,7 +486,7 @@ class JsonObject
 
             if ($decoded === null && $trimmed !== 'null') {
                 if (json_last_error() !== JSON_ERROR_NONE) {
-                    throw new \PhpJs\Exceptions\SyntaxError('Unexpected token in JSON');
+                    throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON');
                 }
             }
 
@@ -534,7 +534,7 @@ class JsonObject
         $len = strlen($text);
 
         if ($pos >= $len) {
-            throw new \PhpJs\Exceptions\SyntaxError('Unexpected end of JSON input');
+            throw new \Phasis\Exceptions\SyntaxError('Unexpected end of JSON input');
         }
 
         $ch = $text[$pos];
@@ -578,7 +578,7 @@ class JsonObject
             return $val;
         }
 
-        throw new \PhpJs\Exceptions\SyntaxError('Unexpected token in JSON at position ' . $pos);
+        throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON at position ' . $pos);
     }
 
     /**
@@ -601,12 +601,12 @@ class JsonObject
         while ($pos < strlen($text)) {
             self::skipWhitespace($text, $pos);
             if ($text[$pos] !== '"') {
-                throw new \PhpJs\Exceptions\SyntaxError('Expected string key in JSON object');
+                throw new \Phasis\Exceptions\SyntaxError('Expected string key in JSON object');
             }
             $propKey = self::parseJsonStringRaw($text, $pos);
             self::skipWhitespace($text, $pos);
             if ($pos >= strlen($text) || $text[$pos] !== ':') {
-                throw new \PhpJs\Exceptions\SyntaxError('Expected colon in JSON object');
+                throw new \Phasis\Exceptions\SyntaxError('Expected colon in JSON object');
             }
             $pos++; // skip :
             $propVal = self::parseJsonValue($text, $pos, $sourceMap, $obj, $propKey);
@@ -620,12 +620,12 @@ class JsonObject
                 return $obj;
             }
             if ($text[$pos] !== ',') {
-                throw new \PhpJs\Exceptions\SyntaxError('Expected comma or closing brace in JSON object');
+                throw new \Phasis\Exceptions\SyntaxError('Expected comma or closing brace in JSON object');
             }
             $pos++; // skip ,
         }
 
-        throw new \PhpJs\Exceptions\SyntaxError('Unterminated JSON object');
+        throw new \Phasis\Exceptions\SyntaxError('Unterminated JSON object');
     }
 
     /**
@@ -661,12 +661,12 @@ class JsonObject
                 return $arr;
             }
             if ($text[$pos] !== ',') {
-                throw new \PhpJs\Exceptions\SyntaxError('Expected comma or closing bracket in JSON array');
+                throw new \Phasis\Exceptions\SyntaxError('Expected comma or closing bracket in JSON array');
             }
             $pos++; // skip ,
         }
 
-        throw new \PhpJs\Exceptions\SyntaxError('Unterminated JSON array');
+        throw new \Phasis\Exceptions\SyntaxError('Unterminated JSON array');
     }
 
     private static function parseJsonStringRaw(string $text, int &$pos): string
@@ -690,7 +690,7 @@ class JsonObject
                 if ($esc === 'u') {
                     $pos++;
                     if ($pos + 4 > $len) {
-                        throw new \PhpJs\Exceptions\SyntaxError('Invalid unicode escape in JSON');
+                        throw new \Phasis\Exceptions\SyntaxError('Invalid unicode escape in JSON');
                     }
                     $hex = substr($text, $pos, 4);
                     $pos += 4;
@@ -716,7 +716,7 @@ class JsonObject
             }
         }
 
-        throw new \PhpJs\Exceptions\SyntaxError('Unterminated string in JSON');
+        throw new \Phasis\Exceptions\SyntaxError('Unterminated string in JSON');
     }
 
     private static function parseJsonNumberRaw(string $text, int &$pos): float
@@ -820,7 +820,7 @@ class JsonObject
             // replaced it with a structurally-equal primitive.
             if (
                 isset($sourceMap[$mapKey])
-                && \PhpJs\Spec\AbstractOperations::sameValue($sourceMap[$mapKey][1], $val)
+                && \Phasis\Spec\AbstractOperations::sameValue($sourceMap[$mapKey][1], $val)
             ) {
                 $context->defineOwnProperty('source', PropertyDescriptor::data(
                     new JsString($sourceMap[$mapKey][0]),
@@ -1023,10 +1023,10 @@ class JsonObject
             if ($toJson instanceof JsFunction) {
                 $value = $toJson->call($value, [new JsString($key)]);
             }
-        } elseif ($value instanceof \PhpJs\Value\JsBigInt) {
+        } elseif ($value instanceof \Phasis\Value\JsBigInt) {
             // Check BigInt.prototype.toJSON per spec 25.5.2.1 step 2.
             // Must invoke the getter (if any) with the BigInt as receiver.
-            $bigintProto = \PhpJs\Value\JsBigInt::getPrototype();
+            $bigintProto = \Phasis\Value\JsBigInt::getPrototype();
             if ($bigintProto !== null) {
                 $desc = $bigintProto->getOwnPropertyDescriptor('toJSON');
                 if ($desc !== null && $desc->get instanceof JsFunction) {
@@ -1063,7 +1063,7 @@ class JsonObject
                     $value = $prim;
                 }
             } elseif (self::hasBigIntData($value)) {
-                throw new \PhpJs\Exceptions\TypeError('Do not know how to serialize a BigInt');
+                throw new \Phasis\Exceptions\TypeError('Do not know how to serialize a BigInt');
             }
         }
 
@@ -1082,16 +1082,16 @@ class JsonObject
             }
             return $value->toJsString();
         }
-        if ($value instanceof \PhpJs\Value\JsBigInt) {
-            throw new \PhpJs\Exceptions\TypeError('Do not know how to serialize a BigInt');
+        if ($value instanceof \Phasis\Value\JsBigInt) {
+            throw new \Phasis\Exceptions\TypeError('Do not know how to serialize a BigInt');
         }
 
         if ($value instanceof JsObject && !$value instanceof JsFunction) {
-            if ($value instanceof \PhpJs\Value\JsProxy && $value->isRevoked()) {
-                throw new \PhpJs\Exceptions\TypeError('Cannot perform \'get\' on a proxy that has been revoked');
+            if ($value instanceof \Phasis\Value\JsProxy && $value->isRevoked()) {
+                throw new \Phasis\Exceptions\TypeError('Cannot perform \'get\' on a proxy that has been revoked');
             }
             if ($stack->contains($value)) {
-                throw new \PhpJs\Exceptions\TypeError('Converting circular structure to JSON');
+                throw new \Phasis\Exceptions\TypeError('Converting circular structure to JSON');
             }
             if (self::jsIsArray($value)) {
                 return self::serializeArray($value, $replacerFn, $propertyList, $gap, $indent, $stack);
@@ -1195,7 +1195,7 @@ class JsonObject
      */
     private static function quoteJsonString(string $str): string
     {
-        $u16 = \PhpJs\Value\JsString::utf8ToUtf16LE($str);
+        $u16 = \Phasis\Value\JsString::utf8ToUtf16LE($str);
         $u16Len = (int) (strlen($u16) / 2);
         $result = '"';
         $i = 0;

@@ -19,7 +19,7 @@ ini_set('pcre.recursion_limit', '100000');
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use PhpJs\Tests\Oracle\Test262Runner;
+use Phasis\Tests\Oracle\Test262Runner;
 
 $suiteDir = __DIR__ . '/../test262';
 $supportConfig = require __DIR__ . '/../config/support.php';
@@ -93,7 +93,7 @@ if ($filesFrom !== null) {
 }
 
 $count = 0;
-$result = new \PhpJs\Tests\Oracle\SuiteResult();
+$result = new \Phasis\Tests\Oracle\SuiteResult();
 
 if (!$json) {
     echo "Running test262";
@@ -125,7 +125,7 @@ foreach ($testResults as $testResult) {
     $result->add($testResult);
     $count++;
 
-    if ($testResult->status === \PhpJs\Tests\Oracle\TestStatus::Fail) {
+    if ($testResult->status === \Phasis\Tests\Oracle\TestStatus::Fail) {
         $relative = str_replace($suiteDir . '/', '', $testResult->testPath);
         $failingTests[] = ['path' => $relative, 'message' => $testResult->message ?? ''];
         if ($showFailures) {

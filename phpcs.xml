@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<ruleset name="php-js">
-    <description>Coding standards for php-js</description>
+<ruleset name="phasis">
+    <description>Coding standards for phasis</description>
 
     <file>src</file>
     <file>tests</file>

@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Symbol constructor and well-known symbols.
@@ -142,7 +142,7 @@ class SymbolConstructor
         // *targets* a Symbol wrapper does not itself have [[SymbolData]],
         // so it must throw — its has/get traps cannot satisfy the slot
         // requirement.
-        if ($this_ instanceof \PhpJs\Value\JsProxy) {
+        if ($this_ instanceof \Phasis\Value\JsProxy) {
             throw new TypeError("Symbol.prototype.{$methodName} called on non-symbol value");
         }
 
@@ -176,7 +176,7 @@ class SymbolConstructor
 
         // Symbol.length = 0 (per spec)
         $symbolFn->defineOwnProperty('length', PropertyDescriptor::data(
-            new \PhpJs\Value\JsNumber(0.0),
+            new \Phasis\Value\JsNumber(0.0),
             false,
             false,
             true,

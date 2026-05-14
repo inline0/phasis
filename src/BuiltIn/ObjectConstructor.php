@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\AbstractOperations;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBigInt;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsProxy;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\AbstractOperations;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBigInt;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsProxy;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class ObjectConstructor
 {
@@ -303,7 +303,7 @@ class ObjectConstructor
                 $key = $args[0] ?? JsUndefined::instance();
                 $propKey = TypeConversion::toPropertyKey($key);
                 $obj = TypeConversion::toObject($this_);
-                if ($propKey instanceof \PhpJs\Value\JsSymbol) {
+                if ($propKey instanceof \Phasis\Value\JsSymbol) {
                     return new JsBoolean(
                         $obj->getSymbolPropertyDescriptor($propKey) !== null,
                     );
@@ -412,7 +412,7 @@ class ObjectConstructor
                 $key = $args[0] ?? JsUndefined::instance();
                 $propKey = TypeConversion::toPropertyKey($key);
                 $obj = TypeConversion::toObject($this_);
-                if ($propKey instanceof \PhpJs\Value\JsSymbol) {
+                if ($propKey instanceof \Phasis\Value\JsSymbol) {
                     $desc = $obj->getSymbolPropertyDescriptor($propKey);
                 } else {
                     $desc = $obj->getOwnPropertyDescriptor($propKey->toJsString());
@@ -735,7 +735,7 @@ class ObjectConstructor
             } elseif ($proto instanceof JsObject) {
                 $obj = new JsObject($proto);
             } else {
-                throw new \PhpJs\Exceptions\TypeError('Object prototype may only be an Object or null');
+                throw new \Phasis\Exceptions\TypeError('Object prototype may only be an Object or null');
             }
 
             // Second argument: property descriptors (ObjectDefineProperties per spec).
@@ -809,7 +809,7 @@ class ObjectConstructor
             // 3. For each key, get descriptor via [[GetOwnProperty]]
             // 4. DefinePropertyOrThrow with partial descriptor
             if (!$obj->preventExtensions()) {
-                throw new \PhpJs\Exceptions\TypeError('Cannot freeze object');
+                throw new \Phasis\Exceptions\TypeError('Cannot freeze object');
             }
 
             $allKeys = $obj->ordinaryOwnPropertyKeys();
@@ -849,7 +849,7 @@ class ObjectConstructor
                     // which throws on failure. Module namespace exotic rejects
                     // these calls, producing a TypeError.
                     if (!$ok) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "Cannot redefine property: {$key}",
                         );
                     }
@@ -884,7 +884,7 @@ class ObjectConstructor
         return function (JsValue $this_, array $args): JsValue {
             $obj = $args[0] ?? JsUndefined::instance();
             if (!$obj instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('Object.defineProperties called on non-object');
+                throw new \Phasis\Exceptions\TypeError('Object.defineProperties called on non-object');
             }
 
             $props = $args[1] ?? JsUndefined::instance();
@@ -1093,7 +1093,7 @@ class ObjectConstructor
             $obj = $args[0] ?? JsUndefined::instance();
             // Per spec step 1: RequireObjectCoercible(O).
             if ($obj instanceof JsUndefined || $obj instanceof JsNull) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Object.setPrototypeOf called on null or undefined',
                 );
             }
@@ -1102,12 +1102,12 @@ class ObjectConstructor
                 return $obj;
             }
             if (!$proto instanceof JsNull && !$proto instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('Object prototype may only be an Object or null');
+                throw new \Phasis\Exceptions\TypeError('Object prototype may only be an Object or null');
             }
 
             $newProto = $proto instanceof JsNull ? null : $proto;
             if (!$obj->trySetPrototype($newProto)) {
-                throw new \PhpJs\Exceptions\TypeError('Object prototype may not be changed');
+                throw new \Phasis\Exceptions\TypeError('Object prototype may not be changed');
             }
 
             return $obj;
@@ -1208,7 +1208,7 @@ class ObjectConstructor
             // 2. Get all keys via [[OwnPropertyKeys]]
             // 3. For each key: DefinePropertyOrThrow(O, k, {[[Configurable]]: false})
             if (!$obj->preventExtensions()) {
-                throw new \PhpJs\Exceptions\TypeError('Cannot seal object');
+                throw new \Phasis\Exceptions\TypeError('Cannot seal object');
             }
 
             $allKeys = $obj->ordinaryOwnPropertyKeys();
@@ -1225,7 +1225,7 @@ class ObjectConstructor
                 }
                 // Per spec DefinePropertyOrThrow: throw TypeError if [[DefineOwnProperty]] returns false.
                 if ($ok === false) {
-                    throw new \PhpJs\Exceptions\TypeError('Cannot seal object');
+                    throw new \Phasis\Exceptions\TypeError('Cannot seal object');
                 }
             }
 

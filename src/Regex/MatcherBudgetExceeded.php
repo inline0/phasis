@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Regex;
+namespace Phasis\Regex;
 
 /**
  * Thrown when the custom matcher exhausts its step budget. The

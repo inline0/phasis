@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * DisposableStack and AsyncDisposableStack built-in classes.
@@ -400,17 +400,17 @@ class DisposableStackConstructor
                     }
                     $state = $this_->get('[[DisposableState]]');
                     if ($state instanceof JsString && $state->value === 'disposed') {
-                        return \PhpJs\Value\JsPromise::resolved(JsUndefined::instance());
+                        return \Phasis\Value\JsPromise::resolved(JsUndefined::instance());
                     }
                     $this_->set('[[DisposableState]]', new JsString('disposed'));
                     self::disposeStack($this_, true);
-                    return \PhpJs\Value\JsPromise::resolved(JsUndefined::instance());
+                    return \Phasis\Value\JsPromise::resolved(JsUndefined::instance());
                 } catch (\Throwable $e) {
-                    $interp = \PhpJs\Value\JsFunction::getInterpreterInstance();
+                    $interp = \Phasis\Value\JsFunction::getInterpreterInstance();
                     $jsErr = $interp !== null
                         ? $interp->phpExceptionToJsValue($e)
                         : JsUndefined::instance();
-                    return \PhpJs\Value\JsPromise::rejected($jsErr);
+                    return \Phasis\Value\JsPromise::rejected($jsErr);
                 }
             }, 0),
             true,
@@ -505,7 +505,7 @@ class DisposableStackConstructor
         }
         $state = $this_->get('[[DisposableState]]');
         if ($state instanceof JsString && $state->value === 'disposed') {
-            throw new \PhpJs\Exceptions\ReferenceError(
+            throw new \Phasis\Exceptions\ReferenceError(
                 'Cannot add resource to a disposed stack.'
             );
         }
@@ -524,13 +524,13 @@ class DisposableStackConstructor
             $this_->set('[[DisposableStack]]', $stack);
         }
         $lengthVal = $stack->get('length');
-        $length = ($lengthVal instanceof \PhpJs\Value\JsNumber) ? (int) $lengthVal->value : 0;
+        $length = ($lengthVal instanceof \Phasis\Value\JsNumber) ? (int) $lengthVal->value : 0;
 
         $entry = new JsObject();
         $entry->set('resource', $resource);
         $entry->set('async', new JsBoolean($isAsync));
         $stack->set((string) $length, $entry);
-        $stack->set('length', new \PhpJs\Value\JsNumber($length + 1));
+        $stack->set('length', new \Phasis\Value\JsNumber($length + 1));
     }
 
     /**
@@ -544,7 +544,7 @@ class DisposableStackConstructor
             return;
         }
         $lengthVal = $stack->get('length');
-        $length = ($lengthVal instanceof \PhpJs\Value\JsNumber) ? (int) $lengthVal->value : 0;
+        $length = ($lengthVal instanceof \Phasis\Value\JsNumber) ? (int) $lengthVal->value : 0;
 
         $error = null;
         $hasError = false;
@@ -583,13 +583,13 @@ class DisposableStackConstructor
         }
 
         if ($hasError && $error !== null) {
-            throw new \PhpJs\Exceptions\JsThrowable($error);
+            throw new \Phasis\Exceptions\JsThrowable($error);
         }
     }
 
     private static function exceptionToJsValue(\Throwable $e): JsValue
     {
-        if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+        if ($e instanceof \Phasis\Exceptions\JsThrowable) {
             return $e->jsValue;
         }
         $errObj = new JsObject();

@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsPromise;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Exceptions\TypeError;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsPromise;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * Promise constructor and static methods.
@@ -97,12 +97,12 @@ class PromiseConstructor
 
                 try {
                     $executor->call(JsUndefined::instance(), [$resolveFn, $rejectFn]);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     if (!$alreadyResolved->v) {
                         $alreadyResolved->v = true;
                         $promise->reject($e->jsValue);
                     }
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     if (!$alreadyResolved->v) {
                         $alreadyResolved->v = true;
                         $promise->reject(new JsString($e->getMessage()));
@@ -182,7 +182,7 @@ class PromiseConstructor
             // returns a non-callable, reject without touching the iterable.
             try {
                 $resolveMethod = $this_->get('resolve');
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
             }
@@ -224,14 +224,14 @@ class PromiseConstructor
                     $remaining++;
                     try {
                         $itemPromise = $resolveMethod->call($this_, [$value]);
-                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    } catch (\Phasis\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
                     }
                     try {
                         $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
-                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    } catch (\Phasis\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
@@ -269,7 +269,7 @@ class PromiseConstructor
                         );
                         try {
                             $thenMethod->call($itemPromise, [$resolveElement, $reject]);
-                        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        } catch (\Phasis\Exceptions\JsThrowable $e) {
                             self::iteratorCloseIgnore($iter);
                             $reject->call(JsUndefined::instance(), [$e->jsValue]);
                             return $promise;
@@ -293,10 +293,10 @@ class PromiseConstructor
                     $resolve->call(JsUndefined::instance(), [JsArray::fromArray($arr)]);
                 }
                 return $promise;
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            } catch (\Phasis\Exceptions\RuntimeError $e) {
                 $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                 return $promise;
             } catch (\Throwable $e) {
@@ -314,7 +314,7 @@ class PromiseConstructor
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
             try {
                 $resolveMethod = $this_->get('resolve');
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
             }
@@ -343,14 +343,14 @@ class PromiseConstructor
                     $remaining++;
                     try {
                         $itemPromise = $resolveMethod->call($this_, [$value]);
-                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    } catch (\Phasis\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
                     }
                     try {
                         $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
-                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    } catch (\Phasis\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
@@ -414,7 +414,7 @@ class PromiseConstructor
                         );
                         try {
                             $thenMethod->call($itemPromise, [$onFulfilled, $onRejected]);
-                        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        } catch (\Phasis\Exceptions\JsThrowable $e) {
                             self::iteratorCloseIgnore($iter);
                             $reject->call(JsUndefined::instance(), [$e->jsValue]);
                             return $promise;
@@ -440,10 +440,10 @@ class PromiseConstructor
                     $resolve->call(JsUndefined::instance(), [JsArray::fromArray($arr)]);
                 }
                 return $promise;
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            } catch (\Phasis\Exceptions\RuntimeError $e) {
                 $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                 return $promise;
             } catch (\Throwable $e) {
@@ -465,7 +465,7 @@ class PromiseConstructor
             // non-callable, reject synchronously.
             try {
                 $resolveMethod = $this_->get('resolve');
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
             }
@@ -482,10 +482,10 @@ class PromiseConstructor
             // for null/undefined/non-iterable arguments.
             try {
                 $iter = self::openIterator($args[0] ?? JsUndefined::instance());
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            } catch (\Phasis\Exceptions\RuntimeError $e) {
                 $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                 return $promise;
             }
@@ -498,10 +498,10 @@ class PromiseConstructor
                 // exception from iteratorStep.
                 try {
                     $nextValue = self::iteratorStep($iter);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $reject->call(JsUndefined::instance(), [$e->jsValue]);
                     return $promise;
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                     return $promise;
                 }
@@ -511,11 +511,11 @@ class PromiseConstructor
 
                 try {
                     $nextPromise = $resolveMethod->call($this_, [$nextValue]);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     self::iteratorCloseIgnore($iter);
                     $reject->call(JsUndefined::instance(), [$e->jsValue]);
                     return $promise;
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     self::iteratorCloseIgnore($iter);
                     $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                     return $promise;
@@ -529,7 +529,7 @@ class PromiseConstructor
                 // [resultCapability.[[Resolve]], resultCapability.[[Reject]]]).
                 try {
                     $thenMethod = $nextPromise instanceof JsObject ? $nextPromise->get('then') : null;
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     self::iteratorCloseIgnore($iter);
                     $reject->call(JsUndefined::instance(), [$e->jsValue]);
                     return $promise;
@@ -537,7 +537,7 @@ class PromiseConstructor
                 if ($thenMethod instanceof JsFunction) {
                     try {
                         $thenMethod->call($nextPromise, [$resolve, $reject]);
-                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    } catch (\Phasis\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
@@ -570,7 +570,7 @@ class PromiseConstructor
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
             try {
                 $resolveMethod = $this_->get('resolve');
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
             }
@@ -599,14 +599,14 @@ class PromiseConstructor
                     $remaining++;
                     try {
                         $itemPromise = $resolveMethod->call($this_, [$value]);
-                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    } catch (\Phasis\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
                     }
                     try {
                         $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
-                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    } catch (\Phasis\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
@@ -641,7 +641,7 @@ class PromiseConstructor
                         );
                         try {
                             $thenMethod->call($itemPromise, [$resolve, $onRejected]);
-                        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        } catch (\Phasis\Exceptions\JsThrowable $e) {
                             self::iteratorCloseIgnore($iter);
                             $reject->call(JsUndefined::instance(), [$e->jsValue]);
                             return $promise;
@@ -664,10 +664,10 @@ class PromiseConstructor
                     $reject->call(JsUndefined::instance(), [self::makeAggregateError($arr)]);
                 }
                 return $promise;
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            } catch (\Phasis\Exceptions\RuntimeError $e) {
                 $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                 return $promise;
             } catch (\Throwable $e) {
@@ -725,9 +725,9 @@ class PromiseConstructor
                         ? $callback->call(JsUndefined::instance(), $callArgs)
                         : throw new TypeError('Promise.try callback is not a function');
                     $resolve->call(JsUndefined::instance(), [$result]);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $reject->call(JsUndefined::instance(), [$e->jsValue]);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     $reject->call(JsUndefined::instance(), [
                         self::phpErrorToJsValue($e),
                     ]);
@@ -816,7 +816,7 @@ class PromiseConstructor
         // which is observable via rejected-observable-then-calls and
         // resolved-observable-then-calls.
         $catchFn = JsFunction::fromCallable('catch', function (JsValue $this_, array $args): JsValue {
-            $obj = \PhpJs\Spec\TypeConversion::toObject($this_);
+            $obj = \Phasis\Spec\TypeConversion::toObject($this_);
             $thenMethod = $obj->get('then');
             if (!$thenMethod instanceof JsFunction) {
                 throw new TypeError('Promise.prototype.catch called on receiver without a `then` method');
@@ -873,14 +873,14 @@ class PromiseConstructor
                     $thrower = JsFunction::fromCallable(
                         '',
                         static function (JsValue $t, array $a) use ($reason): JsValue {
-                            throw new \PhpJs\Exceptions\JsThrowable($reason);
+                            throw new \Phasis\Exceptions\JsThrowable($reason);
                         },
                         0,
                     );
                     $promise = self::promiseResolve($C, $result);
                     $thenMethod = $promise instanceof JsObject ? $promise->get('then') : null;
                     if (!$thenMethod instanceof JsFunction) {
-                        throw new \PhpJs\Exceptions\JsThrowable($reason);
+                        throw new \Phasis\Exceptions\JsThrowable($reason);
                     }
                     return $thenMethod->call($promise, [$thrower]);
                 },
@@ -924,7 +924,7 @@ class PromiseConstructor
                     $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
                     $newObj->defineOwnProperty(
                         '[[NewTarget]]',
-                        \PhpJs\Object\PropertyDescriptor::data($ctor, false, false, false),
+                        \Phasis\Object\PropertyDescriptor::data($ctor, false, false, false),
                     );
                     $errorsArg = JsArray::fromArray($errorsList);
                     $messageArg = new JsString($message);
@@ -948,15 +948,15 @@ class PromiseConstructor
      * counterpart via the active interpreter so `instanceof TypeError`
      * works on the rejection value.
      */
-    private static function phpErrorToJsValue(\PhpJs\Exceptions\RuntimeError $e): JsValue
+    private static function phpErrorToJsValue(\Phasis\Exceptions\RuntimeError $e): JsValue
     {
         $interp = JsFunction::getInterpreterInstance();
         if ($interp !== null) {
             return $interp->phpExceptionToJsValue($e);
         }
-        $name = $e instanceof \PhpJs\Exceptions\TypeError ? 'TypeError'
-            : ($e instanceof \PhpJs\Exceptions\RangeError ? 'RangeError'
-                : ($e instanceof \PhpJs\Exceptions\ReferenceError ? 'ReferenceError' : 'Error'));
+        $name = $e instanceof \Phasis\Exceptions\TypeError ? 'TypeError'
+            : ($e instanceof \Phasis\Exceptions\RangeError ? 'RangeError'
+                : ($e instanceof \Phasis\Exceptions\ReferenceError ? 'ReferenceError' : 'Error'));
         $obj = new JsObject();
         $obj->set('name', new JsString($name));
         $obj->set('message', new JsString($e->getMessage()));
@@ -998,11 +998,11 @@ class PromiseConstructor
         }
         if ($iterable instanceof JsString) {
             $values = [];
-            $u16 = \PhpJs\Value\JsString::utf8ToUtf16LE($iterable->value);
+            $u16 = \Phasis\Value\JsString::utf8ToUtf16LE($iterable->value);
             $len = (int) (strlen($u16) / 2);
             for ($i = 0; $i < $len; $i++) {
                 $codeUnit = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
-                $values[] = new JsString(\PhpJs\Value\JsString::utf16CodeUnitToUtf8($codeUnit));
+                $values[] = new JsString(\Phasis\Value\JsString::utf16CodeUnitToUtf8($codeUnit));
             }
             return self::syntheticArrayIterator($values);
         }
@@ -1162,7 +1162,7 @@ class PromiseConstructor
                         ? $onFulfilled->call(JsUndefined::instance(), [$value])
                         : $value;
                     $capabilityResolve->call(JsUndefined::instance(), [$result]);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $capabilityReject->call(JsUndefined::instance(), [$e->jsValue]);
                 } catch (\Throwable $e) {
                     $capabilityReject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
@@ -1182,7 +1182,7 @@ class PromiseConstructor
                     } else {
                         $capabilityReject->call(JsUndefined::instance(), [$reason]);
                     }
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $capabilityReject->call(JsUndefined::instance(), [$e->jsValue]);
                 } catch (\Throwable $e) {
                     $capabilityReject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);

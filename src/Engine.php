@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace PhpJs;
+namespace Phasis;
 
-use PhpJs\BuiltIn\ConsoleObject;
-use PhpJs\BuiltIn\GlobalObject;
-use PhpJs\Interop\PhpToJs;
-use PhpJs\Parser\Parser;
-use PhpJs\Runtime\CallStack;
-use PhpJs\Runtime\Environment;
-use PhpJs\Runtime\Interpreter;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\BuiltIn\ConsoleObject;
+use Phasis\BuiltIn\GlobalObject;
+use Phasis\Interop\PhpToJs;
+use Phasis\Parser\Parser;
+use Phasis\Runtime\CallStack;
+use Phasis\Runtime\Environment;
+use Phasis\Runtime\Interpreter;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class Engine
 {
@@ -81,26 +81,26 @@ class Engine
         $objProto = $this->globalEnv->has('__ObjectPrototype__')
             ? $this->globalEnv->get('__ObjectPrototype__')
             : null;
-        $globalObj = new \PhpJs\Value\JsObject(
-            $objProto instanceof \PhpJs\Value\JsObject ? $objProto : null,
+        $globalObj = new \Phasis\Value\JsObject(
+            $objProto instanceof \Phasis\Value\JsObject ? $objProto : null,
         );
 
         // Install non-writable, non-configurable global value properties on the global object
         // per ES spec 19.1 (Value Properties of the Global Object).
-        $globalObj->defineOwnProperty('Infinity', \PhpJs\Object\PropertyDescriptor::data(
-            new \PhpJs\Value\JsNumber(INF),
+        $globalObj->defineOwnProperty('Infinity', \Phasis\Object\PropertyDescriptor::data(
+            new \Phasis\Value\JsNumber(INF),
             false,
             false,
             false,
         ));
-        $globalObj->defineOwnProperty('NaN', \PhpJs\Object\PropertyDescriptor::data(
-            new \PhpJs\Value\JsNumber(NAN),
+        $globalObj->defineOwnProperty('NaN', \Phasis\Object\PropertyDescriptor::data(
+            new \Phasis\Value\JsNumber(NAN),
             false,
             false,
             false,
         ));
-        $globalObj->defineOwnProperty('undefined', \PhpJs\Object\PropertyDescriptor::data(
-            \PhpJs\Value\JsUndefined::instance(),
+        $globalObj->defineOwnProperty('undefined', \Phasis\Object\PropertyDescriptor::data(
+            \Phasis\Value\JsUndefined::instance(),
             false,
             false,
             false,
@@ -128,7 +128,7 @@ class Engine
             if (!$globalObj->hasOwnProperty($name)) {
                 $globalObj->defineOwnProperty(
                     $name,
-                    \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
+                    \Phasis\Object\PropertyDescriptor::data($value, true, false, true),
                 );
             }
         }
@@ -143,22 +143,22 @@ class Engine
 
         // Per spec §19.1: NaN, Infinity, undefined are non-writable
         // on the global object. Must be set AFTER linkGlobalObject.
-        $ro = static fn ($v) => \PhpJs\Object\PropertyDescriptor::data(
+        $ro = static fn ($v) => \Phasis\Object\PropertyDescriptor::data(
             $v,
             false,
             false,
             false,
         );
-        $globalObj->defineOwnProperty('NaN', $ro(new \PhpJs\Value\JsNumber(NAN)));
-        $globalObj->defineOwnProperty('Infinity', $ro(new \PhpJs\Value\JsNumber(INF)));
-        $globalObj->defineOwnProperty('undefined', $ro(\PhpJs\Value\JsUndefined::instance()));
+        $globalObj->defineOwnProperty('NaN', $ro(new \Phasis\Value\JsNumber(NAN)));
+        $globalObj->defineOwnProperty('Infinity', $ro(new \Phasis\Value\JsNumber(INF)));
+        $globalObj->defineOwnProperty('undefined', $ro(\Phasis\Value\JsUndefined::instance()));
 
         // globalThis: writable, non-enumerable, configurable per spec.
         // Set directly on the global object since the Environment filter
         // skips 'globalThis' for the linked object sync.
         $globalObj->defineOwnProperty(
             'globalThis',
-            \PhpJs\Object\PropertyDescriptor::data($globalObj, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($globalObj, true, false, true),
         );
     }
 
@@ -172,7 +172,7 @@ class Engine
         JsObject::resetGlobalPrototype();
 
         GlobalObject::install($this->globalEnv);
-        \PhpJs\BuiltIn\ObjectConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\ObjectConstructor::install($this->globalEnv);
 
         // Wire prototype objects created in GlobalObject::install to Object.prototype now
         // that both exist. ObjectConstructor::install set the global prototype, so any
@@ -216,73 +216,73 @@ class Engine
                 }
             }
         }
-        \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\NumberConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\ArrayConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\StringPrototype::install($this->globalEnv);
-        \PhpJs\BuiltIn\MathObject::install($this->globalEnv);
-        \PhpJs\BuiltIn\JsonObject::install($this->globalEnv);
-        \PhpJs\BuiltIn\SymbolConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\IteratorConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\MapConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\SetConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\TypedArrayConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\AtomicsObject::install($this->globalEnv);
-        \PhpJs\BuiltIn\PromiseConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\ProxyConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\ReflectObject::install($this->globalEnv);
+        \Phasis\BuiltIn\ErrorConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\NumberConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\ArrayConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\StringPrototype::install($this->globalEnv);
+        \Phasis\BuiltIn\MathObject::install($this->globalEnv);
+        \Phasis\BuiltIn\JsonObject::install($this->globalEnv);
+        \Phasis\BuiltIn\SymbolConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\IteratorConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\MapConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\SetConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\TypedArrayConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\AtomicsObject::install($this->globalEnv);
+        \Phasis\BuiltIn\PromiseConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\ProxyConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\ReflectObject::install($this->globalEnv);
         $this->globalEnv->defineVar('console', $this->console->create());
 
-        \PhpJs\BuiltIn\IntlObject::install($this->globalEnv);
+        \Phasis\BuiltIn\IntlObject::install($this->globalEnv);
 
-        \PhpJs\BuiltIn\WeakMapConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\WeakSetConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\WeakRefConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\FinalizationRegistryConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\DisposableStackConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\ShadowRealmConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\TemporalObject::install($this->globalEnv);
+        \Phasis\BuiltIn\WeakMapConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\WeakSetConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\WeakRefConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\FinalizationRegistryConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\DisposableStackConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\ShadowRealmConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\TemporalObject::install($this->globalEnv);
 
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
         // When called as function, converts value to BigInt.
-        $bigIntFn = \PhpJs\Value\JsFunction::fromCallable(
+        $bigIntFn = \Phasis\Value\JsFunction::fromCallable(
             'BigInt',
-            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-                if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                    throw new \PhpJs\Exceptions\TypeError('BigInt is not a constructor');
+            function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
+                if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                    throw new \Phasis\Exceptions\TypeError('BigInt is not a constructor');
                 }
-                $val = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $val = $args[0] ?? \Phasis\Value\JsUndefined::instance();
 
                 // Per spec BigInt(value) step 2: prim = ToPrimitive(value, number).
-                $prim = \PhpJs\Spec\TypeConversion::toPrimitive($val, 'number');
+                $prim = \Phasis\Spec\TypeConversion::toPrimitive($val, 'number');
 
                 // Step 3: If Type(prim) is Number, return ? NumberToBigInt(prim).
-                if ($prim instanceof \PhpJs\Value\JsNumber) {
+                if ($prim instanceof \Phasis\Value\JsNumber) {
                     $n = $prim->value;
                     if (!is_finite($n) || floor($n) !== $n) {
-                        throw new \PhpJs\Exceptions\RangeError(
+                        throw new \Phasis\Exceptions\RangeError(
                             'The number ' . $n . ' cannot be converted to a BigInt'
                             . ' because it is not an integer'
                         );
                     }
                     // Use string representation for large integers beyond PHP_INT_MAX.
                     if ($n > PHP_INT_MAX || $n < PHP_INT_MIN) {
-                        return new \PhpJs\Value\JsBigInt(number_format($n, 0, '.', ''));
+                        return new \Phasis\Value\JsBigInt(number_format($n, 0, '.', ''));
                     }
-                    return new \PhpJs\Value\JsBigInt((string) (int) $n);
+                    return new \Phasis\Value\JsBigInt((string) (int) $n);
                 }
 
                 // Step 4: Otherwise, return ? ToBigInt(prim).
-                return \PhpJs\Spec\TypeConversion::toBigInt($prim);
+                return \Phasis\Spec\TypeConversion::toBigInt($prim);
             },
         );
         // BigInt has [[Construct]] per spec (just throws TypeError when called as constructor).
         $bigIntFn->setConstructable();
 
         // BigInt.length = 1 per spec (writable: false, enumerable: false, configurable: true).
-        $bigIntFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-            value: new \PhpJs\Value\JsNumber(1.0),
+        $bigIntFn->defineOwnProperty('length', new \Phasis\Object\PropertyDescriptor(
+            value: new \Phasis\Value\JsNumber(1.0),
             writable: false,
             enumerable: false,
             configurable: true,
@@ -290,36 +290,36 @@ class Engine
 
         // BigInt.prototype: allows attaching methods to all BigInt primitives.
         // Per spec 21.2.2, BigInt.prototype is an ordinary object (not a BigInt value).
-        $bigIntProto = new \PhpJs\Value\JsObject();
+        $bigIntProto = new \Phasis\Value\JsObject();
 
         // BigInt.prototype.toString([radix])
-        $bigIntToStr = \PhpJs\Value\JsFunction::fromCallable(
+        $bigIntToStr = \Phasis\Value\JsFunction::fromCallable(
             'toString',
-            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-                $bigint = $this_ instanceof \PhpJs\Value\JsBigInt ? $this_ : null;
-                if ($bigint === null && $this_ instanceof \PhpJs\Value\JsObject) {
+            function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
+                $bigint = $this_ instanceof \Phasis\Value\JsBigInt ? $this_ : null;
+                if ($bigint === null && $this_ instanceof \Phasis\Value\JsObject) {
                     // BigInt wrapper object.
                     $v = $this_->get('[[BigIntData]]');
-                    $bigint = $v instanceof \PhpJs\Value\JsBigInt ? $v : null;
+                    $bigint = $v instanceof \Phasis\Value\JsBigInt ? $v : null;
                 }
                 if ($bigint === null) {
-                    throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toString called on non-BigInt');
+                    throw new \Phasis\Exceptions\TypeError('BigInt.prototype.toString called on non-BigInt');
                 }
                 $radix = 10;
-                if (isset($args[0]) && !($args[0] instanceof \PhpJs\Value\JsUndefined)) {
+                if (isset($args[0]) && !($args[0] instanceof \Phasis\Value\JsUndefined)) {
                     $radix = (int) $args[0]->toNumber();
                     if ($radix < 2 || $radix > 36) {
-                        throw new \PhpJs\Exceptions\RangeError('toString() radix must be between 2 and 36');
+                        throw new \Phasis\Exceptions\RangeError('toString() radix must be between 2 and 36');
                     }
                 }
                 if ($radix === 10) {
-                    return new \PhpJs\Value\JsString($bigint->value);
+                    return new \Phasis\Value\JsString($bigint->value);
                 }
                 // For non-decimal radix, convert the decimal string to the target base.
                 $negative = isset($bigint->value[0]) && $bigint->value[0] === '-';
                 $abs = $negative ? substr($bigint->value, 1) : $bigint->value;
                 if ($abs === '0' || $abs === '') {
-                    return new \PhpJs\Value\JsString('0');
+                    return new \Phasis\Value\JsString('0');
                 }
                 $digitChars = '0123456789abcdefghijklmnopqrstuvwxyz';
                 $result = '';
@@ -346,86 +346,86 @@ class Engine
                         $n = ltrim($q, '0') ?: '0';
                     }
                 }
-                return new \PhpJs\Value\JsString($negative ? '-' . $result : $result);
+                return new \Phasis\Value\JsString($negative ? '-' . $result : $result);
             },
         );
         $bigIntProto->defineOwnProperty(
             'toString',
-            \PhpJs\Object\PropertyDescriptor::data($bigIntToStr, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($bigIntToStr, true, false, true),
         );
 
         // BigInt.prototype.valueOf()
-        $bigIntValOf = \PhpJs\Value\JsFunction::fromCallable(
+        $bigIntValOf = \Phasis\Value\JsFunction::fromCallable(
             'valueOf',
-            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-                if ($this_ instanceof \PhpJs\Value\JsBigInt) {
+            function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
+                if ($this_ instanceof \Phasis\Value\JsBigInt) {
                     return $this_;
                 }
-                if ($this_ instanceof \PhpJs\Value\JsObject) {
+                if ($this_ instanceof \Phasis\Value\JsObject) {
                     $v = $this_->get('[[BigIntData]]');
-                    if ($v instanceof \PhpJs\Value\JsBigInt) {
+                    if ($v instanceof \Phasis\Value\JsBigInt) {
                         return $v;
                     }
                 }
-                throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.valueOf called on non-BigInt');
+                throw new \Phasis\Exceptions\TypeError('BigInt.prototype.valueOf called on non-BigInt');
             },
         );
         $bigIntProto->defineOwnProperty(
             'valueOf',
-            \PhpJs\Object\PropertyDescriptor::data($bigIntValOf, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($bigIntValOf, true, false, true),
         );
 
         // BigInt.prototype.toLocaleString() — delegates to Intl.NumberFormat
         // when intl is available, matching V8's behaviour. Falls back to
         // the raw decimal string in non-intl environments.
-        $bigIntLocale = \PhpJs\Value\JsFunction::fromCallable(
+        $bigIntLocale = \Phasis\Value\JsFunction::fromCallable(
             'toLocaleString',
-            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-                $bigint = $this_ instanceof \PhpJs\Value\JsBigInt ? $this_ : null;
-                if ($bigint === null && $this_ instanceof \PhpJs\Value\JsObject) {
+            function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
+                $bigint = $this_ instanceof \Phasis\Value\JsBigInt ? $this_ : null;
+                if ($bigint === null && $this_ instanceof \Phasis\Value\JsObject) {
                     $v = $this_->get('[[BigIntData]]');
-                    $bigint = $v instanceof \PhpJs\Value\JsBigInt ? $v : null;
+                    $bigint = $v instanceof \Phasis\Value\JsBigInt ? $v : null;
                 }
                 if ($bigint === null) {
-                    throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
+                    throw new \Phasis\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
                 }
                 $this_ = $bigint;
                 if (extension_loaded('intl')) {
                     $env = self::getCurrentInterpreter()?->getGlobalEnv();
                     $intlObj = $env?->get('Intl', false);
-                    if ($intlObj instanceof \PhpJs\Value\JsObject) {
+                    if ($intlObj instanceof \Phasis\Value\JsObject) {
                         $nfCtor = $intlObj->get('NumberFormat');
-                        if ($nfCtor instanceof \PhpJs\Value\JsFunction) {
+                        if ($nfCtor instanceof \Phasis\Value\JsFunction) {
                             $nfProto = $nfCtor->get('prototype');
-                            $nfObj = new \PhpJs\Value\JsObject(
-                                $nfProto instanceof \PhpJs\Value\JsObject ? $nfProto : null,
+                            $nfObj = new \Phasis\Value\JsObject(
+                                $nfProto instanceof \Phasis\Value\JsObject ? $nfProto : null,
                             );
                             $nfObj->defineOwnProperty(
                                 '[[NewTarget]]',
-                                \PhpJs\Object\PropertyDescriptor::data($nfCtor, false, false, false),
+                                \Phasis\Object\PropertyDescriptor::data($nfCtor, false, false, false),
                             );
                             ($nfCtor->getNativeCallable())($nfObj, [
-                                $args[0] ?? \PhpJs\Value\JsUndefined::instance(),
-                                $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
+                                $args[0] ?? \Phasis\Value\JsUndefined::instance(),
+                                $args[1] ?? \Phasis\Value\JsUndefined::instance(),
                             ]);
                             $interp = self::getCurrentInterpreter();
-                            $formatGetter = $nfProto instanceof \PhpJs\Value\JsObject
+                            $formatGetter = $nfProto instanceof \Phasis\Value\JsObject
                                 ? $nfProto->getOwnPropertyDescriptor('format')
                                 : null;
                             if (
                                 $interp !== null
                                 && $formatGetter !== null
-                                && $formatGetter->get instanceof \PhpJs\Value\JsFunction
+                                && $formatGetter->get instanceof \Phasis\Value\JsFunction
                             ) {
                                 $bound = $interp->callFunction(
                                     $formatGetter->get,
                                     $nfObj,
                                     [],
                                 );
-                                if ($bound instanceof \PhpJs\Value\JsFunction) {
+                                if ($bound instanceof \Phasis\Value\JsFunction) {
                                     return $interp->callFunction(
                                         $bound,
-                                        \PhpJs\Value\JsUndefined::instance(),
+                                        \Phasis\Value\JsUndefined::instance(),
                                         [$this_],
                                     );
                                 }
@@ -433,19 +433,19 @@ class Engine
                         }
                     }
                 }
-                return new \PhpJs\Value\JsString($this_->value);
+                return new \Phasis\Value\JsString($this_->value);
             },
         );
         $bigIntProto->defineOwnProperty(
             'toLocaleString',
-            \PhpJs\Object\PropertyDescriptor::data($bigIntLocale, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($bigIntLocale, true, false, true),
         );
 
         // BigInt.prototype[Symbol.toStringTag] = "BigInt"
         $bigIntProto->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
-            new \PhpJs\Object\PropertyDescriptor(
-                value: new \PhpJs\Value\JsString('BigInt'),
+            \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+            new \Phasis\Object\PropertyDescriptor(
+                value: new \Phasis\Value\JsString('BigInt'),
                 writable: false,
                 enumerable: false,
                 configurable: true,
@@ -453,14 +453,14 @@ class Engine
         );
 
         // BigInt.prototype.constructor = BigInt
-        $bigIntProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+        $bigIntProto->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data(
             $bigIntFn,
             true,
             false,
             true
         ));
 
-        $bigIntFn->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+        $bigIntFn->defineOwnProperty('prototype', new \Phasis\Object\PropertyDescriptor(
             value: $bigIntProto,
             writable: false,
             enumerable: false,
@@ -663,39 +663,39 @@ class Engine
         };
 
         // BigInt.asUintN(width, bigint): modulo 2^width, unsigned.
-        $asUintNFn = \PhpJs\Value\JsFunction::fromCallable(
+        $asUintNFn = \Phasis\Value\JsFunction::fromCallable(
             'asUintN',
-            function (\PhpJs\Value\JsValue $this_, array $args) use ($bigUintN): \PhpJs\Value\JsValue {
-                $width = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toIndex($args[0]) : 0;
-                $bigint = \PhpJs\Spec\TypeConversion::toBigInt(
-                    $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
+            function (\Phasis\Value\JsValue $this_, array $args) use ($bigUintN): \Phasis\Value\JsValue {
+                $width = isset($args[0]) ? \Phasis\Spec\TypeConversion::toIndex($args[0]) : 0;
+                $bigint = \Phasis\Spec\TypeConversion::toBigInt(
+                    $args[1] ?? \Phasis\Value\JsUndefined::instance(),
                 );
                 $mod = $bigUintN($bigint->value, $width);
-                return new \PhpJs\Value\JsBigInt($mod);
+                return new \Phasis\Value\JsBigInt($mod);
             },
             2,
         );
         $bigIntFn->defineOwnProperty(
             'asUintN',
-            \PhpJs\Object\PropertyDescriptor::data($asUintNFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($asUintNFn, true, false, true),
         );
 
         // BigInt.asIntN(width, bigint): modulo 2^width, signed.
         $asIntNCb = function (
-            \PhpJs\Value\JsValue $this_,
+            \Phasis\Value\JsValue $this_,
             array $args,
         ) use (
             $bigUintN,
             $pow2str,
             $bigCmpUns,
             $bigSubUns,
-        ): \PhpJs\Value\JsValue {
-            $width = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toIndex($args[0]) : 0;
-            $bigint = \PhpJs\Spec\TypeConversion::toBigInt(
-                $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
+        ): \Phasis\Value\JsValue {
+            $width = isset($args[0]) ? \Phasis\Spec\TypeConversion::toIndex($args[0]) : 0;
+            $bigint = \Phasis\Spec\TypeConversion::toBigInt(
+                $args[1] ?? \Phasis\Value\JsUndefined::instance(),
             );
             if ($width === 0) {
-                return new \PhpJs\Value\JsBigInt('0');
+                return new \Phasis\Value\JsBigInt('0');
             }
             // Fast path: when |bigint|'s bit length is provably less than
             // (width - 1), the value fits unchanged into the signed range
@@ -713,36 +713,36 @@ class Engine
             if ($bigCmpUns($mod, $half) >= 0) {
                 $pow2 = $pow2str($width);
                 $diff = $bigSubUns($pow2, $mod);
-                return new \PhpJs\Value\JsBigInt($diff === '0' ? '0' : '-' . $diff);
+                return new \Phasis\Value\JsBigInt($diff === '0' ? '0' : '-' . $diff);
             }
-            return new \PhpJs\Value\JsBigInt($mod);
+            return new \Phasis\Value\JsBigInt($mod);
         };
-        $asIntNFn = \PhpJs\Value\JsFunction::fromCallable('asIntN', $asIntNCb, 2);
+        $asIntNFn = \Phasis\Value\JsFunction::fromCallable('asIntN', $asIntNCb, 2);
         $bigIntFn->defineOwnProperty(
             'asIntN',
-            \PhpJs\Object\PropertyDescriptor::data($asIntNFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($asIntNFn, true, false, true),
         );
 
         // Store the prototype so JsBigInt primitive lookups can find it.
-        \PhpJs\Value\JsBigInt::setPrototype($bigIntProto);
+        \Phasis\Value\JsBigInt::setPrototype($bigIntProto);
 
         $this->globalEnv->defineVar('BigInt', $bigIntFn);
 
-        \PhpJs\BuiltIn\DateConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\DateConstructor::install($this->globalEnv);
 
         $interp = $this->interpreter;
         $globalEnv = $this->globalEnv;
         $regExpCb = function (
-            \PhpJs\Value\JsValue $this_,
+            \Phasis\Value\JsValue $this_,
             array $args,
         ) use (
             $interp,
             $globalEnv
-): \PhpJs\Value\JsValue {
-            $arg0 = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-            $arg1 = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+): \Phasis\Value\JsValue {
+            $arg0 = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+            $arg1 = $args[1] ?? \Phasis\Value\JsUndefined::instance();
 
-            $calledAsNew = $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]');
+            $calledAsNew = $this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]');
 
             // Per spec 22.2.3.1: IsRegExp check using @@match. If matcher is
             // undefined, fall back to whether the argument has the
@@ -753,24 +753,24 @@ class Engine
             // direct JsObject receivers so a proxy whose @@match handler
             // returns undefined fails IsRegExp (spec sec-isregexp step 5).
             $patternIsRegExp = false;
-            if ($arg0 instanceof \PhpJs\Value\JsObject) {
-                $matchSymbol = \PhpJs\BuiltIn\SymbolConstructor::match();
+            if ($arg0 instanceof \Phasis\Value\JsObject) {
+                $matchSymbol = \Phasis\BuiltIn\SymbolConstructor::match();
                 $matchProp = $arg0->getBySymbol($matchSymbol);
-                if ($matchProp instanceof \PhpJs\Value\JsUndefined) {
-                    if ($arg0 instanceof \PhpJs\Value\JsProxy) {
+                if ($matchProp instanceof \Phasis\Value\JsUndefined) {
+                    if ($arg0 instanceof \Phasis\Value\JsProxy) {
                         $patternIsRegExp = false;
                     } else {
                         $patternIsRegExp = $arg0->getOwnPropertyDescriptor('[[PCREPattern]]') !== null;
                     }
                 } else {
-                    $patternIsRegExp = \PhpJs\Spec\TypeConversion::toBoolean($matchProp);
+                    $patternIsRegExp = \Phasis\Spec\TypeConversion::toBoolean($matchProp);
                 }
             }
 
             // Spec step 4: When called as function (not new), if pattern is regexp-like
             // with flags undefined and pattern.constructor === RegExp, return pattern as-is.
-            if (!$calledAsNew && $patternIsRegExp && $arg1 instanceof \PhpJs\Value\JsUndefined) {
-                if ($arg0 instanceof \PhpJs\Value\JsObject) {
+            if (!$calledAsNew && $patternIsRegExp && $arg1 instanceof \Phasis\Value\JsUndefined) {
+                if ($arg0 instanceof \Phasis\Value\JsObject) {
                     $patternCtor = $arg0->get('constructor');
                     if ($globalEnv->has('RegExp') && $patternCtor === $globalEnv->get('RegExp')) {
                         return $arg0;
@@ -798,14 +798,14 @@ class Engine
             // not retroactively change the source we use.
             $cachedPattern = null;
             $cachedFlags = null;
-            if ($patternIsRegExp && $arg0 instanceof \PhpJs\Value\JsObject) {
+            if ($patternIsRegExp && $arg0 instanceof \Phasis\Value\JsObject) {
                 $srcDesc = $arg0->getOwnPropertyDescriptor('[[OriginalSource]]');
-                if ($srcDesc !== null && $srcDesc->value instanceof \PhpJs\Value\JsString) {
+                if ($srcDesc !== null && $srcDesc->value instanceof \Phasis\Value\JsString) {
                     $cachedPattern = $srcDesc->value->value;
                 }
-                if ($arg1 instanceof \PhpJs\Value\JsUndefined) {
+                if ($arg1 instanceof \Phasis\Value\JsUndefined) {
                     $flgDesc = $arg0->getOwnPropertyDescriptor('[[OriginalFlags]]');
-                    if ($flgDesc !== null && $flgDesc->value instanceof \PhpJs\Value\JsString) {
+                    if ($flgDesc !== null && $flgDesc->value instanceof \Phasis\Value\JsString) {
                         $cachedFlags = $flgDesc->value->value;
                     }
                 }
@@ -818,7 +818,7 @@ class Engine
             $subProto = null;
             if ($isSubclass && $newTarget instanceof JsFunction) {
                 $maybeProto = $newTarget->get('prototype');
-                if ($maybeProto instanceof \PhpJs\Value\JsObject) {
+                if ($maybeProto instanceof \Phasis\Value\JsObject) {
                     $subProto = $maybeProto;
                 }
             }
@@ -827,11 +827,11 @@ class Engine
             // RegExp source/flags pair when IsRegExp(pattern) was true. An
             // arbitrary object with `source`/`flags` properties but a falsy
             // @@match must be coerced via ToString instead.
-            if ($patternIsRegExp && $arg0 instanceof \PhpJs\Value\JsObject) {
+            if ($patternIsRegExp && $arg0 instanceof \Phasis\Value\JsObject) {
                 if ($cachedPattern !== null) {
                     $pattern = $cachedPattern;
                 } else {
-                    $pattern = \PhpJs\Spec\TypeConversion::toString($arg0->get('source'));
+                    $pattern = \Phasis\Spec\TypeConversion::toString($arg0->get('source'));
                     if ($pattern === '(?:)') {
                         $pattern = '';
                     }
@@ -839,9 +839,9 @@ class Engine
                 if ($cachedFlags !== null) {
                     $flags = $cachedFlags;
                 } else {
-                    $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
-                        ? \PhpJs\Spec\TypeConversion::toString($arg0->get('flags'))
-                        : \PhpJs\Spec\TypeConversion::toString($arg1);
+                    $flags = $arg1 instanceof \Phasis\Value\JsUndefined
+                        ? \Phasis\Spec\TypeConversion::toString($arg0->get('flags'))
+                        : \Phasis\Spec\TypeConversion::toString($arg1);
                 }
                 $result = $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
                 if ($subProto !== null) {
@@ -850,12 +850,12 @@ class Engine
                 return $result;
             }
 
-            $pattern = $arg0 instanceof \PhpJs\Value\JsUndefined
+            $pattern = $arg0 instanceof \Phasis\Value\JsUndefined
                 ? ''
-                : \PhpJs\Spec\TypeConversion::toString($arg0);
-            $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
+                : \Phasis\Spec\TypeConversion::toString($arg0);
+            $flags = $arg1 instanceof \Phasis\Value\JsUndefined
                 ? ''
-                : \PhpJs\Spec\TypeConversion::toString($arg1);
+                : \Phasis\Spec\TypeConversion::toString($arg1);
             $result = $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
             if ($subProto !== null) {
                 $result->setPrototype($subProto);
@@ -865,9 +865,9 @@ class Engine
         $this->installStubConstructor('RegExp', $regExpCb, 2);
 
         // Install Symbol methods on RegExp.prototype.
-        /** @var \PhpJs\Value\JsObject $regexpProto */
+        /** @var \Phasis\Value\JsObject $regexpProto */
         $regexpProto = $this->globalEnv->get('__RegExpPrototype__');
-        \PhpJs\BuiltIn\RegExpPrototype::install($regexpProto);
+        \Phasis\BuiltIn\RegExpPrototype::install($regexpProto);
 
         // Annex B: Legacy RegExp static properties.
         $regExpCtor = $this->globalEnv->get('RegExp');
@@ -877,14 +877,14 @@ class Engine
             // RegExp[@@species] per spec: accessor property, getter returns `this`.
             $speciesGetter = JsFunction::fromCallable(
                 'get [Symbol.species]',
-                function (\PhpJs\Value\JsValue $this_): \PhpJs\Value\JsValue {
+                function (\Phasis\Value\JsValue $this_): \Phasis\Value\JsValue {
                     return $this_;
                 },
                 0,
             );
             $regExpCtor->definePropertyBySymbol(
-                \PhpJs\BuiltIn\SymbolConstructor::species(),
-                \PhpJs\Object\PropertyDescriptor::accessor(
+                \Phasis\BuiltIn\SymbolConstructor::species(),
+                \Phasis\Object\PropertyDescriptor::accessor(
                     get: $speciesGetter,
                     set: null,
                     enumerable: false,
@@ -893,7 +893,7 @@ class Engine
             );
 
             // RegExp.escape(string) per spec proposal.
-            \PhpJs\BuiltIn\RegExpEscape::install($regExpCtor);
+            \Phasis\BuiltIn\RegExpEscape::install($regExpCtor);
         }
 
         // %AsyncFunction% intrinsic: the constructor for async functions.
@@ -921,10 +921,10 @@ class Engine
         $asyncFuncProto = new JsObject($fnProto instanceof JsObject ? $fnProto : null);
 
         // Symbol.toStringTag = "AsyncFunction", non-writable, non-enumerable, configurable.
-        $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+        $toStringTagSym = \Phasis\BuiltIn\SymbolConstructor::toStringTag();
         $asyncFuncProto->definePropertyBySymbol(
             $toStringTagSym,
-            \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncFunction'), false, false, true),
+            \Phasis\Object\PropertyDescriptor::data(new JsString('AsyncFunction'), false, false, true),
         );
 
         // Create the %AsyncFunction% constructor itself.
@@ -958,7 +958,7 @@ class Engine
             // Per spec 25.7.1 step 29: params for async functions must not
             // contain AwaitExpression. YieldExpression is also rejected since
             // it's never a valid binding initializer.
-            \PhpJs\BuiltIn\GlobalObject::rejectYieldAwaitInParamsPublic($ast);
+            \Phasis\BuiltIn\GlobalObject::rejectYieldAwaitInParamsPublic($ast);
 
             $fn = $interp->execute($ast);
             if ($fn instanceof JsFunction) {
@@ -969,7 +969,7 @@ class Engine
         $asyncFuncCtor->setConstructable();
 
         // %AsyncFunction%.prototype = %AsyncFunction.prototype%
-        $asyncFuncCtor->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
+        $asyncFuncCtor->defineOwnProperty('prototype', \Phasis\Object\PropertyDescriptor::data(
             $asyncFuncProto,
             false,
             false,
@@ -977,7 +977,7 @@ class Engine
         ));
 
         // %AsyncFunction.prototype%.constructor = %AsyncFunction%
-        $asyncFuncProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+        $asyncFuncProto->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data(
             $asyncFuncCtor,
             true,
             false,
@@ -1019,12 +1019,12 @@ class Engine
                 'get ' . $stateKey,
                 function (JsValue $this_) use ($ctor, $stateKey, $stateKeyMap): JsValue {
                     if ($this_ !== $ctor) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             'Method get RegExp.' . $stateKey . ' called on incompatible receiver',
                         );
                     }
                     $field = $stateKeyMap[$stateKey];
-                    return new JsString(\PhpJs\BuiltIn\RegExpPrototype::$$field);
+                    return new JsString(\Phasis\BuiltIn\RegExpPrototype::$$field);
                 },
                 0,
             );
@@ -1035,12 +1035,12 @@ class Engine
                 'set ' . $stateKey,
                 function (JsValue $this_, array $args) use ($ctor, $stateKey, $stateKeyMap): JsValue {
                     if ($this_ !== $ctor) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             'Method set RegExp.' . $stateKey . ' called on incompatible receiver',
                         );
                     }
                     $field = $stateKeyMap[$stateKey];
-                    \PhpJs\BuiltIn\RegExpPrototype::$$field = isset($args[0])
+                    \Phasis\BuiltIn\RegExpPrototype::$$field = isset($args[0])
                         ? TypeConversion::toString($args[0])
                         : '';
                     return JsUndefined::instance();
@@ -1061,7 +1061,7 @@ class Engine
         ): void {
             $getter = $makeGetter($key);
             $setter = $hasSetter ? $makeSetter($key) : null;
-            $desc = \PhpJs\Object\PropertyDescriptor::accessor(
+            $desc = \Phasis\Object\PropertyDescriptor::accessor(
                 get: $getter,
                 set: $setter,
                 enumerable: false,
@@ -1083,17 +1083,17 @@ class Engine
                 'get $' . $i,
                 function (JsValue $this_) use ($ctor, $idx): JsValue {
                     if ($this_ !== $ctor) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             'Method get RegExp.$' . $idx . ' called on incompatible receiver',
                         );
                     }
-                    return new JsString(\PhpJs\BuiltIn\RegExpPrototype::$legacyGroups[$idx - 1] ?? '');
+                    return new JsString(\Phasis\BuiltIn\RegExpPrototype::$legacyGroups[$idx - 1] ?? '');
                 },
                 0,
             );
             $ctor->defineOwnProperty(
                 '$' . $i,
-                \PhpJs\Object\PropertyDescriptor::accessor(
+                \Phasis\Object\PropertyDescriptor::accessor(
                     get: $getter,
                     set: null,
                     enumerable: false,
@@ -1105,16 +1105,16 @@ class Engine
 
     private function installStubConstructor(string $name, callable $fn, int $length = 0): void
     {
-        $constructor = \PhpJs\Value\JsFunction::fromCallable($name, $fn, $length);
+        $constructor = \Phasis\Value\JsFunction::fromCallable($name, $fn, $length);
         $constructor->setConstructable();
-        $proto = new \PhpJs\Value\JsObject();
+        $proto = new \Phasis\Value\JsObject();
         // Per spec, constructor is writable, non-enumerable, configurable.
         $proto->defineOwnProperty(
             'constructor',
-            \PhpJs\Object\PropertyDescriptor::data($constructor, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($constructor, true, false, true),
         );
         // Per spec, built-in constructor .prototype is non-writable, non-enumerable, non-configurable.
-        $constructor->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
+        $constructor->defineOwnProperty('prototype', \Phasis\Object\PropertyDescriptor::data(
             $proto,
             false,
             false,
@@ -1145,7 +1145,7 @@ class Engine
         try {
             $result = $this->interpreter->execute($program);
             // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
-            \PhpJs\Value\JsPromise::drainMicrotasks();
+            \Phasis\Value\JsPromise::drainMicrotasks();
             return $this->toPhp($result);
         } finally {
             self::$currentInterpreter = $previousInterpreter;
@@ -1171,7 +1171,7 @@ class Engine
         $loader = $this->interpreter->getModuleLoader();
         $loader->evaluateModule($modulePath, $source);
         // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
-        \PhpJs\Value\JsPromise::drainMicrotasks();
+        \Phasis\Value\JsPromise::drainMicrotasks();
         // Module namespace objects can be self-referential (export * from self),
         // so converting to PHP would cause infinite recursion. Return null instead.
         // Callers that need the namespace should use the ModuleLoader directly.
@@ -1261,7 +1261,7 @@ class Engine
 
     public function reset(): void
     {
-        \PhpJs\Value\JsPromise::clearMicrotasks();
+        \Phasis\Value\JsPromise::clearMicrotasks();
         self::resetStaticIntrinsics();
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();
@@ -1280,14 +1280,14 @@ class Engine
      */
     private static function resetStaticIntrinsics(): void
     {
-        \PhpJs\BuiltIn\RegExpPrototype::resetStringIteratorProto();
+        \Phasis\BuiltIn\RegExpPrototype::resetStringIteratorProto();
     }
 
     /**
      * Create a RegExp object using the current interpreter.
      * Used by String.prototype methods to create RegExp from string arguments per spec.
      */
-    public static function createRegExp(string $pattern, string $flags): ?\PhpJs\Value\JsObject
+    public static function createRegExp(string $pattern, string $flags): ?\Phasis\Value\JsObject
     {
         if (self::$currentInterpreter === null) {
             return null;
@@ -1302,7 +1302,7 @@ class Engine
     /**
      * Get the current interpreter for built-in methods.
      */
-    public static function getCurrentInterpreter(): ?\PhpJs\Runtime\Interpreter
+    public static function getCurrentInterpreter(): ?\Phasis\Runtime\Interpreter
     {
         return self::$currentInterpreter;
     }
@@ -1313,7 +1313,7 @@ class Engine
      * are tagged with their creating realm. Returns null only when no
      * interpreter is bound (e.g. during very early static initialisation).
      */
-    public static function getCurrentRealm(): ?\PhpJs\Engine
+    public static function getCurrentRealm(): ?\Phasis\Engine
     {
         return self::$currentInterpreter?->getRealm();
     }
@@ -1322,7 +1322,7 @@ class Engine
      * Restore the active interpreter after a sibling Engine
      * (typically a ShadowRealm) wrote the static during construction.
      */
-    public static function setCurrentInterpreter(?\PhpJs\Runtime\Interpreter $interpreter): void
+    public static function setCurrentInterpreter(?\Phasis\Runtime\Interpreter $interpreter): void
     {
         self::$currentInterpreter = $interpreter;
     }
@@ -1334,7 +1334,7 @@ class Engine
     public static function createRegExpOrThrow(string $pattern, string $flags): JsObject
     {
         if (self::$currentInterpreter === null) {
-            throw new \PhpJs\Exceptions\TypeError('Cannot compile RegExp');
+            throw new \Phasis\Exceptions\TypeError('Cannot compile RegExp');
         }
         return self::$currentInterpreter->createRegExpFromConstructor($pattern, $flags);
     }
@@ -1349,13 +1349,13 @@ class Engine
     /** @param array<int, true> $seen Object-id set used to break self-referential graphs (globalThis). */
     private function toPhp(JsValue $value, array $seen = []): mixed
     {
-        if ($value instanceof JsUndefined || $value instanceof \PhpJs\Value\JsNull) {
+        if ($value instanceof JsUndefined || $value instanceof \Phasis\Value\JsNull) {
             return null;
         }
-        if ($value instanceof \PhpJs\Value\JsBoolean) {
+        if ($value instanceof \Phasis\Value\JsBoolean) {
             return $value->toBoolean();
         }
-        if ($value instanceof \PhpJs\Value\JsNumber) {
+        if ($value instanceof \Phasis\Value\JsNumber) {
             $num = $value->value;
             if (is_nan($num)) {
                 return NAN;
@@ -1371,13 +1371,13 @@ class Engine
             }
             return $num;
         }
-        if ($value instanceof \PhpJs\Value\JsString) {
+        if ($value instanceof \Phasis\Value\JsString) {
             return $value->value;
         }
-        if ($value instanceof \PhpJs\Value\JsFunction) {
+        if ($value instanceof \Phasis\Value\JsFunction) {
             return null; // Functions don't convert to PHP values
         }
-        if ($value instanceof \PhpJs\Value\JsArray) {
+        if ($value instanceof \Phasis\Value\JsArray) {
             $oid = spl_object_id($value);
             if (isset($seen[$oid])) {
                 return null;
@@ -1390,7 +1390,7 @@ class Engine
             }
             return $result;
         }
-        if ($value instanceof \PhpJs\Value\JsTypedArray) {
+        if ($value instanceof \Phasis\Value\JsTypedArray) {
             $result = [];
             $len = $value->getLength();
             for ($i = 0; $i < $len; $i++) {
@@ -1410,14 +1410,14 @@ class Engine
             // that throw to the PHP caller for tests whose final expression
             // happens to evaluate to a revoked proxy. JS-side behaviour is
             // unchanged: the proxy is still observably revoked.
-            if ($value instanceof \PhpJs\Value\JsProxy && $value->isRevoked()) {
+            if ($value instanceof \Phasis\Value\JsProxy && $value->isRevoked()) {
                 return $result;
             }
             // Reading a live proxy's keys / properties is observable and
             // could throw from user-supplied traps; same as a getter, we
             // skip conversion entirely to avoid surfacing host-side side
             // effects through the eval result.
-            if ($value instanceof \PhpJs\Value\JsProxy) {
+            if ($value instanceof \Phasis\Value\JsProxy) {
                 return $result;
             }
             foreach ($value->getOwnPropertyNames() as $key) {
@@ -1435,7 +1435,7 @@ class Engine
                     continue;
                 }
                 $val = $desc->value ?? $value->get($key);
-                if ($val instanceof \PhpJs\Value\JsFunction) {
+                if ($val instanceof \Phasis\Value\JsFunction) {
                     continue; // Skip function properties
                 }
                 $result[$key] = $this->toPhp($val, $seen);

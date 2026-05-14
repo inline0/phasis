@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Parser;
+namespace Phasis\Parser;
 
-use PhpJs\Exceptions\SyntaxError;
-use PhpJs\Lexer\Token;
+use Phasis\Exceptions\SyntaxError;
+use Phasis\Lexer\Token;
 
 class ParseError extends SyntaxError
 {

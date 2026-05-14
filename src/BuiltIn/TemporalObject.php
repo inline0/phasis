@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\RangeError;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBigInt;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\RangeError;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBigInt;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Temporal namespace object and all Temporal type constructors.
@@ -1674,8 +1674,8 @@ class TemporalObject
                 // Per spec: reject non-string/non-object BEFORE reading options.
                 if (
                     $item instanceof JsUndefined || $item instanceof JsNull
-                    || $item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt
-                    || $item instanceof JsBoolean || $item instanceof \PhpJs\Value\JsSymbol
+                    || $item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt
+                    || $item instanceof JsBoolean || $item instanceof \Phasis\Value\JsSymbol
                 ) {
                     return self::toPlainDate($item, 'constrain');
                 }
@@ -1999,8 +1999,8 @@ class TemporalObject
                 $item = $args[0] ?? JsUndefined::instance();
                 if (
                     $item instanceof JsUndefined || $item instanceof JsNull
-                    || $item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt
-                    || $item instanceof JsBoolean || $item instanceof \PhpJs\Value\JsSymbol
+                    || $item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt
+                    || $item instanceof JsBoolean || $item instanceof \Phasis\Value\JsSymbol
                 ) {
                     return self::toPlainTime($item);
                 }
@@ -2785,8 +2785,8 @@ class TemporalObject
                 // Type check primitives BEFORE reading options per spec.
                 if (
                     $item instanceof JsUndefined || $item instanceof JsNull
-                    || $item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt
-                    || $item instanceof JsBoolean || $item instanceof \PhpJs\Value\JsSymbol
+                    || $item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt
+                    || $item instanceof JsBoolean || $item instanceof \Phasis\Value\JsSymbol
                 ) {
                     return self::toPlainDateTime($item);
                 }
@@ -3275,8 +3275,8 @@ class TemporalObject
                 // Type check primitives BEFORE reading options.
                 if (
                     $item instanceof JsUndefined || $item instanceof JsNull
-                    || $item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt
-                    || $item instanceof JsBoolean || $item instanceof \PhpJs\Value\JsSymbol
+                    || $item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt
+                    || $item instanceof JsBoolean || $item instanceof \Phasis\Value\JsSymbol
                 ) {
                     return self::toPlainYearMonth($item);
                 }
@@ -3674,10 +3674,10 @@ class TemporalObject
                 if ($calArg instanceof JsNumber) {
                     throw new TypeError('number is not a valid calendar');
                 }
-                if ($calArg instanceof \PhpJs\Value\JsBigInt) {
+                if ($calArg instanceof \Phasis\Value\JsBigInt) {
                     throw new TypeError('bigint is not a valid calendar');
                 }
-                if ($calArg instanceof \PhpJs\Value\JsSymbol) {
+                if ($calArg instanceof \Phasis\Value\JsSymbol) {
                     throw new TypeError('Symbol is not a valid calendar');
                 }
                 if ($calArg instanceof JsObject) {
@@ -4690,7 +4690,7 @@ class TemporalObject
                 if ($dirV instanceof JsUndefined) {
                     throw new RangeError('direction is required');
                 }
-                if ($dirV instanceof \PhpJs\Value\JsSymbol) {
+                if ($dirV instanceof \Phasis\Value\JsSymbol) {
                     throw new TypeError('direction cannot be a Symbol');
                 }
                 $dir = TypeConversion::toString($dirV);
@@ -4923,13 +4923,13 @@ class TemporalObject
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to ZonedDateTime');
         }
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to ZonedDateTime');
         }
         if ($item instanceof JsBoolean) {
             throw new TypeError('Cannot convert boolean to ZonedDateTime');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert Symbol to ZonedDateTime');
         }
         $str = TypeConversion::toString($item);
@@ -5002,7 +5002,7 @@ class TemporalObject
                 $offsetProp instanceof JsNumber
                 || $offsetProp instanceof JsBoolean
                 || $offsetProp instanceof JsNull
-                || $offsetProp instanceof \PhpJs\Value\JsBigInt
+                || $offsetProp instanceof \Phasis\Value\JsBigInt
             ) {
                 throw new TypeError('ZonedDateTime offset property must be a string');
             }
@@ -6887,7 +6887,7 @@ class TemporalObject
             // Parse as BigInt string.
             $str = trim($arg->value);
             if (!preg_match('/^-?[0-9]+$/', $str)) {
-                throw new \PhpJs\Exceptions\SyntaxError("Cannot convert {$str} to a BigInt");
+                throw new \Phasis\Exceptions\SyntaxError("Cannot convert {$str} to a BigInt");
             }
             return (new JsBigInt($str))->value;
         }
@@ -6912,13 +6912,13 @@ class TemporalObject
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to Instant');
         }
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to Temporal.Instant');
         }
         if ($item instanceof JsBoolean) {
             throw new TypeError('Cannot convert boolean to Temporal.Instant');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert Symbol to Temporal.Instant');
         }
         $str = TypeConversion::toString($item);
@@ -7349,13 +7349,13 @@ class TemporalObject
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined or null to Duration');
         }
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to Duration');
         }
         if ($item instanceof JsBoolean) {
             throw new TypeError('Cannot convert boolean to Duration');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert Symbol to Duration');
         }
         // Try as string.
@@ -8769,10 +8769,10 @@ class TemporalObject
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to a Temporal.PlainDate');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert a Symbol to a Temporal.PlainDate');
         }
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert a number/BigInt to a Temporal.PlainDate');
         }
         if ($item instanceof JsBoolean) {
@@ -8964,11 +8964,11 @@ class TemporalObject
             if (!($offsetVal instanceof JsUndefined)) {
                 if (
                     $offsetVal instanceof JsNull || $offsetVal instanceof JsNumber
-                    || $offsetVal instanceof JsBoolean || $offsetVal instanceof \PhpJs\Value\JsBigInt
+                    || $offsetVal instanceof JsBoolean || $offsetVal instanceof \Phasis\Value\JsBigInt
                 ) {
                     throw new TypeError("offset must be a string");
                 }
-                if ($offsetVal instanceof \PhpJs\Value\JsSymbol) {
+                if ($offsetVal instanceof \Phasis\Value\JsSymbol) {
                     throw new TypeError("Cannot convert a Symbol to a string");
                 }
                 $offStr = ($offsetVal instanceof JsString) ? $offsetVal->value : TypeConversion::toString($offsetVal);
@@ -9061,10 +9061,10 @@ class TemporalObject
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to relativeTo');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert a Symbol to relativeTo');
         }
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert a number/BigInt to relativeTo');
         }
         if ($item instanceof JsBoolean) {
@@ -9175,13 +9175,13 @@ class TemporalObject
             }
             return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
         }
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to Temporal.PlainTime');
         }
         if ($item instanceof JsBoolean) {
             throw new TypeError('Cannot convert boolean to Temporal.PlainTime');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert Symbol to Temporal.PlainTime');
         }
         $str = TypeConversion::toString($item);
@@ -9568,13 +9568,13 @@ class TemporalObject
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to PlainDateTime');
         }
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to Temporal.PlainDateTime');
         }
         if ($item instanceof JsBoolean) {
             throw new TypeError('Cannot convert boolean to Temporal.PlainDateTime');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert Symbol to Temporal.PlainDateTime');
         }
         $str = TypeConversion::toString($item);
@@ -9970,13 +9970,13 @@ class TemporalObject
             return self::createPlainYearMonthObject($y, $m, 1, $cal);
         }
         // Reject primitives per spec.
-        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+        if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to Temporal.PlainYearMonth');
         }
         if ($item instanceof JsBoolean) {
             throw new TypeError('Cannot convert boolean to Temporal.PlainYearMonth');
         }
-        if ($item instanceof \PhpJs\Value\JsSymbol) {
+        if ($item instanceof \Phasis\Value\JsSymbol) {
             throw new TypeError('Cannot convert Symbol to Temporal.PlainYearMonth');
         }
         $str = TypeConversion::toString($item);
@@ -14260,7 +14260,7 @@ class TemporalObject
     //
     // To stay independent of the host ICU version (Ubuntu CI ships ICU
     // 70/74 whose leap-month placements diverge from Unicode 16 / V8),
-    // php-js ships a precomputed table generated from an R-D-equivalent
+    // phasis ships a precomputed table generated from an R-D-equivalent
     // implementation (ICU 76+). The table is regenerated by
     // bin/gen-chinese-table.php and consumed here. The runtime never
     // calls IntlCalendar for chinese / dangi arithmetic.
@@ -16797,7 +16797,7 @@ class TemporalObject
         if (!extension_loaded('intl')) {
             return null;
         }
-        $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+        $env = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv();
         $intlObj = $env?->get('Intl', false);
         if (!$intlObj instanceof JsObject) {
             return null;
@@ -16857,7 +16857,7 @@ class TemporalObject
         if (!extension_loaded('intl')) {
             return new JsString($fallback);
         }
-        $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+        $env = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv();
         $intlObj = $env?->get('Intl', false);
         if (!$intlObj instanceof JsObject) {
             return new JsString($fallback);
@@ -16876,7 +16876,7 @@ class TemporalObject
             $args[0] ?? JsUndefined::instance(),
             $args[1] ?? JsUndefined::instance(),
         ]);
-        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $interp = \Phasis\Engine::getCurrentInterpreter();
         $formatFn = $proto instanceof JsObject ? $proto->get('format') : null;
         if ($interp !== null && $formatFn instanceof JsFunction) {
             $result = $interp->callFunction($formatFn, $obj, [$this_]);
@@ -17252,7 +17252,7 @@ class TemporalObject
         if (!extension_loaded('intl')) {
             return new JsString($fallback);
         }
-        $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+        $env = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv();
         $intlObj = $env?->get('Intl', false);
         if (!$intlObj instanceof JsObject) {
             return new JsString($fallback);
@@ -17343,7 +17343,7 @@ class TemporalObject
             $args[0] ?? JsUndefined::instance(),
             $optionsArg,
         ]);
-        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $interp = \Phasis\Engine::getCurrentInterpreter();
         $formatGetter = $proto instanceof JsObject
             ? $proto->getOwnPropertyDescriptor('format')
             : null;

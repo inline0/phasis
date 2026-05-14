@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Runtime\Environment;
-use PhpJs\Runtime\Interpreter;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Runtime\Environment;
+use Phasis\Runtime\Interpreter;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class GlobalObject
 {
@@ -37,45 +37,45 @@ class GlobalObject
         $env->defineVar('Number', $numberFn);
         $booleanFn = JsFunction::fromCallable('Boolean', self::booleanConstructor(), 1);
         $booleanFn->setConstructable();
-        $boolProto = new \PhpJs\Value\JsObject();
+        $boolProto = new \Phasis\Value\JsObject();
         // Boolean.prototype has [[PrimitiveValue]] = false per spec
         $boolProto->defineOwnProperty(
             '[[PrimitiveValue]]',
-            \PhpJs\Object\PropertyDescriptor::data(new JsBoolean(false), false, false, false),
+            \Phasis\Object\PropertyDescriptor::data(new JsBoolean(false), false, false, false),
         );
         $boolProto->defineOwnProperty(
             'constructor',
-            \PhpJs\Object\PropertyDescriptor::data($booleanFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($booleanFn, true, false, true),
         );
-        $boolProto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+        $boolProto->defineOwnProperty('valueOf', \Phasis\Object\PropertyDescriptor::data(
             JsFunction::fromCallable('valueOf', function (JsValue $this_): JsValue {
                 if ($this_ instanceof JsBoolean) {
                     return $this_;
                 }
-                if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
+                if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
                     $prim = $this_->get('[[PrimitiveValue]]');
                     if ($prim instanceof JsBoolean) {
                         return $prim;
                     }
                 }
-                throw new \PhpJs\Exceptions\TypeError('Boolean.prototype.valueOf requires a Boolean');
+                throw new \Phasis\Exceptions\TypeError('Boolean.prototype.valueOf requires a Boolean');
             }, 0),
             true,
             false,
             true,
         ));
-        $boolProto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
+        $boolProto->defineOwnProperty('toString', \Phasis\Object\PropertyDescriptor::data(
             JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
                 if ($this_ instanceof JsBoolean) {
                     return new JsString($this_->toBoolean() ? 'true' : 'false');
                 }
-                if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
+                if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
                     $prim = $this_->get('[[PrimitiveValue]]');
                     if ($prim instanceof JsBoolean) {
                         return new JsString($prim->toBoolean() ? 'true' : 'false');
                     }
                 }
-                throw new \PhpJs\Exceptions\TypeError('Boolean.prototype.toString requires a Boolean');
+                throw new \Phasis\Exceptions\TypeError('Boolean.prototype.toString requires a Boolean');
             }, 0),
             true,
             false,
@@ -84,7 +84,7 @@ class GlobalObject
         // Boolean.prototype is non-writable, non-configurable per spec
         $booleanFn->defineOwnProperty(
             'prototype',
-            \PhpJs\Object\PropertyDescriptor::data($boolProto, false, false, false),
+            \Phasis\Object\PropertyDescriptor::data($boolProto, false, false, false),
         );
         $env->defineVar('Boolean', $booleanFn);
 
@@ -99,9 +99,9 @@ class GlobalObject
                 return $code;
             }
             if (strlen($code->value) > 64 * 1024 * 1024) {
-                throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
+                throw new \Phasis\Exceptions\SyntaxError('Source too large for eval');
             }
-            $parser = new \PhpJs\Parser\Parser($code->value);
+            $parser = new \Phasis\Parser\Parser($code->value);
             // Allow `super` references at parse time: we can't statically
             // tell whether the eval is direct (inside a method) or indirect
             // (script top-level). The runtime raises a ReferenceError when
@@ -113,7 +113,7 @@ class GlobalObject
             // surface the advertised URL in their stack trace.
             $sourceUrl = $parser->getSourceURL();
             if ($sourceUrl !== null) {
-                \PhpJs\Engine::pushSourceURL($sourceUrl);
+                \Phasis\Engine::pushSourceURL($sourceUrl);
             }
             // Per spec: top-level break/continue/return in eval code is a
             // SyntaxError. Delegate to the interpreter's shared validator so
@@ -136,7 +136,7 @@ class GlobalObject
                     JsFunction::setInterpreterCallback($prevCallback);
                 }
                 if ($sourceUrl !== null) {
-                    \PhpJs\Engine::popSourceURL();
+                    \Phasis\Engine::popSourceURL();
                 }
             }
         }, 1);
@@ -315,9 +315,9 @@ class GlobalObject
             // wrapping in `(function (${params}){})` and asserting it parses.
                 $paramProbe = "(function ({$params}\n) {})";
                 try {
-                    (new \PhpJs\Parser\Parser($paramProbe))->parse();
+                    (new \Phasis\Parser\Parser($paramProbe))->parse();
                 } catch (\Throwable $e) {
-                    throw new \PhpJs\Exceptions\SyntaxError('Function parameter list is invalid');
+                    throw new \Phasis\Exceptions\SyntaxError('Function parameter list is invalid');
                 }
             // The body gets line feeds per step 41 so AnnexB HTML comments work.
             // The function is anonymous (no named binding visible in scope) —
@@ -325,7 +325,7 @@ class GlobalObject
             // as `function anonymous(){...}`, since the latter would make
             // "anonymous" a self-reference inside the body.
                 $source = "(function ({$params}\n) {\n{$body}\n})";
-                $parser = new \PhpJs\Parser\Parser($source);
+                $parser = new \Phasis\Parser\Parser($source);
                 $program = $parser->parse();
 
             // Per spec 20.2.1.1 step 20c-d, detect strict mode in the
@@ -356,11 +356,11 @@ class GlobalObject
                     }
                 }
                 // Honor new.target.prototype for subclassed Function constructor.
-                if ($result instanceof JsFunction && $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                if ($result instanceof JsFunction && $this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
                     $newTarget = $this_->get('[[NewTarget]]');
                     if ($newTarget instanceof JsFunction) {
                         $ntProto = $newTarget->get('prototype');
-                        if ($ntProto instanceof \PhpJs\Value\JsObject) {
+                        if ($ntProto instanceof \Phasis\Value\JsObject) {
                             $result->setPrototype($ntProto);
                         }
                     }
@@ -372,7 +372,7 @@ class GlobalObject
                 // (`function anonymous(params) { body }`) even though the
                 // function was parsed as an unnamed expression.
                 if ($result instanceof JsFunction) {
-                    $result->defineOwnProperty('name', \PhpJs\Object\PropertyDescriptor::data(
+                    $result->defineOwnProperty('name', \Phasis\Object\PropertyDescriptor::data(
                         new JsString('anonymous'),
                         false,
                         false,
@@ -402,7 +402,7 @@ class GlobalObject
         // on any function that inherits from Function.prototype throws TypeError.
         // %ThrowTypeError% per spec 10.2.4: frozen, name="", length=0
         $thrower = JsFunction::fromCallable('', function (): never {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "'caller', 'callee', and 'arguments' properties may not be accessed"
                 . ' on strict mode functions or the arguments objects for calls to them'
             );
@@ -412,16 +412,16 @@ class GlobalObject
         // Freeze %ThrowTypeError%: non-extensible, all props non-configurable
         $thrower->defineOwnProperty(
             'length',
-            \PhpJs\Object\PropertyDescriptor::data(JsNumber::of(0.0), false, false, false),
+            \Phasis\Object\PropertyDescriptor::data(JsNumber::of(0.0), false, false, false),
         );
         $thrower->defineOwnProperty(
             'name',
-            \PhpJs\Object\PropertyDescriptor::data(new JsString(''), false, false, false),
+            \Phasis\Object\PropertyDescriptor::data(new JsString(''), false, false, false),
         );
         $thrower->preventExtensions();
 
         // caller/arguments accessor: configurable per ES2024+ spec 10.2.4.
-        $throwerDesc = new \PhpJs\Object\PropertyDescriptor(
+        $throwerDesc = new \Phasis\Object\PropertyDescriptor(
             enumerable: false,
             configurable: true,
             get: $thrower,
@@ -438,28 +438,28 @@ class GlobalObject
         // Sloppy-mode this-wrapping happens inside the function body, not here.
         $callFn = JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
-                throw new \PhpJs\Exceptions\TypeError('call called on non-function');
+                throw new \Phasis\Exceptions\TypeError('call called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
             return $this_->call($thisArg, array_slice($args, 1));
         }, 1);
         $fnProto->defineOwnProperty(
             'call',
-            \PhpJs\Object\PropertyDescriptor::data($callFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($callFn, true, false, true),
         );
         $applyFn = JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
-                throw new \PhpJs\Exceptions\TypeError('apply called on non-function');
+                throw new \Phasis\Exceptions\TypeError('apply called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
             $argsArr = $args[1] ?? JsUndefined::instance();
             $callArgs = [];
             // Per spec 20.2.3.1 step 3-4: if argArray is null/undefined,
             // call with empty args. Otherwise CreateListFromArrayLike.
-            if (!$argsArr instanceof JsUndefined && !$argsArr instanceof \PhpJs\Value\JsNull) {
+            if (!$argsArr instanceof JsUndefined && !$argsArr instanceof \Phasis\Value\JsNull) {
                 // CreateListFromArrayLike: argArray must be an object.
-                if (!$argsArr instanceof \PhpJs\Value\JsObject) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                if (!$argsArr instanceof \Phasis\Value\JsObject) {
+                    throw new \Phasis\Exceptions\TypeError(
                         'CreateListFromArrayLike called on non-object',
                     );
                 }
@@ -472,7 +472,7 @@ class GlobalObject
                 // harness. The dense slot array already has the
                 // values in iteration order.
                 if (
-                    $argsArr instanceof \PhpJs\Value\JsArray
+                    $argsArr instanceof \Phasis\Value\JsArray
                     && $argsArr->isDenseMode()
                 ) {
                     $len = $argsArr->getLength();
@@ -507,21 +507,21 @@ class GlobalObject
         }, 2);
         $fnProto->defineOwnProperty(
             'apply',
-            \PhpJs\Object\PropertyDescriptor::data($applyFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($applyFn, true, false, true),
         );
         $bindCb = function (
             JsValue $this_,
             array $args,
-            ?\PhpJs\Runtime\Interpreter $interp = null,
+            ?\Phasis\Runtime\Interpreter $interp = null,
         ): JsValue {
             // Spec §20.2.3.2 step 1 only requires IsCallable(Target). A Proxy
             // whose target has [[Call]] qualifies as callable, even though our
             // engine represents it as JsProxy rather than JsFunction. Only
             // throw when the receiver is genuinely non-callable.
             $isCallable = $this_ instanceof JsFunction
-                || ($this_ instanceof \PhpJs\Value\JsProxy && $this_->isCallable());
+                || ($this_ instanceof \Phasis\Value\JsProxy && $this_->isCallable());
             if (!$isCallable) {
-                throw new \PhpJs\Exceptions\TypeError('bind called on non-function');
+                throw new \Phasis\Exceptions\TypeError('bind called on non-function');
             }
             if (!$this_ instanceof JsFunction) {
                 // Wrap the callable proxy in a JsFunction shim so the rest of
@@ -539,7 +539,7 @@ class GlobalObject
                 // observe the proxy's own values.
                 try {
                     $proxyLen = $proxy->get('length');
-                    $shim->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+                    $shim->defineOwnProperty('length', new \Phasis\Object\PropertyDescriptor(
                         value: $proxyLen,
                         writable: false,
                         enumerable: false,
@@ -549,7 +549,7 @@ class GlobalObject
                 }
                 try {
                     $proxyName = $proxy->get('name');
-                    $shim->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+                    $shim->defineOwnProperty('name', new \Phasis\Object\PropertyDescriptor(
                         value: $proxyName,
                         writable: false,
                         enumerable: false,
@@ -612,7 +612,7 @@ class GlobalObject
                 function (
                     JsValue $th,
                     array $callArgs,
-                    ?\PhpJs\Runtime\Interpreter $innerInterp = null,
+                    ?\Phasis\Runtime\Interpreter $innerInterp = null,
                 ) use (
                     $target,
                     $boundThis,
@@ -624,7 +624,7 @@ class GlobalObject
                     // Detect if called as constructor (th has [[NewTarget]]).
                     if (
                         $isConstructable
-                        && $th instanceof \PhpJs\Value\JsObject
+                        && $th instanceof \Phasis\Value\JsObject
                         && !($th->get('[[NewTarget]]') instanceof JsUndefined)
                     ) {
                         if ($innerInterp !== null) {
@@ -642,27 +642,27 @@ class GlobalObject
                             // Forward the (possibly replaced) newTarget so a
                             // subclass constructor's prototype takes effect
                             // (e.g. `class C extends bound {}`).
-                            $ntObj = $activeNewTarget instanceof \PhpJs\Value\JsObject
+                            $ntObj = $activeNewTarget instanceof \Phasis\Value\JsObject
                                 ? $activeNewTarget
                                 : $target;
                             // Per GetPrototypeFromConstructor: when
                             // newTarget.prototype is not an Object, fall back
                             // to GetFunctionRealm(newTarget)'s %Object.prototype%.
-                            $useProto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+                            $useProto = \Phasis\Spec\AbstractOperations::getPrototypeFromConstructor(
                                 $ntObj,
-                                static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+                                static fn ($env) => \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
                             );
                             if ($useProto === null) {
                                 $tp = $target->get('prototype');
-                                $useProto = $tp instanceof \PhpJs\Value\JsObject ? $tp : null;
+                                $useProto = $tp instanceof \Phasis\Value\JsObject ? $tp : null;
                             }
-                            $newObj = new \PhpJs\Value\JsObject($useProto);
+                            $newObj = new \Phasis\Value\JsObject($useProto);
                             $newObj->defineOwnProperty(
                                 '[[NewTarget]]',
-                                \PhpJs\Object\PropertyDescriptor::data($ntObj, false, false, false),
+                                \Phasis\Object\PropertyDescriptor::data($ntObj, false, false, false),
                             );
                             $result = $innerInterp->callFunction($target, $newObj, $mergedArgs);
-                            return $result instanceof \PhpJs\Value\JsObject ? $result : $newObj;
+                            return $result instanceof \Phasis\Value\JsObject ? $result : $newObj;
                         }
                         // Called via construct path without interpreter (e.g.
                         // proxy forwarding). Construct manually so the user's
@@ -676,27 +676,27 @@ class GlobalObject
                         ) {
                             $activeNewTarget = $target;
                         }
-                        $ntObj = $activeNewTarget instanceof \PhpJs\Value\JsObject
+                        $ntObj = $activeNewTarget instanceof \Phasis\Value\JsObject
                             ? $activeNewTarget
                             : $target;
                         // Per GetPrototypeFromConstructor: when
                         // newTarget.prototype is not an Object, fall back
                         // to GetFunctionRealm(newTarget)'s %Object.prototype%.
-                        $useProto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+                        $useProto = \Phasis\Spec\AbstractOperations::getPrototypeFromConstructor(
                             $ntObj,
-                            static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+                            static fn ($env) => \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
                         );
                         if ($useProto === null) {
                             $tp = $target->get('prototype');
-                            $useProto = $tp instanceof \PhpJs\Value\JsObject ? $tp : null;
+                            $useProto = $tp instanceof \Phasis\Value\JsObject ? $tp : null;
                         }
-                        $newObj = new \PhpJs\Value\JsObject($useProto);
+                        $newObj = new \Phasis\Value\JsObject($useProto);
                         $newObj->defineOwnProperty(
                             '[[NewTarget]]',
-                            \PhpJs\Object\PropertyDescriptor::data($ntObj, false, false, false),
+                            \Phasis\Object\PropertyDescriptor::data($ntObj, false, false, false),
                         );
                         $result = $target->call($newObj, $mergedArgs);
-                        if ($result instanceof \PhpJs\Value\JsObject) {
+                        if ($result instanceof \Phasis\Value\JsObject) {
                             $result->forceDelete('[[NewTarget]]');
                             return $result;
                         }
@@ -710,7 +710,7 @@ class GlobalObject
             $selfRef->fn = $boundFn;
 
             // Always override the length property with the computed bound length.
-            $boundFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+            $boundFn->defineOwnProperty('length', new \Phasis\Object\PropertyDescriptor(
                 value: JsNumber::of($boundLengthFloat),
                 writable: false,
                 enumerable: false,
@@ -718,7 +718,7 @@ class GlobalObject
             ));
 
             // Set name property per spec: "bound " + targetName.
-            $boundFn->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+            $boundFn->defineOwnProperty('name', new \Phasis\Object\PropertyDescriptor(
                 value: new JsString($boundName),
                 writable: false,
                 enumerable: false,
@@ -753,7 +753,7 @@ class GlobalObject
         $bindFn = JsFunction::fromCallable('bind', $bindCb, 1);
         $fnProto->defineOwnProperty(
             'bind',
-            \PhpJs\Object\PropertyDescriptor::data($bindFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($bindFn, true, false, true),
         );
 
         // Function.prototype.toString: per spec, returns source text for
@@ -764,16 +764,16 @@ class GlobalObject
                 return new JsString($this_->toJsString());
             }
             // Proxy wrapping a callable: return NativeFunction syntax per spec.
-            if ($this_ instanceof \PhpJs\Value\JsProxy && $this_->isCallable()) {
+            if ($this_ instanceof \Phasis\Value\JsProxy && $this_->isCallable()) {
                 return new JsString('function () { [native code] }');
             }
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Function.prototype.toString requires that \'this\' be a Function'
             );
         }, 0);
         $fnProto->defineOwnProperty(
             'toString',
-            \PhpJs\Object\PropertyDescriptor::data($toStringFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($toStringFn, true, false, true),
         );
 
         // Function.prototype[Symbol.hasInstance] per spec 19.2.3.6.
@@ -783,12 +783,12 @@ class GlobalObject
             '[Symbol.hasInstance]',
             function (JsValue $this_, array $args): JsValue {
                 $isCallable = $this_ instanceof JsFunction
-                    || ($this_ instanceof \PhpJs\Value\JsProxy && $this_->isCallable());
+                    || ($this_ instanceof \Phasis\Value\JsProxy && $this_->isCallable());
                 if (!$isCallable) {
                     return new JsBoolean(false);
                 }
                 $value = $args[0] ?? JsUndefined::instance();
-                if (!$value instanceof \PhpJs\Value\JsObject) {
+                if (!$value instanceof \Phasis\Value\JsObject) {
                     return new JsBoolean(false);
                 }
                 // Per spec 7.3.22 OrdinaryHasInstance step 2: if F has a
@@ -803,8 +803,8 @@ class GlobalObject
                 // Get target.prototype. For a Proxy this fires the `get` trap
                 // with key="prototype", as required by the spec test fixture.
                 $proto = $target->get('prototype');
-                if (!$proto instanceof \PhpJs\Value\JsObject) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                if (!$proto instanceof \Phasis\Value\JsObject) {
+                    throw new \Phasis\Exceptions\TypeError(
                         'Function has non-object prototype in instanceof check',
                     );
                 }
@@ -822,8 +822,8 @@ class GlobalObject
         );
         $hasInstanceFn->setName('[Symbol.hasInstance]');
         $fnProto->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::hasInstance(),
-            new \PhpJs\Object\PropertyDescriptor(
+            \Phasis\BuiltIn\SymbolConstructor::hasInstance(),
+            new \Phasis\Object\PropertyDescriptor(
                 value: $hasInstanceFn,
                 writable: false,
                 enumerable: false,
@@ -832,7 +832,7 @@ class GlobalObject
         );
 
         // Function.prototype.constructor = Function (per spec 19.2.3.2).
-        $fnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+        $fnProto->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data(
             $fnConstructor,
             true,
             false,
@@ -841,7 +841,7 @@ class GlobalObject
 
         $fnConstructor->setConstructable();
         // Per spec 19.2.2, Function.prototype is non-writable, non-enumerable, non-configurable.
-        $fnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+        $fnConstructor->defineOwnProperty('prototype', new \Phasis\Object\PropertyDescriptor(
             value: $fnProto,
             writable: false,
             enumerable: false,
@@ -851,10 +851,10 @@ class GlobalObject
 
         // %IteratorPrototype%: the common prototype for all built-in iterators.
         // Per spec 27.1.2, its [[Prototype]] is Object.prototype.
-        $iteratorPrototype = new \PhpJs\Value\JsObject();
+        $iteratorPrototype = new \Phasis\Value\JsObject();
         $iteratorPrototype->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::iterator(),
-            \PhpJs\Object\PropertyDescriptor::data(
+            \Phasis\BuiltIn\SymbolConstructor::iterator(),
+            \Phasis\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable('[Symbol.iterator]', static function (JsValue $this_, array $args): JsValue {
                     return $this_;
                 }, 0),
@@ -871,16 +871,16 @@ class GlobalObject
         // Per spec 27.1.2: %GeneratorPrototype% [[Prototype]] = %IteratorPrototype%.
 
         // %GeneratorFunction.prototype%: ordinary object (NOT callable), [[Prototype]] = Function.prototype.
-        $generatorFunctionProto = new \PhpJs\Value\JsObject($fnProto);
+        $generatorFunctionProto = new \Phasis\Value\JsObject($fnProto);
         JsFunction::setGeneratorFunctionPrototype($generatorFunctionProto);
 
         // %GeneratorPrototype%: the prototype of all generator instances.
         // Per spec its [[Prototype]] is %IteratorPrototype%.
-        $generatorPrototype = new \PhpJs\Value\JsObject($iteratorPrototype);
+        $generatorPrototype = new \Phasis\Value\JsObject($iteratorPrototype);
         // Symbol.toStringTag = "Generator" per spec 27.5.1.
         $generatorPrototype->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
-            \PhpJs\Object\PropertyDescriptor::data(
+            \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+            \Phasis\Object\PropertyDescriptor::data(
                 new JsString('Generator'),
                 false,
                 false,
@@ -892,8 +892,8 @@ class GlobalObject
             JsValue $thisValue,
             array $args,
         ): JsValue {
-            if (!$thisValue instanceof \PhpJs\Value\JsGenerator) {
-                throw new \PhpJs\Exceptions\TypeError(
+            if (!$thisValue instanceof \Phasis\Value\JsGenerator) {
+                throw new \Phasis\Exceptions\TypeError(
                     'Method Generator.prototype.next called on incompatible receiver',
                 );
             }
@@ -901,7 +901,7 @@ class GlobalObject
             return $thisValue->next($value);
         }, 1);
         $nextFn->setNonConstructable();
-        $generatorPrototype->defineOwnProperty('next', \PhpJs\Object\PropertyDescriptor::data(
+        $generatorPrototype->defineOwnProperty('next', \Phasis\Object\PropertyDescriptor::data(
             $nextFn,
             true,
             false,
@@ -911,8 +911,8 @@ class GlobalObject
             JsValue $thisValue,
             array $args,
         ): JsValue {
-            if (!$thisValue instanceof \PhpJs\Value\JsGenerator) {
-                throw new \PhpJs\Exceptions\TypeError(
+            if (!$thisValue instanceof \Phasis\Value\JsGenerator) {
+                throw new \Phasis\Exceptions\TypeError(
                     'Method Generator.prototype.return called on incompatible receiver',
                 );
             }
@@ -920,7 +920,7 @@ class GlobalObject
             return $thisValue->returnValue($value);
         }, 1);
         $returnFn->setNonConstructable();
-        $generatorPrototype->defineOwnProperty('return', \PhpJs\Object\PropertyDescriptor::data(
+        $generatorPrototype->defineOwnProperty('return', \Phasis\Object\PropertyDescriptor::data(
             $returnFn,
             true,
             false,
@@ -930,8 +930,8 @@ class GlobalObject
             JsValue $thisValue,
             array $args,
         ): JsValue {
-            if (!$thisValue instanceof \PhpJs\Value\JsGenerator) {
-                throw new \PhpJs\Exceptions\TypeError(
+            if (!$thisValue instanceof \Phasis\Value\JsGenerator) {
+                throw new \Phasis\Exceptions\TypeError(
                     'Method Generator.prototype.throw called on incompatible receiver',
                 );
             }
@@ -939,7 +939,7 @@ class GlobalObject
             return $thisValue->throwValue($value);
         }, 1);
         $throwFn->setNonConstructable();
-        $generatorPrototype->defineOwnProperty('throw', \PhpJs\Object\PropertyDescriptor::data(
+        $generatorPrototype->defineOwnProperty('throw', \Phasis\Object\PropertyDescriptor::data(
             $throwFn,
             true,
             false,
@@ -948,7 +948,7 @@ class GlobalObject
 
         // Wire: GeneratorFunction.prototype.prototype = %GeneratorPrototype%
         // Per spec 27.3.3.2: {writable: false, enumerable: false, configurable: true}.
-        $generatorFunctionProto->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
+        $generatorFunctionProto->defineOwnProperty('prototype', \Phasis\Object\PropertyDescriptor::data(
             $generatorPrototype,
             false,
             false,
@@ -957,7 +957,7 @@ class GlobalObject
 
         // constructor on %GeneratorPrototype%: points to %GeneratorFunction.prototype%.
         // Per spec 27.5.1.1: {writable: false, enumerable: false, configurable: true}.
-        $generatorPrototype->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+        $generatorPrototype->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data(
             $generatorFunctionProto,
             false,
             false,
@@ -980,7 +980,7 @@ class GlobalObject
                     $params = implode(',', $stringArgs);
                 }
                 $source = "(function* anonymous({$params}\n) {\n{$body}\n})";
-                $parser = new \PhpJs\Parser\Parser($source);
+                $parser = new \Phasis\Parser\Parser($source);
                 $program = $parser->parse();
                 // Per spec step 20: parameters Contains YieldExpression must throw.
                 self::rejectYieldAwaitInParams($program);
@@ -1002,14 +1002,14 @@ class GlobalObject
         );
         $genFnConstructor->setConstructable();
         // Per spec 27.3.2: GeneratorFunction.length = 1.
-        $genFnConstructor->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+        $genFnConstructor->defineOwnProperty('length', new \Phasis\Object\PropertyDescriptor(
             value: JsNumber::of(1.0),
             writable: false,
             enumerable: false,
             configurable: true,
         ));
         // Per spec: GeneratorFunction.name = "GeneratorFunction".
-        $genFnConstructor->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+        $genFnConstructor->defineOwnProperty('name', new \Phasis\Object\PropertyDescriptor(
             value: new JsString('GeneratorFunction'),
             writable: false,
             enumerable: false,
@@ -1017,7 +1017,7 @@ class GlobalObject
         ));
         // Per spec 27.3.2.1: GeneratorFunction.prototype = %GeneratorFunction.prototype%.
         // {writable: false, enumerable: false, configurable: false}.
-        $genFnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+        $genFnConstructor->defineOwnProperty('prototype', new \Phasis\Object\PropertyDescriptor(
             value: $generatorFunctionProto,
             writable: false,
             enumerable: false,
@@ -1028,7 +1028,7 @@ class GlobalObject
 
         // %GeneratorFunction.prototype%.constructor = %GeneratorFunction%
         // Per spec 27.3.3.1: {writable: false, enumerable: false, configurable: true}.
-        $generatorFunctionProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+        $generatorFunctionProto->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data(
             $genFnConstructor,
             false,
             false,
@@ -1037,8 +1037,8 @@ class GlobalObject
 
         // Symbol.toStringTag = "GeneratorFunction" per spec 27.3.3.3.
         $generatorFunctionProto->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
-            new \PhpJs\Object\PropertyDescriptor(
+            \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+            new \Phasis\Object\PropertyDescriptor(
                 value: new JsString('GeneratorFunction'),
                 writable: false,
                 enumerable: false,
@@ -1047,17 +1047,17 @@ class GlobalObject
         );
 
         // Register the intrinsic so JsGenerator can use it as fallback when fn.prototype is not an Object.
-        \PhpJs\Value\JsGenerator::setGeneratorPrototype($generatorPrototype);
+        \Phasis\Value\JsGenerator::setGeneratorPrototype($generatorPrototype);
         // Store for interpreter access.
         $env->defineVar('__GeneratorPrototype__', $generatorPrototype);
         $env->defineVar('__GeneratorFunctionPrototype__', $generatorFunctionProto);
         $env->defineVar('GeneratorFunction', $genFnConstructor);
 
         // Set up %AsyncIteratorPrototype%, %AsyncGeneratorPrototype%, %AsyncGeneratorFunction%.
-        $asyncIteratorPrototype = new \PhpJs\Value\JsObject();
+        $asyncIteratorPrototype = new \Phasis\Value\JsObject();
         $asyncIteratorPrototype->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::asyncIterator(),
-            \PhpJs\Object\PropertyDescriptor::data(
+            \Phasis\BuiltIn\SymbolConstructor::asyncIterator(),
+            \Phasis\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable('[Symbol.asyncIterator]', static function (JsValue $this_, array $args): JsValue {
                     return $this_;
                 }, 0),
@@ -1068,34 +1068,34 @@ class GlobalObject
         );
         // %AsyncIteratorPrototype%[@@asyncDispose] per explicit-resource-management.
         // Calls this.return() and wraps the result in a Promise.
-        $asyncDisposeSym = \PhpJs\BuiltIn\SymbolConstructor::asyncDispose();
+        $asyncDisposeSym = \Phasis\BuiltIn\SymbolConstructor::asyncDispose();
         $asyncIteratorPrototype->definePropertyBySymbol(
             $asyncDisposeSym,
-            \PhpJs\Object\PropertyDescriptor::data(
+            \Phasis\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable(
                     '[Symbol.asyncDispose]',
                     static function (JsValue $this_, array $args): JsValue {
-                        if (!$this_ instanceof \PhpJs\Value\JsObject) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                        if (!$this_ instanceof \Phasis\Value\JsObject) {
+                            throw new \Phasis\Exceptions\TypeError(
                                 'Symbol.asyncDispose called on non-object'
                             );
                         }
                         $returnFn = $this_->get('return');
                         if (
-                            $returnFn instanceof \PhpJs\Value\JsUndefined
-                            || $returnFn instanceof \PhpJs\Value\JsNull
+                            $returnFn instanceof \Phasis\Value\JsUndefined
+                            || $returnFn instanceof \Phasis\Value\JsNull
                         ) {
-                            return \PhpJs\Value\JsPromise::resolved(
-                                \PhpJs\Value\JsUndefined::instance()
+                            return \Phasis\Value\JsPromise::resolved(
+                                \Phasis\Value\JsUndefined::instance()
                             );
                         }
                         if (!$returnFn instanceof JsFunction) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 'return is not a function'
                             );
                         }
                         $result = $returnFn->call($this_, []);
-                        return \PhpJs\Value\JsPromise::resolved($result);
+                        return \Phasis\Value\JsPromise::resolved($result);
                     },
                     0,
                 ),
@@ -1106,19 +1106,19 @@ class GlobalObject
         );
         $env->defineVar('__AsyncIteratorPrototype__', $asyncIteratorPrototype);
 
-        $asyncGenFnProto = new \PhpJs\Value\JsObject($fnProto);
+        $asyncGenFnProto = new \Phasis\Value\JsObject($fnProto);
         JsFunction::setAsyncGeneratorFunctionPrototype($asyncGenFnProto);
 
-        $asyncGenProto = new \PhpJs\Value\JsObject($asyncIteratorPrototype);
+        $asyncGenProto = new \Phasis\Value\JsObject($asyncIteratorPrototype);
         $asyncGenProto->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
-            \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncGenerator'), false, false, true),
+            \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+            \Phasis\Object\PropertyDescriptor::data(new JsString('AsyncGenerator'), false, false, true),
         );
-        $asyncGenProto->defineOwnProperty('next', \PhpJs\Object\PropertyDescriptor::data(
+        $asyncGenProto->defineOwnProperty('next', \Phasis\Object\PropertyDescriptor::data(
             JsFunction::fromCallable('next', function (JsValue $thisValue, array $args) use ($env): JsValue {
-                if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
-                    return \PhpJs\Value\JsPromise::rejected(
-                        \PhpJs\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'next')
+                if (!$thisValue instanceof \Phasis\Value\JsAsyncGenerator) {
+                    return \Phasis\Value\JsPromise::rejected(
+                        \Phasis\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'next')
                     );
                 }
                 return $thisValue->next($args[0] ?? JsUndefined::instance());
@@ -1127,11 +1127,11 @@ class GlobalObject
             false,
             true,
         ));
-        $asyncGenProto->defineOwnProperty('return', \PhpJs\Object\PropertyDescriptor::data(
+        $asyncGenProto->defineOwnProperty('return', \Phasis\Object\PropertyDescriptor::data(
             JsFunction::fromCallable('return', function (JsValue $thisValue, array $args) use ($env): JsValue {
-                if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
-                    return \PhpJs\Value\JsPromise::rejected(
-                        \PhpJs\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'return')
+                if (!$thisValue instanceof \Phasis\Value\JsAsyncGenerator) {
+                    return \Phasis\Value\JsPromise::rejected(
+                        \Phasis\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'return')
                     );
                 }
                 return $thisValue->returnValue($args[0] ?? JsUndefined::instance());
@@ -1140,11 +1140,11 @@ class GlobalObject
             false,
             true,
         ));
-        $asyncGenProto->defineOwnProperty('throw', \PhpJs\Object\PropertyDescriptor::data(
+        $asyncGenProto->defineOwnProperty('throw', \Phasis\Object\PropertyDescriptor::data(
             JsFunction::fromCallable('throw', function (JsValue $thisValue, array $args) use ($env): JsValue {
-                if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
-                    return \PhpJs\Value\JsPromise::rejected(
-                        \PhpJs\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'throw')
+                if (!$thisValue instanceof \Phasis\Value\JsAsyncGenerator) {
+                    return \Phasis\Value\JsPromise::rejected(
+                        \Phasis\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'throw')
                     );
                 }
                 return $thisValue->throwValue($args[0] ?? JsUndefined::instance());
@@ -1153,11 +1153,11 @@ class GlobalObject
             false,
             true,
         ));
-        $asyncGenFnProto->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($asyncGenProto, false, false, true));
-        $asyncGenProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($asyncGenFnProto, false, false, true));
+        $asyncGenFnProto->defineOwnProperty('prototype', \Phasis\Object\PropertyDescriptor::data($asyncGenProto, false, false, true));
+        $asyncGenProto->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data($asyncGenFnProto, false, false, true));
         $asyncGenFnProto->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
-            \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncGeneratorFunction'), false, false, true),
+            \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+            \Phasis\Object\PropertyDescriptor::data(new JsString('AsyncGeneratorFunction'), false, false, true),
         );
 
         // %AsyncGeneratorFunction% constructor: like Function() but for async generators.
@@ -1175,7 +1175,7 @@ class GlobalObject
                     $params = implode(',', $stringArgs);
                 }
                 $source = "(async function* anonymous({$params}\n) {\n{$body}\n})";
-                $parser = new \PhpJs\Parser\Parser($source);
+                $parser = new \Phasis\Parser\Parser($source);
                 $program = $parser->parse();
                 // Per spec: params for async generator cannot contain YieldExpression
                 // or AwaitExpression. The main parse already allows yield/await in
@@ -1198,19 +1198,19 @@ class GlobalObject
             1,
         );
         $asyncGenFnConstructor->setConstructable();
-        $asyncGenFnConstructor->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+        $asyncGenFnConstructor->defineOwnProperty('length', new \Phasis\Object\PropertyDescriptor(
             value: JsNumber::of(1.0),
             writable: false,
             enumerable: false,
             configurable: true,
         ));
-        $asyncGenFnConstructor->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+        $asyncGenFnConstructor->defineOwnProperty('name', new \Phasis\Object\PropertyDescriptor(
             value: new JsString('AsyncGeneratorFunction'),
             writable: false,
             enumerable: false,
             configurable: true,
         ));
-        $asyncGenFnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+        $asyncGenFnConstructor->defineOwnProperty('prototype', new \Phasis\Object\PropertyDescriptor(
             value: $asyncGenFnProto,
             writable: false,
             enumerable: false,
@@ -1218,14 +1218,14 @@ class GlobalObject
         ));
         $asyncGenFnConstructor->setCustomPrototype($fnConstructor);
         // %AsyncGeneratorFunction.prototype%.constructor = %AsyncGeneratorFunction%
-        $asyncGenFnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+        $asyncGenFnProto->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data(
             $asyncGenFnConstructor,
             false,
             false,
             true,
         ));
 
-        \PhpJs\Value\JsAsyncGenerator::setAsyncGeneratorPrototype($asyncGenProto);
+        \Phasis\Value\JsAsyncGenerator::setAsyncGeneratorPrototype($asyncGenProto);
         $env->defineVar('__AsyncGeneratorPrototype__', $asyncGenProto);
         $env->defineVar('__AsyncGeneratorFunctionPrototype__', $asyncGenFnProto);
     }
@@ -1378,18 +1378,18 @@ class GlobalObject
             // Per spec 22.1.1.1 step 2: when called as a function (no new.target),
             // a Symbol argument becomes its descriptive string. When called as a
             // constructor (new String(sym)), ToString(sym) still throws TypeError.
-            $isConstruct = $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]');
-            if (!empty($args) && $args[0] instanceof \PhpJs\Value\JsSymbol && !$isConstruct) {
+            $isConstruct = $this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]');
+            if (!empty($args) && $args[0] instanceof \Phasis\Value\JsSymbol && !$isConstruct) {
                 $str = $args[0]->display();
             } else {
                 $str = empty($args) ? '' : TypeConversion::toString($args[0]);
             }
             // When called as constructor (new String(x)), create wrapper object
-            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $val = new JsString($str);
                 $this_->defineOwnProperty(
                     '[[PrimitiveValue]]',
-                    \PhpJs\Object\PropertyDescriptor::data($val, false, false, false),
+                    \Phasis\Object\PropertyDescriptor::data($val, false, false, false),
                 );
                 // valueOf/toString come from String.prototype, not own properties.
                 // Set indexed character properties and length per spec.
@@ -1399,15 +1399,15 @@ class GlobalObject
                 for ($i = 0; $i < $u16Len; $i++) {
                     $codeUnit = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
                     $ch = JsString::utf16CodeUnitToUtf8($codeUnit);
-                    $this_->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                    $this_->defineOwnProperty((string) $i, \Phasis\Object\PropertyDescriptor::data(
                         new JsString($ch),
                         false,
                         true,
                         false,
                     ));
                 }
-                $this_->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                    new \PhpJs\Value\JsNumber((float) $u16Len),
+                $this_->defineOwnProperty('length', \Phasis\Object\PropertyDescriptor::data(
+                    new \Phasis\Value\JsNumber((float) $u16Len),
                     false,
                     false,
                     false,
@@ -1426,7 +1426,7 @@ class GlobalObject
             } else {
                 // Per spec: use ToNumeric first, then convert BigInt to float.
                 $prim = TypeConversion::toNumeric($args[0]);
-                if ($prim instanceof \PhpJs\Value\JsBigInt) {
+                if ($prim instanceof \Phasis\Value\JsBigInt) {
                     // 𝔽(ℝ(bigint)) - BigInt → Number (may lose precision).
                     $num = (float) $prim->value;
                 } else {
@@ -1435,11 +1435,11 @@ class GlobalObject
             }
             // When called as constructor (new Number(x)), set up wrapper.
             // valueOf/toString come from Number.prototype, not own properties.
-            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $val = JsNumber::of($num);
                 $this_->defineOwnProperty(
                     '[[PrimitiveValue]]',
-                    \PhpJs\Object\PropertyDescriptor::data($val, false, false, false),
+                    \Phasis\Object\PropertyDescriptor::data($val, false, false, false),
                 );
                 return $this_;
             }
@@ -1451,11 +1451,11 @@ class GlobalObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $bool = empty($args) ? false : TypeConversion::toBoolean($args[0]);
-            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 // Only set [[PrimitiveValue]], don't shadow prototype methods
                 $this_->defineOwnProperty(
                     '[[PrimitiveValue]]',
-                    \PhpJs\Object\PropertyDescriptor::data(new JsBoolean($bool), false, false, false),
+                    \Phasis\Object\PropertyDescriptor::data(new JsBoolean($bool), false, false, false),
                 );
                 return $this_;
             }
@@ -1471,7 +1471,7 @@ class GlobalObject
      */
     private static function throwURIError(string $message, Environment $env): void
     {
-        $errorObj = new \PhpJs\Value\JsObject();
+        $errorObj = new \Phasis\Value\JsObject();
         $errorObj->set('message', new JsString($message));
         $errorObj->set('name', new JsString('URIError'));
         $errorObj->set('stack', new JsString('URIError: ' . $message));
@@ -1480,12 +1480,12 @@ class GlobalObject
             if ($constructor instanceof JsFunction) {
                 $errorObj->set('constructor', $constructor);
                 $proto = $constructor->get('prototype');
-                if ($proto instanceof \PhpJs\Value\JsObject) {
+                if ($proto instanceof \Phasis\Value\JsObject) {
                     $errorObj->setPrototype($proto);
                 }
             }
         }
-        throw new \PhpJs\Exceptions\JsThrowable($errorObj, 'URIError: ' . $message);
+        throw new \Phasis\Exceptions\JsThrowable($errorObj, 'URIError: ' . $message);
     }
 
     /**
@@ -1893,16 +1893,16 @@ class GlobalObject
      * - The body must not contain a WithStatement.
      * - Parameters must not have duplicate names.
      *
-     * @throws \PhpJs\Exceptions\SyntaxError
+     * @throws \Phasis\Exceptions\SyntaxError
      */
     /** Public wrapper for Engine.php to reach rejectYieldAwaitInParams. */
-    public static function rejectYieldAwaitInParamsPublic(\PhpJs\Ast\Program $program): void
+    public static function rejectYieldAwaitInParamsPublic(\Phasis\Ast\Program $program): void
     {
         self::rejectYieldAwaitInParams($program);
     }
 
     /** Public wrapper for Engine.php to reach rejectPrivateIdentifiersInProgram. */
-    public static function rejectPrivateIdentifiersInProgramPublic(\PhpJs\Ast\Program $program): void
+    public static function rejectPrivateIdentifiersInProgramPublic(\Phasis\Ast\Program $program): void
     {
         self::rejectPrivateIdentifiersInProgram($program);
     }
@@ -1912,7 +1912,7 @@ class GlobalObject
      * reference must be lexically enclosed by a class that declares (in
      * itself or an enclosing class) that private name.
      */
-    private static function rejectPrivateIdentifiersInProgram(\PhpJs\Ast\Program $program): void
+    private static function rejectPrivateIdentifiersInProgram(\Phasis\Ast\Program $program): void
     {
         $stack = [];
         self::validatePrivateIdentifiersInNode($program, $stack);
@@ -1921,15 +1921,15 @@ class GlobalObject
     /**
      * @param array<int,array<string,bool>> $stack
      */
-    private static function validatePrivateIdentifiersInNode(?\PhpJs\Ast\Node $node, array $stack): void
+    private static function validatePrivateIdentifiersInNode(?\Phasis\Ast\Node $node, array $stack): void
     {
         if ($node === null) {
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
+        if ($node instanceof \Phasis\Ast\Expression\PrivateIdentifier) {
             // Top-level (outside any class) reference is always invalid.
             if (empty($stack)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Private identifiers are not allowed outside of a class body'
                 );
             }
@@ -1940,13 +1940,13 @@ class GlobalObject
                     return;
                 }
             }
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "Private field '#{$name}' must be declared in an enclosing class"
             );
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             $declared = self::collectDeclaredPrivateNames($node);
             $stack[] = $declared;
@@ -1964,11 +1964,11 @@ class GlobalObject
         $reflection = new \ReflectionObject($node);
         foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             $value = $prop->getValue($node);
-            if ($value instanceof \PhpJs\Ast\Node) {
+            if ($value instanceof \Phasis\Ast\Node) {
                 self::validatePrivateIdentifiersInNode($value, $stack);
             } elseif (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof \PhpJs\Ast\Node) {
+                    if ($item instanceof \Phasis\Ast\Node) {
                         self::validatePrivateIdentifiersInNode($item, $stack);
                     }
                 }
@@ -1982,14 +1982,14 @@ class GlobalObject
      *
      * @return array<string,bool>
      */
-    private static function collectDeclaredPrivateNames(\PhpJs\Ast\Node $classNode): array
+    private static function collectDeclaredPrivateNames(\Phasis\Ast\Node $classNode): array
     {
         $names = [];
         $body = $classNode->body ?? [];
         foreach ($body as $element) {
             // MethodDefinition / FieldDefinition / etc. carry a `key` field
             // that can be a PrivateIdentifier when the member is private.
-            if (isset($element->key) && $element->key instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
+            if (isset($element->key) && $element->key instanceof \Phasis\Ast\Expression\PrivateIdentifier) {
                 $names[ltrim($element->key->name, '#')] = true;
             }
         }
@@ -2003,18 +2003,18 @@ class GlobalObject
      * such expressions in their parameter lists per spec CreateDynamicFunction
      * step 28/29.
      */
-    private static function rejectYieldAwaitInParams(\PhpJs\Ast\Program $program): void
+    private static function rejectYieldAwaitInParams(\Phasis\Ast\Program $program): void
     {
         foreach ($program->body as $stmt) {
             if (
-                !($stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement)
-                || !($stmt->expression instanceof \PhpJs\Ast\Expression\FunctionExpression)
+                !($stmt instanceof \Phasis\Ast\Statement\ExpressionStatement)
+                || !($stmt->expression instanceof \Phasis\Ast\Expression\FunctionExpression)
             ) {
                 continue;
             }
             foreach ($stmt->expression->params as $param) {
                 if (self::nodeContainsYieldOrAwait($param)) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'YieldExpression or AwaitExpression not permitted in parameters'
                     );
                 }
@@ -2023,25 +2023,25 @@ class GlobalObject
         }
     }
 
-    private static function nodeContainsYieldOrAwait(?\PhpJs\Ast\Node $node): bool
+    private static function nodeContainsYieldOrAwait(?\Phasis\Ast\Node $node): bool
     {
         if ($node === null) {
             return false;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\YieldExpression
-            || $node instanceof \PhpJs\Ast\Expression\AwaitExpression
+            $node instanceof \Phasis\Ast\Expression\YieldExpression
+            || $node instanceof \Phasis\Ast\Expression\AwaitExpression
         ) {
             return true;
         }
         // Stop descending into nested functions/classes; their own params are
         // their own scope.
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             return false;
         }
@@ -2049,13 +2049,13 @@ class GlobalObject
         $reflection = new \ReflectionObject($node);
         foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             $value = $prop->getValue($node);
-            if ($value instanceof \PhpJs\Ast\Node) {
+            if ($value instanceof \Phasis\Ast\Node) {
                 if (self::nodeContainsYieldOrAwait($value)) {
                     return true;
                 }
             } elseif (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof \PhpJs\Ast\Node && self::nodeContainsYieldOrAwait($item)) {
+                    if ($item instanceof \Phasis\Ast\Node && self::nodeContainsYieldOrAwait($item)) {
                         return true;
                     }
                 }
@@ -2064,15 +2064,15 @@ class GlobalObject
         return false;
     }
 
-    private static function validateDynamicFunction(\PhpJs\Ast\Program $program, string $params): void
+    private static function validateDynamicFunction(\Phasis\Ast\Program $program, string $params): void
     {
         // The parsed program should contain a single ExpressionStatement
         // wrapping a FunctionExpression. Extract its body.
         $fnBody = null;
         foreach ($program->body as $stmt) {
             if (
-                $stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement
-                && $stmt->expression instanceof \PhpJs\Ast\Expression\FunctionExpression
+                $stmt instanceof \Phasis\Ast\Statement\ExpressionStatement
+                && $stmt->expression instanceof \Phasis\Ast\Expression\FunctionExpression
             ) {
                 $fnBody = $stmt->expression->body;
                 break;
@@ -2084,21 +2084,21 @@ class GlobalObject
 
         // Check for "use strict" directive in the function body.
         $isStrict = false;
-        if ($fnBody instanceof \PhpJs\Ast\Statement\BlockStatement) {
+        if ($fnBody instanceof \Phasis\Ast\Statement\BlockStatement) {
             foreach ($fnBody->body as $bodyStmt) {
-                if (!$bodyStmt instanceof \PhpJs\Ast\Statement\ExpressionStatement) {
+                if (!$bodyStmt instanceof \Phasis\Ast\Statement\ExpressionStatement) {
                     break;
                 }
                 $expr = $bodyStmt->expression;
                 if (
-                    $expr instanceof \PhpJs\Ast\Expression\Literal
+                    $expr instanceof \Phasis\Ast\Expression\Literal
                     && is_string($expr->value)
                     && $expr->value === 'use strict'
                 ) {
                     $isStrict = true;
                     break;
                 }
-                if (!$expr instanceof \PhpJs\Ast\Expression\Literal || !is_string($expr->value)) {
+                if (!$expr instanceof \Phasis\Ast\Expression\Literal || !is_string($expr->value)) {
                     break;
                 }
             }
@@ -2109,7 +2109,7 @@ class GlobalObject
         }
 
         // Validate: no 'with' statements in the body.
-        if ($fnBody instanceof \PhpJs\Ast\Statement\BlockStatement) {
+        if ($fnBody instanceof \Phasis\Ast\Statement\BlockStatement) {
             self::checkNoWithStatements($fnBody->body);
         }
 
@@ -2123,12 +2123,12 @@ class GlobalObject
                     continue;
                 }
                 if ($name === 'eval' || $name === 'arguments') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Unexpected eval or arguments in strict mode",
                     );
                 }
                 if (in_array($name, $seen, true)) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Duplicate parameter name not allowed in this context",
                     );
                 }
@@ -2140,30 +2140,30 @@ class GlobalObject
     /**
      * Recursively check that no WithStatement exists in the given statements.
      *
-     * @param \PhpJs\Ast\Node[] $statements
-     * @throws \PhpJs\Exceptions\SyntaxError
+     * @param \Phasis\Ast\Node[] $statements
+     * @throws \Phasis\Exceptions\SyntaxError
      */
     private static function checkNoWithStatements(array $statements): void
     {
         foreach ($statements as $stmt) {
-            if ($stmt instanceof \PhpJs\Ast\Statement\WithStatement) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+            if ($stmt instanceof \Phasis\Ast\Statement\WithStatement) {
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Strict mode code may not include a with statement',
                 );
             }
-            if ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
+            if ($stmt instanceof \Phasis\Ast\Statement\BlockStatement) {
                 self::checkNoWithStatements($stmt->body);
-            } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
-                if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\IfStatement) {
+                if ($stmt->consequent instanceof \Phasis\Ast\Statement\BlockStatement) {
                     self::checkNoWithStatements($stmt->consequent->body);
-                } elseif ($stmt->consequent instanceof \PhpJs\Ast\Statement\WithStatement) {
-                    throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+                } elseif ($stmt->consequent instanceof \Phasis\Ast\Statement\WithStatement) {
+                    throw new \Phasis\Exceptions\SyntaxError('Strict mode code may not include a with statement');
                 }
                 if ($stmt->alternate !== null) {
-                    if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    if ($stmt->alternate instanceof \Phasis\Ast\Statement\BlockStatement) {
                         self::checkNoWithStatements($stmt->alternate->body);
-                    } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\WithStatement) {
-                        throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+                    } elseif ($stmt->alternate instanceof \Phasis\Ast\Statement\WithStatement) {
+                        throw new \Phasis\Exceptions\SyntaxError('Strict mode code may not include a with statement');
                     }
                 }
             }

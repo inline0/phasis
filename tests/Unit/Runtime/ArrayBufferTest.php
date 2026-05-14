@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Unit\Runtime;
+namespace Phasis\Tests\Unit\Runtime;
 
-use PhpJs\Engine;
-use PhpJs\Exceptions\RangeError;
+use Phasis\Engine;
+use Phasis\Exceptions\RangeError;
 use PHPUnit\Framework\TestCase;
 
 class ArrayBufferTest extends TestCase

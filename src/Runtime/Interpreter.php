@@ -2,94 +2,94 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Runtime;
+namespace Phasis\Runtime;
 
-use PhpJs\Ast\Declaration\ClassDeclaration;
-use PhpJs\Ast\Declaration\ExportDeclaration;
-use PhpJs\Ast\Declaration\FunctionDeclaration;
-use PhpJs\Ast\Declaration\ImportDeclaration;
-use PhpJs\Ast\Declaration\VariableDeclaration;
-use PhpJs\Ast\Declaration\VariableDeclarator;
-use PhpJs\Ast\Expression\ArrayExpression;
-use PhpJs\Ast\Expression\ArrowFunction;
-use PhpJs\Ast\Expression\AssignmentExpression;
-use PhpJs\Ast\Expression\AwaitExpression;
-use PhpJs\Ast\Expression\BinaryExpression;
-use PhpJs\Ast\Expression\CallExpression;
-use PhpJs\Ast\Expression\ClassExpression;
-use PhpJs\Ast\Expression\ClassMethod;
-use PhpJs\Ast\Expression\ClassProperty;
-use PhpJs\Ast\Expression\PrivateIdentifier;
-use PhpJs\Ast\Expression\StaticBlock;
-use PhpJs\Ast\Expression\ConditionalExpression;
-use PhpJs\Ast\Expression\FunctionExpression;
-use PhpJs\Ast\Expression\ImportExpression;
-use PhpJs\Ast\Expression\MetaProperty;
-use PhpJs\Ast\Expression\Identifier;
-use PhpJs\Ast\Expression\Literal;
-use PhpJs\Ast\Expression\LogicalExpression;
-use PhpJs\Ast\Expression\MemberExpression;
-use PhpJs\Ast\Expression\NewExpression;
-use PhpJs\Ast\Expression\ObjectExpression;
-use PhpJs\Ast\Expression\Property;
-use PhpJs\Ast\Expression\SequenceExpression;
-use PhpJs\Ast\Expression\SpreadElement;
-use PhpJs\Ast\Expression\TaggedTemplate;
-use PhpJs\Ast\Expression\TemplateLiteral;
-use PhpJs\Ast\Expression\ThisExpression;
-use PhpJs\Ast\Expression\UnaryExpression;
-use PhpJs\Ast\Expression\UpdateExpression;
-use PhpJs\Ast\Expression\YieldExpression;
-use PhpJs\Ast\Node;
-use PhpJs\Ast\Pattern\ArrayPattern;
-use PhpJs\Ast\Pattern\AssignmentPattern;
-use PhpJs\Ast\Pattern\AssignmentProperty;
-use PhpJs\Ast\Pattern\ObjectPattern;
-use PhpJs\Ast\Pattern\RestElement;
-use PhpJs\Ast\Program;
-use PhpJs\Ast\Statement\BlockStatement;
-use PhpJs\Ast\Statement\BreakStatement;
-use PhpJs\Ast\Statement\ContinueStatement;
-use PhpJs\Ast\Statement\DebuggerStatement;
-use PhpJs\Ast\Statement\DoWhileStatement;
-use PhpJs\Ast\Statement\EmptyStatement;
-use PhpJs\Ast\Statement\ExpressionStatement;
-use PhpJs\Ast\Statement\ForInStatement;
-use PhpJs\Ast\Statement\ForOfStatement;
-use PhpJs\Ast\Statement\ForStatement;
-use PhpJs\Ast\Statement\IfStatement;
-use PhpJs\Ast\Statement\LabeledStatement;
-use PhpJs\Ast\Statement\ReturnStatement;
-use PhpJs\Ast\Statement\SwitchCase;
-use PhpJs\Ast\Statement\SwitchStatement;
-use PhpJs\Ast\Statement\ThrowStatement;
-use PhpJs\Ast\Statement\TryStatement;
-use PhpJs\Ast\Statement\WhileStatement;
-use PhpJs\Ast\Statement\WithStatement;
-use PhpJs\Exceptions\InternalError;
-use PhpJs\Exceptions\ReferenceError;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Spec\AbstractOperations;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBigInt;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\GeneratorReturnSignal;
-use PhpJs\Value\GeneratorThrowSignal;
-use PhpJs\Value\JsAsyncGenerator;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsGenerator;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsArgumentsObject;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsOptionalUndefined;
-use PhpJs\Value\JsProxy;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Ast\Declaration\ClassDeclaration;
+use Phasis\Ast\Declaration\ExportDeclaration;
+use Phasis\Ast\Declaration\FunctionDeclaration;
+use Phasis\Ast\Declaration\ImportDeclaration;
+use Phasis\Ast\Declaration\VariableDeclaration;
+use Phasis\Ast\Declaration\VariableDeclarator;
+use Phasis\Ast\Expression\ArrayExpression;
+use Phasis\Ast\Expression\ArrowFunction;
+use Phasis\Ast\Expression\AssignmentExpression;
+use Phasis\Ast\Expression\AwaitExpression;
+use Phasis\Ast\Expression\BinaryExpression;
+use Phasis\Ast\Expression\CallExpression;
+use Phasis\Ast\Expression\ClassExpression;
+use Phasis\Ast\Expression\ClassMethod;
+use Phasis\Ast\Expression\ClassProperty;
+use Phasis\Ast\Expression\PrivateIdentifier;
+use Phasis\Ast\Expression\StaticBlock;
+use Phasis\Ast\Expression\ConditionalExpression;
+use Phasis\Ast\Expression\FunctionExpression;
+use Phasis\Ast\Expression\ImportExpression;
+use Phasis\Ast\Expression\MetaProperty;
+use Phasis\Ast\Expression\Identifier;
+use Phasis\Ast\Expression\Literal;
+use Phasis\Ast\Expression\LogicalExpression;
+use Phasis\Ast\Expression\MemberExpression;
+use Phasis\Ast\Expression\NewExpression;
+use Phasis\Ast\Expression\ObjectExpression;
+use Phasis\Ast\Expression\Property;
+use Phasis\Ast\Expression\SequenceExpression;
+use Phasis\Ast\Expression\SpreadElement;
+use Phasis\Ast\Expression\TaggedTemplate;
+use Phasis\Ast\Expression\TemplateLiteral;
+use Phasis\Ast\Expression\ThisExpression;
+use Phasis\Ast\Expression\UnaryExpression;
+use Phasis\Ast\Expression\UpdateExpression;
+use Phasis\Ast\Expression\YieldExpression;
+use Phasis\Ast\Node;
+use Phasis\Ast\Pattern\ArrayPattern;
+use Phasis\Ast\Pattern\AssignmentPattern;
+use Phasis\Ast\Pattern\AssignmentProperty;
+use Phasis\Ast\Pattern\ObjectPattern;
+use Phasis\Ast\Pattern\RestElement;
+use Phasis\Ast\Program;
+use Phasis\Ast\Statement\BlockStatement;
+use Phasis\Ast\Statement\BreakStatement;
+use Phasis\Ast\Statement\ContinueStatement;
+use Phasis\Ast\Statement\DebuggerStatement;
+use Phasis\Ast\Statement\DoWhileStatement;
+use Phasis\Ast\Statement\EmptyStatement;
+use Phasis\Ast\Statement\ExpressionStatement;
+use Phasis\Ast\Statement\ForInStatement;
+use Phasis\Ast\Statement\ForOfStatement;
+use Phasis\Ast\Statement\ForStatement;
+use Phasis\Ast\Statement\IfStatement;
+use Phasis\Ast\Statement\LabeledStatement;
+use Phasis\Ast\Statement\ReturnStatement;
+use Phasis\Ast\Statement\SwitchCase;
+use Phasis\Ast\Statement\SwitchStatement;
+use Phasis\Ast\Statement\ThrowStatement;
+use Phasis\Ast\Statement\TryStatement;
+use Phasis\Ast\Statement\WhileStatement;
+use Phasis\Ast\Statement\WithStatement;
+use Phasis\Exceptions\InternalError;
+use Phasis\Exceptions\ReferenceError;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Spec\AbstractOperations;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBigInt;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\GeneratorReturnSignal;
+use Phasis\Value\GeneratorThrowSignal;
+use Phasis\Value\JsAsyncGenerator;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsGenerator;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsArgumentsObject;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsOptionalUndefined;
+use Phasis\Value\JsProxy;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class Interpreter
 {
@@ -114,7 +114,7 @@ class Interpreter
      * Lazy-built bytecode VM dispatcher. Reused across all VM-executed
      * function calls; instantiated on first need.
      */
-    private ?\PhpJs\Bytecode\VM $vm = null;
+    private ?\Phasis\Bytecode\VM $vm = null;
 
     /**
      * Stack of pooled Frame instances reused across VM dispatches.
@@ -123,7 +123,7 @@ class Interpreter
      * then reuses the same instances for subsequent calls. Index =
      * current depth; entries above $framePoolDepth are quiescent.
      *
-     * @var list<\PhpJs\Bytecode\Frame>
+     * @var list<\Phasis\Bytecode\Frame>
      */
     private array $framePool = [];
     private int $framePoolDepth = 0;
@@ -181,7 +181,7 @@ class Interpreter
      */
     private bool $isolateEvalScope = false;
 
-    /** @var list<\PhpJs\Value\JsFunction|null> Stack of currently executing functions for Annex B caller. */
+    /** @var list<\Phasis\Value\JsFunction|null> Stack of currently executing functions for Annex B caller. */
     private array $callerStack = [];
 
     /** Monotonically increasing counter for unique private name brands. */
@@ -191,7 +191,7 @@ class Interpreter
     private static int $nextAutoAccessorId = 0;
 
     /** Module loader for dynamic import() and static import/export. */
-    private ?\PhpJs\Module\ModuleLoader $moduleLoader = null;
+    private ?\Phasis\Module\ModuleLoader $moduleLoader = null;
 
     /** Current module path for resolving relative import specifiers. */
     private ?string $currentModulePath = null;
@@ -206,15 +206,15 @@ class Interpreter
      */
     private array $importMetaCache = [];
 
-    public function getModuleLoader(): \PhpJs\Module\ModuleLoader
+    public function getModuleLoader(): \Phasis\Module\ModuleLoader
     {
         if ($this->moduleLoader === null) {
-            $this->moduleLoader = new \PhpJs\Module\ModuleLoader($this, $this->globalEnv);
+            $this->moduleLoader = new \Phasis\Module\ModuleLoader($this, $this->globalEnv);
         }
         return $this->moduleLoader;
     }
 
-    public function setModuleLoader(\PhpJs\Module\ModuleLoader $loader): void
+    public function setModuleLoader(\Phasis\Module\ModuleLoader $loader): void
     {
         $this->moduleLoader = $loader;
     }
@@ -234,14 +234,14 @@ class Interpreter
      * via setRealm(). Used by GetFunctionRealm so native built-ins constructed
      * during installBuiltins can be tagged with the realm that's building them.
      */
-    private ?\PhpJs\Engine $engineRealm = null;
+    private ?\Phasis\Engine $engineRealm = null;
 
-    public function setRealm(\PhpJs\Engine $engine): void
+    public function setRealm(\Phasis\Engine $engine): void
     {
         $this->engineRealm = $engine;
     }
 
-    public function getRealm(): ?\PhpJs\Engine
+    public function getRealm(): ?\Phasis\Engine
     {
         return $this->engineRealm;
     }
@@ -409,16 +409,16 @@ class Interpreter
         // validators and the dynamic-function private-name rejecter.
         $this->validateEvalBody($program->body);
         if ($this->astContainsNewTargetTransparent($program->body)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'new.target expression is not allowed here'
             );
         }
         if ($this->astContainsSuperTransparent($program->body)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'super' keyword unexpected here"
             );
         }
-        \PhpJs\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic($program);
+        \Phasis\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic($program);
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
         // Top-level bytecode fast path: if the program body lowers to
@@ -442,7 +442,7 @@ class Interpreter
      * compiled bytecode with Frame::env = globalEnv directly; nested
      * closures capture globalEnv as expected.
      */
-    private function tryRunProgramOnVm(\PhpJs\Ast\Program $program): ?JsValue
+    private function tryRunProgramOnVm(\Phasis\Ast\Program $program): ?JsValue
     {
         // The Interpreter::$programIsEvalFree flag is intentionally
         // not consulted here: it is set false for the LIFETIME of an
@@ -460,16 +460,16 @@ class Interpreter
         // refuses; route them straight to the tree-walker.
         foreach ($program->body as $stmt) {
             if (
-                $stmt instanceof \PhpJs\Ast\Declaration\ImportDeclaration
-                || $stmt instanceof \PhpJs\Ast\Declaration\ExportDeclaration
+                $stmt instanceof \Phasis\Ast\Declaration\ImportDeclaration
+                || $stmt instanceof \Phasis\Ast\Declaration\ExportDeclaration
             ) {
                 return null;
             }
         }
         try {
-            $compiler = new \PhpJs\Bytecode\Compiler();
+            $compiler = new \Phasis\Bytecode\Compiler();
             $cf = $compiler->compileProgram($program);
-        } catch (\PhpJs\Bytecode\CompilerBailout) {
+        } catch (\Phasis\Bytecode\CompilerBailout) {
             return null;
         } catch (\Throwable) {
             // Defensive: a compile bug must never break the
@@ -479,7 +479,7 @@ class Interpreter
         }
 
         if ($this->vm === null) {
-            $this->vm = new \PhpJs\Bytecode\VM($this);
+            $this->vm = new \Phasis\Bytecode\VM($this);
         }
         $undef = JsUndefined::instance();
         // Top-level `this` resolves through env->get('this') which
@@ -487,7 +487,7 @@ class Interpreter
         $thisValue = $this->globalEnv->has('this')
             ? $this->globalEnv->get('this')
             : $undef;
-        $frame = new \PhpJs\Bytecode\Frame(
+        $frame = new \Phasis\Bytecode\Frame(
             env: $this->globalEnv,
             thisValue: $thisValue,
             slotCount: $cf->slotCount,
@@ -512,7 +512,7 @@ class Interpreter
         $exportNames = [];
         $addExport = function (string $name) use (&$exportNames): void {
             if (isset($exportNames[$name])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Duplicate export of '{$name}'",
                 );
             }
@@ -582,7 +582,7 @@ class Interpreter
             }
             foreach ($collected as $n) {
                 if (isset($names[$n])) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Identifier '{$n}' has already been declared",
                     );
                 }
@@ -609,7 +609,7 @@ class Interpreter
         $allLocal = $names + $varNames + $importBindings;
         foreach (array_keys($exportedBindings) as $bound) {
             if (!isset($allLocal[$bound])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Export of unknown binding '{$bound}'",
                 );
             }
@@ -622,7 +622,7 @@ class Interpreter
         }
         foreach (array_keys($names) as $n) {
             if (isset($varNames[$n])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Identifier '{$n}' has already been declared",
                 );
             }
@@ -651,14 +651,14 @@ class Interpreter
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\IfStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\IfStatement) {
             $this->collectModuleVarDeclaredNames($node->consequent, $out);
             if ($node->alternate !== null) {
                 $this->collectModuleVarDeclaredNames($node->alternate, $out);
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\ForStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\ForStatement) {
             if ($node->init instanceof Node) {
                 $this->collectModuleVarDeclaredNames($node->init, $out);
             }
@@ -666,8 +666,8 @@ class Interpreter
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Statement\ForInStatement
-            || $node instanceof \PhpJs\Ast\Statement\ForOfStatement
+            $node instanceof \Phasis\Ast\Statement\ForInStatement
+            || $node instanceof \Phasis\Ast\Statement\ForOfStatement
         ) {
             if ($node->left instanceof VariableDeclaration) {
                 $this->collectModuleVarDeclaredNames($node->left, $out);
@@ -676,13 +676,13 @@ class Interpreter
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Statement\WhileStatement
-            || $node instanceof \PhpJs\Ast\Statement\DoWhileStatement
+            $node instanceof \Phasis\Ast\Statement\WhileStatement
+            || $node instanceof \Phasis\Ast\Statement\DoWhileStatement
         ) {
             $this->collectModuleVarDeclaredNames($node->body, $out);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\SwitchStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\SwitchStatement) {
             foreach ($node->cases as $case) {
                 foreach ($case->consequent as $s) {
                     $this->collectModuleVarDeclaredNames($s, $out);
@@ -690,7 +690,7 @@ class Interpreter
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement) {
             $this->collectModuleVarDeclaredNames($node->block, $out);
             if ($node->handler !== null) {
                 $this->collectModuleVarDeclaredNames($node->handler->body, $out);
@@ -700,7 +700,7 @@ class Interpreter
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\LabeledStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\LabeledStatement) {
             $this->collectModuleVarDeclaredNames($node->body, $out);
             return;
         }
@@ -742,7 +742,7 @@ class Interpreter
                 // Per §16.1.1: LexicallyDeclaredNames of script body
                 // cannot have duplicates.
                 if (isset($seenLex[$n])) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Identifier '{$n}' has already been declared",
                     );
                 }
@@ -759,7 +759,7 @@ class Interpreter
             if ($this->globalEnv->hasLexicalBinding($name)) {
                 $this->throwJsValue(
                     $this->phpExceptionToJsValue(
-                        new \PhpJs\Exceptions\SyntaxError(
+                        new \Phasis\Exceptions\SyntaxError(
                             "Identifier '{$name}' has already been declared",
                         ),
                     ),
@@ -771,7 +771,7 @@ class Interpreter
                 if ($desc !== null && $desc->configurable === false) {
                     $this->throwJsValue(
                         $this->phpExceptionToJsValue(
-                            new \PhpJs\Exceptions\SyntaxError(
+                            new \Phasis\Exceptions\SyntaxError(
                                 "Identifier '{$name}' has already been declared",
                             ),
                         ),
@@ -799,7 +799,7 @@ class Interpreter
             if ($this->globalEnv->hasLexicalBinding($name)) {
                 $this->throwJsValue(
                     $this->phpExceptionToJsValue(
-                        new \PhpJs\Exceptions\SyntaxError(
+                        new \Phasis\Exceptions\SyntaxError(
                             "Identifier '{$name}' has already been declared",
                         ),
                     ),
@@ -1274,7 +1274,7 @@ class Interpreter
     private function bigintDivide(JsBigInt $left, JsBigInt $right): JsBigInt
     {
         if ($right->value === '0' || $right->value === '-0') {
-            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+            throw new \Phasis\Exceptions\RangeError('Division by zero');
         }
         // Divide truncating toward zero, matching the spec.
         return new JsBigInt(self::bigStrBcDiv($left->value, $right->value));
@@ -1286,7 +1286,7 @@ class Interpreter
     private function bigintRemainder(JsBigInt $left, JsBigInt $right): JsBigInt
     {
         if ($right->value === '0' || $right->value === '-0') {
-            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+            throw new \Phasis\Exceptions\RangeError('Division by zero');
         }
         return new JsBigInt(self::bigStrBcMod($left->value, $right->value));
     }
@@ -1297,7 +1297,7 @@ class Interpreter
     private function bigintExponentiate(JsBigInt $left, JsBigInt $right): JsBigInt
     {
         if (self::bigStrComp($right->value, '0') < 0) {
-            throw new \PhpJs\Exceptions\RangeError('Exponent must be positive');
+            throw new \Phasis\Exceptions\RangeError('Exponent must be positive');
         }
         return new JsBigInt(self::bigStrBcPow($left->value, $right->value));
     }
@@ -1510,7 +1510,7 @@ class Interpreter
         // BigInt ** BigInt.
         if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
             if (self::bigStrComp($rnum->value, '0') < 0) {
-                throw new \PhpJs\Exceptions\RangeError('Exponent must be positive');
+                throw new \Phasis\Exceptions\RangeError('Exponent must be positive');
             }
             return new JsBigInt(self::bigStrBcPow($lnum->value, $rnum->value));
         }
@@ -1791,7 +1791,7 @@ class Interpreter
                 // is also a SyntaxError. Some tests expect TypeError for certain
                 // global object properties; those go through the MemberExpression
                 // branch above. Here we handle the raw identifier case.
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Delete of an unqualified identifier in strict mode.'
                 );
             }
@@ -1814,7 +1814,7 @@ class Interpreter
         // In strict mode, ++/-- on `eval` or `arguments` is a SyntaxError.
         if ($this->strictMode && $node->argument instanceof Identifier) {
             if ($node->argument->name === 'eval' || $node->argument->name === 'arguments') {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Cannot modify '{$node->argument->name}' in strict mode",
                 );
             }
@@ -1891,7 +1891,7 @@ class Interpreter
         // In strict mode, assignment to `eval` or `arguments` is a SyntaxError.
         if ($this->strictMode && $node->left instanceof Identifier) {
             if ($node->left->name === 'eval' || $node->left->name === 'arguments') {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Cannot assign to '{$node->left->name}' in strict mode",
                 );
             }
@@ -2187,7 +2187,7 @@ class Interpreter
             // A JsFunction without [[Construct]] (e.g. %FunctionPrototype% used
             // when `class C extends null`) fails IsConstructor.
             $superIsConstructor = ($superCtor instanceof JsFunction && $superCtor->isConstructable())
-                || ($superCtor instanceof \PhpJs\Value\JsProxy && $superCtor->isConstructable());
+                || ($superCtor instanceof \Phasis\Value\JsProxy && $superCtor->isConstructable());
             if (!$superIsConstructor) {
                 throw new TypeError('Super constructor must be a constructor');
             }
@@ -2223,7 +2223,7 @@ class Interpreter
                 if (!$superHadNT && $superNewTarget instanceof JsFunction) {
                     $currentThis->defineOwnProperty(
                         '[[NewTarget]]',
-                        \PhpJs\Object\PropertyDescriptor::data($superNewTarget, false, false, false),
+                        \Phasis\Object\PropertyDescriptor::data($superNewTarget, false, false, false),
                     );
                 }
             }
@@ -2231,7 +2231,7 @@ class Interpreter
                 // Proxy super: forward through the proxy's [[Construct]]
                 // so handler.construct (if any) fires; result becomes the
                 // new this binding.
-                if ($superCtor instanceof \PhpJs\Value\JsProxy) {
+                if ($superCtor instanceof \Phasis\Value\JsProxy) {
                     $newTarget = $superNewTarget instanceof JsValue ? $superNewTarget : $superCtor;
                     $result = $superCtor->construct($args, $newTarget);
                 } else {
@@ -2528,7 +2528,7 @@ class Interpreter
         $args = $this->evaluateArguments($node->arguments, $env);
 
         // Proxy apply trap: if the callee is a Proxy wrapping a function, invoke its apply().
-        if ($callee instanceof \PhpJs\Value\JsProxy) {
+        if ($callee instanceof \Phasis\Value\JsProxy) {
             return $callee->apply($thisValue, $args);
         }
 
@@ -2569,9 +2569,9 @@ class Interpreter
         $directEvalSourceUrl = null;
         try {
             if (strlen($arg->value) > 64 * 1024 * 1024) {
-                throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
+                throw new \Phasis\Exceptions\SyntaxError('Source too large for eval');
             }
-            $parser = new \PhpJs\Parser\Parser($arg->value);
+            $parser = new \Phasis\Parser\Parser($arg->value);
             // Direct eval inherits strict mode from its surrounding context.
             if ($this->strictMode) {
                 $parser->setStrictMode(true);
@@ -2607,10 +2607,10 @@ class Interpreter
             $inConstructor = $env->has('[[ActiveFunction]]')
                 && !$env->has('[[ClassFieldInitializer]]');
             if (!$inMethodLike && $this->astContainsSuperTransparent($program->body)) {
-                throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
+                throw new \Phasis\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
             if ($inMethodLike && !$inConstructor && $this->astContainsSuperCallTransparent($program->body)) {
-                throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
+                throw new \Phasis\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
 
             // Per spec 15.1.1: new.target in eval is a SyntaxError when the
@@ -2623,7 +2623,7 @@ class Interpreter
                 $nonArrowKind = $env->getEnclosingNonArrowFunctionKind();
                 $inClassInit = $env->has('[[ClassFieldInitializer]]');
                 if (!$inClassInit && $nonArrowKind === null) {
-                    throw new \PhpJs\Exceptions\SyntaxError("new.target expression is not allowed here");
+                    throw new \Phasis\Exceptions\SyntaxError("new.target expression is not allowed here");
                 }
             }
 
@@ -2639,7 +2639,7 @@ class Interpreter
                 $env->has('[[ClassFieldInitializer]]')
                 && $this->astContainsIdentifier($program->body, 'arguments')
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "'arguments' is not allowed in class field initializer or static initialization block",
                 );
             }
@@ -2662,7 +2662,7 @@ class Interpreter
                 $evalVarNames = $this->collectEvalVarNames($program->body);
                 foreach ($evalVarNames as $varName) {
                     if ($env->hasLexicalBindingInScope($varName)) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Identifier '{$varName}' has already been declared",
                         );
                     }
@@ -2676,7 +2676,7 @@ class Interpreter
                         // Step 5.a.v.1: generators and async generators always
                         // throw SyntaxError for var arguments in eval.
                         if ($funcKind === 'generator' || $funcKind === 'async-generator') {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Identifier 'arguments' has already been declared",
                             );
                         }
@@ -2689,14 +2689,14 @@ class Interpreter
                             $env->hasLexicalBinding('arguments')
                             || $env->getEnclosingHasNonSimpleParams()
                         ) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Identifier 'arguments' has already been declared",
                             );
                         }
                     }
                 }
             }
-        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+        } catch (\Phasis\Exceptions\SyntaxError $e) {
             $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
         $previousStrictMode = $this->strictMode;
@@ -2705,13 +2705,13 @@ class Interpreter
         if ($evalStrict) {
             try {
                 $this->validateStrictModeRestrictions($program->body);
-            } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            } catch (\Phasis\Exceptions\SyntaxError $e) {
                 $this->throwJsValue($this->phpExceptionToJsValue($e));
             }
         }
         try {
             $this->validateSelfStrictFunctions($program->body);
-        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+        } catch (\Phasis\Exceptions\SyntaxError $e) {
             $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
 
@@ -2723,7 +2723,7 @@ class Interpreter
         // Error stack traces produced while it executes. Push here so the
         // matching pop runs even if execution throws.
         if ($directEvalSourceUrl !== null) {
-            \PhpJs\Engine::pushSourceURL($directEvalSourceUrl);
+            \Phasis\Engine::pushSourceURL($directEvalSourceUrl);
         }
 
         try {
@@ -2785,7 +2785,7 @@ class Interpreter
         } finally {
             $this->strictMode = $previousStrictMode;
             if ($directEvalSourceUrl !== null) {
-                \PhpJs\Engine::popSourceURL();
+                \Phasis\Engine::popSourceURL();
             }
         }
     }
@@ -2803,14 +2803,14 @@ class Interpreter
      * new.target, super, and super() at the script top level (these are
      * function-body-only constructs and indirect eval is always script code).
      */
-    public function validateEvalProgram(\PhpJs\Ast\Program $program): void
+    public function validateEvalProgram(\Phasis\Ast\Program $program): void
     {
         $this->validateEvalBody($program->body);
         // For indirect eval (script context), new.target inside arrow functions
         // also refers to the eval program context since arrows inherit it from
         // their enclosing scope. Walk into arrow bodies to find them.
         if ($this->astContainsNewTargetTransparent($program->body)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'new.target expression is not allowed here'
             );
         }
@@ -2818,7 +2818,7 @@ class Interpreter
         // binding from its enclosing scope, which for indirect eval is the
         // script (no home object).
         if ($this->astContainsSuperTransparent($program->body)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'super' keyword unexpected here"
             );
         }
@@ -3059,14 +3059,14 @@ class Interpreter
     private function validateEvalBody(array $statements): void
     {
         foreach ($statements as $stmt) {
-            if ($stmt instanceof \PhpJs\Ast\Statement\ReturnStatement) {
-                throw new \PhpJs\Exceptions\SyntaxError('Illegal return statement');
+            if ($stmt instanceof \Phasis\Ast\Statement\ReturnStatement) {
+                throw new \Phasis\Exceptions\SyntaxError('Illegal return statement');
             }
             if ($stmt instanceof BreakStatement) {
-                throw new \PhpJs\Exceptions\SyntaxError('Illegal break statement');
+                throw new \Phasis\Exceptions\SyntaxError('Illegal break statement');
             }
             if ($stmt instanceof ContinueStatement) {
-                throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
+                throw new \Phasis\Exceptions\SyntaxError('Illegal continue statement');
             }
             $this->validateEvalNoFreeJumps($stmt, []);
             $this->validateNoTopLevelReturn($stmt);
@@ -3080,15 +3080,15 @@ class Interpreter
      */
     private function validateNoTopLevelReturn(Node $node): void
     {
-        if ($node instanceof \PhpJs\Ast\Statement\ReturnStatement) {
-            throw new \PhpJs\Exceptions\SyntaxError('Illegal return statement');
+        if ($node instanceof \Phasis\Ast\Statement\ReturnStatement) {
+            throw new \Phasis\Exceptions\SyntaxError('Illegal return statement');
         }
         if (
             $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
             || $node instanceof ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
         ) {
             return;
         }
@@ -3102,9 +3102,9 @@ class Interpreter
             $node instanceof ForStatement
             || $node instanceof ForInStatement
             || $node instanceof ForOfStatement
-            || $node instanceof \PhpJs\Ast\Statement\WhileStatement
+            || $node instanceof \Phasis\Ast\Statement\WhileStatement
             || $node instanceof DoWhileStatement
-            || $node instanceof \PhpJs\Ast\Statement\WithStatement
+            || $node instanceof \Phasis\Ast\Statement\WithStatement
             || $node instanceof LabeledStatement
         ) {
             $this->validateNoTopLevelReturn($node->body);
@@ -3117,7 +3117,7 @@ class Interpreter
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\SwitchStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\SwitchStatement) {
             foreach ($node->cases as $case) {
                 foreach ($case->consequent as $s) {
                     $this->validateNoTopLevelReturn($s);
@@ -3125,7 +3125,7 @@ class Interpreter
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement) {
             $this->validateNoTopLevelReturn($node->block);
             if ($node->handler !== null) {
                 $this->validateNoTopLevelReturn($node->handler->body);
@@ -3152,9 +3152,9 @@ class Interpreter
             $node instanceof ForStatement
             || $node instanceof ForInStatement
             || $node instanceof ForOfStatement
-            || $node instanceof \PhpJs\Ast\Statement\WhileStatement
+            || $node instanceof \Phasis\Ast\Statement\WhileStatement
             || $node instanceof DoWhileStatement
-            || $node instanceof \PhpJs\Ast\Statement\SwitchStatement
+            || $node instanceof \Phasis\Ast\Statement\SwitchStatement
             || $node instanceof FunctionDeclaration
         ) {
             return;
@@ -3162,18 +3162,18 @@ class Interpreter
 
         if ($node instanceof BlockStatement) {
             foreach ($node->body as $child) {
-                if ($child instanceof \PhpJs\Ast\Statement\ReturnStatement) {
-                    throw new \PhpJs\Exceptions\SyntaxError('Illegal return statement');
+                if ($child instanceof \Phasis\Ast\Statement\ReturnStatement) {
+                    throw new \Phasis\Exceptions\SyntaxError('Illegal return statement');
                 }
                 if ($child instanceof BreakStatement) {
                     if ($child->label === null || !in_array($child->label, $labels, true)) {
-                        throw new \PhpJs\Exceptions\SyntaxError('Illegal break statement');
+                        throw new \Phasis\Exceptions\SyntaxError('Illegal break statement');
                     }
                     continue;
                 }
                 if ($child instanceof ContinueStatement) {
                     if ($child->label === null || !in_array($child->label, $labels, true)) {
-                        throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
+                        throw new \Phasis\Exceptions\SyntaxError('Illegal continue statement');
                     }
                     continue;
                 }
@@ -3189,7 +3189,7 @@ class Interpreter
             }
         }
 
-        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement) {
             $this->validateEvalNoFreeJumps($node->block, $labels);
             if ($node->handler !== null) {
                 $this->validateEvalNoFreeJumps($node->handler->body, $labels);
@@ -3242,21 +3242,21 @@ class Interpreter
             // surrounding lexical scope (the eval's enclosing class).
             $resolved = $env->resolvePrivateName($node->name);
             if ($resolved === $node->name) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Private field '{$node->name}' must be declared in an enclosing class",
                 );
             }
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
         ) {
             $declared = [];
             foreach ($node->body as $element) {
                 if (
-                    ($element instanceof \PhpJs\Ast\Expression\ClassMethod
-                        || $element instanceof \PhpJs\Ast\Expression\ClassProperty)
+                    ($element instanceof \Phasis\Ast\Expression\ClassMethod
+                        || $element instanceof \Phasis\Ast\Expression\ClassProperty)
                     && $element->key instanceof PrivateIdentifier
                 ) {
                     $declared[] = $element->key->name;
@@ -3316,10 +3316,10 @@ class Interpreter
         // Arrow functions are recursed into because they do not create
         // their own `arguments` binding (per spec ContainsArguments).
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
         ) {
             return false;
         }
@@ -3431,14 +3431,14 @@ class Interpreter
             }
             return false;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\SequenceExpression) {
             foreach ($node->expressions as $expr) {
                 if ($this->nodeContainsSuperCall($expr)) {
                     return true;
                 }
             }
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ConditionalExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\ConditionalExpression) {
             return $this->nodeContainsSuperCall($node->test)
                 || $this->nodeContainsSuperCall($node->consequent)
                 || $this->nodeContainsSuperCall($node->alternate);
@@ -3577,7 +3577,7 @@ class Interpreter
     {
         // 'with' statement is forbidden in strict mode.
         if ($node instanceof WithStatement) {
-            throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+            throw new \Phasis\Exceptions\SyntaxError('Strict mode code may not include a with statement');
         }
 
         // Variable declarations must not use strict-mode reserved words as binding names.
@@ -3597,7 +3597,7 @@ class Interpreter
                 || $node->id->name === 'eval'
                 || $node->id->name === 'arguments'
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Unexpected strict mode reserved word '{$node->id->name}'",
                 );
             }
@@ -3667,12 +3667,12 @@ class Interpreter
     {
         if ($param instanceof Identifier) {
             if ($param->name === 'eval' || $param->name === 'arguments') {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Binding 'eval' or 'arguments' in strict mode catch is not allowed",
                 );
             }
             if ($this->isStrictReservedWord($param->name)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Unexpected strict mode reserved word '{$param->name}'",
                 );
             }
@@ -3690,7 +3690,7 @@ class Interpreter
                 || $node->name === 'eval'
                 || $node->name === 'arguments'
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Unexpected strict mode reserved word '{$node->name}'",
                 );
             }
@@ -3726,7 +3726,7 @@ class Interpreter
                 || $node->left->name === 'eval'
                 || $node->left->name === 'arguments'
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Assignment to eval or arguments is not allowed in strict mode",
                 );
             }
@@ -3764,7 +3764,7 @@ class Interpreter
                     || $node->name === 'eval'
                     || $node->name === 'arguments'
                 ) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Unexpected eval or arguments in strict mode",
                     );
                 }
@@ -3799,7 +3799,7 @@ class Interpreter
         $seen = [];
         foreach ($names as $name) {
             if (isset($seen[$name])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Duplicate parameter name not allowed in this context",
                 );
             }
@@ -3855,7 +3855,7 @@ class Interpreter
                     || $node->id->name === 'eval'
                     || $node->id->name === 'arguments')
                 ) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Unexpected eval or arguments in strict mode",
                     );
                 }
@@ -3878,7 +3878,7 @@ class Interpreter
                         || $node->name === 'eval'
                         || $node->name === 'arguments'
                     ) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Unexpected eval or arguments in strict mode",
                         );
                     }
@@ -4182,7 +4182,7 @@ class Interpreter
         $args = $this->evaluateArguments($node->arguments, $env);
 
         // Proxy construct trap: if the callee is a Proxy, invoke its construct().
-        if ($callee instanceof \PhpJs\Value\JsProxy) {
+        if ($callee instanceof \Phasis\Value\JsProxy) {
             return $callee->construct($args, $callee);
         }
 
@@ -4197,7 +4197,7 @@ class Interpreter
         // Use a non-enumerable, non-configurable property so it does not leak into iteration.
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
-            \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
+            \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
         );
 
         // For base class constructors, initialize instance fields before
@@ -4342,7 +4342,7 @@ class Interpreter
             $displayName = $element->key->name;
         } elseif (isset($computedKeys[$i])) {
             $keyVal = TypeConversion::toPropertyKey($computedKeys[$i]);
-            if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+            if ($keyVal instanceof \Phasis\Value\JsSymbol) {
                 $symbolKey = $keyVal;
                 $publicKey = '';
                 $desc = $keyVal->getDescription();
@@ -4450,7 +4450,7 @@ class Interpreter
                 $mergingInPass = isset($installedThisPass[$name]);
                 if ($alreadyHad && !$mergingInPass) {
                     $displayName = preg_replace('/@\d+$/', '', $name);
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot initialize {$displayName} twice on the same object",
                     );
                 }
@@ -4497,7 +4497,7 @@ class Interpreter
                     // Strip the "@brandId" suffix from the mangled private name.
                     $at = strpos($key, '@');
                     $fieldName = $at === false ? $key : substr($key, 0, $at);
-                } elseif ($key instanceof \PhpJs\Value\JsSymbol) {
+                } elseif ($key instanceof \Phasis\Value\JsSymbol) {
                     $desc = $key->getDescription();
                     $fieldName = $desc !== null ? "[{$desc}]" : '';
                 } elseif (is_string($key)) {
@@ -4510,7 +4510,7 @@ class Interpreter
 
             if ($isPrivate) {
                 $instance->setPrivateField($key, $value);
-            } elseif ($key instanceof \PhpJs\Value\JsSymbol) {
+            } elseif ($key instanceof \Phasis\Value\JsSymbol) {
                 $ok = $instance->definePropertyBySymbol($key, PropertyDescriptor::data(
                     $value,
                     true,
@@ -4579,10 +4579,10 @@ class Interpreter
             }
             return null;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ArrayExpression && $node->elements === []) {
+        if ($node instanceof \Phasis\Ast\Expression\ArrayExpression && $node->elements === []) {
             return '[]';
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ObjectExpression && $node->properties === []) {
+        if ($node instanceof \Phasis\Ast\Expression\ObjectExpression && $node->properties === []) {
             return '({})';
         }
         if ($node instanceof ThisExpression) {
@@ -4601,7 +4601,7 @@ class Interpreter
         foreach ($argNodes as $argNode) {
             if ($argNode instanceof SpreadElement) {
                 $iterable = $this->evaluate($argNode->argument, $env);
-                if ($iterable instanceof \PhpJs\Value\JsOptionalUndefined) {
+                if ($iterable instanceof \Phasis\Value\JsOptionalUndefined) {
                     $iterable = JsUndefined::instance();
                 }
                 $this->spreadInto($iterable, $args);
@@ -4614,7 +4614,7 @@ class Interpreter
                 // can short-circuit. Once the chain ends (handed to a
                 // function as an argument), unwrap to JsUndefined so
                 // the callee sees the spec value, not the sentinel.
-                if ($val instanceof \PhpJs\Value\JsOptionalUndefined) {
+                if ($val instanceof \Phasis\Value\JsOptionalUndefined) {
                     $val = JsUndefined::instance();
                 }
                 $args[] = $val;
@@ -4677,11 +4677,11 @@ class Interpreter
         // attributed to the callee's realm. Cross-realm tests rely on
         // GetFunctionRealm seeing the same answer for a function whether
         // looked up directly or after it has been called.
-        $previousInterp = \PhpJs\Engine::getCurrentInterpreter();
+        $previousInterp = \Phasis\Engine::getCurrentInterpreter();
         $targetInterp = $fn->realm?->getInterpreter();
         $switched = false;
         if ($targetInterp !== null && $targetInterp !== $previousInterp) {
-            \PhpJs\Engine::setCurrentInterpreter($targetInterp);
+            \Phasis\Engine::setCurrentInterpreter($targetInterp);
             $switched = true;
         }
         try {
@@ -4691,9 +4691,9 @@ class Interpreter
             while (true) {
                 try {
                     $result = $this->callFunctionInner($fn, $thisValue, $args);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     throw $e;
-                } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError | \Phasis\Exceptions\SyntaxError $e) {
                     // Per spec: a PHP RuntimeError / SyntaxError that escapes
                     // the callee's body must surface as a JS error constructed
                     // from the callee's realm — `c1.access(c2)` brand-check
@@ -4704,7 +4704,7 @@ class Interpreter
                     $fnRealm = $fn->realm;
                     if ($fnRealm !== null && $fnRealm !== $this->engineRealm) {
                         $realmInterp = $fnRealm->getInterpreter();
-                        throw new \PhpJs\Exceptions\JsThrowable(
+                        throw new \Phasis\Exceptions\JsThrowable(
                             $realmInterp->phpExceptionToJsValue($e)
                         );
                     }
@@ -4718,8 +4718,8 @@ class Interpreter
                     // again. Common across realm-aware bound functions and
                     // species hooks.
                     $nextInterp = $fn->realm?->getInterpreter();
-                    if ($nextInterp !== null && $nextInterp !== \PhpJs\Engine::getCurrentInterpreter()) {
-                        \PhpJs\Engine::setCurrentInterpreter($nextInterp);
+                    if ($nextInterp !== null && $nextInterp !== \Phasis\Engine::getCurrentInterpreter()) {
+                        \Phasis\Engine::setCurrentInterpreter($nextInterp);
                         $switched = true;
                     }
                     continue;
@@ -4728,7 +4728,7 @@ class Interpreter
             }
         } finally {
             if ($switched) {
-                \PhpJs\Engine::setCurrentInterpreter($previousInterp);
+                \Phasis\Engine::setCurrentInterpreter($previousInterp);
             }
         }
     }
@@ -4754,7 +4754,7 @@ class Interpreter
                 $fnRealm = $fn->realm;
                 if ($fnRealm !== null && $fnRealm !== $this->engineRealm) {
                     $realmInterp = $fnRealm->getInterpreter();
-                    throw new \PhpJs\Exceptions\JsThrowable(
+                    throw new \Phasis\Exceptions\JsThrowable(
                         $realmInterp->phpExceptionToJsValue(new TypeError($msg))
                     );
                 }
@@ -4777,11 +4777,11 @@ class Interpreter
             if ($fnRealm !== null && $fnRealm !== $this->engineRealm) {
                 try {
                     return $nativeFn($thisValue, $args, $this);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     throw $e;
-                } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError | \Phasis\Exceptions\SyntaxError $e) {
                     $realmInterp = $fnRealm->getInterpreter();
-                    throw new \PhpJs\Exceptions\JsThrowable(
+                    throw new \Phasis\Exceptions\JsThrowable(
                         $realmInterp->phpExceptionToJsValue($e)
                     );
                 }
@@ -4819,7 +4819,7 @@ class Interpreter
         ) {
             try {
                 return ($fn->phpCompiled)($args, $fn->getClosure(), $this, $fn->phpCompiledNodes);
-            } catch (\PhpJs\Bytecode\Bailout) {
+            } catch (\Phasis\Bytecode\Bailout) {
                 // Fall through to the slow path below.
             }
         }
@@ -5162,7 +5162,7 @@ class Interpreter
                     // The caller is responsible for passing the correct value.
                 } else {
                     // Sloppy mode: wrap null/undefined to global, primitives to Object.
-                    if ($thisValue instanceof JsUndefined || $thisValue instanceof \PhpJs\Value\JsNull) {
+                    if ($thisValue instanceof JsUndefined || $thisValue instanceof \Phasis\Value\JsNull) {
                         // Per spec, the global object substituted here is
                         // the function's *home* realm, not the caller's.
                         // Without this, `h.f.call(undefined)` would see
@@ -5771,7 +5771,7 @@ class Interpreter
             return $fnEnv->get('this');
         } catch (\Throwable) {
             $err = new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
-            throw new \PhpJs\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
+            throw new \Phasis\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
         }
     }
 
@@ -5801,14 +5801,14 @@ class Interpreter
         // caller-realm error the test262 cross-realm tests assert.
         if (!$value instanceof JsUndefined) {
             $err = new TypeError('Derived constructors may only return object or undefined');
-            throw new \PhpJs\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
+            throw new \Phasis\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
         }
         // Returning undefined (or bare return): same as implicit return, check this binding.
         try {
             return $fnEnv->get('this');
         } catch (\Throwable) {
             $err = new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
-            throw new \PhpJs\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
+            throw new \Phasis\Exceptions\JsThrowable($this->phpExceptionToJsValue($err));
         }
     }
 
@@ -5828,13 +5828,13 @@ class Interpreter
         JsFunction $fn,
         JsValue $thisValue,
         array $args,
-    ): \PhpJs\Value\JsPromise {
-        $promise = new \PhpJs\Value\JsPromise();
+    ): \Phasis\Value\JsPromise {
+        $promise = new \Phasis\Value\JsPromise();
         $interpreter = $this;
         $fiber = new \Fiber(function () use ($interpreter, $fn, $thisValue, $args): JsValue {
             try {
                 return $interpreter->executeFunction($fn, $thisValue, $args);
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 throw $e;
             }
         });
@@ -5865,7 +5865,7 @@ class Interpreter
      */
     private function driveAsyncFiber(
         \Fiber $fiber,
-        \PhpJs\Value\JsPromise $promise,
+        \Phasis\Value\JsPromise $promise,
         bool $start,
         JsValue $resumeValue,
         bool $resumeAsThrow = false,
@@ -5884,16 +5884,16 @@ class Interpreter
                 $suspended = $fiber->start();
             } elseif ($resumeAsThrow) {
                 $suspended = $fiber->throw(
-                    new \PhpJs\Exceptions\JsThrowable($throwValue ?? JsUndefined::instance()),
+                    new \Phasis\Exceptions\JsThrowable($throwValue ?? JsUndefined::instance()),
                 );
             } else {
                 $suspended = $fiber->resume($resumeValue);
             }
-        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+        } catch (\Phasis\Exceptions\JsThrowable $e) {
             $this->currentModulePath = $previousModulePath;
             $promise->reject($e->jsValue);
             return;
-        } catch (\PhpJs\Exceptions\RuntimeError $e) {
+        } catch (\Phasis\Exceptions\RuntimeError $e) {
             $this->currentModulePath = $previousModulePath;
             $promise->reject($this->phpExceptionToJsValue($e));
             return;
@@ -5916,7 +5916,7 @@ class Interpreter
             return;
         }
 
-        if ($suspended instanceof \PhpJs\Value\AwaitSuspension) {
+        if ($suspended instanceof \Phasis\Value\AwaitSuspension) {
             // Per spec Await(value): synchronously do PromiseResolve and
             // PerformPromiseThen, then suspend. The .then path itself queues
             // the resumption as a microtask, so we attach handlers
@@ -5938,7 +5938,7 @@ class Interpreter
      */
     public function settleAwaitedAndResume(
         \Fiber $fiber,
-        \PhpJs\Value\JsPromise $promise,
+        \Phasis\Value\JsPromise $promise,
         JsValue $awaited,
         ?string $modulePath = null,
     ): void {
@@ -5991,9 +5991,9 @@ class Interpreter
      * just delegate; the resulting promise stays PENDING until the
      * thenable's then() is called from the microtask queue.
      */
-    private function promiseResolve(JsValue $value): \PhpJs\Value\JsPromise
+    private function promiseResolve(JsValue $value): \Phasis\Value\JsPromise
     {
-        if ($value instanceof \PhpJs\Value\JsPromise) {
+        if ($value instanceof \Phasis\Value\JsPromise) {
             // Per spec PromiseResolve(C, x): if IsPromise(x), do
             // xConstructor = ? Get(x, "constructor"); if same as C, return x.
             // The .constructor getter is observable: tests intercept it via
@@ -6006,7 +6006,7 @@ class Interpreter
             }
             return $value;
         }
-        $p = new \PhpJs\Value\JsPromise();
+        $p = new \Phasis\Value\JsPromise();
         $p->resolve($value);
         return $p;
     }
@@ -6040,7 +6040,7 @@ class Interpreter
         $fnStrict = $fn->isStrict()
             || ($body instanceof BlockStatement && $this->hasUseStrictDirective($body->body));
         if (!$fn->isArrow() && !$fnStrict) {
-            if ($thisValue instanceof JsUndefined || $thisValue instanceof \PhpJs\Value\JsNull) {
+            if ($thisValue instanceof JsUndefined || $thisValue instanceof \Phasis\Value\JsNull) {
                 $thisValue = $this->getGlobalObject();
             } elseif (
                 !$thisValue instanceof JsObject
@@ -6292,7 +6292,7 @@ class Interpreter
         // Resolve through this realm's globalEnv rather than JsArray's
         // process-wide static so a sibling realm cannot leak its Array
         // intrinsic into a cross-realm arguments object.
-        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+        $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
         $arrayIterFn = null;
         $arrayProto = null;
         if ($this->globalEnv->has('Array')) {
@@ -6319,7 +6319,7 @@ class Interpreter
                 $index = 0;
                 $len = ($obj instanceof JsArray)
                     ? $obj->getLength()
-                    : (int) \PhpJs\Spec\TypeConversion::toNumber($obj->get('length'));
+                    : (int) \Phasis\Spec\TypeConversion::toNumber($obj->get('length'));
                 $iterator = new JsObject();
                 $nextFn = function () use ($obj, &$index, $len): JsValue {
                     $result = new JsObject();
@@ -6663,9 +6663,9 @@ class Interpreter
     public function vmLookupPrimitiveMember(JsValue $obj, string $name): JsValue
     {
         $synth = new MemberExpression(
-            location: new \PhpJs\Lexer\SourceLocation(0, 0, 0),
-            object: new ThisExpression(new \PhpJs\Lexer\SourceLocation(0, 0, 0)),
-            property: new Identifier(new \PhpJs\Lexer\SourceLocation(0, 0, 0), $name),
+            location: new \Phasis\Lexer\SourceLocation(0, 0, 0),
+            object: new ThisExpression(new \Phasis\Lexer\SourceLocation(0, 0, 0)),
+            property: new Identifier(new \Phasis\Lexer\SourceLocation(0, 0, 0), $name),
             computed: false,
             optional: false,
         );
@@ -6800,7 +6800,7 @@ class Interpreter
         $cursor = $wrapper;
         $handled = false;
         while ($cursor !== null) {
-            if ($cursor instanceof \PhpJs\Value\JsProxy) {
+            if ($cursor instanceof \Phasis\Value\JsProxy) {
                 $handled = $cursor->internalSet($name, $value, $wrapper);
                 break;
             }
@@ -6840,7 +6840,7 @@ class Interpreter
         $cursor = $wrapper;
         $handled = false;
         while ($cursor !== null) {
-            if ($cursor instanceof \PhpJs\Value\JsProxy) {
+            if ($cursor instanceof \Phasis\Value\JsProxy) {
                 $handled = $cursor->internalSetBySymbol($sym, $value, $wrapper);
                 break;
             }
@@ -6886,7 +6886,7 @@ class Interpreter
      */
     public function vmNewExpression(JsValue $callee, array $args, Environment $env): JsValue
     {
-        if ($callee instanceof \PhpJs\Value\JsProxy) {
+        if ($callee instanceof \Phasis\Value\JsProxy) {
             return $callee->construct($args, $callee);
         }
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
@@ -6899,7 +6899,7 @@ class Interpreter
         $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
-            \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
+            \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
         );
         // Base class constructor: initialize fields BEFORE the body
         // runs (derived constructors do this at their AST super() site).
@@ -6988,7 +6988,7 @@ class Interpreter
         if (!$fn->phpCompileFailed) {
             if ($fn->phpCompiled === null) {
                 try {
-                    $fn->phpCompiled = \PhpJs\Bytecode\JsToPhp::compile($fn);
+                    $fn->phpCompiled = \Phasis\Bytecode\JsToPhp::compile($fn);
                 } catch (\Throwable) {
                     $fn->phpCompiled = null;
                 }
@@ -6999,7 +6999,7 @@ class Interpreter
             if ($fn->phpCompiled !== null) {
                 try {
                     return ($fn->phpCompiled)($args, $fnEnv, $this, $fn->phpCompiledNodes);
-                } catch (\PhpJs\Bytecode\Bailout) {
+                } catch (\Phasis\Bytecode\Bailout) {
                     // Numeric assumption broken at run time (e.g. a
                     // non-JsNumber arg). Fall through to the VM /
                     // tree-walker path so this call still completes
@@ -7024,9 +7024,9 @@ class Interpreter
             // Phase 2 compiler is conservative: any unsupported AST
             // node throws CompilerBailout; fail-closed and never retry.
             try {
-                $compiler = new \PhpJs\Bytecode\Compiler();
+                $compiler = new \Phasis\Bytecode\Compiler();
                 $fn->compiled = $compiler->compile($fn);
-            } catch (\PhpJs\Bytecode\CompilerBailout) {
+            } catch (\Phasis\Bytecode\CompilerBailout) {
                 $fn->compileFailed = true;
                 return null;
             } catch (\Throwable $e) {
@@ -7051,7 +7051,7 @@ class Interpreter
             $frame = $this->framePool[$depth];
             $frame->reset($fnEnv, $thisValue, $cf->slotCount, $paramCount, $undef);
         } else {
-            $frame = new \PhpJs\Bytecode\Frame(
+            $frame = new \Phasis\Bytecode\Frame(
                 env: $fnEnv,
                 thisValue: $thisValue,
                 slotCount: $cf->slotCount,
@@ -7068,7 +7068,7 @@ class Interpreter
             $frame->locals[$paramSlots[$i]] = $i < $argCount ? $args[$i] : $undef;
         }
         if ($this->vm === null) {
-            $this->vm = new \PhpJs\Bytecode\VM($this);
+            $this->vm = new \Phasis\Bytecode\VM($this);
         }
         try {
             return $this->vm->execute($cf, $frame);
@@ -7496,7 +7496,7 @@ class Interpreter
     private function bindArrayPattern(ArrayPattern $pattern, JsValue $value, Environment $env): void
     {
         if ($value instanceof JsNull || $value instanceof JsUndefined) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 TypeConversion::toString($value) . ' is not iterable',
             );
         }
@@ -7531,7 +7531,7 @@ class Interpreter
     private function bindObjectPattern(ObjectPattern $pattern, JsValue $value, Environment $env): void
     {
         if ($value instanceof JsNull || $value instanceof JsUndefined) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot destructure property of " . TypeConversion::toString($value),
             );
         }
@@ -7730,7 +7730,7 @@ class Interpreter
 
         // Symbol-keyed access on strings: only Symbol.iterator is meaningful.
         if ($obj instanceof JsString && $isSymbolKey) {
-            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
             if ($rawKey === $iterSym) {
                 return $this->createStringIteratorFactory($obj);
             }
@@ -7862,7 +7862,7 @@ class Interpreter
             // If we hit a Proxy in the prototype chain, delegate to its
             // [[Get]] trap with the primitive receiver preserved per spec
             // OrdinaryGet — the trap MUST observe the original primitive.
-            if ($current instanceof \PhpJs\Value\JsProxy) {
+            if ($current instanceof \Phasis\Value\JsProxy) {
                 if ($isSymbolKey && $rawKey instanceof JsSymbol) {
                     return $current->getBySymbolWithReceiver($rawKey, $primitiveReceiver);
                 }
@@ -7922,7 +7922,7 @@ class Interpreter
     private function createStringIteratorFactory(JsString $str): JsFunction
     {
         $iteratorFactory = function () use ($str): JsValue {
-            return \PhpJs\BuiltIn\StringPrototype::createStringIterator($str);
+            return \Phasis\BuiltIn\StringPrototype::createStringIterator($str);
         };
 
         return JsFunction::fromCallable('[Symbol.iterator]', $iteratorFactory);
@@ -7947,7 +7947,7 @@ class Interpreter
                     // not [[Set]], so non-writable prototype properties don't block it.
                     $arr->defineOwnProperty(
                         (string) $index,
-                        \PhpJs\Object\PropertyDescriptor::data($item, true, true, true),
+                        \Phasis\Object\PropertyDescriptor::data($item, true, true, true),
                     );
                     $index++;
                 }
@@ -7957,7 +7957,7 @@ class Interpreter
             // not [[Set]], so non-writable prototype properties don't block it.
             $arr->defineOwnProperty(
                 (string) $index,
-                \PhpJs\Object\PropertyDescriptor::data(
+                \Phasis\Object\PropertyDescriptor::data(
                     $this->evaluate($elem, $env),
                     true,
                     true,
@@ -8270,8 +8270,8 @@ class Interpreter
         $isAsyncGen = $env->getEnclosingFunctionKind() === 'async-generator';
         if ($isAsyncGen) {
             if (
-                $value instanceof \PhpJs\Value\JsPromise
-                && $value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING
+                $value instanceof \Phasis\Value\JsPromise
+                && $value->getState() === \Phasis\Value\JsPromise::STATE_PENDING
             ) {
                 // Leave the pending promise alone; asyncGeneratorYieldResult
                 // will subscribe and resolve the request asynchronously.
@@ -8389,7 +8389,7 @@ class Interpreter
                     }
                     throw new GeneratorReturnSignal($receivedValue, $isAsyncGen);
                 }
-                if ($returnMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                if ($returnMethod instanceof \Phasis\Value\JsHTMLDDA) {
                     // HTMLDDA's [[Call]] returns null; fails the object check below.
                     $innerResult = JsNull::instance();
                 } elseif (!$returnMethod instanceof JsFunction) {
@@ -8437,9 +8437,9 @@ class Interpreter
                 $yieldValue = $innerResult->get('value');
                 $resultObj = new JsObject();
                 $resultObj->set('value', $yieldValue);
-                $resultObj->set('done', new \PhpJs\Value\JsBoolean(false));
+                $resultObj->set('done', new \Phasis\Value\JsBoolean(false));
                 try {
-                    $received = \Fiber::suspend(new \PhpJs\Value\YieldDelegateResult($resultObj));
+                    $received = \Fiber::suspend(new \Phasis\Value\YieldDelegateResult($resultObj));
                     $receivedValue = $received instanceof JsValue ? $received : JsUndefined::instance();
                     $receivedType = 'normal';
                 } catch (GeneratorThrowSignal $e) {
@@ -8452,7 +8452,7 @@ class Interpreter
                 continue;
             }
             try {
-                $received = \Fiber::suspend(new \PhpJs\Value\YieldDelegateResult($innerResult));
+                $received = \Fiber::suspend(new \Phasis\Value\YieldDelegateResult($innerResult));
                 $receivedValue = $received instanceof JsValue ? $received : JsUndefined::instance();
                 $receivedType = 'normal';
             } catch (GeneratorThrowSignal $e) {
@@ -8491,8 +8491,8 @@ class Interpreter
         $fiber = \Fiber::getCurrent();
         if ($fiber !== null && $this->isInAsyncContext($env)) {
             try {
-                $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $resumed = \Fiber::suspend(new \Phasis\Value\AwaitSuspension($value));
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $this->throwJsValue($e->jsValue);
             }
             if ($resumed instanceof JsValue) {
@@ -8547,11 +8547,11 @@ class Interpreter
     {
         $iterations = 0;
         while ($iterations++ < 32) {
-            if ($value instanceof \PhpJs\Value\JsPromise) {
-                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
-                    \PhpJs\Value\JsPromise::drainMicrotasks();
+            if ($value instanceof \Phasis\Value\JsPromise) {
+                if ($value->getState() === \Phasis\Value\JsPromise::STATE_PENDING) {
+                    \Phasis\Value\JsPromise::drainMicrotasks();
                 }
-                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                if ($value->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
                     $this->throwJsValue($value->getResolvedValue());
                 }
                 $next = $value->getResolvedValue();
@@ -8580,7 +8580,7 @@ class Interpreter
                     try {
                         $thenMethod->call($value, [$resolveFn, $rejectFn]);
                     } catch (\Throwable $e) {
-                        if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                        if ($e instanceof \Phasis\Exceptions\JsThrowable) {
                             $this->throwJsValue($e->jsValue);
                         }
                         throw $e;
@@ -8620,7 +8620,7 @@ class Interpreter
             $optionsValue = $this->evaluate($node->options, $env);
         }
 
-        $promise = new \PhpJs\Value\JsPromise();
+        $promise = new \Phasis\Value\JsPromise();
 
         // Validate options: per spec, if options is not undefined, it must
         // be an Object. Otherwise reject with TypeError.
@@ -8663,7 +8663,7 @@ class Interpreter
                         }
                     }
                 }
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $promise->reject($e->jsValue);
                 return $promise;
             } catch (\Throwable $e) {
@@ -8681,7 +8681,7 @@ class Interpreter
             // the returned promise to match.
             if ($node->phase === 'source') {
                 $err = $this->phpExceptionToJsValue(
-                    new \PhpJs\Exceptions\SyntaxError(
+                    new \Phasis\Exceptions\SyntaxError(
                         "import.source() is not supported on this module type"
                     )
                 );
@@ -8699,7 +8699,7 @@ class Interpreter
             }
             $namespace = $loader->loadModule($specifier, $this->currentModulePath);
             $promise->resolve($namespace);
-        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+        } catch (\Phasis\Exceptions\JsThrowable $e) {
             $promise->reject($e->jsValue);
         } catch (\Throwable $e) {
             $errorObj = $this->phpExceptionToJsValue($e);
@@ -8825,8 +8825,8 @@ class Interpreter
 
     private function evaluateAnonymousDefault(Node $node, Environment $env): JsValue
     {
-        if ($node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration) {
-            $expr = new \PhpJs\Ast\Expression\FunctionExpression(
+        if ($node instanceof \Phasis\Ast\Declaration\FunctionDeclaration) {
+            $expr = new \Phasis\Ast\Expression\FunctionExpression(
                 $node->location,
                 null,
                 $node->params,
@@ -8893,11 +8893,11 @@ class Interpreter
                 if (
                     $stmt instanceof ExportDeclaration
                     && $stmt->isDefault
-                    && $stmt->declaration instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+                    && $stmt->declaration instanceof \Phasis\Ast\Declaration\FunctionDeclaration
                     && $stmt->declaration->id === null
                 ) {
                     $decl = $stmt->declaration;
-                    $fn = new \PhpJs\Value\JsFunction(
+                    $fn = new \Phasis\Value\JsFunction(
                         'default',
                         $decl->params,
                         $decl->body,
@@ -8923,7 +8923,7 @@ class Interpreter
     }
 
     /**
-     * @param ?\Closure(\PhpJs\Value\JsPromise): void $onAsyncStart If
+     * @param ?\Closure(\Phasis\Value\JsPromise): void $onAsyncStart If
      *   provided and the body has top-level await, the closure receives
      *   the body's pending evaluation promise. The body returns
      *   immediately to the caller without draining microtasks; the
@@ -8955,18 +8955,18 @@ class Interpreter
         $this->validateEvalBody($body);
         $this->validateModuleTopLevelDuplicateBindings($body);
         if ($this->astContainsNewTargetTransparent($body)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'new.target expression is not allowed here'
             );
         }
         if ($this->astContainsSuperTransparent($body)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'super' keyword unexpected here"
             );
         }
-        \PhpJs\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic(
-            new \PhpJs\Ast\Program(
-                $body[0]->location ?? new \PhpJs\Lexer\SourceLocation(0, 0, 0),
+        \Phasis\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic(
+            new \Phasis\Ast\Program(
+                $body[0]->location ?? new \Phasis\Lexer\SourceLocation(0, 0, 0),
                 $body,
             ),
         );
@@ -8994,12 +8994,12 @@ class Interpreter
             // were already instantiated during hoisting. Running their
             // statement form would replace the hoisted binding with a new
             // function instance and invalidate already-snapshotted imports.
-            if ($stmt instanceof \PhpJs\Ast\Declaration\FunctionDeclaration) {
+            if ($stmt instanceof \Phasis\Ast\Declaration\FunctionDeclaration) {
                 continue;
             }
             if (
                 $stmt instanceof ExportDeclaration
-                && $stmt->declaration instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+                && $stmt->declaration instanceof \Phasis\Ast\Declaration\FunctionDeclaration
             ) {
                 continue;
             }
@@ -9037,7 +9037,7 @@ class Interpreter
      */
     private function executeModuleBodyAsync(array $body, Environment $moduleEnv, ?\Closure $onAsyncStart = null): JsValue
     {
-        $promise = new \PhpJs\Value\JsPromise();
+        $promise = new \Phasis\Value\JsPromise();
         $self = $this;
         $modulePath = $this->currentModulePath;
         $fiber = new \Fiber(function () use ($self, $body, $moduleEnv, $modulePath): JsValue {
@@ -9055,12 +9055,12 @@ class Interpreter
                     if ($stmt instanceof ImportDeclaration) {
                         continue;
                     }
-                    if ($stmt instanceof \PhpJs\Ast\Declaration\FunctionDeclaration) {
+                    if ($stmt instanceof \Phasis\Ast\Declaration\FunctionDeclaration) {
                         continue;
                     }
                     if (
                         $stmt instanceof ExportDeclaration
-                        && $stmt->declaration instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+                        && $stmt->declaration instanceof \Phasis\Ast\Declaration\FunctionDeclaration
                     ) {
                         continue;
                     }
@@ -9100,11 +9100,11 @@ class Interpreter
         // No hook: drain microtasks until the body promise settles.
         // Bound the loop so a never-resolving promise can't hang.
         $iter = 0;
-        while ($promise->getState() === \PhpJs\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
-            \PhpJs\Value\JsPromise::drainMicrotasks();
+        while ($promise->getState() === \Phasis\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
+            \Phasis\Value\JsPromise::drainMicrotasks();
         }
 
-        if ($promise->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+        if ($promise->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
             $this->throwJsValue($promise->getResolvedValue());
         }
         return $promise->getResolvedValue();
@@ -9171,7 +9171,7 @@ class Interpreter
             // Per ES2018, untagged templates with invalid escape sequences must
             // throw SyntaxError at runtime (null cookedValue signals this).
             if ($node->quasis[$i]->cookedValue === null) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Invalid escape sequence in template literal',
                     $node->quasis[$i]->location,
                 );
@@ -9230,13 +9230,13 @@ class Interpreter
                 $cookedVal = $quasi->cookedValue === null
                     ? JsUndefined::instance()
                     : new JsString($quasi->cookedValue);
-                $strings->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                $strings->defineOwnProperty((string) $i, \Phasis\Object\PropertyDescriptor::data(
                     $cookedVal,
                     false,
                     true,
                     false,
                 ));
-                $raw->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                $raw->defineOwnProperty((string) $i, \Phasis\Object\PropertyDescriptor::data(
                     new JsString($quasi->rawValue),
                     false,
                     true,
@@ -9244,13 +9244,13 @@ class Interpreter
                 ));
             }
             // Set length as non-writable, non-enumerable, non-configurable.
-            $strings->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+            $strings->defineOwnProperty('length', \Phasis\Object\PropertyDescriptor::data(
                 JsNumber::of((float) $count),
                 false,
                 false,
                 false,
             ));
-            $raw->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+            $raw->defineOwnProperty('length', \Phasis\Object\PropertyDescriptor::data(
                 JsNumber::of((float) $count),
                 false,
                 false,
@@ -9259,7 +9259,7 @@ class Interpreter
             // Freeze the raw array.
             $raw->preventExtensions();
             // Set raw as non-writable, non-enumerable, non-configurable on strings.
-            $strings->defineOwnProperty('raw', \PhpJs\Object\PropertyDescriptor::data(
+            $strings->defineOwnProperty('raw', \Phasis\Object\PropertyDescriptor::data(
                 $raw,
                 false,
                 false,
@@ -9300,8 +9300,8 @@ class Interpreter
             throw new TypeError('Using declaration initializer is not an Object');
         }
         if ($isAsync) {
-            $asyncMethod = $value->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::asyncDispose());
-            $syncMethod = $value->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+            $asyncMethod = $value->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::asyncDispose());
+            $syncMethod = $value->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
             if (
                 ($asyncMethod instanceof JsUndefined || $asyncMethod instanceof JsNull)
                 && ($syncMethod instanceof JsUndefined || $syncMethod instanceof JsNull)
@@ -9309,7 +9309,7 @@ class Interpreter
                 throw new TypeError('The value does not have a dispose method.');
             }
         } else {
-            $method = $value->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+            $method = $value->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
             if ($method instanceof JsUndefined || $method instanceof JsNull) {
                 throw new TypeError('The value does not have a Symbol.dispose method.');
             }
@@ -9332,12 +9332,12 @@ class Interpreter
             [$resource, $isAsync] = $disposables[$i];
             try {
                 if ($isAsync) {
-                    $method = $resource->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::asyncDispose());
+                    $method = $resource->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::asyncDispose());
                     if ($method instanceof JsUndefined || $method instanceof JsNull) {
-                        $method = $resource->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+                        $method = $resource->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
                     }
                 } else {
-                    $method = $resource->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+                    $method = $resource->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
                 }
                 if ($method instanceof JsFunction) {
                     $result = $method->call($resource, []);
@@ -9349,18 +9349,18 @@ class Interpreter
                         $fiber = \Fiber::getCurrent();
                         if ($fiber !== null && $env->getEnclosingFunctionKind() === 'async') {
                             try {
-                                \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($result));
-                            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                                \Fiber::suspend(new \Phasis\Value\AwaitSuspension($result));
+                            } catch (\Phasis\Exceptions\JsThrowable $e) {
                                 throw $e;
                             }
-                        } elseif ($result instanceof \PhpJs\Value\JsPromise) {
-                            \PhpJs\Value\JsPromise::drainMicrotasks();
+                        } elseif ($result instanceof \Phasis\Value\JsPromise) {
+                            \Phasis\Value\JsPromise::drainMicrotasks();
                             // Propagate a rejected dispose promise as a thrown
                             // value so it gets chained into a SuppressedError
                             // if an outer error is already pending, or surfaces
                             // as the error otherwise.
-                            if ($result->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-                                throw new \PhpJs\Exceptions\JsThrowable($result->getResolvedValue());
+                            if ($result->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
+                                throw new \Phasis\Exceptions\JsThrowable($result->getResolvedValue());
                             }
                         }
                     }
@@ -9385,14 +9385,14 @@ class Interpreter
     /** Convert a PHP exception into a JS value for SuppressedError chaining. */
     public function phpExceptionToJsValue(\Throwable $e): JsValue
     {
-        if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+        if ($e instanceof \Phasis\Exceptions\JsThrowable) {
             return $e->jsValue;
         }
         $ctorName = match (true) {
             $e instanceof TypeError => 'TypeError',
-            $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
-            $e instanceof \PhpJs\Exceptions\ReferenceError => 'ReferenceError',
-            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
+            $e instanceof \Phasis\Exceptions\RangeError => 'RangeError',
+            $e instanceof \Phasis\Exceptions\ReferenceError => 'ReferenceError',
+            $e instanceof \Phasis\Exceptions\SyntaxError => 'SyntaxError',
             default => 'Error',
         };
         try {
@@ -9417,7 +9417,7 @@ class Interpreter
         $errObj->set('name', new JsString($ctorName));
         $errObj->defineOwnProperty(
             '[[ErrorData]]',
-            \PhpJs\Object\PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
+            \Phasis\Object\PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
         );
         return $errObj;
     }
@@ -9616,7 +9616,7 @@ class Interpreter
         }
         if ($pattern instanceof ObjectPattern) {
             if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot destructure property of " . TypeConversion::toString($value),
                 );
             }
@@ -9898,16 +9898,16 @@ class Interpreter
             : null;
 
         // Per spec §15.7.14: if ClassHeritage is present and not null, it must be a constructor.
-        if ($superClass !== null && !($superClass instanceof \PhpJs\Value\JsNull)) {
+        if ($superClass !== null && !($superClass instanceof \Phasis\Value\JsNull)) {
             $isConstructor = false;
             if ($superClass instanceof JsFunction && $superClass->isConstructable()) {
                 $isConstructor = true;
-            } elseif ($superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
+            } elseif ($superClass instanceof \Phasis\Value\JsProxy && $superClass->isConstructable()) {
                 $isConstructor = true;
             }
             if (!$isConstructor) {
                 // Avoid triggering proxy traps when constructing the error message.
-                $superStr = $superClass instanceof \PhpJs\Value\JsProxy
+                $superStr = $superClass instanceof \Phasis\Value\JsProxy
                     ? 'function () { [native code] }'
                     : TypeConversion::toString($superClass);
                 $this->strictMode = $previousStrictMode;
@@ -9997,7 +9997,7 @@ class Interpreter
                 $key = $privateNameMap[$method->key->name] ?? $method->key->name;
             } elseif (isset($computedKeys[$i])) {
                 $keyVal = TypeConversion::toPropertyKey($computedKeys[$i]);
-                if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+                if ($keyVal instanceof \Phasis\Value\JsSymbol) {
                     $symbolKey = $keyVal;
                     $key = '';
                 } else {
@@ -10109,7 +10109,7 @@ class Interpreter
                     },
                 )->setConstructable();
                 $ref->fn = $constructor;
-            } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsProxy) {
+            } elseif ($isDerived && $superClass instanceof \Phasis\Value\JsProxy) {
                 // Reaching here, superClass already passed the constructor
                 // validation above (8593-8605); JsProxy targets in the
                 // derived path are guaranteed constructable.
@@ -10124,14 +10124,14 @@ class Interpreter
                         $newTarget = $ref->fn;
                         if ($thisVal instanceof JsObject) {
                             $nt = $thisVal->get('[[NewTarget]]');
-                            if ($nt instanceof JsFunction || $nt instanceof \PhpJs\Value\JsProxy) {
+                            if ($nt instanceof JsFunction || $nt instanceof \Phasis\Value\JsProxy) {
                                 $newTarget = $nt;
                             }
                         }
                         $activeSuper = $ref->fn instanceof JsFunction
                             ? $ref->fn->getPrototype()
                             : null;
-                        if ($activeSuper instanceof \PhpJs\Value\JsProxy && $activeSuper->isConstructable()) {
+                        if ($activeSuper instanceof \Phasis\Value\JsProxy && $activeSuper->isConstructable()) {
                             return $activeSuper->construct($args, $newTarget ?? $activeSuper);
                         }
                         if ($activeSuper instanceof JsFunction && $activeSuper->isConstructable()) {
@@ -10141,7 +10141,7 @@ class Interpreter
                     },
                 )->setConstructable();
                 $ref->fn = $constructor;
-            } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsNull) {
+            } elseif ($isDerived && $superClass instanceof \Phasis\Value\JsNull) {
                 // class C extends null { }: default constructor is
                 // `constructor(...args) { super(...args); }` per spec, which
                 // throws because GetSuperConstructor returns %FunctionPrototype%
@@ -10180,20 +10180,20 @@ class Interpreter
         // JsProxy in the derived path is constructable, so the check here
         // collapses to a plain instanceof.
         $superIsConstructor = $superClass instanceof JsFunction
-            || $superClass instanceof \PhpJs\Value\JsProxy;
+            || $superClass instanceof \Phasis\Value\JsProxy;
         if ($superIsConstructor) {
             $superProto = $superClass->get('prototype');
             // Per spec 15.7.14 step 6.g.iv: if protoParent is neither Object nor Null, throw TypeError.
-            if (!($superProto instanceof JsObject) && !($superProto instanceof \PhpJs\Value\JsNull)) {
+            if (!($superProto instanceof JsObject) && !($superProto instanceof \Phasis\Value\JsNull)) {
                 throw new TypeError(
                     'Class extends value does not have valid prototype property',
                 );
             }
             $proto = new JsObject($superProto instanceof JsObject ? $superProto : null);
-            if ($superProto instanceof \PhpJs\Value\JsNull) {
+            if ($superProto instanceof \Phasis\Value\JsNull) {
                 $proto->setPrototype(null);
             }
-        } elseif ($superClassNode !== null && $superClass instanceof \PhpJs\Value\JsNull) {
+        } elseif ($superClassNode !== null && $superClass instanceof \Phasis\Value\JsNull) {
             // extends null: prototype has no [[Prototype]]
             $proto = new JsObject();
             $proto->setPrototype(null);
@@ -10308,7 +10308,7 @@ class Interpreter
             }
             // Per spec §15.7.1: it is a SyntaxError if a static method is named "prototype".
             if ($key === 'prototype') {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Classes may not have a static property named 'prototype'",
                 );
             }
@@ -10353,7 +10353,7 @@ class Interpreter
                 );
             } elseif (isset($computedKeys[$idx])) {
                 $keyVal = TypeConversion::toPropertyKey($computedKeys[$idx]);
-                if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+                if ($keyVal instanceof \Phasis\Value\JsSymbol) {
                     $constructor->addInstanceFieldInitializer($keyVal, $field->value, true, false);
                 } else {
                     $constructor->addInstanceFieldInitializer(
@@ -10399,7 +10399,7 @@ class Interpreter
         // Inheritance: set [[Prototype]] of constructor to super class.
         if ($superClass instanceof JsFunction) {
             $constructor->setCustomPrototype($superClass);
-        } elseif ($superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
+        } elseif ($superClass instanceof \Phasis\Value\JsProxy && $superClass->isConstructable()) {
             // Extending a callable Proxy: the constructor's [[Prototype]] is
             // the proxy itself so super() resolves to the proxy via
             // [[GetPrototypeOf]](activeFunction).
@@ -10492,7 +10492,7 @@ class Interpreter
                     $fieldKey = $privateNameMap[$element->key->name] ?? $element->key->name;
                 } elseif (isset($computedKeys[$i])) {
                     $keyVal = TypeConversion::toPropertyKey($computedKeys[$i]);
-                    if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+                    if ($keyVal instanceof \Phasis\Value\JsSymbol) {
                         $constructor->definePropertyBySymbol($keyVal, PropertyDescriptor::data(
                             $element->value !== null
                                 ? $this->evaluate($element->value, $staticEnv)
@@ -10530,7 +10530,7 @@ class Interpreter
                     $constructor->setPrivateField($fieldKey, $fieldValue);
                 } else {
                     if ($fieldKey === 'prototype') {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "Classes may not have a static property named 'prototype'",
                         );
                     }
@@ -10958,13 +10958,13 @@ class Interpreter
                 // If the getter itself throws, that's an abrupt innerResult.
                 try {
                     $returnMethod = $iterator->get('return');
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     // GetMethod threw. Per step 5: if original was throw, suppress; else propagate.
                     if ($isOriginalThrow) {
                         return null;
                     }
                     return Completion::throw($e->jsValue);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     if ($isOriginalThrow) {
                         return null;
                     }
@@ -10999,13 +10999,13 @@ class Interpreter
                             new TypeError('Iterator return result is not an object')
                         ));
                     }
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     // Step 6: return() threw. If original was throw, suppress; else propagate.
                     if ($isOriginalThrow) {
                         return null;
                     }
                     return Completion::throw($e->jsValue);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     if ($isOriginalThrow) {
                         return null;
                     }
@@ -11060,16 +11060,16 @@ class Interpreter
                 // close the iterator before propagating the error.
                 try {
                     $this->assignForBinding($node->left, $value, $iterEnv);
-                } catch (\PhpJs\Exceptions\JsThrowable $assignErr) {
+                } catch (\Phasis\Exceptions\JsThrowable $assignErr) {
                     $closeIterator(Completion::throw($assignErr->jsValue));
                     throw $assignErr;
-                } catch (\PhpJs\Exceptions\RuntimeError $assignErr) {
+                } catch (\Phasis\Exceptions\RuntimeError $assignErr) {
                     $closeIterator(Completion::throw($this->phpExceptionToJsValue($assignErr)));
                     throw $assignErr;
                 }
                 try {
                     $completion = $this->executeStatement($node->body, $iterEnv);
-                } catch (\PhpJs\Value\GeneratorReturnSignal $returnSignal) {
+                } catch (\Phasis\Value\GeneratorReturnSignal $returnSignal) {
                     // Per spec ForIn/OfBodyEvaluation: an abrupt completion in
                     // the body (including a generator-return resumption that
                     // propagates through a yield inside the body) must close
@@ -11078,13 +11078,13 @@ class Interpreter
                     // replaces the return per IteratorClose semantics.
                     $closeCompletion = $closeIterator(null);
                     if ($closeCompletion !== null && $closeCompletion->type === CompletionType::Throw) {
-                        throw new \PhpJs\Exceptions\JsThrowable($closeCompletion->value);
+                        throw new \Phasis\Exceptions\JsThrowable($closeCompletion->value);
                     }
                     throw $returnSignal;
-                } catch (\PhpJs\Exceptions\JsThrowable $bodyErr) {
+                } catch (\Phasis\Exceptions\JsThrowable $bodyErr) {
                     $closeIterator(Completion::throw($bodyErr->jsValue));
                     throw $bodyErr;
-                } catch (\PhpJs\Exceptions\RuntimeError $bodyErr) {
+                } catch (\Phasis\Exceptions\RuntimeError $bodyErr) {
                     $closeIterator(Completion::throw($this->phpExceptionToJsValue($bodyErr)));
                     throw $bodyErr;
                 }
@@ -11141,7 +11141,7 @@ class Interpreter
         }
 
         // Try Symbol.asyncIterator first.
-        $asyncIterSym = \PhpJs\BuiltIn\SymbolConstructor::asyncIterator();
+        $asyncIterSym = \Phasis\BuiltIn\SymbolConstructor::asyncIterator();
         $asyncIterMethod = $iterable->getBySymbol($asyncIterSym);
 
         if ($asyncIterMethod instanceof JsFunction) {
@@ -11151,7 +11151,7 @@ class Interpreter
             }
             return $iterator;
         }
-        if ($asyncIterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+        if ($asyncIterMethod instanceof \Phasis\Value\JsHTMLDDA) {
             // HTMLDDA's [[Call]] returns null, which fails the object check.
             throw new TypeError('Result of the Symbol.asyncIterator method is not an object');
         }
@@ -11200,7 +11200,7 @@ class Interpreter
                 $result = new JsObject();
                 $result->set('value', $value);
                 $result->set('done', new JsBoolean(true));
-                return \PhpJs\Value\JsPromise::resolved($result);
+                return \Phasis\Value\JsPromise::resolved($result);
             }
             if (!$returnMethod instanceof JsFunction) {
                 throw new TypeError('return is not a function');
@@ -11222,14 +11222,14 @@ class Interpreter
                         'The iterator does not provide a throw method'
                     )
                 );
-                return \PhpJs\Value\JsPromise::rejected($err);
+                return \Phasis\Value\JsPromise::rejected($err);
             }
             if (!$throwMethod instanceof JsFunction) {
                 $interpreter->iteratorClose($syncIterator);
                 $err = $interpreter->phpExceptionToJsValue(
                     new TypeError('throw is not a function')
                 );
-                return \PhpJs\Value\JsPromise::rejected($err);
+                return \Phasis\Value\JsPromise::rejected($err);
             }
             $forward = $hasValue ? [$value] : [];
             return $interpreter->asyncFromSyncMethod($syncIterator, $throwMethod, $forward);
@@ -11255,8 +11255,8 @@ class Interpreter
         try {
             $syncResult = $this->callFunction($syncNext, $syncIterator, $forwardedArgs);
         } catch (\Throwable $e) {
-            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable ? $e->jsValue : $this->phpExceptionToJsValue($e);
-            return \PhpJs\Value\JsPromise::rejected($jsErr);
+            $jsErr = $e instanceof \Phasis\Exceptions\JsThrowable ? $e->jsValue : $this->phpExceptionToJsValue($e);
+            return \Phasis\Value\JsPromise::rejected($jsErr);
         }
         if (!$syncResult instanceof JsObject) {
             // Per spec 27.1.4.2 step 8: AsyncFromSyncIteratorContinuation's
@@ -11265,7 +11265,7 @@ class Interpreter
             $err = $this->phpExceptionToJsValue(
                 new TypeError('Iterator result is not an object')
             );
-            return \PhpJs\Value\JsPromise::rejected($err);
+            return \Phasis\Value\JsPromise::rejected($err);
         }
         return $this->asyncFromSyncUnwrapResult($syncResult, $syncIterator);
     }
@@ -11283,15 +11283,15 @@ class Interpreter
         try {
             $syncResult = $this->callFunction($method, $syncIterator, $forwardedArgs);
         } catch (\Throwable $e) {
-            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+            $jsErr = $e instanceof \Phasis\Exceptions\JsThrowable
                 ? $e->jsValue : $this->phpExceptionToJsValue($e);
-            return \PhpJs\Value\JsPromise::rejected($jsErr);
+            return \Phasis\Value\JsPromise::rejected($jsErr);
         }
         if (!$syncResult instanceof JsObject) {
             $err = $this->phpExceptionToJsValue(
                 new TypeError('Iterator result is not an object')
             );
-            return \PhpJs\Value\JsPromise::rejected($err);
+            return \Phasis\Value\JsPromise::rejected($err);
         }
         return $this->asyncFromSyncUnwrapResult($syncResult, $syncIterator);
     }
@@ -11304,29 +11304,29 @@ class Interpreter
         try {
             $done = TypeConversion::toBoolean($syncResult->get('done'));
         } catch (\Throwable $e) {
-            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+            $jsErr = $e instanceof \Phasis\Exceptions\JsThrowable
                 ? $e->jsValue : $this->phpExceptionToJsValue($e);
-            return \PhpJs\Value\JsPromise::rejected($jsErr);
+            return \Phasis\Value\JsPromise::rejected($jsErr);
         }
         try {
             $value = $syncResult->get('value');
         } catch (\Throwable $e) {
-            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+            $jsErr = $e instanceof \Phasis\Exceptions\JsThrowable
                 ? $e->jsValue : $this->phpExceptionToJsValue($e);
             // Close iterator if not done.
             if (!$done && $syncIterator !== null) {
                 $this->iteratorClose($syncIterator);
             }
-            return \PhpJs\Value\JsPromise::rejected($jsErr);
+            return \Phasis\Value\JsPromise::rejected($jsErr);
         }
         // Per spec 27.1.4.4 step 5: valueWrapper = PromiseResolve(%Promise%, value).
         // PromiseResolve reads value.constructor when value is a Promise; a
         // poisoned constructor getter must surface as the promise rejection.
-        if ($value instanceof \PhpJs\Value\JsPromise) {
+        if ($value instanceof \Phasis\Value\JsPromise) {
             try {
                 $value->get('constructor');
             } catch (\Throwable $e) {
-                $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+                $jsErr = $e instanceof \Phasis\Exceptions\JsThrowable
                     ? $e->jsValue : $this->phpExceptionToJsValue($e);
                 if (!$done && $syncIterator !== null) {
                     try {
@@ -11334,7 +11334,7 @@ class Interpreter
                     } catch (\Throwable) {
                     }
                 }
-                return \PhpJs\Value\JsPromise::rejected($jsErr);
+                return \Phasis\Value\JsPromise::rejected($jsErr);
             }
         }
         // Per spec 27.1.4.4: AsyncFromSyncIteratorContinuation builds valueWrapper
@@ -11343,11 +11343,11 @@ class Interpreter
         // layered scheduling adds one microtask tick for valueWrapper to settle
         // and another for the outer capability to resolve from onFulfilled —
         // collapsing it loses the tick that for-await Await observers depend on.
-        $outer = new \PhpJs\Value\JsPromise();
-        if ($value instanceof \PhpJs\Value\JsPromise) {
+        $outer = new \Phasis\Value\JsPromise();
+        if ($value instanceof \Phasis\Value\JsPromise) {
             $valueWrapper = $value;
         } else {
-            $valueWrapper = new \PhpJs\Value\JsPromise();
+            $valueWrapper = new \Phasis\Value\JsPromise();
             $valueWrapper->resolve($value);
         }
         $iteratorRef = $syncIterator;
@@ -11397,8 +11397,8 @@ class Interpreter
         $kind = $env->getEnclosingFunctionKind();
         if ($fiber !== null && ($kind === 'async' || $kind === 'async-generator')) {
             try {
-                $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $resumed = \Fiber::suspend(new \Phasis\Value\AwaitSuspension($value));
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $this->throwJsValue($e->jsValue);
             }
             if ($resumed instanceof JsValue) {
@@ -11421,8 +11421,8 @@ class Interpreter
         $fiber = \Fiber::getCurrent();
         if ($fiber !== null) {
             try {
-                $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $resumed = \Fiber::suspend(new \Phasis\Value\AwaitSuspension($value));
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $this->throwJsValue($e->jsValue);
             }
             if ($resumed instanceof JsValue) {
@@ -11439,22 +11439,22 @@ class Interpreter
      */
     private function awaitValue(JsValue $value): JsValue
     {
-        if ($value instanceof \PhpJs\Value\JsPromise) {
+        if ($value instanceof \Phasis\Value\JsPromise) {
             // If the promise is still pending (e.g. produced by a .then()
             // chain), drain queued microtasks until it settles so the
             // top-level await observes a resolved value.
             $guard = 0;
             while (
-                $value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING
+                $value->getState() === \Phasis\Value\JsPromise::STATE_PENDING
                 && $guard++ < 100000
             ) {
-                \PhpJs\Value\JsPromise::drainMicrotasks();
+                \Phasis\Value\JsPromise::drainMicrotasks();
                 // Drain ran once. If still pending, no further microtask
                 // progress is possible in our single-tick interpreter, so
                 // break out instead of spinning.
                 break;
             }
-            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+            if ($value->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
                 $this->throwJsValue($value->getResolvedValue());
             }
             return $value->getResolvedValue();
@@ -11478,7 +11478,7 @@ class Interpreter
                 try {
                     $thenMethod->call($value, [$resolveFn, $rejectFn]);
                 } catch (\Throwable $e) {
-                    if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                    if ($e instanceof \Phasis\Exceptions\JsThrowable) {
                         $this->throwJsValue($e->jsValue);
                     }
                     throw $e;
@@ -11543,11 +11543,11 @@ class Interpreter
         if (
             $iterable instanceof JsNumber
             || $iterable instanceof JsBoolean
-            || $iterable instanceof \PhpJs\Value\JsBigInt
+            || $iterable instanceof \Phasis\Value\JsBigInt
             || $iterable instanceof JsSymbol
         ) {
             $wrapper = TypeConversion::toObject($iterable);
-            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
             $method = $wrapper->getBySymbol($iterSym);
             if (!$method instanceof JsFunction) {
                 return null;
@@ -11563,16 +11563,16 @@ class Interpreter
         }
 
         // Check for Symbol.iterator method.
-        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+        $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
         $iteratorMethod = $iterable->getBySymbol($iterSym);
 
         $isCallable = $iteratorMethod instanceof JsFunction
-            || ($iteratorMethod instanceof \PhpJs\Value\JsProxy && $iteratorMethod->isCallable());
+            || ($iteratorMethod instanceof \Phasis\Value\JsProxy && $iteratorMethod->isCallable());
         if (!$isCallable) {
             return null;
         }
 
-        $iterator = $iteratorMethod instanceof \PhpJs\Value\JsProxy
+        $iterator = $iteratorMethod instanceof \Phasis\Value\JsProxy
             ? $iteratorMethod->apply($iterable, [])
             : $this->callFunction($iteratorMethod, $iterable, []);
         if (!$iterator instanceof JsObject) {
@@ -11654,7 +11654,7 @@ class Interpreter
 
         if ($pattern instanceof ObjectPattern) {
             if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot destructure property of " . TypeConversion::toString($value),
                 );
             }
@@ -11921,9 +11921,9 @@ class Interpreter
         // adds the spec-mandated microtask tick.
         if (
             $env->getEnclosingFunctionKind() === 'async-generator'
-            && !($value instanceof \PhpJs\Value\JsPromise)
+            && !($value instanceof \Phasis\Value\JsPromise)
         ) {
-            $wrap = new \PhpJs\Value\JsPromise();
+            $wrap = new \Phasis\Value\JsPromise();
             $wrap->resolve($value);
             $value = $wrap;
         }
@@ -11953,7 +11953,7 @@ class Interpreter
         if ($node instanceof TaggedTemplate) {
             return $this->evalTaggedTemplateTailCall($node, $env);
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ConditionalExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\ConditionalExpression) {
             $test = $this->evaluate($node->test, $env);
             $branch = TypeConversion::toBoolean($test) ? $node->consequent : $node->alternate;
             $result = $this->evalTailPositionExpr($branch, $env);
@@ -11962,7 +11962,7 @@ class Interpreter
             }
             return $this->evaluate($branch, $env);
         }
-        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\SequenceExpression) {
             $exprs = $node->expressions;
             if ($exprs === []) {
                 return null;
@@ -11977,7 +11977,7 @@ class Interpreter
             return $this->evaluate($exprs[$n - 1], $env);
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\LogicalExpression
+            $node instanceof \Phasis\Ast\Expression\LogicalExpression
             && in_array($node->operator, ['&&', '||', '??'], true)
         ) {
             $left = $this->evaluate($node->left, $env);
@@ -12055,33 +12055,33 @@ class Interpreter
                 $cookedVal = $quasi->cookedValue === null
                     ? JsUndefined::instance()
                     : new JsString($quasi->cookedValue);
-                $strings->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                $strings->defineOwnProperty((string) $i, \Phasis\Object\PropertyDescriptor::data(
                     $cookedVal,
                     false,
                     true,
                     false,
                 ));
-                $raw->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                $raw->defineOwnProperty((string) $i, \Phasis\Object\PropertyDescriptor::data(
                     new JsString($quasi->rawValue),
                     false,
                     true,
                     false,
                 ));
             }
-            $strings->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+            $strings->defineOwnProperty('length', \Phasis\Object\PropertyDescriptor::data(
                 JsNumber::of((float) $count),
                 false,
                 false,
                 false,
             ));
-            $raw->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+            $raw->defineOwnProperty('length', \Phasis\Object\PropertyDescriptor::data(
                 JsNumber::of((float) $count),
                 false,
                 false,
                 false,
             ));
             $raw->preventExtensions();
-            $strings->defineOwnProperty('raw', \PhpJs\Object\PropertyDescriptor::data(
+            $strings->defineOwnProperty('raw', \Phasis\Object\PropertyDescriptor::data(
                 $raw,
                 false,
                 false,
@@ -12123,7 +12123,7 @@ class Interpreter
             // the regular call path (returning null) so getBySymbol is used correctly.
             if ($node->callee->computed) {
                 $propVal = $this->evaluate($node->callee->property, $env);
-                if ($propVal instanceof \PhpJs\Value\JsSymbol) {
+                if ($propVal instanceof \Phasis\Value\JsSymbol) {
                     return null;
                 }
                 $propName = TypeConversion::toString($propVal);
@@ -12202,15 +12202,15 @@ class Interpreter
             // A generator.throw() signal propagated into a try block.
             // Convert it to a Throw completion so the catch handler can run.
             $completion = Completion::throw($e->jsValue);
-        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+        } catch (\Phasis\Exceptions\JsThrowable $e) {
             // A PHP exception carrying a JS value (e.g., from generator.throw()).
             // Extract the original JS value for the catch handler.
             $completion = Completion::throw($e->jsValue);
-        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+        } catch (\Phasis\Exceptions\SyntaxError $e) {
             // A PHP SyntaxError (e.g. from eval parsing). Convert to a JS
             // SyntaxError so the catch handler can process it.
             $completion = Completion::throw($this->phpExceptionToJsValue($e));
-        } catch (\PhpJs\Exceptions\RuntimeError $e) {
+        } catch (\Phasis\Exceptions\RuntimeError $e) {
             // A PHP exception representing a JS runtime error. Convert to
             // a Throw completion so the JS catch handler can process it.
             $completion = Completion::throw($this->phpExceptionToJsValue($e));
@@ -12405,7 +12405,7 @@ class Interpreter
                     }
                 }
                 // Recurse into for-of/for-in body for nested var hoisting only.
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistVarDeclarationsOnly([$stmt->body], $env);
@@ -12417,16 +12417,16 @@ class Interpreter
                         $this->hoistVarNames($decl->id, $env);
                     }
                 }
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif (
-                $stmt instanceof \PhpJs\Ast\Statement\WhileStatement
-                || $stmt instanceof \PhpJs\Ast\Statement\DoWhileStatement
+                $stmt instanceof \Phasis\Ast\Statement\WhileStatement
+                || $stmt instanceof \Phasis\Ast\Statement\DoWhileStatement
             ) {
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } elseif ($stmt->body instanceof VariableDeclaration && $stmt->body->kind === 'var') {
                     // Handle non-block body: `do var x; while(false);`
@@ -12437,18 +12437,18 @@ class Interpreter
                     // Handle non-block, non-var body (e.g. a single statement).
                     $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
-            } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\IfStatement) {
                 // Only hoist var declarations from if/else block bodies.
                 // Function declarations in if/else are block-scoped per ES2015+.
-                if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->consequent instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->consequent->body, $env);
                 }
-                if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->alternate instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->alternate->body, $env);
-                } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\IfStatement) {
+                } elseif ($stmt->alternate instanceof \Phasis\Ast\Statement\IfStatement) {
                     $this->hoistDeclarations([$stmt->alternate], $env);
                 }
-            } elseif ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\BlockStatement) {
                 $this->hoistVarDeclarationsOnly($stmt->body, $env);
             } elseif ($stmt instanceof TryStatement) {
                 // Hoist var declarations from try, catch, and finally blocks.
@@ -12469,7 +12469,7 @@ class Interpreter
                             $this->hoistDeclarations([$inner], $env);
                         } elseif (!($inner instanceof FunctionDeclaration)) {
                             $this->hoistVarDeclarationsOnly(
-                                $inner instanceof \PhpJs\Ast\Statement\BlockStatement ? $inner->body : [$inner],
+                                $inner instanceof \Phasis\Ast\Statement\BlockStatement ? $inner->body : [$inner],
                                 $env,
                             );
                         }
@@ -12480,7 +12480,7 @@ class Interpreter
                 $this->hoistDeclarations([$stmt->body], $env);
             } elseif ($stmt instanceof WithStatement) {
                 // Var declarations inside with statements hoist to the enclosing scope.
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistDeclarations([$stmt->body], $env);
@@ -12779,7 +12779,7 @@ class Interpreter
             if ($env->hasLexicalBinding($vn)) {
                 $this->throwJsValue(
                     $this->phpExceptionToJsValue(
-                        new \PhpJs\Exceptions\SyntaxError(
+                        new \Phasis\Exceptions\SyntaxError(
                             "Identifier '{$vn}' has already been declared",
                         ),
                     ),
@@ -13096,7 +13096,7 @@ class Interpreter
                         $this->hoistVarNames($decl->id, $env);
                     }
                 }
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistVarDeclarationsOnly([$stmt->body], $env);
@@ -13107,34 +13107,34 @@ class Interpreter
                         $this->hoistVarNames($decl->id, $env);
                     }
                 }
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif (
-                $stmt instanceof \PhpJs\Ast\Statement\WhileStatement
-                || $stmt instanceof \PhpJs\Ast\Statement\DoWhileStatement
+                $stmt instanceof \Phasis\Ast\Statement\WhileStatement
+                || $stmt instanceof \Phasis\Ast\Statement\DoWhileStatement
             ) {
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
-            } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
-                if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\IfStatement) {
+                if ($stmt->consequent instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->consequent->body, $env);
                 } else {
                     $this->hoistVarDeclarationsOnly([$stmt->consequent], $env);
                 }
-                if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->alternate instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->alternate->body, $env);
-                } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\IfStatement) {
+                } elseif ($stmt->alternate instanceof \Phasis\Ast\Statement\IfStatement) {
                     $this->hoistVarDeclarationsOnly([$stmt->alternate], $env);
                 } elseif ($stmt->alternate !== null) {
                     $this->hoistVarDeclarationsOnly([$stmt->alternate], $env);
                 }
-            } elseif ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\BlockStatement) {
                 $this->hoistVarDeclarationsOnly($stmt->body, $env);
             } elseif ($stmt instanceof TryStatement) {
                 $this->hoistVarDeclarationsOnly($stmt->block->body, $env);
@@ -13151,7 +13151,7 @@ class Interpreter
             } elseif ($stmt instanceof LabeledStatement) {
                 $this->hoistVarDeclarationsOnly([$stmt->body], $env);
             } elseif ($stmt instanceof WithStatement) {
-                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                if ($stmt->body instanceof \Phasis\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistVarDeclarationsOnly([$stmt->body], $env);
@@ -13185,7 +13185,7 @@ class Interpreter
             // Per Annex B.3.3.4, a function declaration directly inside a
             // `with` body still hoists to the enclosing variable scope —
             // the with object's binding is irrelevant to the hoist target.
-            $stmt instanceof \PhpJs\Ast\Statement\WithStatement => [$stmt->body],
+            $stmt instanceof \Phasis\Ast\Statement\WithStatement => [$stmt->body],
             default => [],
         };
 
@@ -13801,16 +13801,16 @@ class Interpreter
         if ($node instanceof Identifier) {
             return [$node->name];
         }
-        if ($node instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+        if ($node instanceof \Phasis\Ast\Pattern\ObjectPattern) {
             $names = [];
             foreach ($node->properties as $prop) {
-                if ($prop instanceof \PhpJs\Ast\Pattern\RestElement) {
+                if ($prop instanceof \Phasis\Ast\Pattern\RestElement) {
                     $names = array_merge($names, $this->collectBoundNames($prop->argument));
-                } elseif ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                } elseif ($prop instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                     $names = array_merge($names, $this->collectBoundNames($prop->value));
-                } elseif ($prop instanceof \PhpJs\Ast\Expression\Property) {
+                } elseif ($prop instanceof \Phasis\Ast\Expression\Property) {
                     $names = array_merge($names, $this->collectBoundNames($prop->value));
-                } elseif ($prop instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+                } elseif ($prop instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
                     $names = array_merge($names, $this->collectBoundNames($prop->left));
                 } else {
                     $names = array_merge($names, $this->collectBoundNames($prop));
@@ -13818,7 +13818,7 @@ class Interpreter
             }
             return $names;
         }
-        if ($node instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+        if ($node instanceof \Phasis\Ast\Pattern\ArrayPattern) {
             $names = [];
             foreach ($node->elements as $elem) {
                 if ($elem !== null) {
@@ -13827,10 +13827,10 @@ class Interpreter
             }
             return $names;
         }
-        if ($node instanceof \PhpJs\Ast\Pattern\RestElement) {
+        if ($node instanceof \Phasis\Ast\Pattern\RestElement) {
             return $this->collectBoundNames($node->argument);
         }
-        if ($node instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+        if ($node instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
             return $this->collectBoundNames($node->left);
         }
         return [];
@@ -13971,7 +13971,7 @@ class Interpreter
                 if ($stmt->body instanceof BlockStatement) {
                     $this->forceHoistVarNames($stmt->body->body, $env);
                 }
-            } elseif ($stmt instanceof \PhpJs\Ast\Statement\WhileStatement || $stmt instanceof DoWhileStatement) {
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\WhileStatement || $stmt instanceof DoWhileStatement) {
                 if ($stmt->body instanceof BlockStatement) {
                     $this->forceHoistVarNames($stmt->body->body, $env);
                 }
@@ -14033,27 +14033,27 @@ class Interpreter
     {
         if ($pattern instanceof Identifier) {
             $names[] = $pattern->name;
-        } elseif ($pattern instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+        } elseif ($pattern instanceof \Phasis\Ast\Pattern\ArrayPattern) {
             foreach ($pattern->elements as $elem) {
                 if ($elem !== null) {
-                    if ($elem instanceof \PhpJs\Ast\Pattern\RestElement) {
+                    if ($elem instanceof \Phasis\Ast\Pattern\RestElement) {
                         $this->collectBindingNames($elem->argument, $names);
-                    } elseif ($elem instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+                    } elseif ($elem instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
                         $this->collectBindingNames($elem->left, $names);
                     } else {
                         $this->collectBindingNames($elem, $names);
                     }
                 }
             }
-        } elseif ($pattern instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+        } elseif ($pattern instanceof \Phasis\Ast\Pattern\ObjectPattern) {
             foreach ($pattern->properties as $prop) {
-                if ($prop instanceof \PhpJs\Ast\Pattern\RestElement) {
+                if ($prop instanceof \Phasis\Ast\Pattern\RestElement) {
                     $this->collectBindingNames($prop->argument, $names);
-                } elseif ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                } elseif ($prop instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                     $this->collectBindingNames($prop->value, $names);
                 }
             }
-        } elseif ($pattern instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+        } elseif ($pattern instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
             $this->collectBindingNames($pattern->left, $names);
         }
     }
@@ -14088,7 +14088,7 @@ class Interpreter
                 // Per spec §12.3.5.3 step 5, RequireObjectCoercible(baseValue) throws TypeError
                 // if baseValue is null/undefined. Use JsNull as a sentinel so that the TypeError
                 // is thrown at PutValue/GetValue time (after the RHS is evaluated), not here.
-                $refBase = $superBase ?? \PhpJs\Value\JsNull::instance();
+                $refBase = $superBase ?? \Phasis\Value\JsNull::instance();
                 // The actual `this` is the receiver for [[Set]] and getter invocations.
                 // Per spec, if this is uninitialized (derived constructor before super()),
                 // GetThisBinding() throws ReferenceError.
@@ -14255,7 +14255,7 @@ class Interpreter
     private function isWithUnscopable(JsObject $withObj, string $name): bool
     {
         $unscopables = $withObj->getBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::unscopables()
+            \Phasis\BuiltIn\SymbolConstructor::unscopables()
         );
         if ($unscopables instanceof JsObject) {
             $value = $unscopables->get($name);
@@ -14427,7 +14427,7 @@ class Interpreter
         if ($target instanceof ObjectPattern || $target instanceof ObjectExpression) {
             // Object destructuring calls ToObject — throws TypeError on null/undefined.
             if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot destructure property of " . TypeConversion::toString($value),
                 );
             }
@@ -14543,7 +14543,7 @@ class Interpreter
                 : ($value instanceof JsBoolean ? 'boolean'
                 : ($value instanceof JsSymbol ? 'symbol'
                 : TypeConversion::toString($value)));
-            throw new \PhpJs\Exceptions\TypeError($typeName . ' is not iterable');
+            throw new \Phasis\Exceptions\TypeError($typeName . ' is not iterable');
         }
         // Per GetIteratorFromMethod, nextMethod is retrieved but not required
         // to be callable here. The "next is not a function" TypeError surfaces
@@ -14561,7 +14561,7 @@ class Interpreter
         if ($done) {
             return JsUndefined::instance();
         }
-        if ($nextMethod instanceof \PhpJs\Value\JsProxy && $nextMethod->isCallable()) {
+        if ($nextMethod instanceof \Phasis\Value\JsProxy && $nextMethod->isCallable()) {
             try {
                 $result = $nextMethod->apply($iterator, []);
             } catch (\Throwable $e) {
@@ -14579,11 +14579,11 @@ class Interpreter
             }
         } else {
             $done = true;
-            throw new \PhpJs\Exceptions\TypeError('Iterator result next is not a function');
+            throw new \Phasis\Exceptions\TypeError('Iterator result next is not a function');
         }
         if (!$result instanceof JsObject) {
             $done = true;
-            throw new \PhpJs\Exceptions\TypeError('Iterator result is not an object');
+            throw new \Phasis\Exceptions\TypeError('Iterator result is not an object');
         }
         if (TypeConversion::toBoolean($result->get('done'))) {
             $done = true;
@@ -14621,7 +14621,7 @@ class Interpreter
         // spec 7.4.6 step 7. GeneratorReturnSignal corresponds to a "return"
         // completion, not a throw, so innerResult's errors still surface.
         $completionIsThrow = $completion !== null
-            && !($completion instanceof \PhpJs\Value\GeneratorReturnSignal);
+            && !($completion instanceof \Phasis\Value\GeneratorReturnSignal);
 
         // Per spec step 1: innerResult = Completion(GetMethod(iterator, "return")).
         // A throwing `return` accessor must be captured as innerException so
@@ -14748,7 +14748,7 @@ class Interpreter
         // Use display() rather than ToString so that throwing a Symbol or
         // other non-stringifiable primitive does not raise a secondary
         // TypeError that replaces the original throw value.
-        throw new \PhpJs\Exceptions\JsThrowable($value);
+        throw new \Phasis\Exceptions\JsThrowable($value);
     }
 
     public function getCallStack(): CallStack
@@ -14804,7 +14804,7 @@ class Interpreter
         $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
-            \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
+            \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
         );
         $result = $this->callFunction($callee, $newObj, $args);
         if ($result instanceof JsObject) {
@@ -14841,16 +14841,16 @@ class Interpreter
         for ($fi = 0; $fi < strlen($flags); $fi++) {
             $ch = $flags[$fi];
             if (strpos($validFlags, $ch) === false) {
-                throw new \PhpJs\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
+                throw new \Phasis\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
             }
             if (isset($seenFlags[$ch])) {
-                throw new \PhpJs\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
+                throw new \Phasis\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
             }
             $seenFlags[$ch] = true;
         }
         // 'u' and 'v' are mutually exclusive per spec.
         if (str_contains($flags, 'u') && str_contains($flags, 'v')) {
-            throw new \PhpJs\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
+            throw new \Phasis\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
         }
 
         $isUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
@@ -14864,8 +14864,8 @@ class Interpreter
         // RegExp(/.../, "u") rechecks identity-escape and bracket rules
         // against the new flag set.
         try {
-            \PhpJs\Parser\Parser::validateRegExpAtRuntime($pattern, $flags);
-        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            \Phasis\Parser\Parser::validateRegExpAtRuntime($pattern, $flags);
+        } catch (\Phasis\Exceptions\SyntaxError $e) {
             throw $e;
         }
 
@@ -14955,7 +14955,7 @@ class Interpreter
         //   - within the same alternative → SyntaxError per spec.
         //   - in separate alternatives → allowed; enable PCRE's J modifier.
         if (self::hasDuplicateNamedGroupsInSameAlternative($pattern)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "Invalid regular expression: /{$pattern}/: Duplicate capture group name"
             );
         }
@@ -14986,14 +14986,14 @@ class Interpreter
             $customParseOk = false;
             if ($customNeeded) {
                 try {
-                    (new \PhpJs\Regex\Parser($pattern, $flags))->parse();
+                    (new \Phasis\Regex\Parser($pattern, $flags))->parse();
                     $customParseOk = true;
                 } catch (\Throwable) {
                     $customParseOk = false;
                 }
             }
             if (!$customParseOk) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg(),
                 );
             }
@@ -15051,11 +15051,11 @@ class Interpreter
         // exec() routes through the in-engine matcher in those cases.
         if (self::patternNeedsCustomMatcher($pattern, $flags)) {
             try {
-                $regexAst = (new \PhpJs\Regex\Parser($pattern, $flags))->parse();
+                $regexAst = (new \Phasis\Regex\Parser($pattern, $flags))->parse();
                 $obj->defineOwnProperty(
                     '[[CustomRegexAst]]',
                     PropertyDescriptor::data(
-                        new \PhpJs\Value\JsHostValue($regexAst),
+                        new \Phasis\Value\JsHostValue($regexAst),
                         false,
                         false,
                         false,
@@ -15492,7 +15492,7 @@ class Interpreter
                             // early-error SyntaxError.
                             if (self::isVStringBinaryProperty($propExpr)) {
                                 if (!$isVFlag || $next === 'P' || $inCharClass) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         'Invalid regular expression: '
                                             . 'property of strings only allowed in /v outside character classes'
                                     );
@@ -15500,7 +15500,7 @@ class Interpreter
                             }
                             $pcreProperty = self::mapEsPropertyToPcre($propExpr, $next === 'P');
                             if ($pcreProperty === null) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     'Invalid regular expression: Invalid property expression'
                                 );
                             }
@@ -16425,7 +16425,7 @@ class Interpreter
     private static function bundleKnowsProperty(string $name, ?string $value): bool
     {
         $key = $value === null ? $name : $name . '=' . $value;
-        return array_key_exists($key, \PhpJs\Regex\Unicode16Tables::PROPERTIES);
+        return array_key_exists($key, \Phasis\Regex\Unicode16Tables::PROPERTIES);
     }
 
     /**
@@ -16797,7 +16797,7 @@ class Interpreter
                 if ($nextAtom['type'] === 'dash' && $prev['type'] === 'lit') {
                     $left = self::singleCharCodepoint($prev['text']);
                     if ($left !== null && $left > 0x2D) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Invalid regular expression: Range out of order in character class',
                         );
                     }
@@ -16814,7 +16814,7 @@ class Interpreter
                 $left = self::singleCharCodepoint($prev['text']);
                 $right = self::singleCharCodepoint($nextAtom['text']);
                 if ($left !== null && $right !== null && $left > $right) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Invalid regular expression: Range out of order in character class',
                     );
                 }
@@ -17800,7 +17800,7 @@ class Interpreter
                             } else {
                                 // \p, \P, \q without `{...}` are invalid in /u.
                                 if (in_array($next, ['p', 'P', 'q'], true)) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: \\{$next} must be followed by {...} in unicode mode",
                                     );
                                 }
@@ -17811,7 +17811,7 @@ class Interpreter
                                     (($next >= 'A' && $next <= 'Z') || ($next >= 'a' && $next <= 'z'))
                                     && !in_array($next, ['b', 'c', 'd', 'D', 'f', 'n', 'r', 's', 'S', 't', 'u', 'v', 'w', 'W', 'x'], true)
                                 ) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: \\{$next} is not a valid identity escape in unicode mode",
                                     );
                                 }
@@ -17826,7 +17826,7 @@ class Interpreter
                 // quantifier. A valid quantifier starts with { and contains digits.
                 if ($pattern[$i] === '{') {
                     if (!$this->isValidQuantifierAt($pattern, $i, $len)) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Invalid regular expression: lone { is not allowed in unicode mode',
                         );
                     }
@@ -17861,7 +17861,7 @@ class Interpreter
                 }
                 $num = (int) $numStr;
                 if ($num > $groupCount) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /\\{$numStr}/ is not a valid backreference in unicode mode",
                     );
                 }
@@ -17869,7 +17869,7 @@ class Interpreter
             } elseif ($next === '0') {
                 // \0 followed by another digit is an octal escape, forbidden in /u mode.
                 if ($i + 2 < $len && $pattern[$i + 2] >= '0' && $pattern[$i + 2] <= '9') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Invalid regular expression: octal escape sequences are not allowed in unicode mode',
                     );
                 }
@@ -17888,7 +17888,7 @@ class Interpreter
                         $i++;
                     }
                 } else {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: \\{$next} must be followed by {...} in unicode mode",
                     );
                 }
@@ -17915,7 +17915,7 @@ class Interpreter
                     (($next >= 'A' && $next <= 'Z') || ($next >= 'a' && $next <= 'z'))
                     && !in_array($next, ['b', 'B', 'c', 'd', 'D', 'f', 'k', 'n', 'p', 'P', 'r', 's', 'S', 't', 'u', 'v', 'w', 'W', 'x'], true)
                 ) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: \\{$next} is not a valid identity escape in unicode mode",
                     );
                 }
@@ -17940,14 +17940,14 @@ class Interpreter
             // In character classes in /u mode, \0 is OK only if not followed by another digit.
             if ($next === '0') {
                 if ($pos + 1 < $len && $pattern[$pos + 1] >= '0' && $pattern[$pos + 1] <= '9') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Invalid regular expression: octal escape sequences are not allowed in unicode mode',
                     );
                 }
                 return; // \0 NUL is fine
             }
             // \1-\9 inside character class in /u mode: always invalid.
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid regular expression: decimal escape sequences are not allowed'
                 . ' in unicode mode character classes',
             );
@@ -17961,13 +17961,13 @@ class Interpreter
     {
         // $cPos points to 'c' in the pattern. Next char must be a letter.
         if ($cPos + 1 >= $len) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid regular expression: \\c at end of pattern in unicode mode',
             );
         }
         $controlChar = $pattern[$cPos + 1];
         if (!(($controlChar >= 'A' && $controlChar <= 'Z') || ($controlChar >= 'a' && $controlChar <= 'z'))) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid regular expression: \\c must be followed by a letter in unicode mode',
             );
         }
@@ -18484,7 +18484,7 @@ class Interpreter
     private static function bigStrDivModFull(string $a, string $b): array
     {
         if ($b === '0') {
-            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+            throw new \Phasis\Exceptions\RangeError('Division by zero');
         }
         if (self::bigStrCompUnsigned($a, $b) < 0) {
             return ['0', $a];
@@ -18639,7 +18639,7 @@ class Interpreter
     private static function bigStrBcDiv(string $a, string $b): string
     {
         if ($b === '0') {
-            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+            throw new \Phasis\Exceptions\RangeError('Division by zero');
         }
         $aNeg = isset($a[0]) && $a[0] === '-';
         $bNeg = isset($b[0]) && $b[0] === '-';
@@ -18659,7 +18659,7 @@ class Interpreter
     private static function bigStrBcMod(string $a, string $b): string
     {
         if ($b === '0') {
-            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+            throw new \Phasis\Exceptions\RangeError('Division by zero');
         }
         $aNeg = isset($a[0]) && $a[0] === '-';
         $absA = ltrim($a, '-');
@@ -18706,7 +18706,7 @@ class Interpreter
             return $result;
         }
         // Very large exponent: impractical, throw range error.
-        throw new \PhpJs\Exceptions\RangeError('BigInt exponent too large');
+        throw new \Phasis\Exceptions\RangeError('BigInt exponent too large');
     }
 
     /**
@@ -19875,7 +19875,7 @@ class Interpreter
                     }
                     if (!in_array($c, ['i', 'm', 's'], true)) {
                         // Invalid character in modifier group.
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid modifier flag"
                         );
                     }
@@ -19887,30 +19887,30 @@ class Interpreter
                     $j++;
                 }
                 if (!$hasColon) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Modifier group requires colon"
                     );
                 }
                 if ($add === '' && $remove === '') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Modifier group has no flags"
                     );
                 }
                 // Repeated flag on either side → SyntaxError.
                 if (strlen(count_chars($add, 3)) !== strlen($add)) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Repeated flag in modifier"
                     );
                 }
                 if (strlen(count_chars($remove, 3)) !== strlen($remove)) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Repeated flag in modifier"
                     );
                 }
                 // Overlap between add and remove → SyntaxError.
                 for ($k = 0; $k < strlen($add); $k++) {
                     if (str_contains($remove, $add[$k])) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Flag in both add and remove modifiers"
                         );
                     }
@@ -20568,7 +20568,7 @@ class Interpreter
                     $j++;
                     continue;
                 }
-                if (\PhpJs\Regex\FoldTable::participates($cp)) {
+                if (\Phasis\Regex\FoldTable::participates($cp)) {
                     $hasUnicode16FoldCodepoint = true;
                     break;
                 }
@@ -20599,7 +20599,7 @@ class Interpreter
      */
     private static function isUnicode16FoldCodepoint(int $cp): bool
     {
-        return \PhpJs\Regex\FoldTable::participates($cp);
+        return \Phasis\Regex\FoldTable::participates($cp);
     }
 
     /**

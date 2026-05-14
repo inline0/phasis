@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
 /**
  * Thrown by the compiler when it encounters an AST shape it does

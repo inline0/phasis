@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Regex\Ast;
+namespace Phasis\Regex\Ast;
 
 /**
  * A capturing or non-capturing group. Capturing groups have an index

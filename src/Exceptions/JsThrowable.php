@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Exceptions;
+namespace Phasis\Exceptions;
 
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsValue;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsValue;
 
 /**
  * A PHP exception that wraps a JS throw value.

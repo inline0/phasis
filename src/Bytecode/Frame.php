@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
-use PhpJs\Runtime\Environment;
-use PhpJs\Value\JsValue;
+use Phasis\Runtime\Environment;
+use Phasis\Value\JsValue;
 
 /**
  * Per-call execution state for the bytecode VM. The locals array is

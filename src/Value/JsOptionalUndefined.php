@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * Sentinel value returned by optional chaining (?.) when the base is null/undefined.

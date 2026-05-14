@@ -6,7 +6,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
 /**
  * Unicode 16.0.0 case-mapping data extracted from the SpiderMonkey-

@@ -2,28 +2,28 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\RangeError;
-use PhpJs\Exceptions\SyntaxError;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsArrayBuffer;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsDataView;
-use PhpJs\Value\JsProxy;
-use PhpJs\Value\JsSharedArrayBuffer;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsTypedArray;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Exceptions\RangeError;
+use Phasis\Exceptions\SyntaxError;
+use Phasis\Exceptions\TypeError;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsArrayBuffer;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsDataView;
+use Phasis\Value\JsProxy;
+use Phasis\Value\JsSharedArrayBuffer;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsTypedArray;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * Installs ArrayBuffer, DataView, and all TypedArray constructors.
@@ -877,7 +877,7 @@ class TypedArrayConstructor
             'setFloat32' => [2, false, null],
             'setFloat64' => [2, false, null],
             'getBigInt64' => [1, true, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new \PhpJs\Value\JsBigInt((string) $dv->getBigInt64($offset, $le));
+                return new \Phasis\Value\JsBigInt((string) $dv->getBigInt64($offset, $le));
             }],
             'getBigUint64' => [1, true, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 $raw = $dv->getBigUint64($offset, $le);
@@ -886,7 +886,7 @@ class TypedArrayConstructor
                 } else {
                     $str = (string) $raw;
                 }
-                return new \PhpJs\Value\JsBigInt($str);
+                return new \Phasis\Value\JsBigInt($str);
             }],
             'setBigInt64' => [2, true, null],
             'setBigUint64' => [2, true, null],
@@ -962,7 +962,7 @@ class TypedArrayConstructor
     /**
      * Convert a JsBigInt value to a raw PHP int for DataView setBigInt64/setBigUint64.
      */
-    private static function bigIntToRawInt(\PhpJs\Value\JsBigInt $bigInt): int
+    private static function bigIntToRawInt(\Phasis\Value\JsBigInt $bigInt): int
     {
         $mod = '18446744073709551616'; // 2^64
         $half = '9223372036854775808'; // 2^63
@@ -1048,7 +1048,7 @@ class TypedArrayConstructor
                 // toLocaleString on the active realm's Number.prototype
                 // wins even when the receiver is a cross-realm typed
                 // array (per staging/sm/TypedArray/toLocaleString).
-                $currentRealm = \PhpJs\Engine::getCurrentRealm();
+                $currentRealm = \Phasis\Engine::getCurrentRealm();
                 $realmNumberProto = null;
                 $realmStringProto = null;
                 $realmBoolProto = null;
@@ -1098,19 +1098,19 @@ class TypedArrayConstructor
                             $boxed = new JsObject($realmNumberProto);
                             $boxed->defineOwnProperty(
                                 '[[PrimitiveValue]]',
-                                \PhpJs\Object\PropertyDescriptor::data($el, false, false, false),
+                                \Phasis\Object\PropertyDescriptor::data($el, false, false, false),
                             );
                         } elseif ($el instanceof JsString && $realmStringProto !== null) {
                             $boxed = new JsObject($realmStringProto);
                             $boxed->defineOwnProperty(
                                 '[[PrimitiveValue]]',
-                                \PhpJs\Object\PropertyDescriptor::data($el, false, false, false),
+                                \Phasis\Object\PropertyDescriptor::data($el, false, false, false),
                             );
                         } elseif ($el instanceof JsBoolean && $realmBoolProto !== null) {
                             $boxed = new JsObject($realmBoolProto);
                             $boxed->defineOwnProperty(
                                 '[[PrimitiveValue]]',
-                                \PhpJs\Object\PropertyDescriptor::data($el, false, false, false),
+                                \Phasis\Object\PropertyDescriptor::data($el, false, false, false),
                             );
                         } else {
                             $boxed = TypeConversion::toObject($el);
@@ -1321,7 +1321,7 @@ class TypedArrayConstructor
 
                 // ToObject throws on null/undefined per spec; the source must
                 // be coerceable before any iteration begins.
-                if ($source instanceof JsUndefined || $source instanceof \PhpJs\Value\JsNull) {
+                if ($source instanceof JsUndefined || $source instanceof \Phasis\Value\JsNull) {
                     throw new TypeError(
                         'TypedArray.from: source is null or undefined'
                     );
@@ -1333,11 +1333,11 @@ class TypedArrayConstructor
                 $iterMethod = null;
                 if ($source instanceof JsObject) {
                     $iterMethod = $source->getBySymbol($iterSym);
-                } elseif ($source instanceof \PhpJs\Value\JsString) {
-                    $strProto = \PhpJs\Value\JsString::getStringPrototype();
+                } elseif ($source instanceof \Phasis\Value\JsString) {
+                    $strProto = \Phasis\Value\JsString::getStringPrototype();
                     $iterMethod = $strProto !== null ? $strProto->getBySymbol($iterSym) : null;
                 }
-                if ($iterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                if ($iterMethod instanceof \Phasis\Value\JsHTMLDDA) {
                     throw new TypeError('TypedArray.from: iterator is not an object');
                 }
                 // GetMethod: null/undefined → undefined (skip iterator path);
@@ -1346,7 +1346,7 @@ class TypedArrayConstructor
                     $iterMethod !== null
                     && !$iterMethod instanceof JsFunction
                     && !$iterMethod instanceof JsUndefined
-                    && !$iterMethod instanceof \PhpJs\Value\JsNull
+                    && !$iterMethod instanceof \Phasis\Value\JsNull
                 ) {
                     throw new TypeError(
                         'TypedArray.from: @@iterator is not callable'
@@ -1386,9 +1386,9 @@ class TypedArrayConstructor
                     $len = $source->getLength();
                 } elseif ($source instanceof JsObject) {
                     $len = (int) TypeConversion::toNumber($source->get('length'));
-                } elseif ($source instanceof \PhpJs\Value\JsString) {
+                } elseif ($source instanceof \Phasis\Value\JsString) {
                     // ArrayLike fallback: UTF-16 code unit count.
-                    $u16Source = \PhpJs\Value\JsString::utf8ToUtf16LE($source->value);
+                    $u16Source = \Phasis\Value\JsString::utf8ToUtf16LE($source->value);
                     $len = (int) (strlen($u16Source) / 2);
                 } else {
                     // Number/Boolean/Symbol after ToObject have no length.
@@ -1411,10 +1411,10 @@ class TypedArrayConstructor
                 for ($k = 0; $k < $len; $k++) {
                     if ($source instanceof JsTypedArray) {
                         $kValue = $source->getIndex($k);
-                    } elseif ($source instanceof \PhpJs\Value\JsString) {
+                    } elseif ($source instanceof \Phasis\Value\JsString) {
                         $cu = ord($u16Source[$k * 2]) | (ord($u16Source[$k * 2 + 1]) << 8);
-                        $kValue = new \PhpJs\Value\JsString(
-                            \PhpJs\Value\JsString::utf16CodeUnitToUtf8($cu),
+                        $kValue = new \Phasis\Value\JsString(
+                            \Phasis\Value\JsString::utf16CodeUnitToUtf8($cu),
                         );
                     } elseif ($source instanceof JsObject) {
                         $kValue = $source->get((string) $k);
@@ -2494,7 +2494,7 @@ class TypedArrayConstructor
                     // Per spec: if one is BigInt and the other is not, throw TypeError.
                     $isBigSrc = $source->isBigIntArray();
                     if ($isBigSrc !== $isBigTarget) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             'Cannot mix BigInt and other types, use explicit conversions'
                         );
                     }
@@ -2518,7 +2518,7 @@ class TypedArrayConstructor
                     }
                 } elseif ($source instanceof JsUndefined || $source instanceof JsNull) {
                     // Per spec: ToObject(source) throws TypeError for undefined/null.
-                    throw new \PhpJs\Exceptions\TypeError('Cannot convert undefined or null to object');
+                    throw new \Phasis\Exceptions\TypeError('Cannot convert undefined or null to object');
                 } else {
                     // Array-like or primitive source path.
                     // Per spec: src = ToObject(source), srcLength = LengthOfArrayLike(src).
@@ -2774,7 +2774,7 @@ class TypedArrayConstructor
                 $value = $args[0] ?? JsUndefined::instance();
 
                 if ($this_->isBigIntArray()) {
-                    if ($value instanceof \PhpJs\Value\JsBigInt) {
+                    if ($value instanceof \Phasis\Value\JsBigInt) {
                         $coerced = $value;
                     } else {
                         $coerced = TypeConversion::toBigInt($value);
@@ -3114,7 +3114,7 @@ class TypedArrayConstructor
                             return JsNumber::of((float) $i);
                         }
                     }
-                    if ($el instanceof \PhpJs\Value\JsBigInt && $search instanceof \PhpJs\Value\JsBigInt) {
+                    if ($el instanceof \Phasis\Value\JsBigInt && $search instanceof \Phasis\Value\JsBigInt) {
                         if ($el->value === $search->value) {
                             return JsNumber::of((float) $i);
                         }
@@ -3159,7 +3159,7 @@ class TypedArrayConstructor
                         continue;
                     }
                     $element = $this_->getIndex($k);
-                    if (\PhpJs\Spec\AbstractOperations::sameValueZero($search, $element)) {
+                    if (\Phasis\Spec\AbstractOperations::sameValueZero($search, $element)) {
                         return new JsBoolean(true);
                     }
                 }
@@ -3241,7 +3241,7 @@ class TypedArrayConstructor
                 $this_->validateNotDetached();
                 $arg0 = $args[0] ?? JsUndefined::instance();
                 $isCallable = $arg0 instanceof JsFunction
-                    || ($arg0 instanceof \PhpJs\Value\JsProxy && $arg0->isCallable());
+                    || ($arg0 instanceof \Phasis\Value\JsProxy && $arg0->isCallable());
                 if (!$arg0 instanceof JsUndefined && !$isCallable) {
                     throw new TypeError('The comparison function must be either a function or undefined');
                 }
@@ -3266,8 +3266,8 @@ class TypedArrayConstructor
                     }
                     // Default numeric sort for typed arrays per spec.
                     // BigInt comparisons: compare as integers.
-                    if ($a instanceof \PhpJs\Value\JsBigInt && $b instanceof \PhpJs\Value\JsBigInt) {
-                        return \PhpJs\Spec\AbstractOperations::bigStrCompPublic($a->value, $b->value);
+                    if ($a instanceof \Phasis\Value\JsBigInt && $b instanceof \Phasis\Value\JsBigInt) {
+                        return \Phasis\Spec\AbstractOperations::bigStrCompPublic($a->value, $b->value);
                     }
                     $an = $a->toNumber();
                     $bn = $b->toNumber();
@@ -3465,7 +3465,7 @@ class TypedArrayConstructor
                 $this_->validateNotDetached();
                 $arg0 = $args[0] ?? JsUndefined::instance();
                 $isCallable = $arg0 instanceof JsFunction
-                    || ($arg0 instanceof \PhpJs\Value\JsProxy && $arg0->isCallable());
+                    || ($arg0 instanceof \Phasis\Value\JsProxy && $arg0->isCallable());
                 if (!$arg0 instanceof JsUndefined && !$isCallable) {
                     throw new TypeError(
                         'The comparison function must be either a function or undefined'
@@ -3485,10 +3485,10 @@ class TypedArrayConstructor
                     }
                     // Default numeric sort for typed arrays per spec.
                     if (
-                        $a instanceof \PhpJs\Value\JsBigInt
-                        && $b instanceof \PhpJs\Value\JsBigInt
+                        $a instanceof \Phasis\Value\JsBigInt
+                        && $b instanceof \Phasis\Value\JsBigInt
                     ) {
-                        return \PhpJs\Spec\AbstractOperations::bigStrCompPublic(
+                        return \Phasis\Spec\AbstractOperations::bigStrCompPublic(
                             $a->value,
                             $b->value,
                         );

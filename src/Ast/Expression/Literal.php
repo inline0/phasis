@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast\Expression;
+namespace Phasis\Ast\Expression;
 
-use PhpJs\Ast\Node;
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Ast\Node;
+use Phasis\Lexer\SourceLocation;
 
 class Literal extends Node
 {
@@ -16,7 +16,7 @@ class Literal extends Node
      * a fresh JsValue per visit. Values are read-only — the cached
      * JsValue is the same instance every consumer receives.
      */
-    public ?\PhpJs\Value\JsValue $cached = null;
+    public ?\Phasis\Value\JsValue $cached = null;
 
     public function __construct(
         SourceLocation $location,

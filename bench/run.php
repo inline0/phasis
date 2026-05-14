@@ -7,7 +7,7 @@ set_time_limit(0);
 $file = $argv[1] ?? __DIR__ . '/microbench.js';
 $src = file_get_contents($file);
 
-$engine = new \PhpJs\Engine();
+$engine = new \Phasis\Engine();
 $engine->setLimit('maxLoopIterations', 10_000_000);
 $engine->setLimit('maxCallDepth', 1000);
 

@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
 
 class ErrorConstructor
 {
@@ -41,7 +41,7 @@ class ErrorConstructor
                     'toString',
                     function (JsValue $this_): JsValue {
                         if (!$this_ instanceof JsObject) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 'Error.prototype.toString requires that \'this\' be an Object',
                             );
                         }
@@ -98,11 +98,11 @@ class ErrorConstructor
                 $isErrorFn = JsFunction::fromCallable('isError', function (JsValue $this_, array $args): JsValue {
                     $arg = $args[0] ?? JsUndefined::instance();
                     if (!$arg instanceof JsObject) {
-                        return new \PhpJs\Value\JsBoolean(false);
+                        return new \Phasis\Value\JsBoolean(false);
                     }
                     // Per spec, check for [[ErrorData]] internal slot.
                     // We mark real error objects with this slot during construction.
-                    return new \PhpJs\Value\JsBoolean(
+                    return new \Phasis\Value\JsBoolean(
                         $arg->hasOwnProperty('[[ErrorData]]')
                     );
                 }, 1);
@@ -133,7 +133,7 @@ class ErrorConstructor
                 'toString',
                 function (JsValue $this_): JsValue {
                     if (!$this_ instanceof JsObject) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             'Error.prototype.toString requires that \'this\' be an Object',
                         );
                     }
@@ -190,8 +190,8 @@ class ErrorConstructor
     private static function buildStackString(string $name, ?string $message): string
     {
         $header = "{$name}: " . ($message ?? '');
-        $interp = \PhpJs\Engine::getCurrentInterpreter();
-        $sourceUrl = \PhpJs\Engine::getCurrentSourceURL();
+        $interp = \Phasis\Engine::getCurrentInterpreter();
+        $sourceUrl = \Phasis\Engine::getCurrentSourceURL();
         $frames = $interp === null ? [] : $interp->getCallStack()->getFrames();
 
         $lines = [$header];
@@ -305,13 +305,13 @@ class ErrorConstructor
     private static function iterableToList(JsValue $items): array
     {
         if ($items instanceof JsUndefined || $items instanceof JsNull) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'undefined is not iterable (cannot read property Symbol(Symbol.iterator))'
             );
         }
 
         if (!$items instanceof JsObject) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 TypeConversion::toString($items) . ' is not iterable'
             );
         }
@@ -320,12 +320,12 @@ class ErrorConstructor
         $iterSym = SymbolConstructor::iterator();
         $iteratorMethod = $items->getBySymbol($iterSym);
         if ($iteratorMethod instanceof JsUndefined || $iteratorMethod instanceof JsNull) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'object is not iterable (cannot read property Symbol(Symbol.iterator))'
             );
         }
         if (!$iteratorMethod instanceof JsFunction) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Result of the Symbol.iterator method is not an object'
             );
         }
@@ -333,7 +333,7 @@ class ErrorConstructor
         // Call the iterator method.
         $iterator = $iteratorMethod->call($items, []);
         if (!$iterator instanceof JsObject) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Result of the Symbol.iterator method is not an object'
             );
         }
@@ -341,7 +341,7 @@ class ErrorConstructor
         // Get the next method.
         $nextMethod = $iterator->get('next');
         if (!$nextMethod instanceof JsFunction) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'iterator.next is not a function'
             );
         }
@@ -350,7 +350,7 @@ class ErrorConstructor
         while (true) {
             $result = $nextMethod->call($iterator, []);
             if (!$result instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Iterator result is not an object'
                 );
             }
@@ -380,7 +380,7 @@ class ErrorConstructor
                 $this_->defineOwnProperty(
                     '[[ErrorData]]',
                     PropertyDescriptor::data(
-                        \PhpJs\Value\JsUndefined::instance(),
+                        \Phasis\Value\JsUndefined::instance(),
                         false,
                         false,
                         false,
@@ -417,7 +417,7 @@ class ErrorConstructor
             $obj->defineOwnProperty(
                 '[[ErrorData]]',
                 PropertyDescriptor::data(
-                    \PhpJs\Value\JsUndefined::instance(),
+                    \Phasis\Value\JsUndefined::instance(),
                     false,
                     false,
                     false,

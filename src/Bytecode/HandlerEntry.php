@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
 /**
  * One row of the per-function exception-handler table.

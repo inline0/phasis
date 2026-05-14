@@ -2,54 +2,54 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
-use PhpJs\Ast\Expression\ArrayExpression;
-use PhpJs\Ast\Expression\AssignmentExpression;
-use PhpJs\Ast\Expression\BinaryExpression;
-use PhpJs\Ast\Expression\CallExpression;
-use PhpJs\Ast\Expression\ConditionalExpression;
-use PhpJs\Ast\Expression\Identifier;
-use PhpJs\Ast\Expression\Literal;
-use PhpJs\Ast\Expression\MemberExpression;
-use PhpJs\Ast\Expression\NewExpression;
-use PhpJs\Ast\Expression\ObjectExpression;
-use PhpJs\Ast\Expression\PrivateIdentifier;
-use PhpJs\Ast\Expression\Property;
-use PhpJs\Ast\Expression\SpreadElement;
-use PhpJs\Ast\Expression\TemplateElement;
-use PhpJs\Ast\Expression\TemplateLiteral;
-use PhpJs\Ast\Expression\ThisExpression;
-use PhpJs\Ast\Node;
-use PhpJs\Ast\Declaration\FunctionDeclaration;
-use PhpJs\Ast\Declaration\VariableDeclaration;
-use PhpJs\Ast\Expression\LogicalExpression;
-use PhpJs\Ast\Expression\SequenceExpression;
-use PhpJs\Ast\Expression\UnaryExpression;
-use PhpJs\Ast\Expression\UpdateExpression;
-use PhpJs\Ast\Pattern\ArrayPattern;
-use PhpJs\Ast\Pattern\AssignmentPattern;
-use PhpJs\Ast\Pattern\ObjectPattern;
-use PhpJs\Ast\Pattern\RestElement;
-use PhpJs\Ast\Statement\BlockStatement;
-use PhpJs\Ast\Statement\BreakStatement;
-use PhpJs\Ast\Statement\ContinueStatement;
-use PhpJs\Ast\Statement\DoWhileStatement;
-use PhpJs\Ast\Statement\EmptyStatement;
-use PhpJs\Ast\Statement\ExpressionStatement;
-use PhpJs\Ast\Statement\ForStatement;
-use PhpJs\Ast\Statement\IfStatement;
-use PhpJs\Ast\Statement\ReturnStatement;
-use PhpJs\Ast\Statement\ThrowStatement;
-use PhpJs\Ast\Statement\WhileStatement;
-use PhpJs\Value\JsBigInt;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Ast\Expression\ArrayExpression;
+use Phasis\Ast\Expression\AssignmentExpression;
+use Phasis\Ast\Expression\BinaryExpression;
+use Phasis\Ast\Expression\CallExpression;
+use Phasis\Ast\Expression\ConditionalExpression;
+use Phasis\Ast\Expression\Identifier;
+use Phasis\Ast\Expression\Literal;
+use Phasis\Ast\Expression\MemberExpression;
+use Phasis\Ast\Expression\NewExpression;
+use Phasis\Ast\Expression\ObjectExpression;
+use Phasis\Ast\Expression\PrivateIdentifier;
+use Phasis\Ast\Expression\Property;
+use Phasis\Ast\Expression\SpreadElement;
+use Phasis\Ast\Expression\TemplateElement;
+use Phasis\Ast\Expression\TemplateLiteral;
+use Phasis\Ast\Expression\ThisExpression;
+use Phasis\Ast\Node;
+use Phasis\Ast\Declaration\FunctionDeclaration;
+use Phasis\Ast\Declaration\VariableDeclaration;
+use Phasis\Ast\Expression\LogicalExpression;
+use Phasis\Ast\Expression\SequenceExpression;
+use Phasis\Ast\Expression\UnaryExpression;
+use Phasis\Ast\Expression\UpdateExpression;
+use Phasis\Ast\Pattern\ArrayPattern;
+use Phasis\Ast\Pattern\AssignmentPattern;
+use Phasis\Ast\Pattern\ObjectPattern;
+use Phasis\Ast\Pattern\RestElement;
+use Phasis\Ast\Statement\BlockStatement;
+use Phasis\Ast\Statement\BreakStatement;
+use Phasis\Ast\Statement\ContinueStatement;
+use Phasis\Ast\Statement\DoWhileStatement;
+use Phasis\Ast\Statement\EmptyStatement;
+use Phasis\Ast\Statement\ExpressionStatement;
+use Phasis\Ast\Statement\ForStatement;
+use Phasis\Ast\Statement\IfStatement;
+use Phasis\Ast\Statement\ReturnStatement;
+use Phasis\Ast\Statement\ThrowStatement;
+use Phasis\Ast\Statement\WhileStatement;
+use Phasis\Value\JsBigInt;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * AST → bytecode lowering. Phase 2 supports the minimal subset
@@ -84,7 +84,7 @@ final class Compiler
     /** @var list<int> */
     private array $paramSlots = [];
 
-    /** @var list<\PhpJs\Ast\Node> */
+    /** @var list<\Phasis\Ast\Node> */
     private array $nestedFns = [];
 
     /**
@@ -146,7 +146,7 @@ final class Compiler
      * compiles to bytecode without needing the compiler to model class
      * semantics directly.
      *
-     * @var list<\PhpJs\Ast\Node>
+     * @var list<\Phasis\Ast\Node>
      */
     private array $classNodes = [];
 
@@ -345,9 +345,9 @@ final class Compiler
      * destructuring, etc.). The caller is expected to fall back to the
      * tree-walker on bailout.
      *
-     * @param \PhpJs\Ast\Program $program
+     * @param \Phasis\Ast\Program $program
      */
-    public function compileProgram(\PhpJs\Ast\Program $program): CompiledFunction
+    public function compileProgram(\Phasis\Ast\Program $program): CompiledFunction
     {
         // Detect "use strict" prologue so compileAssignment can bail
         // for non-local identifier writes. The spec requires LHS
@@ -380,13 +380,13 @@ final class Compiler
                 }
             }
             if (
-                $stmt instanceof \PhpJs\Ast\Declaration\ImportDeclaration
-                || $stmt instanceof \PhpJs\Ast\Declaration\ExportDeclaration
-                || $stmt instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+                $stmt instanceof \Phasis\Ast\Declaration\ImportDeclaration
+                || $stmt instanceof \Phasis\Ast\Declaration\ExportDeclaration
+                || $stmt instanceof \Phasis\Ast\Declaration\ClassDeclaration
             ) {
                 throw new CompilerBailout('top-level module/class decl');
             }
-            if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
+            if ($stmt instanceof \Phasis\Ast\Statement\TryStatement) {
                 throw new CompilerBailout('top-level try statement');
             }
         }
@@ -619,11 +619,11 @@ final class Compiler
             $this->collectProgramVarLocals($stmt->body);
             return;
         }
-        if ($stmt instanceof \PhpJs\Ast\Statement\LabeledStatement) {
+        if ($stmt instanceof \Phasis\Ast\Statement\LabeledStatement) {
             $this->collectProgramVarLocals($stmt->body);
             return;
         }
-        if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($stmt instanceof \Phasis\Ast\Statement\TryStatement) {
             foreach ($stmt->block->body as $inner) {
                 $this->collectProgramVarLocals($inner);
             }
@@ -691,17 +691,17 @@ final class Compiler
             return false;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
             || $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             // Writes inside a nested function bind that function's
             // local env, not the program scope. Stop here.
             return false;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\AssignmentExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\AssignmentExpression) {
             if (self::isGlobalAliasMember($node->left)) {
                 return true;
             }
@@ -733,11 +733,11 @@ final class Compiler
      */
     private static function isGlobalAliasMember(Node $node): bool
     {
-        if (!($node instanceof \PhpJs\Ast\Expression\MemberExpression)) {
+        if (!($node instanceof \Phasis\Ast\Expression\MemberExpression)) {
             return false;
         }
         $obj = $node->object;
-        if ($obj instanceof \PhpJs\Ast\Expression\ThisExpression) {
+        if ($obj instanceof \Phasis\Ast\Expression\ThisExpression) {
             return true;
         }
         if ($obj instanceof Identifier && in_array($obj->name, ['globalThis', 'window', 'self', 'global'], true)) {
@@ -772,10 +772,10 @@ final class Compiler
             // safe for the common case.
             throw new CompilerBailout('uses new.target');
         }
-        if ($node instanceof \PhpJs\Ast\Statement\WithStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\WithStatement) {
             throw new CompilerBailout('with statement');
         }
-        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement) {
             // try / catch (Phase 1) or try / finally / try-catch-finally
             // (Phase 2). Phase 2's finally support requires that no
             // abrupt completion (return / break / continue) escapes the
@@ -794,7 +794,7 @@ final class Compiler
             if (
                 $node->handler !== null
                 && $node->handler->param !== null
-                && !($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier)
+                && !($node->handler->param instanceof \Phasis\Ast\Expression\Identifier)
             ) {
                 throw new CompilerBailout('destructuring catch param');
             }
@@ -810,8 +810,8 @@ final class Compiler
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\YieldExpression
-            || $node instanceof \PhpJs\Ast\Expression\AwaitExpression
+            $node instanceof \Phasis\Ast\Expression\YieldExpression
+            || $node instanceof \Phasis\Ast\Expression\AwaitExpression
         ) {
             throw new CompilerBailout('yield/await');
         }
@@ -823,7 +823,7 @@ final class Compiler
         // body that DOES reference arguments would resolve through a
         // stale or missing binding at runtime. Scan the arrow body
         // for those references and bail compilation if found.
-        if ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+        if ($node instanceof \Phasis\Ast\Expression\ArrowFunction) {
             // Arrows still need their body scanned for the outer
             // function's arguments / this / new.target usage (see
             // comment above) AND for an indirect/direct eval call
@@ -847,8 +847,8 @@ final class Compiler
         // would see stale globals. Recurse just enough to detect any
         // eval reference and bail compilation if found.
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
         ) {
             if (self::nodeReferencesEval($node)) {
                 throw new CompilerBailout('nested function references eval');
@@ -856,8 +856,8 @@ final class Compiler
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             return;
         }
@@ -934,9 +934,9 @@ final class Compiler
                 if ($decl->id instanceof ObjectPattern) {
                     foreach ($decl->id->properties as $prop) {
                         if (
-                            $prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty
+                            $prop instanceof \Phasis\Ast\Pattern\AssignmentProperty
                             && !$prop->computed
-                            && !($prop->value instanceof \PhpJs\Ast\Pattern\AssignmentPattern)
+                            && !($prop->value instanceof \Phasis\Ast\Pattern\AssignmentPattern)
                             && $prop->value instanceof Identifier
                         ) {
                             if ($isLexical && isset($this->localSlots[$prop->value->name])) {
@@ -993,11 +993,11 @@ final class Compiler
             $this->collectStatementLocals($stmt->body);
             return;
         }
-        if ($stmt instanceof \PhpJs\Ast\Statement\LabeledStatement) {
+        if ($stmt instanceof \Phasis\Ast\Statement\LabeledStatement) {
             $this->collectStatementLocals($stmt->body);
             return;
         }
-        if ($stmt instanceof \PhpJs\Ast\Declaration\ClassDeclaration) {
+        if ($stmt instanceof \Phasis\Ast\Declaration\ClassDeclaration) {
             // Class declarations create a let-style binding under the
             // class name. Allocate a slot just like a function decl;
             // the actual class object is built by MAKE_CLASS at run
@@ -1007,10 +1007,10 @@ final class Compiler
             }
             return;
         }
-        if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($stmt instanceof \Phasis\Ast\Statement\TryStatement) {
             $this->collectFunctionLocals($stmt->block->body);
             if ($stmt->handler !== null) {
-                if ($stmt->handler->param instanceof \PhpJs\Ast\Expression\Identifier) {
+                if ($stmt->handler->param instanceof \Phasis\Ast\Expression\Identifier) {
                     $catchName = $stmt->handler->param->name;
                     if (isset($this->localSlots[$catchName])) {
                         // catch (a) where `a` is already a local would
@@ -1097,11 +1097,11 @@ final class Compiler
         }
         // Stop at function/class boundaries — separate scope.
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
             || $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             return;
         }
@@ -1172,11 +1172,11 @@ final class Compiler
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
             || $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             // Closures: any reference to outer let/const we haven't
             // yet declared would race with slot init at call time.
@@ -1448,11 +1448,11 @@ final class Compiler
             $this->emit(Op::THROW);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement) {
             $this->compileTryCatch($node);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Declaration\ClassDeclaration) {
+        if ($node instanceof \Phasis\Ast\Declaration\ClassDeclaration) {
             // Classes that reference outer locals (e.g. `class C extends
             // OuterParam { ... }`) need env-based resolution for those
             // names. The VM-compiled body keeps locals in frame slots,
@@ -1499,7 +1499,7 @@ final class Compiler
      * cases bail to the tree-walker because the inlined-finally
      * approach would otherwise need to inline at every exit point.
      */
-    private function compileTryCatch(\PhpJs\Ast\Statement\TryStatement $node): void
+    private function compileTryCatch(\Phasis\Ast\Statement\TryStatement $node): void
     {
         $hasFinally = $node->finalizer !== null;
         $hasCatch = $node->handler !== null;
@@ -1517,7 +1517,7 @@ final class Compiler
             $jmpPastCatch = $this->emitJump(Op::JUMP);
             $catchPc = count($this->code);
             $exceptionSlot = -1;
-            if ($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier) {
+            if ($node->handler->param instanceof \Phasis\Ast\Expression\Identifier) {
                 $name = $node->handler->param->name;
                 $exceptionSlot = $this->localSlots[$name]
                     ?? $this->declareLocal($name);
@@ -1571,7 +1571,7 @@ final class Compiler
             // Handler1 stores the thrown value in the catch param
             // slot. Mirror it into rethrowSlot so a catch-body throw
             // can later observe its OWN exception, not the original.
-            if ($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier) {
+            if ($node->handler->param instanceof \Phasis\Ast\Expression\Identifier) {
                 $name = $node->handler->param->name;
                 $tryHandlerExceptionSlot = $this->localSlots[$name]
                     ?? $this->declareLocal($name);
@@ -1688,7 +1688,7 @@ final class Compiler
      * offset cell at +3 once the loop body is compiled. Returns -1
      * for any unsupported test shape.
      */
-    private function tryEmitFusedLoopTest(\PhpJs\Ast\Node $test): int
+    private function tryEmitFusedLoopTest(\Phasis\Ast\Node $test): int
     {
         if (!$test instanceof BinaryExpression) {
             return -1;
@@ -1871,7 +1871,7 @@ final class Compiler
                 $i = 0;
                 foreach ($decl->id->properties as $prop) {
                     $i++;
-                    if (!($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty)) {
+                    if (!($prop instanceof \Phasis\Ast\Pattern\AssignmentProperty)) {
                         throw new CompilerBailout('rest in pattern');
                     }
                     if ($prop->computed) {
@@ -1956,16 +1956,16 @@ final class Compiler
     private static function initNeedsNamedEvaluation(Node $init): bool
     {
         if (
-            $init instanceof \PhpJs\Ast\Expression\FunctionExpression
+            $init instanceof \Phasis\Ast\Expression\FunctionExpression
             && $init->name === null
         ) {
             return true;
         }
-        if ($init instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+        if ($init instanceof \Phasis\Ast\Expression\ArrowFunction) {
             return true;
         }
         if (
-            $init instanceof \PhpJs\Ast\Expression\ClassExpression
+            $init instanceof \Phasis\Ast\Expression\ClassExpression
             && $init->id === null
         ) {
             return true;
@@ -2046,13 +2046,13 @@ final class Compiler
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\ArrowFunction
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
         ) {
             $this->compileNestedFunction($node);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ClassExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\ClassExpression) {
             if ($this->capturesOuterLocal($node)) {
                 throw new CompilerBailout('class expression captures outer local');
             }
@@ -2111,12 +2111,12 @@ final class Compiler
      */
     private function compileNestedFunction(Node $node): void
     {
-        if ($node instanceof \PhpJs\Ast\Expression\FunctionExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\FunctionExpression) {
             if ($node->generator || $node->async) {
                 throw new CompilerBailout('nested generator/async fn');
             }
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+        if ($node instanceof \Phasis\Ast\Expression\ArrowFunction) {
             if ($node->async) {
                 throw new CompilerBailout('nested async arrow');
             }
@@ -2140,7 +2140,7 @@ final class Compiler
         // Collect names declared INSIDE the nested fn — those shadow
         // outer locals and don't constitute a capture.
         $shadow = [];
-        if ($node instanceof \PhpJs\Ast\Expression\FunctionExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\FunctionExpression) {
             $params = $node->params;
             $body = $node->body;
             if ($node->name !== null) {
@@ -2157,7 +2157,7 @@ final class Compiler
             if ($node->id !== null) {
                 $shadow[$node->id->name] = true;
             }
-        } elseif ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+        } elseif ($node instanceof \Phasis\Ast\Expression\ArrowFunction) {
             $params = $node->params;
             $body = $node->body;
         } else {
@@ -2213,7 +2213,7 @@ final class Compiler
         }
         if ($pattern instanceof ObjectPattern) {
             foreach ($pattern->properties as $prop) {
-                if ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                if ($prop instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                     $this->collectPatternBoundNames($prop->value, $out);
                 } elseif ($prop instanceof RestElement) {
                     $this->collectPatternBoundNames($prop->argument, $out);
@@ -2298,11 +2298,11 @@ final class Compiler
         // Don't recurse into deeper nested functions — they'll bail
         // independently when their compile attempt happens.
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
             || $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             // Even so, the inner-inner closure may reference names
             // from THIS scope — its compile will catch it. But for
@@ -2462,7 +2462,7 @@ final class Compiler
      * a single INC_LOCAL / DEC_LOCAL op. Returns true on success so the
      * caller can skip the standard compile-then-pop path.
      */
-    private function tryEmitDiscardedUpdate(\PhpJs\Ast\Node $expr): bool
+    private function tryEmitDiscardedUpdate(\Phasis\Ast\Node $expr): bool
     {
         if (!$expr instanceof UpdateExpression) {
             return false;
@@ -2977,16 +2977,16 @@ final class Compiler
      * leading ExpressionStatement literals count, and only the exact
      * verbatim string `"use strict"`.
      *
-     * @param array<int, \PhpJs\Ast\Node> $statements
+     * @param array<int, \Phasis\Ast\Node> $statements
      */
     private static function programHasUseStrictDirective(array $statements): bool
     {
         foreach ($statements as $stmt) {
-            if (!$stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement) {
+            if (!$stmt instanceof \Phasis\Ast\Statement\ExpressionStatement) {
                 return false;
             }
             $expr = $stmt->expression;
-            if (!$expr instanceof \PhpJs\Ast\Expression\Literal) {
+            if (!$expr instanceof \Phasis\Ast\Expression\Literal) {
                 return false;
             }
             if (!is_string($expr->value)) {
@@ -3001,21 +3001,21 @@ final class Compiler
         return false;
     }
 
-    private static function bytecodeBailsForTailCall(\PhpJs\Ast\Node $body): bool
+    private static function bytecodeBailsForTailCall(\Phasis\Ast\Node $body): bool
     {
         if ($body instanceof ReturnStatement) {
             return $body->argument !== null
                 && self::tailCallExpr($body->argument);
         }
         if (
-            $body instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $body instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $body instanceof \PhpJs\Ast\Expression\ArrowFunction
+            $body instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $body instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $body instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             return false;
         }
         foreach ((array) $body as $value) {
-            if ($value instanceof \PhpJs\Ast\Node) {
+            if ($value instanceof \Phasis\Ast\Node) {
                 if (self::bytecodeBailsForTailCall($value)) {
                     return true;
                 }
@@ -3023,7 +3023,7 @@ final class Compiler
             }
             if (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof \PhpJs\Ast\Node && self::bytecodeBailsForTailCall($item)) {
+                    if ($item instanceof \Phasis\Ast\Node && self::bytecodeBailsForTailCall($item)) {
                         return true;
                     }
                 }
@@ -3032,7 +3032,7 @@ final class Compiler
         return false;
     }
 
-    private static function tailCallExpr(\PhpJs\Ast\Node $node): bool
+    private static function tailCallExpr(\Phasis\Ast\Node $node): bool
     {
         if ($node instanceof CallExpression) {
             return true;
@@ -3041,11 +3041,11 @@ final class Compiler
             return self::tailCallExpr($node->consequent)
                 || self::tailCallExpr($node->alternate);
         }
-        if ($node instanceof \PhpJs\Ast\Expression\LogicalExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\LogicalExpression) {
             return self::tailCallExpr($node->left)
                 || self::tailCallExpr($node->right);
         }
-        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\SequenceExpression) {
             $exprs = $node->expressions;
             return $exprs !== [] && self::tailCallExpr($exprs[count($exprs) - 1]);
         }

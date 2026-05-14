@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * JavaScript ArrayBuffer object.
@@ -43,15 +43,15 @@ class JsArrayBuffer extends JsObject
         parent::__construct($prototype ?? self::$defaultPrototype);
 
         if ($byteLength < 0 || $byteLength > self::maxAllocatableByteLength()) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+            throw new \Phasis\Exceptions\RangeError('Invalid array buffer length');
         }
 
         if ($maxByteLength !== null) {
             if ($maxByteLength < 0 || $maxByteLength > self::maxAllocatableByteLength()) {
-                throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+                throw new \Phasis\Exceptions\RangeError('Invalid array buffer length');
             }
             if ($byteLength > $maxByteLength) {
-                throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+                throw new \Phasis\Exceptions\RangeError('Invalid array buffer length');
             }
             $this->maxByteLength = $maxByteLength;
             $this->wasResizable = true;
@@ -160,17 +160,17 @@ class JsArrayBuffer extends JsObject
     public function resize(int $newByteLength): void
     {
         if ($this->detached) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Cannot resize a detached ArrayBuffer'
             );
         }
         if ($this->maxByteLength === null) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'ArrayBuffer is not resizable'
             );
         }
         if ($newByteLength < 0 || $newByteLength > $this->maxByteLength) {
-            throw new \PhpJs\Exceptions\RangeError(
+            throw new \Phasis\Exceptions\RangeError(
                 'Invalid array buffer length'
             );
         }
@@ -196,14 +196,14 @@ class JsArrayBuffer extends JsObject
     public function transfer(?int $newLength = null): self
     {
         if ($this->detached) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Cannot transfer a detached ArrayBuffer'
             );
         }
 
         $newLen = $newLength ?? $this->byteLength;
         if ($newLen < 0) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+            throw new \Phasis\Exceptions\RangeError('Invalid array buffer length');
         }
 
         // Determine if the new buffer should be resizable.
@@ -240,14 +240,14 @@ class JsArrayBuffer extends JsObject
     public function transferToFixedLength(?int $newLength = null): self
     {
         if ($this->detached) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Cannot transfer a detached ArrayBuffer'
             );
         }
 
         $newLen = $newLength ?? $this->byteLength;
         if ($newLen < 0) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+            throw new \Phasis\Exceptions\RangeError('Invalid array buffer length');
         }
 
         // Always fixed-length (no maxByteLength).

@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
-use PhpJs\Exceptions\InternalError;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Runtime\Interpreter;
-use PhpJs\Spec\AbstractOperations;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\InternalError;
+use Phasis\Exceptions\TypeError;
+use Phasis\Runtime\Interpreter;
+use Phasis\Spec\AbstractOperations;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Bytecode dispatcher. One PHP function call per JsFunction
@@ -47,7 +47,7 @@ final class VM
         }
         if ($obj instanceof JsObject) {
             $primSlot = $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]');
-            if ($primSlot !== null && $primSlot->value instanceof \PhpJs\Value\JsSymbol) {
+            if ($primSlot !== null && $primSlot->value instanceof \Phasis\Value\JsSymbol) {
                 return $this->interp->vmLookupPrimitiveMember($obj, $name);
             }
             return $obj->get($name);
@@ -62,7 +62,7 @@ final class VM
             throw new TypeError("Cannot read properties of {$type}");
         }
         $resolved = TypeConversion::toPropertyKey($key);
-        if ($resolved instanceof \PhpJs\Value\JsSymbol) {
+        if ($resolved instanceof \Phasis\Value\JsSymbol) {
             if ($obj instanceof JsObject) {
                 return $obj->getBySymbol($resolved);
             }
@@ -102,7 +102,7 @@ final class VM
             throw new TypeError("Cannot set properties of {$type}");
         }
         $resolved = TypeConversion::toPropertyKey($key);
-        if ($resolved instanceof \PhpJs\Value\JsSymbol) {
+        if ($resolved instanceof \Phasis\Value\JsSymbol) {
             if ($obj instanceof JsObject) {
                 $ok = $obj->internalSetBySymbol($resolved, $value, $obj);
                 if (!$ok && $this->interp->isStrictMode()) {
@@ -157,7 +157,7 @@ final class VM
      */
     private function inlineDenseArrayMethod(
         string $kind,
-        \PhpJs\Value\JsArray $receiver,
+        \Phasis\Value\JsArray $receiver,
         array $args,
         int $argc,
     ): ?JsValue {
@@ -295,7 +295,7 @@ final class VM
                     }
                 }
                 $elements = $receiver->getDenseElements();
-                $result = new \PhpJs\Value\JsArray();
+                $result = new \Phasis\Value\JsArray();
                 for ($i = $startN; $i < $endN; $i++) {
                     $el = $elements[$i] ?? null;
                     if ($el === null) {
@@ -408,7 +408,7 @@ final class VM
                     ? $args[1] : JsUndefined::instance();
                 $len = $receiver->getLength();
                 $elements = $receiver->getDenseElements();
-                $result = new \PhpJs\Value\JsArray();
+                $result = new \Phasis\Value\JsArray();
                 // The callback's phpCompiled / phpCompiledNumeric may
                 // be null on first iter and populate on the first call
                 // (lazy compile inside callFunction). Read live each
@@ -431,7 +431,7 @@ final class VM
                             );
                             $result->push(JsNumber::of($rawResult));
                             continue;
-                        } catch (\PhpJs\Bytecode\Bailout) {
+                        } catch (\Phasis\Bytecode\Bailout) {
                             // Fall through to the standard / spec path.
                         }
                     }
@@ -445,7 +445,7 @@ final class VM
                                 $this->interp,
                                 $callback->phpCompiledNodes,
                             );
-                        } catch (\PhpJs\Bytecode\Bailout) {
+                        } catch (\Phasis\Bytecode\Bailout) {
                             $mapped = $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
                         }
                     } else {
@@ -502,7 +502,7 @@ final class VM
                             );
                             $acc = JsNumber::of($rawAcc);
                             continue;
-                        } catch (\PhpJs\Bytecode\Bailout) {
+                        } catch (\Phasis\Bytecode\Bailout) {
                             // Fall through to the standard / spec path
                             // for this iteration.
                         }
@@ -519,7 +519,7 @@ final class VM
                             );
                             $accIsNumber = $acc instanceof JsNumber;
                             continue;
-                        } catch (\PhpJs\Bytecode\Bailout) {
+                        } catch (\Phasis\Bytecode\Bailout) {
                         }
                     }
                     $acc = $this->interp->callFunction(
@@ -563,7 +563,7 @@ final class VM
                                 $callback->phpCompiledNodes,
                             );
                             continue;
-                        } catch (\PhpJs\Bytecode\Bailout) {
+                        } catch (\Phasis\Bytecode\Bailout) {
                         }
                     }
                     $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
@@ -592,7 +592,7 @@ final class VM
                     ? $args[1] : JsUndefined::instance();
                 $len = $receiver->getLength();
                 $elements = $receiver->getDenseElements();
-                $result = new \PhpJs\Value\JsArray();
+                $result = new \Phasis\Value\JsArray();
                 $compiled = $callback->phpCompiled;
                 for ($i = 0; $i < $len; $i++) {
                     $val = $elements[$i] ?? null;
@@ -608,7 +608,7 @@ final class VM
                                 $this->interp,
                                 $callback->phpCompiledNodes,
                             );
-                        } catch (\PhpJs\Bytecode\Bailout) {
+                        } catch (\Phasis\Bytecode\Bailout) {
                             $keep = $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
                         }
                     } else {
@@ -650,7 +650,7 @@ final class VM
             return null;
         }
         $parts = explode($sepArg->value, $receiver->value);
-        $arr = new \PhpJs\Value\JsArray();
+        $arr = new \Phasis\Value\JsArray();
         foreach ($parts as $p) {
             $arr->push(new JsString($p));
         }
@@ -758,11 +758,11 @@ final class VM
                             // `fib` inside fib's body otherwise burns ~10 hash
                             // ops per call, repeated on every recursive entry.
                             $ic = $cf->loadNameIc[$pc] ?? null;
-                            if ($ic !== null && $ic[1] === \PhpJs\Runtime\Environment::$globalBindingsVersion) {
+                            if ($ic !== null && $ic[1] === \Phasis\Runtime\Environment::$globalBindingsVersion) {
                                 $stack[$sp++] = $ic[0];
                             } else {
                                 $resolved = $env->get($names[$code[$pc + 1]], $strict);
-                                $cf->loadNameIc[$pc] = [$resolved, \PhpJs\Runtime\Environment::$globalBindingsVersion];
+                                $cf->loadNameIc[$pc] = [$resolved, \Phasis\Runtime\Environment::$globalBindingsVersion];
                                 $stack[$sp++] = $resolved;
                             }
                             $pc += 2;
@@ -962,8 +962,8 @@ final class VM
                             // ToNumeric/ToInt32. Match tree-walker semantics.
                             $v = $stack[--$sp];
                             $numeric = TypeConversion::toNumeric($v);
-                            if ($numeric instanceof \PhpJs\Value\JsBigInt) {
-                                $stack[$sp++] = new \PhpJs\Value\JsBigInt(
+                            if ($numeric instanceof \Phasis\Value\JsBigInt) {
+                                $stack[$sp++] = new \Phasis\Value\JsBigInt(
                                     Interpreter::bigIntBitwiseNotPublic($numeric->value)
                                 );
                             } else {
@@ -1203,7 +1203,7 @@ final class VM
                                 // "function". CALL_METHOD already has
                                 // the analogous proxy branch.
                                 if (
-                                    $callee instanceof \PhpJs\Value\JsProxy
+                                    $callee instanceof \Phasis\Value\JsProxy
                                     && $callee->isCallable()
                                 ) {
                                     $stack[$sp++] = $callee->apply($undef, $args);
@@ -1288,7 +1288,7 @@ final class VM
                                     );
                                     $pc += 2;
                                     break;
-                                } catch (\PhpJs\Bytecode\Bailout) {
+                                } catch (\Phasis\Bytecode\Bailout) {
                                     // Fall through to executeVmFunctionDirect /
                                     // callFunction so the call still completes.
                                 }
@@ -1318,7 +1318,7 @@ final class VM
                             $base = $sp - $count;
                             $items = $count === 0 ? [] : array_slice($stack, $base, $count);
                             $sp = $base;
-                            $stack[$sp++] = \PhpJs\Value\JsArray::fromArray($items);
+                            $stack[$sp++] = \Phasis\Value\JsArray::fromArray($items);
                             $pc += 2;
                             break;
                         case Op::SET_PROP:
@@ -1338,7 +1338,7 @@ final class VM
                             $obj = $stack[$sp - 1];
                             if ($obj instanceof JsObject) {
                                 $resolved = TypeConversion::toPropertyKey($key);
-                                if ($resolved instanceof \PhpJs\Value\JsSymbol) {
+                                if ($resolved instanceof \Phasis\Value\JsSymbol) {
                                     $obj->setBySymbol($resolved, $val);
                                 } else {
                                     $name = $resolved instanceof JsString
@@ -1369,7 +1369,7 @@ final class VM
                                 $callee instanceof JsFunction
                                 && $callee->builtinKind === 'date.construct'
                             ) {
-                                $fastDate = \PhpJs\BuiltIn\DateConstructor::vmFastNewDate($callee, $args);
+                                $fastDate = \Phasis\BuiltIn\DateConstructor::vmFastNewDate($callee, $args);
                                 if ($fastDate !== null) {
                                     $stack[$sp++] = $fastDate;
                                     $pc += 2;
@@ -1392,7 +1392,7 @@ final class VM
                             $receiver = $stack[$base - 2];
                             $sp = $base - 2;
                             if (
-                                $method instanceof \PhpJs\Value\JsProxy
+                                $method instanceof \Phasis\Value\JsProxy
                                 && $method->isCallable()
                             ) {
                                 $stack[$sp++] = $method->apply($receiver, $args);
@@ -1422,7 +1422,7 @@ final class VM
                             // path so semantics never diverge.
                             if (
                                 $method->builtinKind === 'array.push'
-                                && $receiver instanceof \PhpJs\Value\JsArray
+                                && $receiver instanceof \Phasis\Value\JsArray
                                 && $argc === 1
                                 && $receiver->isLengthWritable()
                                 && $receiver->isExtensible()
@@ -1455,14 +1455,14 @@ final class VM
                             // callFunction path.
                             if ($kind !== null && $kind[0] === 'd' && str_starts_with($kind, 'date.')) {
                                 if ($kind === 'date.getTimezoneOffset') {
-                                    $fast = \PhpJs\BuiltIn\DateConstructor::vmFastDateGetTimezoneOffset($receiver);
+                                    $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateGetTimezoneOffset($receiver);
                                     if ($fast !== null) {
                                         $stack[$sp++] = $fast;
                                         $pc += 2;
                                         break;
                                     }
                                 } elseif ($kind === 'date.setTime') {
-                                    $fast = \PhpJs\BuiltIn\DateConstructor::vmFastDateSetTime($receiver, $args);
+                                    $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateSetTime($receiver, $args);
                                     if ($fast !== null) {
                                         $stack[$sp++] = $fast;
                                         $pc += 2;
@@ -1513,7 +1513,7 @@ final class VM
                             }
                             if (
                                 $kind !== null
-                                && $receiver instanceof \PhpJs\Value\JsArray
+                                && $receiver instanceof \Phasis\Value\JsArray
                                 && $receiver->isDenseMode()
                             ) {
                                 $inlined = $this->inlineDenseArrayMethod(
@@ -1592,7 +1592,7 @@ final class VM
                             // method dispatch by writing the dense slot inline.
                             // Falls through to the spec path on bailout.
                             if (
-                                $obj instanceof \PhpJs\Value\JsArray
+                                $obj instanceof \Phasis\Value\JsArray
                                 && $key instanceof JsNumber
                             ) {
                                 $kv = $key->value;
@@ -1643,7 +1643,7 @@ final class VM
                             throw new InternalError('VM: unknown opcode ' . $op);
                     }
                 } // end inner while (dispatch loop)
-            } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
+            } catch (\Phasis\Exceptions\RuntimeError | \Phasis\Exceptions\SyntaxError $e) {
                 // Look for a handler whose protected range covers the
                 // current PC (the PC of the instruction that threw or
                 // raised the exception synchronously). SyntaxError
@@ -1668,7 +1668,7 @@ final class VM
                 // anything else (TypeError, RangeError, etc.) is a
                 // host-level failure that the spec models as a JS
                 // Error subclass.
-                $jsValue = $e instanceof \PhpJs\Exceptions\JsThrowable
+                $jsValue = $e instanceof \Phasis\Exceptions\JsThrowable
                     ? $e->jsValue
                     : $this->interp->phpExceptionToJsValue($e);
                 if ($matched->exceptionSlot >= 0) {

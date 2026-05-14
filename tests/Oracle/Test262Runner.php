@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Oracle;
+namespace Phasis\Tests\Oracle;
 
-use PhpJs\Engine;
+use Phasis\Engine;
 
 class Test262Runner
 {
@@ -166,7 +166,7 @@ class Test262Runner
             => 'SM 1e5-iter assert-loop stress; needs bytecode JIT',
         // ---------------------------------------------------------------
         // (from-chinese.js, addition-across-lunisolar-leap-months-chinese.js,
-        // and non-iso-calendars-chinese.js are no longer blocklisted: php-js
+        // and non-iso-calendars-chinese.js are no longer blocklisted: phasis
         // now ships a pure-PHP Reingold-Dershowitz-equivalent table for the
         // Chinese / Dangi calendars under src/BuiltIn/data, which is
         // CI-independent and matches the V8 / Unicode 16 reference.)
@@ -358,7 +358,7 @@ class Test262Runner
         }
 
         if ($canBlock) {
-            \PhpJs\BuiltIn\AtomicsObject::setAgentCanSuspend(true);
+            \Phasis\BuiltIn\AtomicsObject::setAgentCanSuspend(true);
         }
         try {
             foreach ($modes as $mode) {
@@ -369,7 +369,7 @@ class Test262Runner
             }
         } finally {
             if ($canBlock) {
-                \PhpJs\BuiltIn\AtomicsObject::setAgentCanSuspend(false);
+                \Phasis\BuiltIn\AtomicsObject::setAgentCanSuspend(false);
             }
         }
 
@@ -412,10 +412,10 @@ class Test262Runner
         // installs static Atomics hooks; clear them in the finally below.
         $this->install262HostObject($engine);
         $agentCleanup = static function (): void {
-            \PhpJs\BuiltIn\AtomicsObject::setSyncWaitHook(null);
-            \PhpJs\BuiltIn\AtomicsObject::setSyncNotifyHook(null);
-            \PhpJs\BuiltIn\AtomicsObject::setWaitAsyncTimeoutHook(null);
-            \PhpJs\Value\JsPromise::setPostDrainHook(null);
+            \Phasis\BuiltIn\AtomicsObject::setSyncWaitHook(null);
+            \Phasis\BuiltIn\AtomicsObject::setSyncNotifyHook(null);
+            \Phasis\BuiltIn\AtomicsObject::setWaitAsyncTimeoutHook(null);
+            \Phasis\Value\JsPromise::setPostDrainHook(null);
         };
         // Host-side fast-path for assert.sameValue / _isSameValue —
         // tests like sort_large_countingsort.js call it ~400k times.
@@ -543,7 +543,7 @@ class Test262Runner
             }
 
             return new TestResult($testPath, TestStatus::Pass);
-        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+        } catch (\Phasis\Exceptions\SyntaxError $e) {
             if ($negative !== null) {
                 $type = $negative['type'] ?? 'Error';
                 // Whether the test declares parse/early or runtime phase, a
@@ -556,15 +556,15 @@ class Test262Runner
                 }
             }
             return new TestResult($testPath, TestStatus::Fail, 'SyntaxError: ' . $e->getMessage());
-        } catch (\PhpJs\Exceptions\RuntimeError $e) {
+        } catch (\Phasis\Exceptions\RuntimeError $e) {
             if ($negative !== null) {
                 $type = $negative['type'] ?? 'Error';
                 $jsName = null;
-                if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                if ($e instanceof \Phasis\Exceptions\JsThrowable) {
                     $jv = $e->jsValue;
-                    if ($jv instanceof \PhpJs\Value\JsObject) {
+                    if ($jv instanceof \Phasis\Value\JsObject) {
                         $n = $jv->get('name');
-                        if ($n instanceof \PhpJs\Value\JsString) {
+                        if ($n instanceof \Phasis\Value\JsString) {
                             $jsName = $n->value;
                         }
                         // Fall back to constructor.name (e.g. Test262Error
@@ -572,9 +572,9 @@ class Test262Runner
                         // an own `name` property on prototype).
                         if ($jsName === null) {
                             $ctor = $jv->get('constructor');
-                            if ($ctor instanceof \PhpJs\Value\JsFunction) {
+                            if ($ctor instanceof \Phasis\Value\JsFunction) {
                                 $cn = $ctor->get('name');
-                                if ($cn instanceof \PhpJs\Value\JsString && $cn->value !== '') {
+                                if ($cn instanceof \Phasis\Value\JsString && $cn->value !== '') {
                                     $jsName = $cn->value;
                                 }
                             }
@@ -582,9 +582,9 @@ class Test262Runner
                     }
                 }
                 $match = match ($type) {
-                    'TypeError' => $e instanceof \PhpJs\Exceptions\TypeError || $jsName === 'TypeError',
-                    'RangeError' => $e instanceof \PhpJs\Exceptions\RangeError || $jsName === 'RangeError',
-                    'ReferenceError' => $e instanceof \PhpJs\Exceptions\ReferenceError || $jsName === 'ReferenceError',
+                    'TypeError' => $e instanceof \Phasis\Exceptions\TypeError || $jsName === 'TypeError',
+                    'RangeError' => $e instanceof \Phasis\Exceptions\RangeError || $jsName === 'RangeError',
+                    'ReferenceError' => $e instanceof \Phasis\Exceptions\ReferenceError || $jsName === 'ReferenceError',
                     'SyntaxError' => $jsName === 'SyntaxError',
                     'URIError' => $jsName === 'URIError',
                     'Error' => true,
@@ -627,7 +627,7 @@ class Test262Runner
         return <<<PHP
 <?php
 require {$autoload};
-\$engine = new PhpJs\Engine();
+\$engine = new Phasis\Engine();
 \$harnessDir = {$harnessDir};
 \$isRaw = {$this->boolStr($isRaw)};
 \$negative = {$negativeSer};
@@ -653,29 +653,29 @@ try {
         exit(1);
     }
     echo "PASS";
-} catch (PhpJs\Exceptions\SyntaxError \$e) {
+} catch (Phasis\Exceptions\SyntaxError \$e) {
     if (\$negative && (\$negative['phase'] ?? '') === 'parse' && (\$negative['type'] ?? '') === 'SyntaxError') {
         echo "PASS";
     } else {
         echo "SyntaxError: " . \$e->getMessage();
         exit(1);
     }
-} catch (PhpJs\Exceptions\RuntimeError \$e) {
+} catch (Phasis\Exceptions\RuntimeError \$e) {
     if (\$negative) {
         \$type = \$negative['type'] ?? 'Error';
         \$jsName = null;
-        if (\$e instanceof PhpJs\Exceptions\JsThrowable) {
+        if (\$e instanceof Phasis\Exceptions\JsThrowable) {
             \$jv = \$e->jsValue;
-            if (\$jv instanceof PhpJs\Value\JsObject) {
+            if (\$jv instanceof Phasis\Value\JsObject) {
                 \$n = \$jv->get('name');
-                if (\$n instanceof PhpJs\Value\JsString) {
+                if (\$n instanceof Phasis\Value\JsString) {
                     \$jsName = \$n->value;
                 }
                 if (\$jsName === null) {
                     \$ctor = \$jv->get('constructor');
-                    if (\$ctor instanceof PhpJs\Value\JsFunction) {
+                    if (\$ctor instanceof Phasis\Value\JsFunction) {
                         \$cn = \$ctor->get('name');
-                        if (\$cn instanceof PhpJs\Value\JsString && \$cn->value !== '') {
+                        if (\$cn instanceof Phasis\Value\JsString && \$cn->value !== '') {
                             \$jsName = \$cn->value;
                         }
                     }
@@ -683,9 +683,9 @@ try {
             }
         }
         \$match = match(\$type) {
-            'TypeError' => \$e instanceof PhpJs\Exceptions\TypeError || \$jsName === 'TypeError',
-            'RangeError' => \$e instanceof PhpJs\Exceptions\RangeError || \$jsName === 'RangeError',
-            'ReferenceError' => \$e instanceof PhpJs\Exceptions\ReferenceError || \$jsName === 'ReferenceError',
+            'TypeError' => \$e instanceof Phasis\Exceptions\TypeError || \$jsName === 'TypeError',
+            'RangeError' => \$e instanceof Phasis\Exceptions\RangeError || \$jsName === 'RangeError',
+            'ReferenceError' => \$e instanceof Phasis\Exceptions\ReferenceError || \$jsName === 'ReferenceError',
             'SyntaxError' => \$jsName === 'SyntaxError',
             'URIError' => \$jsName === 'URIError',
             'Error' => true,
@@ -753,7 +753,7 @@ PHP;
             }
 
             return new TestResult($testPath, TestStatus::Pass);
-        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+        } catch (\Phasis\Exceptions\SyntaxError $e) {
             if ($negative !== null) {
                 $phase = $negative['phase'] ?? 'runtime';
                 $type = $negative['type'] ?? 'Error';
@@ -762,15 +762,15 @@ PHP;
                 }
             }
             return new TestResult($testPath, TestStatus::Fail, 'SyntaxError: ' . $e->getMessage());
-        } catch (\PhpJs\Exceptions\RuntimeError $e) {
+        } catch (\Phasis\Exceptions\RuntimeError $e) {
             if ($negative !== null) {
                 $type = $negative['type'] ?? 'Error';
                 $errorClass = match ($type) {
-                    'TypeError' => \PhpJs\Exceptions\TypeError::class,
-                    'RangeError' => \PhpJs\Exceptions\RangeError::class,
-                    'ReferenceError' => \PhpJs\Exceptions\ReferenceError::class,
-                    'SyntaxError' => \PhpJs\Exceptions\SyntaxError::class,
-                    default => \PhpJs\Exceptions\RuntimeError::class,
+                    'TypeError' => \Phasis\Exceptions\TypeError::class,
+                    'RangeError' => \Phasis\Exceptions\RangeError::class,
+                    'ReferenceError' => \Phasis\Exceptions\ReferenceError::class,
+                    'SyntaxError' => \Phasis\Exceptions\SyntaxError::class,
+                    default => \Phasis\Exceptions\RuntimeError::class,
                 };
                 if ($e instanceof $errorClass || $type === 'Error') {
                     return new TestResult($testPath, TestStatus::Pass);
@@ -806,12 +806,12 @@ PHP;
         // Build the createRealm host function in PHP so it returns a
         // JsObject wrapper directly (no PhpToJs round-trip that would
         // flatten the child realm's globalThis into a plain PHP array).
-        $createRealmFn = \PhpJs\Value\JsFunction::fromCallable(
+        $createRealmFn = \Phasis\Value\JsFunction::fromCallable(
             '__262_createRealm',
             function (
-                \PhpJs\Value\JsValue $this_,
+                \Phasis\Value\JsValue $this_,
                 array $args
-            ) use ($runner): \PhpJs\Value\JsValue {
+            ) use ($runner): \Phasis\Value\JsValue {
                 return $runner->buildRealmWrapper();
             },
         );
@@ -822,7 +822,7 @@ PHP;
 
         // $262.detachArrayBuffer(buffer) - detach an ArrayBuffer
         $engine->setGlobal('__262_detachArrayBuffer', function ($buf) {
-            if ($buf instanceof \PhpJs\Value\JsArrayBuffer) {
+            if ($buf instanceof \Phasis\Value\JsArrayBuffer) {
                 $buf->detach();
             }
         });
@@ -837,7 +837,7 @@ PHP;
         // so $code is a PHP string (not JsString).
         $engine->setGlobal('__262_evalScript', function ($code) use ($engine) {
             $src = null;
-            if ($code instanceof \PhpJs\Value\JsString) {
+            if ($code instanceof \Phasis\Value\JsString) {
                 $src = $code->value;
             } elseif (is_string($code)) {
                 $src = $code;
@@ -867,7 +867,7 @@ PHP;
 
         // $262.IsHTMLDDA: an object with the [[IsHTMLDDA]] internal slot.
         // typeof returns "undefined", ToBoolean returns false, == null/undefined is true.
-        $engine->setGlobalJsValue('__262_IsHTMLDDA', new \PhpJs\Value\JsHTMLDDA());
+        $engine->setGlobalJsValue('__262_IsHTMLDDA', new \Phasis\Value\JsHTMLDDA());
         $engine->eval('$262.IsHTMLDDA = __262_IsHTMLDDA;');
 
         // $262.agent: cooperative single-threaded simulation. See AgentHost
@@ -939,7 +939,7 @@ PHP;
      * so the parent realm keeps controlling Symbol-prototype lookups
      * etc. for the rest of the current eval.
      */
-    public function buildRealmWrapper(): \PhpJs\Value\JsObject
+    public function buildRealmWrapper(): \Phasis\Value\JsObject
     {
         $outerInterp = Engine::getCurrentInterpreter();
         // Save the JsFunction static back-references too: every Engine
@@ -948,8 +948,8 @@ PHP;
         // would dispatch through the CHILD interpreter, picking up the
         // child's globalEnv intrinsics (TypeError prototype, etc.) and
         // breaking cross-realm identity tests.
-        $outerCallback = \PhpJs\Value\JsFunction::getInterpreterCallback();
-        $outerInstance = \PhpJs\Value\JsFunction::getInterpreterInstance();
+        $outerCallback = \Phasis\Value\JsFunction::getInterpreterCallback();
+        $outerInstance = \Phasis\Value\JsFunction::getInterpreterInstance();
         $childEngine = new Engine();
         $childEngine->setLimit('maxLoopIterations', 2_000_000);
         $this->install262HostObject($childEngine);
@@ -984,85 +984,85 @@ PHP;
             Engine::setCurrentInterpreter($outerInterp);
         }
         if ($outerCallback !== null) {
-            \PhpJs\Value\JsFunction::setInterpreterCallback($outerCallback);
+            \Phasis\Value\JsFunction::setInterpreterCallback($outerCallback);
         }
         if ($outerInstance !== null) {
-            \PhpJs\Value\JsFunction::setInterpreterInstance($outerInstance);
+            \Phasis\Value\JsFunction::setInterpreterInstance($outerInstance);
         }
 
-        $wrapper = new \PhpJs\Value\JsObject();
+        $wrapper = new \Phasis\Value\JsObject();
 
         $childGlobal = $childEngine->getGlobalEnv()->get('globalThis');
-        if (!$childGlobal instanceof \PhpJs\Value\JsValue) {
-            $childGlobal = \PhpJs\Value\JsUndefined::instance();
+        if (!$childGlobal instanceof \Phasis\Value\JsValue) {
+            $childGlobal = \Phasis\Value\JsUndefined::instance();
         }
         $wrapper->set('global', $childGlobal);
 
         $child262 = $childEngine->getGlobalEnv()->has('$262')
             ? $childEngine->getGlobalEnv()->get('$262')
-            : \PhpJs\Value\JsUndefined::instance();
+            : \Phasis\Value\JsUndefined::instance();
         $wrapper->set('$262', $child262);
 
         // evalScript runs the source in the CHILD realm, switching the
         // active interpreter pointer for the duration so any built-ins
         // that consult Engine::getCurrentInterpreter() resolve against
         // the child realm's intrinsic graph.
-        $evalScriptFn = \PhpJs\Value\JsFunction::fromCallable(
+        $evalScriptFn = \Phasis\Value\JsFunction::fromCallable(
             'evalScript',
             function (
-                \PhpJs\Value\JsValue $this_,
+                \Phasis\Value\JsValue $this_,
                 array $args
-            ) use ($childEngine): \PhpJs\Value\JsValue {
-                $codeArg = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                if ($codeArg instanceof \PhpJs\Value\JsString) {
+            ) use ($childEngine): \Phasis\Value\JsValue {
+                $codeArg = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                if ($codeArg instanceof \Phasis\Value\JsString) {
                     $src = $codeArg->value;
                 } else {
-                    $src = \PhpJs\Spec\TypeConversion::toString($codeArg);
+                    $src = \Phasis\Spec\TypeConversion::toString($codeArg);
                 }
                 $prev = Engine::getCurrentInterpreter();
-                $prevCallback = \PhpJs\Value\JsFunction::getInterpreterCallback();
-                $prevInstance = \PhpJs\Value\JsFunction::getInterpreterInstance();
+                $prevCallback = \Phasis\Value\JsFunction::getInterpreterCallback();
+                $prevInstance = \Phasis\Value\JsFunction::getInterpreterInstance();
                 Engine::setCurrentInterpreter($childEngine->getInterpreter());
                 // Re-bind the JsFunction statics so JS-level calls within
                 // the eval'd source route through the child interpreter.
-                \PhpJs\Value\JsFunction::setInterpreterInstance($childEngine->getInterpreter());
-                \PhpJs\Value\JsFunction::setInterpreterCallback(function (
-                    \PhpJs\Value\JsFunction $fn,
-                    \PhpJs\Value\JsValue $thisValue,
+                \Phasis\Value\JsFunction::setInterpreterInstance($childEngine->getInterpreter());
+                \Phasis\Value\JsFunction::setInterpreterCallback(function (
+                    \Phasis\Value\JsFunction $fn,
+                    \Phasis\Value\JsValue $thisValue,
                     array $args
-                ) use ($childEngine): \PhpJs\Value\JsValue {
+                ) use ($childEngine): \Phasis\Value\JsValue {
                     return $childEngine->getInterpreter()->callFunction($fn, $thisValue, $args);
                 });
-                $result = \PhpJs\Value\JsUndefined::instance();
+                $result = \Phasis\Value\JsUndefined::instance();
                 try {
                     $result = $childEngine->getInterpreter()->execute(
-                        (new \PhpJs\Parser\Parser($src))->parse(),
+                        (new \Phasis\Parser\Parser($src))->parse(),
                     );
-                    \PhpJs\Value\JsPromise::drainMicrotasks();
+                    \Phasis\Value\JsPromise::drainMicrotasks();
                 } finally {
                     Engine::setCurrentInterpreter($prev);
                     if ($prevCallback !== null) {
-                        \PhpJs\Value\JsFunction::setInterpreterCallback($prevCallback);
+                        \Phasis\Value\JsFunction::setInterpreterCallback($prevCallback);
                     }
                     if ($prevInstance !== null) {
-                        \PhpJs\Value\JsFunction::setInterpreterInstance($prevInstance);
+                        \Phasis\Value\JsFunction::setInterpreterInstance($prevInstance);
                     }
                 }
-                return $result instanceof \PhpJs\Value\JsValue
+                return $result instanceof \Phasis\Value\JsValue
                     ? $result
-                    : \PhpJs\Value\JsUndefined::instance();
+                    : \Phasis\Value\JsUndefined::instance();
             },
         );
         $wrapper->set('evalScript', $evalScriptFn);
 
-        $detachFn = \PhpJs\Value\JsFunction::fromCallable(
+        $detachFn = \Phasis\Value\JsFunction::fromCallable(
             'detachArrayBuffer',
-            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+            function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
                 $buf = $args[0] ?? null;
-                if ($buf instanceof \PhpJs\Value\JsArrayBuffer) {
+                if ($buf instanceof \Phasis\Value\JsArrayBuffer) {
                     $buf->detach();
                 }
-                return \PhpJs\Value\JsUndefined::instance();
+                return \Phasis\Value\JsUndefined::instance();
             },
         );
         $wrapper->set('detachArrayBuffer', $detachFn);
@@ -1256,15 +1256,15 @@ PHP;
         // null reference when this method runs at engine-setup time).
         $engineRef = $engine;
         $installer = static function (
-            \PhpJs\Value\JsValue $thisValue,
+            \Phasis\Value\JsValue $thisValue,
             array $args,
             $interp = null,
-        ) use ($engineRef): \PhpJs\Value\JsValue {
+        ) use ($engineRef): \Phasis\Value\JsValue {
             return self::doInstallFastAsserts($engineRef);
         };
         $engine->setGlobalJsValue(
             '__test262_install_fast_asserts__',
-            \PhpJs\Value\JsFunction::fromCallable('__test262_install_fast_asserts__', $installer, 0),
+            \Phasis\Value\JsFunction::fromCallable('__test262_install_fast_asserts__', $installer, 0),
         );
     }
 
@@ -1272,18 +1272,18 @@ PHP;
      * The actual install routine, invoked from JS after the harness has
      * defined assert.* in the global scope.
      */
-    private static function doInstallFastAsserts(Engine $engine): \PhpJs\Value\JsValue
+    private static function doInstallFastAsserts(Engine $engine): \Phasis\Value\JsValue
     {
         $globalEnv = self::getEngineGlobalEnv($engine);
         if ($globalEnv === null) {
-            return \PhpJs\Value\JsUndefined::instance();
+            return \Phasis\Value\JsUndefined::instance();
         }
 
         // Pull the Test262Error constructor (defined by sta.js).
         $test262ErrorCtor = null;
         if ($globalEnv->has('Test262Error')) {
             $maybe = $globalEnv->get('Test262Error');
-            if ($maybe instanceof \PhpJs\Value\JsFunction) {
+            if ($maybe instanceof \Phasis\Value\JsFunction) {
                 $test262ErrorCtor = $maybe;
             }
         }
@@ -1293,20 +1293,20 @@ PHP;
         // present (e.g. tests that load only sta.js failed).
         $throwTest262 = static function (string $message) use ($test262ErrorCtor): void {
             if ($test262ErrorCtor !== null) {
-                $errObj = $test262ErrorCtor->construct([new \PhpJs\Value\JsString($message)]);
-                throw new \PhpJs\Exceptions\JsThrowable($errObj);
+                $errObj = $test262ErrorCtor->construct([new \Phasis\Value\JsString($message)]);
+                throw new \Phasis\Exceptions\JsThrowable($errObj);
             }
-            $obj = new \PhpJs\Value\JsObject();
-            $obj->set('name', new \PhpJs\Value\JsString('Test262Error'));
-            $obj->set('message', new \PhpJs\Value\JsString($message));
-            throw new \PhpJs\Exceptions\JsThrowable($obj);
+            $obj = new \Phasis\Value\JsObject();
+            $obj->set('name', new \Phasis\Value\JsString('Test262Error'));
+            $obj->set('message', new \Phasis\Value\JsString($message));
+            throw new \Phasis\Exceptions\JsThrowable($obj);
         };
 
         // SameValue, special-cased for the four common primitive shapes
         // seen in the harness. Falls back to the spec algorithm for
         // symbols, bigints, objects.
-        $isSameValueNative = static function (\PhpJs\Value\JsValue $a, \PhpJs\Value\JsValue $b): bool {
-            if ($a instanceof \PhpJs\Value\JsNumber && $b instanceof \PhpJs\Value\JsNumber) {
+        $isSameValueNative = static function (\Phasis\Value\JsValue $a, \Phasis\Value\JsValue $b): bool {
+            if ($a instanceof \Phasis\Value\JsNumber && $b instanceof \Phasis\Value\JsNumber) {
                 $av = $a->value;
                 $bv = $b->value;
                 // NaN === NaN under SameValue.
@@ -1324,84 +1324,84 @@ PHP;
                 }
                 return $av === $bv;
             }
-            if ($a instanceof \PhpJs\Value\JsString && $b instanceof \PhpJs\Value\JsString) {
+            if ($a instanceof \Phasis\Value\JsString && $b instanceof \Phasis\Value\JsString) {
                 return $a->value === $b->value;
             }
-            if ($a instanceof \PhpJs\Value\JsBoolean && $b instanceof \PhpJs\Value\JsBoolean) {
+            if ($a instanceof \Phasis\Value\JsBoolean && $b instanceof \Phasis\Value\JsBoolean) {
                 return $a->value === $b->value;
             }
-            if ($a instanceof \PhpJs\Value\JsUndefined && $b instanceof \PhpJs\Value\JsUndefined) {
+            if ($a instanceof \Phasis\Value\JsUndefined && $b instanceof \Phasis\Value\JsUndefined) {
                 return true;
             }
-            if ($a instanceof \PhpJs\Value\JsNull && $b instanceof \PhpJs\Value\JsNull) {
+            if ($a instanceof \Phasis\Value\JsNull && $b instanceof \Phasis\Value\JsNull) {
                 return true;
             }
-            return \PhpJs\Spec\AbstractOperations::sameValue($a, $b);
+            return \Phasis\Spec\AbstractOperations::sameValue($a, $b);
         };
 
-        $isSameValueFn = \PhpJs\Value\JsFunction::fromCallable(
+        $isSameValueFn = \Phasis\Value\JsFunction::fromCallable(
             '_isSameValue',
             static function (
-                \PhpJs\Value\JsValue $thisValue,
+                \Phasis\Value\JsValue $thisValue,
                 array $args,
-            ) use ($isSameValueNative): \PhpJs\Value\JsValue {
-                $a = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                $b = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
-                return new \PhpJs\Value\JsBoolean($isSameValueNative($a, $b));
+            ) use ($isSameValueNative): \Phasis\Value\JsValue {
+                $a = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                $b = $args[1] ?? \Phasis\Value\JsUndefined::instance();
+                return new \Phasis\Value\JsBoolean($isSameValueNative($a, $b));
             },
             2,
         );
 
-        $sameValueFn = \PhpJs\Value\JsFunction::fromCallable(
+        $sameValueFn = \Phasis\Value\JsFunction::fromCallable(
             'sameValue',
             static function (
-                \PhpJs\Value\JsValue $thisValue,
+                \Phasis\Value\JsValue $thisValue,
                 array $args,
             ) use (
                 $isSameValueNative,
                 $throwTest262
-            ): \PhpJs\Value\JsValue {
-                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+            ): \Phasis\Value\JsValue {
+                $actual = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \Phasis\Value\JsUndefined::instance();
                 if ($isSameValueNative($actual, $expected)) {
-                    return \PhpJs\Value\JsUndefined::instance();
+                    return \Phasis\Value\JsUndefined::instance();
                 }
-                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $message = $args[2] ?? \Phasis\Value\JsUndefined::instance();
                 $prefix = '';
-                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                if (!$message instanceof \Phasis\Value\JsUndefined) {
                     $prefix = self::coerceMessageToString($message) . ' ';
                 }
                 $msg = $prefix . 'Expected SameValue(«' . self::formatAssertValue($actual)
                     . '», «' . self::formatAssertValue($expected) . '») to be true';
                 $throwTest262($msg);
-                return \PhpJs\Value\JsUndefined::instance();
+                return \Phasis\Value\JsUndefined::instance();
             },
             3,
         );
 
-        $notSameValueFn = \PhpJs\Value\JsFunction::fromCallable(
+        $notSameValueFn = \Phasis\Value\JsFunction::fromCallable(
             'notSameValue',
             static function (
-                \PhpJs\Value\JsValue $thisValue,
+                \Phasis\Value\JsValue $thisValue,
                 array $args,
             ) use (
                 $isSameValueNative,
                 $throwTest262
-            ): \PhpJs\Value\JsValue {
-                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                $unexpected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+            ): \Phasis\Value\JsValue {
+                $actual = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                $unexpected = $args[1] ?? \Phasis\Value\JsUndefined::instance();
                 if (!$isSameValueNative($actual, $unexpected)) {
-                    return \PhpJs\Value\JsUndefined::instance();
+                    return \Phasis\Value\JsUndefined::instance();
                 }
-                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $message = $args[2] ?? \Phasis\Value\JsUndefined::instance();
                 $prefix = '';
-                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                if (!$message instanceof \Phasis\Value\JsUndefined) {
                     $prefix = self::coerceMessageToString($message) . ' ';
                 }
                 $msg = $prefix . 'Expected SameValue(«' . self::formatAssertValue($actual)
                     . '», «' . self::formatAssertValue($unexpected) . '») to be false';
                 $throwTest262($msg);
-                return \PhpJs\Value\JsUndefined::instance();
+                return \Phasis\Value\JsUndefined::instance();
             },
             3,
         );
@@ -1418,8 +1418,8 @@ PHP;
         // fall back to the JS algorithm via a re-entry trampoline.
         $deepEqualNative = null;
         $deepEqualNative = static function (
-            \PhpJs\Value\JsValue $a,
-            \PhpJs\Value\JsValue $b,
+            \Phasis\Value\JsValue $a,
+            \Phasis\Value\JsValue $b,
         ) use (
             $isSameValueNative,
             &$deepEqualNative
@@ -1429,15 +1429,15 @@ PHP;
                 return true;
             }
             // Primitive shortcut: both primitives, SameValue applies.
-            if (!($a instanceof \PhpJs\Value\JsObject) && !($b instanceof \PhpJs\Value\JsObject)) {
+            if (!($a instanceof \Phasis\Value\JsObject) && !($b instanceof \Phasis\Value\JsObject)) {
                 return $isSameValueNative($a, $b);
             }
             // TypedArray vs TypedArray: same ctor + same length + element
             // SameValue. The harness uses this for sort fixtures where both
             // sides are TypedArrays of the same dtype.
             if (
-                $a instanceof \PhpJs\Value\JsTypedArray
-                && $b instanceof \PhpJs\Value\JsTypedArray
+                $a instanceof \Phasis\Value\JsTypedArray
+                && $b instanceof \Phasis\Value\JsTypedArray
             ) {
                 if ($a->getTypeName() !== $b->getTypeName()) {
                     return false;
@@ -1458,8 +1458,8 @@ PHP;
             // Dense Array vs dense Array: length + index-by-index SameValue
             // with recursive descent for nested objects.
             if (
-                $a instanceof \PhpJs\Value\JsArray
-                && $b instanceof \PhpJs\Value\JsArray
+                $a instanceof \Phasis\Value\JsArray
+                && $b instanceof \Phasis\Value\JsArray
             ) {
                 $aLen = $a->getLength();
                 $bLen = $b->getLength();
@@ -1483,29 +1483,29 @@ PHP;
             return false;
         };
 
-        $deepEqualFn = \PhpJs\Value\JsFunction::fromCallable(
+        $deepEqualFn = \Phasis\Value\JsFunction::fromCallable(
             'deepEqual',
             static function (
-                \PhpJs\Value\JsValue $thisValue,
+                \Phasis\Value\JsValue $thisValue,
                 array $args,
             ) use (
                 $deepEqualNative,
                 $throwTest262
-            ): \PhpJs\Value\JsValue {
-                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+            ): \Phasis\Value\JsValue {
+                $actual = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \Phasis\Value\JsUndefined::instance();
                 if ($deepEqualNative($actual, $expected)) {
-                    return \PhpJs\Value\JsUndefined::instance();
+                    return \Phasis\Value\JsUndefined::instance();
                 }
-                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $message = $args[2] ?? \Phasis\Value\JsUndefined::instance();
                 $prefix = '';
-                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                if (!$message instanceof \Phasis\Value\JsUndefined) {
                     $prefix = self::coerceMessageToString($message) . ' ';
                 }
                 $msg = $prefix . 'Expected deepEqual(«' . self::formatAssertValue($actual)
                     . '», «' . self::formatAssertValue($expected) . '»)';
                 $throwTest262($msg);
-                return \PhpJs\Value\JsUndefined::instance();
+                return \Phasis\Value\JsUndefined::instance();
             },
             3,
         );
@@ -1513,35 +1513,35 @@ PHP;
         // assert.compareArray: element-wise SameValue with length check.
         // Common in test262 — and structurally identical to assert.deepEqual
         // for Array operands but expects the receiver to be array-like.
-        $compareArrayFn = \PhpJs\Value\JsFunction::fromCallable(
+        $compareArrayFn = \Phasis\Value\JsFunction::fromCallable(
             'compareArray',
             static function (
-                \PhpJs\Value\JsValue $thisValue,
+                \Phasis\Value\JsValue $thisValue,
                 array $args,
             ) use (
                 $isSameValueNative,
                 $throwTest262
-            ): \PhpJs\Value\JsValue {
-                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+            ): \Phasis\Value\JsValue {
+                $actual = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \Phasis\Value\JsUndefined::instance();
                 if (
-                    !$actual instanceof \PhpJs\Value\JsObject
-                    || !$expected instanceof \PhpJs\Value\JsObject
+                    !$actual instanceof \Phasis\Value\JsObject
+                    || !$expected instanceof \Phasis\Value\JsObject
                 ) {
                     // Either operand is not array-like: defer to the JS-
                     // defined fallback by throwing the harness's error.
-                    $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                    $message = $args[2] ?? \Phasis\Value\JsUndefined::instance();
                     $prefix = '';
-                    if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                    if (!$message instanceof \Phasis\Value\JsUndefined) {
                         $prefix = self::coerceMessageToString($message) . ' ';
                     }
                     $throwTest262($prefix . 'assert.compareArray expected array-like operands');
-                    return \PhpJs\Value\JsUndefined::instance();
+                    return \Phasis\Value\JsUndefined::instance();
                 }
                 $aLenVal = $actual->get('length');
                 $bLenVal = $expected->get('length');
-                $aLen = $aLenVal instanceof \PhpJs\Value\JsNumber ? (int) $aLenVal->value : 0;
-                $bLen = $bLenVal instanceof \PhpJs\Value\JsNumber ? (int) $bLenVal->value : 0;
+                $aLen = $aLenVal instanceof \Phasis\Value\JsNumber ? (int) $aLenVal->value : 0;
+                $bLen = $bLenVal instanceof \Phasis\Value\JsNumber ? (int) $bLenVal->value : 0;
                 $ok = ($aLen === $bLen);
                 if ($ok) {
                     for ($i = 0; $i < $aLen; $i++) {
@@ -1554,24 +1554,24 @@ PHP;
                     }
                 }
                 if ($ok) {
-                    return \PhpJs\Value\JsUndefined::instance();
+                    return \Phasis\Value\JsUndefined::instance();
                 }
-                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $message = $args[2] ?? \Phasis\Value\JsUndefined::instance();
                 $prefix = '';
-                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                if (!$message instanceof \Phasis\Value\JsUndefined) {
                     $prefix = self::coerceMessageToString($message) . ' ';
                 }
                 $msg = $prefix . 'Expected compareArray(«' . self::formatAssertValue($actual)
                     . '», «' . self::formatAssertValue($expected) . '»)';
                 $throwTest262($msg);
-                return \PhpJs\Value\JsUndefined::instance();
+                return \Phasis\Value\JsUndefined::instance();
             },
             3,
         );
 
         if ($globalEnv->has('assert')) {
             $assertObj = $globalEnv->get('assert');
-            if ($assertObj instanceof \PhpJs\Value\JsObject) {
+            if ($assertObj instanceof \Phasis\Value\JsObject) {
                 $assertObj->set('_isSameValue', $isSameValueFn);
                 $assertObj->set('sameValue', $sameValueFn);
                 $assertObj->set('notSameValue', $notSameValueFn);
@@ -1587,43 +1587,43 @@ PHP;
                 // exactly what the harness self-tests assert.
                 if ($assertObj->has('deepEqual')) {
                     $origDeepEqual = $assertObj->get('deepEqual');
-                    if (!$origDeepEqual instanceof \PhpJs\Value\JsFunction) {
+                    if (!$origDeepEqual instanceof \Phasis\Value\JsFunction) {
                         $origDeepEqual = null;
                     } else {
                         $assertObj->set('_origDeepEqual', $origDeepEqual);
                     }
-                    $wrappedDeepEqual = \PhpJs\Value\JsFunction::fromCallable(
+                    $wrappedDeepEqual = \Phasis\Value\JsFunction::fromCallable(
                         'deepEqual',
                         function (
-                            \PhpJs\Value\JsValue $thisValue,
+                            \Phasis\Value\JsValue $thisValue,
                             array $args,
                         ) use (
                             $deepEqualNative,
                             $origDeepEqual,
                             $assertObj
-                        ): \PhpJs\Value\JsValue {
-                            $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                            $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                        ): \Phasis\Value\JsValue {
+                            $actual = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                            $expected = $args[1] ?? \Phasis\Value\JsUndefined::instance();
                             // Only consume the native fast path when both
                             // operands are shapes the native walker fully
                             // understands (TypedArray pair or plain Array
                             // pair with primitive-only entries at this
                             // level). Anything else routes to the JS impl.
                             $useFastPath = (
-                                ($actual instanceof \PhpJs\Value\JsTypedArray
-                                    && $expected instanceof \PhpJs\Value\JsTypedArray)
-                                || ($actual instanceof \PhpJs\Value\JsArray
-                                    && $expected instanceof \PhpJs\Value\JsArray)
+                                ($actual instanceof \Phasis\Value\JsTypedArray
+                                    && $expected instanceof \Phasis\Value\JsTypedArray)
+                                || ($actual instanceof \Phasis\Value\JsArray
+                                    && $expected instanceof \Phasis\Value\JsArray)
                             );
                             if ($useFastPath && $deepEqualNative($actual, $expected)) {
-                                return \PhpJs\Value\JsUndefined::instance();
+                                return \Phasis\Value\JsUndefined::instance();
                             }
                             // Fallback: call the JS-defined assert.deepEqual
                             // so the error-format and edge-case semantics
                             // (Map, Set, Symbol, circular, ...) match the
                             // harness spec exactly.
                             if ($origDeepEqual === null) {
-                                return \PhpJs\Value\JsUndefined::instance();
+                                return \Phasis\Value\JsUndefined::instance();
                             }
                             return $origDeepEqual->call($assertObj, $args);
                         },
@@ -1644,23 +1644,23 @@ PHP;
                 }
                 if ($assertObj->has('compareArray')) {
                     $origCompareArray = $assertObj->get('compareArray');
-                    if (!$origCompareArray instanceof \PhpJs\Value\JsFunction) {
+                    if (!$origCompareArray instanceof \Phasis\Value\JsFunction) {
                         $origCompareArray = null;
                     } else {
                         $assertObj->set('_origCompareArray', $origCompareArray);
                     }
-                    $wrappedCompareArray = \PhpJs\Value\JsFunction::fromCallable(
+                    $wrappedCompareArray = \Phasis\Value\JsFunction::fromCallable(
                         'compareArray',
                         function (
-                            \PhpJs\Value\JsValue $thisValue,
+                            \Phasis\Value\JsValue $thisValue,
                             array $args,
                         ) use (
                             $isSameValueNative,
                             $origCompareArray,
                             $assertObj
-                        ): \PhpJs\Value\JsValue {
-                            $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                            $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                        ): \Phasis\Value\JsValue {
+                            $actual = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                            $expected = $args[1] ?? \Phasis\Value\JsUndefined::instance();
                             // Same fast path constraints as deepEqual:
                             // dense JsArray vs dense JsArray of equal
                             // length and primitive entries. Anything else
@@ -1668,8 +1668,8 @@ PHP;
                             // so nullish checks, format(), and the message
                             // template stay byte-identical to the harness.
                             if (
-                                $actual instanceof \PhpJs\Value\JsArray
-                                && $expected instanceof \PhpJs\Value\JsArray
+                                $actual instanceof \Phasis\Value\JsArray
+                                && $expected instanceof \Phasis\Value\JsArray
                             ) {
                                 $aLen = $actual->getLength();
                                 $bLen = $expected->getLength();
@@ -1679,8 +1679,8 @@ PHP;
                                         $av = $actual->get((string) $i);
                                         $bv = $expected->get((string) $i);
                                         if (
-                                            $av instanceof \PhpJs\Value\JsObject
-                                            || $bv instanceof \PhpJs\Value\JsObject
+                                            $av instanceof \Phasis\Value\JsObject
+                                            || $bv instanceof \Phasis\Value\JsObject
                                         ) {
                                             $allMatch = false;
                                             break;
@@ -1691,12 +1691,12 @@ PHP;
                                         }
                                     }
                                     if ($allMatch) {
-                                        return \PhpJs\Value\JsUndefined::instance();
+                                        return \Phasis\Value\JsUndefined::instance();
                                     }
                                 }
                             }
                             if ($origCompareArray === null) {
-                                return \PhpJs\Value\JsUndefined::instance();
+                                return \Phasis\Value\JsUndefined::instance();
                             }
                             return $origCompareArray->call($assertObj, $args);
                         },
@@ -1721,29 +1721,29 @@ PHP;
         // measurably slow the run. Override with a direct native that
         // mirrors assert.sameValue's behaviour: skips the spread/rest
         // dispatch and the JS-level frame.
-        $assertEqFn = \PhpJs\Value\JsFunction::fromCallable(
+        $assertEqFn = \Phasis\Value\JsFunction::fromCallable(
             'assertEq',
             static function (
-                \PhpJs\Value\JsValue $thisValue,
+                \Phasis\Value\JsValue $thisValue,
                 array $args,
             ) use (
                 $isSameValueNative,
                 $throwTest262
-            ): \PhpJs\Value\JsValue {
-                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+            ): \Phasis\Value\JsValue {
+                $actual = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \Phasis\Value\JsUndefined::instance();
                 if ($isSameValueNative($actual, $expected)) {
-                    return \PhpJs\Value\JsUndefined::instance();
+                    return \Phasis\Value\JsUndefined::instance();
                 }
-                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $message = $args[2] ?? \Phasis\Value\JsUndefined::instance();
                 $prefix = '';
-                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                if (!$message instanceof \Phasis\Value\JsUndefined) {
                     $prefix = self::coerceMessageToString($message) . ' ';
                 }
                 $msg = $prefix . 'Expected SameValue(«' . self::formatAssertValue($actual)
                     . '», «' . self::formatAssertValue($expected) . '») to be true';
                 $throwTest262($msg);
-                return \PhpJs\Value\JsUndefined::instance();
+                return \Phasis\Value\JsUndefined::instance();
             },
             3,
         );
@@ -1754,18 +1754,18 @@ PHP;
             $globalEnv->set('reportCompare', $assertEqFn);
         }
 
-        return \PhpJs\Value\JsUndefined::instance();
+        return \Phasis\Value\JsUndefined::instance();
     }
 
     /**
      * Coerce a JS value to a string for use in assert error messages.
      */
-    private static function coerceMessageToString(\PhpJs\Value\JsValue $value): string
+    private static function coerceMessageToString(\Phasis\Value\JsValue $value): string
     {
-        if ($value instanceof \PhpJs\Value\JsString) {
+        if ($value instanceof \Phasis\Value\JsString) {
             return $value->value;
         }
-        if ($value instanceof \PhpJs\Value\JsUndefined) {
+        if ($value instanceof \Phasis\Value\JsUndefined) {
             return 'undefined';
         }
         return self::formatAssertValue($value);
@@ -1774,25 +1774,25 @@ PHP;
     /**
      * Mirror assert._toString for diagnostic messages.
      */
-    private static function formatAssertValue(\PhpJs\Value\JsValue $value): string
+    private static function formatAssertValue(\Phasis\Value\JsValue $value): string
     {
-        if ($value instanceof \PhpJs\Value\JsUndefined) {
+        if ($value instanceof \Phasis\Value\JsUndefined) {
             return 'undefined';
         }
-        if ($value instanceof \PhpJs\Value\JsNull) {
+        if ($value instanceof \Phasis\Value\JsNull) {
             return 'null';
         }
-        if ($value instanceof \PhpJs\Value\JsBoolean) {
+        if ($value instanceof \Phasis\Value\JsBoolean) {
             return $value->value ? 'true' : 'false';
         }
-        if ($value instanceof \PhpJs\Value\JsNumber) {
+        if ($value instanceof \Phasis\Value\JsNumber) {
             $v = $value->value;
             if ($v === 0.0 && pack('E', $v) === pack('E', -0.0)) {
                 return '-0';
             }
             return $value->toJsString();
         }
-        if ($value instanceof \PhpJs\Value\JsString) {
+        if ($value instanceof \Phasis\Value\JsString) {
             return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $value->value) . '"';
         }
         return $value->display();
@@ -1803,7 +1803,7 @@ PHP;
      * adding a public accessor because the rest of the codebase does not
      * need one and the test262 runner is the only consumer.
      */
-    private static function getEngineGlobalEnv(Engine $engine): ?\PhpJs\Runtime\Environment
+    private static function getEngineGlobalEnv(Engine $engine): ?\Phasis\Runtime\Environment
     {
         static $prop = null;
         if ($prop === null) {
@@ -1815,7 +1815,7 @@ PHP;
             }
         }
         $env = $prop->getValue($engine);
-        if ($env instanceof \PhpJs\Runtime\Environment) {
+        if ($env instanceof \Phasis\Runtime\Environment) {
             return $env;
         }
         return null;

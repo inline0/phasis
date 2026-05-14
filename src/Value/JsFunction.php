@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Runtime\Environment;
+use Phasis\Runtime\Environment;
 
 class JsFunction extends JsObject
 {
@@ -12,14 +12,14 @@ class JsFunction extends JsObject
     private static ?\Closure $interpreterCallback = null;
 
     /** Static reference to the interpreter, used for private accessor invocation. */
-    private static ?\PhpJs\Runtime\Interpreter $interpreterInstance = null;
+    private static ?\Phasis\Runtime\Interpreter $interpreterInstance = null;
 
-    public static function setInterpreterInstance(\PhpJs\Runtime\Interpreter $interp): void
+    public static function setInterpreterInstance(\Phasis\Runtime\Interpreter $interp): void
     {
         self::$interpreterInstance = $interp;
     }
 
-    public static function getInterpreterInstance(): ?\PhpJs\Runtime\Interpreter
+    public static function getInterpreterInstance(): ?\Phasis\Runtime\Interpreter
     {
         return self::$interpreterInstance;
     }
@@ -159,7 +159,7 @@ class JsFunction extends JsObject
      * The key can be a string (literal/identifier name), a JsSymbol (well-known
      * symbol literal), or a Node (computed expression that evaluates per-instance).
      *
-     * @var list<array{0: string|\PhpJs\Ast\Node|JsSymbol, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}>
+     * @var list<array{0: string|\Phasis\Ast\Node|JsSymbol, 1: ?\Phasis\Ast\Node, 2: bool, 3: bool}>
      */
     private array $instanceFieldInitializers = [];
 
@@ -195,7 +195,7 @@ class JsFunction extends JsObject
      * GetPrototypeFromConstructor) can look up the correct realm's
      * intrinsic prototypes.
      */
-    public ?\PhpJs\Engine $realm = null;
+    public ?\Phasis\Engine $realm = null;
 
     /**
      * @param list<mixed> $params AST param nodes.
@@ -217,7 +217,7 @@ class JsFunction extends JsObject
         // Tag with the currently-active realm. Engine::getCurrentRealm
         // resolves to whichever Engine's interpreter is on the stack
         // (i.e. the realm that's installing this function).
-        $this->realm = \PhpJs\Engine::getCurrentRealm();
+        $this->realm = \Phasis\Engine::getCurrentRealm();
         $this->strict = $strict;
         $this->name = $name;
         $this->params = $params;
@@ -233,15 +233,15 @@ class JsFunction extends JsObject
         foreach ($params as $p) {
             if ($p === null) {
                 $length++;
-            } elseif ($p instanceof \PhpJs\Ast\Pattern\RestElement) {
+            } elseif ($p instanceof \Phasis\Ast\Pattern\RestElement) {
                 break;
-            } elseif ($p instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+            } elseif ($p instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
                 break;
             } else {
                 $length++;
             }
         }
-        $this->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+        $this->defineOwnProperty('length', new \Phasis\Object\PropertyDescriptor(
             value: JsNumber::of((float) $length),
             writable: false,
             enumerable: false,
@@ -250,7 +250,7 @@ class JsFunction extends JsObject
         // Per spec, the exposed .name is "" for anonymous functions.
         // Internally we keep '(anonymous)' as a sentinel for name inference.
         $exposedName = $name === '(anonymous)' ? '' : $name;
-        $this->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+        $this->defineOwnProperty('name', new \Phasis\Object\PropertyDescriptor(
             value: new JsString($exposedName),
             writable: false,
             enumerable: false,
@@ -324,14 +324,14 @@ class JsFunction extends JsObject
     /**
      * Add an instance field initializer for this class constructor.
      *
-     * @param string|\PhpJs\Ast\Node|JsSymbol $key
+     * @param string|\Phasis\Ast\Node|JsSymbol $key
      */
-    public function addInstanceFieldInitializer(mixed $key, ?\PhpJs\Ast\Node $initNode, bool $computed, bool $isPrivate): void
+    public function addInstanceFieldInitializer(mixed $key, ?\Phasis\Ast\Node $initNode, bool $computed, bool $isPrivate): void
     {
         $this->instanceFieldInitializers[] = [$key, $initNode, $computed, $isPrivate];
     }
 
-    /** @return list<array{0: string|\PhpJs\Ast\Node|JsSymbol, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}> */
+    /** @return list<array{0: string|\Phasis\Ast\Node|JsSymbol, 1: ?\Phasis\Ast\Node, 2: bool, 3: bool}> */
     public function getInstanceFieldInitializers(): array
     {
         return $this->instanceFieldInitializers;
@@ -531,7 +531,7 @@ class JsFunction extends JsObject
     public function setName(string $name): void
     {
         $this->name = $name;
-        $this->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+        $this->defineOwnProperty('name', new \Phasis\Object\PropertyDescriptor(
             value: new JsString($name),
             writable: false,
             enumerable: false,
@@ -599,7 +599,7 @@ class JsFunction extends JsObject
      * (eval/with/generators/async/etc.) leave $compiled null AND set
      * $compileFailed so the second call avoids the wasted attempt.
      */
-    public ?\PhpJs\Bytecode\CompiledFunction $compiled = null;
+    public ?\Phasis\Bytecode\CompiledFunction $compiled = null;
     public bool $compileFailed = false;
 
     /**
@@ -639,7 +639,7 @@ class JsFunction extends JsObject
      * up nodes by integer index. Empty for closures without nested
      * function constructions.
      *
-     * @var list<\PhpJs\Ast\Node>
+     * @var list<\Phasis\Ast\Node>
      */
     public array $phpCompiledNodes = [];
 
@@ -721,15 +721,15 @@ class JsFunction extends JsObject
             if (!$calledAsNew) {
                 $msg = "Class constructor {$this->name} cannot be invoked without 'new'";
                 $fnRealm = $this->realm;
-                $currentRealm = \PhpJs\Engine::getCurrentRealm();
+                $currentRealm = \Phasis\Engine::getCurrentRealm();
                 if ($fnRealm !== null && $fnRealm !== $currentRealm) {
-                    throw new \PhpJs\Exceptions\JsThrowable(
+                    throw new \Phasis\Exceptions\JsThrowable(
                         $fnRealm->getInterpreter()->phpExceptionToJsValue(
-                            new \PhpJs\Exceptions\TypeError($msg)
+                            new \Phasis\Exceptions\TypeError($msg)
                         )
                     );
                 }
-                throw new \PhpJs\Exceptions\TypeError($msg);
+                throw new \Phasis\Exceptions\TypeError($msg);
             }
         }
 
@@ -740,14 +740,14 @@ class JsFunction extends JsObject
             // TypeError. JSON.rawJSON / JSON.parse SyntaxError likewise
             // comes from the JSON object's realm.
             $fnRealm = $this->realm;
-            $currentRealm = \PhpJs\Engine::getCurrentRealm();
+            $currentRealm = \Phasis\Engine::getCurrentRealm();
             if ($fnRealm !== null && $fnRealm !== $currentRealm) {
                 try {
                     $result = ($this->nativeCallable)($thisValue, $args);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     throw $e;
-                } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
-                    throw new \PhpJs\Exceptions\JsThrowable(
+                } catch (\Phasis\Exceptions\RuntimeError | \Phasis\Exceptions\SyntaxError $e) {
+                    throw new \Phasis\Exceptions\JsThrowable(
                         $fnRealm->getInterpreter()->phpExceptionToJsValue($e)
                     );
                 }
@@ -785,14 +785,14 @@ class JsFunction extends JsObject
         // Per spec OrdinaryCreateFromConstructor → GetPrototypeFromConstructor:
         // when newTarget.prototype is not an Object, use the constructor's
         // realm's %Object.prototype% (GetFunctionRealm + intrinsic lookup).
-        $proto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+        $proto = \Phasis\Spec\AbstractOperations::getPrototypeFromConstructor(
             $this,
-            static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+            static fn ($env) => \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
         );
         $newObj = new JsObject($proto);
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
-            \PhpJs\Object\PropertyDescriptor::data($this, false, false, false),
+            \Phasis\Object\PropertyDescriptor::data($this, false, false, false),
         );
 
         $result = $this->call($newObj, $args);

@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Exceptions\RangeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsPromise;
-use PhpJs\Value\JsSharedArrayBuffer;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsTypedArray;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Exceptions\RangeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsPromise;
+use Phasis\Value\JsSharedArrayBuffer;
+use Phasis\Value\JsString;
+use Phasis\Value\JsTypedArray;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * The Atomics built-in object.
@@ -61,7 +61,7 @@ class AtomicsObject
     /**
      * Optional hook invoked by Atomics.notify before walking the waitAsync queue.
      *
-     * @var \Closure(\PhpJs\Value\JsArrayBuffer, int, int): int|null
+     * @var \Closure(\Phasis\Value\JsArrayBuffer, int, int): int|null
      */
     private static ?\Closure $syncNotifyHook = null;
 
@@ -290,11 +290,11 @@ class AtomicsObject
 
             if ($isBigInt) {
                 $operand = TypeConversion::toBigInt($value);
-                $oldBig = ($oldValue instanceof \PhpJs\Value\JsBigInt)
+                $oldBig = ($oldValue instanceof \Phasis\Value\JsBigInt)
                     ? $oldValue
                     : TypeConversion::toBigInt($oldValue);
                 $result = self::bigIntOp($op, $oldBig->value, $operand->value);
-                $ta->setIndex($index, new \PhpJs\Value\JsBigInt($result));
+                $ta->setIndex($index, new \Phasis\Value\JsBigInt($result));
             } else {
                 $operandNum = TypeConversion::toIntegerOrInfinity($value);
                 $oldNum = (int) TypeConversion::toNumber($oldValue);
@@ -370,7 +370,7 @@ class AtomicsObject
         if ($isBigInt) {
             $expectedBig = TypeConversion::toBigInt($expected);
             $replacementBig = TypeConversion::toBigInt($replacement);
-            $currentBig = ($current instanceof \PhpJs\Value\JsBigInt)
+            $currentBig = ($current instanceof \Phasis\Value\JsBigInt)
                 ? $current
                 : TypeConversion::toBigInt($current);
             // Truncate expected to the typed array's element width so a
@@ -507,8 +507,8 @@ class AtomicsObject
         // Compare current value with expected. Single-threaded: no real blocking.
         $current = $ta->getIndex($index);
         if ($isBigInt) {
-            /** @var \PhpJs\Value\JsBigInt $expected */
-            $currentBig = ($current instanceof \PhpJs\Value\JsBigInt)
+            /** @var \Phasis\Value\JsBigInt $expected */
+            $currentBig = ($current instanceof \Phasis\Value\JsBigInt)
                 ? $current
                 : TypeConversion::toBigInt($current);
             if ($currentBig->value !== $expected->value) {
@@ -634,7 +634,7 @@ class AtomicsObject
         $valuesMatch = true;
         if ($isBigInt) {
             $expected = TypeConversion::toBigInt($valueArg);
-            $currentBig = ($current instanceof \PhpJs\Value\JsBigInt)
+            $currentBig = ($current instanceof \Phasis\Value\JsBigInt)
                 ? $current
                 : TypeConversion::toBigInt($current);
             $valuesMatch = $currentBig->value === $expected->value;

@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
-use PhpJs\Value\JsWeakSet;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Exceptions\TypeError;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
+use Phasis\Value\JsWeakSet;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * WeakSet constructor and prototype methods.
@@ -81,7 +81,7 @@ class WeakSetConstructor
             throw new TypeError('WeakSet.prototype.add is not a function');
         }
 
-        if ($iterable instanceof \PhpJs\Value\JsArray) {
+        if ($iterable instanceof \Phasis\Value\JsArray) {
             $length = $iterable->getLength();
             for ($i = 0; $i < $length; $i++) {
                 $adder->call($set, [$iterable->get((string) $i)]);

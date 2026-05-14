@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Runtime;
+namespace Phasis\Runtime;
 
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class Completion
 {

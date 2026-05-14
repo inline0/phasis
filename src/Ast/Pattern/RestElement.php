@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast\Pattern;
+namespace Phasis\Ast\Pattern;
 
-use PhpJs\Ast\Node;
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Ast\Node;
+use Phasis\Lexer\SourceLocation;
 
 class RestElement extends Node
 {

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Exceptions;
+namespace Phasis\Exceptions;
 
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Lexer\SourceLocation;
 
 class SyntaxError extends \RuntimeException
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * Wrapper used inside the Fiber to mark a value as the final return

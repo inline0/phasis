@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Regex;
+namespace Phasis\Regex;
 
-use PhpJs\Regex\Ast\Anchor;
-use PhpJs\Regex\Ast\Backreference;
-use PhpJs\Regex\Ast\CharClass;
-use PhpJs\Regex\Ast\Disjunction;
-use PhpJs\Regex\Ast\Group;
-use PhpJs\Regex\Ast\Literal;
-use PhpJs\Regex\Ast\Lookaround;
-use PhpJs\Regex\Ast\Node;
-use PhpJs\Regex\Ast\Pattern;
-use PhpJs\Regex\Ast\Quantified;
-use PhpJs\Regex\Ast\Sequence;
+use Phasis\Regex\Ast\Anchor;
+use Phasis\Regex\Ast\Backreference;
+use Phasis\Regex\Ast\CharClass;
+use Phasis\Regex\Ast\Disjunction;
+use Phasis\Regex\Ast\Group;
+use Phasis\Regex\Ast\Literal;
+use Phasis\Regex\Ast\Lookaround;
+use Phasis\Regex\Ast\Node;
+use Phasis\Regex\Ast\Pattern;
+use Phasis\Regex\Ast\Quantified;
+use Phasis\Regex\Ast\Sequence;
 
 /**
  * Tree-walking ECMAScript regex matcher.
@@ -255,7 +255,7 @@ class Matcher
             return null;
         }
         $atom = $mid->atom;
-        if (!$atom instanceof \PhpJs\Regex\Ast\UnicodeProperty) {
+        if (!$atom instanceof \Phasis\Regex\Ast\UnicodeProperty) {
             return null;
         }
         $ranges = self::resolvePropertyRanges($atom->name, $atom->value);
@@ -701,7 +701,7 @@ class Matcher
         if ($node instanceof CharClass) {
             return $this->matchCharClass($node, $pos, $direction);
         }
-        if ($node instanceof \PhpJs\Regex\Ast\Dot) {
+        if ($node instanceof \Phasis\Regex\Ast\Dot) {
             // `.` honours the currently-active dotAll flag (which can
             // be flipped by an enclosing (?s:...) / (?-s:...) group).
             $cc = $this->dotAll ? CharClass::any() : CharClass::dotNoDotAll();
@@ -728,17 +728,17 @@ class Matcher
         if ($node instanceof Backreference) {
             return $this->matchBackreference($node, $pos, $captures, $direction);
         }
-        if ($node instanceof \PhpJs\Regex\Ast\ModifierGroup) {
+        if ($node instanceof \Phasis\Regex\Ast\ModifierGroup) {
             return $this->matchModifierGroup($node, $pos, $captures, $direction);
         }
-        if ($node instanceof \PhpJs\Regex\Ast\UnicodeProperty) {
+        if ($node instanceof \Phasis\Regex\Ast\UnicodeProperty) {
             return $this->matchUnicodeProperty($node, $pos, $direction);
         }
         return null;
     }
 
     private function matchUnicodeProperty(
-        \PhpJs\Regex\Ast\UnicodeProperty $node,
+        \Phasis\Regex\Ast\UnicodeProperty $node,
         int $pos,
         int $direction,
     ): ?int {
@@ -759,7 +759,7 @@ class Matcher
         return $this->testUnicodeProperty($node, $cu) ? $pos - 1 : null;
     }
 
-    private function testUnicodeProperty(\PhpJs\Regex\Ast\UnicodeProperty $node, int $cp): bool
+    private function testUnicodeProperty(\Phasis\Regex\Ast\UnicodeProperty $node, int $cp): bool
     {
         // Build the case-fold variants of the candidate. Per spec,
         // a candidate matches a CharSet under /i iff any variant is
@@ -1389,7 +1389,7 @@ class Matcher
      * @param array<int, ?array{0:int,1:int}> $captures
      */
     private function matchModifierGroup(
-        \PhpJs\Regex\Ast\ModifierGroup $g,
+        \Phasis\Regex\Ast\ModifierGroup $g,
         int $pos,
         array &$captures,
         int $direction,
@@ -2037,7 +2037,7 @@ class Matcher
         // iteration) for patterns like `^\D+$` over the test262
         // CharacterClassEscapes corpus.
         if (
-            ($q->atom instanceof CharClass || $q->atom instanceof \PhpJs\Regex\Ast\Dot)
+            ($q->atom instanceof CharClass || $q->atom instanceof \Phasis\Regex\Ast\Dot)
             && empty($innerGroups)
         ) {
             $cc = $q->atom instanceof CharClass

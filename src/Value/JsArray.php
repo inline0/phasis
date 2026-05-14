@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * JS Array exotic object with packed-element fast storage.
@@ -75,7 +75,7 @@ class JsArray extends JsObject
         // methods). Resolve through Engine::getCurrentInterpreter so the
         // proto matches whichever realm is currently executing.
         if ($prototype === null) {
-            $interp = \PhpJs\Engine::getCurrentInterpreter();
+            $interp = \Phasis\Engine::getCurrentInterpreter();
             if ($interp !== null) {
                 $env = $interp->getGlobalEnv();
                 if ($env->has('Array')) {
@@ -110,18 +110,18 @@ class JsArray extends JsObject
         // Per §23.1.3.37: Array.prototype[@@iterator] is the same function
         // object as Array.prototype.values, with descriptor
         // {writable, configurable, not enumerable}.
-        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+        $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
         $valuesFn = $proto->get('values');
         if (!$valuesFn instanceof JsFunction) {
             // Fall back to a fresh function if values isn't installed yet.
             $valuesFn = JsFunction::fromCallable('values', function (JsValue $this_): JsValue {
                 $array = $this_ instanceof JsObject ? $this_ : new JsObject();
-                return \PhpJs\BuiltIn\ArrayConstructor::createArrayIteratorFromSymbol($array, 'value');
+                return \Phasis\BuiltIn\ArrayConstructor::createArrayIteratorFromSymbol($array, 'value');
             });
         }
         $proto->definePropertyBySymbol(
             $iterSym,
-            \PhpJs\Object\PropertyDescriptor::data($valuesFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($valuesFn, true, false, true),
         );
     }
 
@@ -456,7 +456,7 @@ class JsArray extends JsObject
             if ($hasOwnDense || !$this->prototypeChainHasOwnProperty($name)) {
                 if ($idx >= $this->length && !$this->lengthWritable) {
                     if ($strict) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "Cannot assign to read only property '{$name}' of object '[object Array]'"
                         );
                     }
@@ -469,7 +469,7 @@ class JsArray extends JsObject
                 // sloppy mode and throwing in strict mode.
                 if (!$hasOwnDense && !$this->isExtensible()) {
                     if ($strict) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "Cannot add property {$name}, object is not extensible"
                         );
                     }
@@ -489,7 +489,7 @@ class JsArray extends JsObject
         // writable checks per ES spec.
         $success = $this->internalSet($name, $value, $this);
         if (!$success && $strict) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot assign to read only property '{$name}' of object '[object Array]'"
             );
         }
@@ -599,17 +599,17 @@ class JsArray extends JsObject
             // Per spec ArraySetLength steps 3-5: coerce value FIRST.
             // Coercion may have observable side effects (valueOf, Symbol.toPrimitive).
             // Step 3: Let newLen be ToUint32(Desc.[[Value]]). This calls ToNumber internally.
-            $numForUint32 = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
+            $numForUint32 = \Phasis\Spec\TypeConversion::toNumber($desc->value);
             $uint32 = (int) ($numForUint32 >= 0
                 ? fmod($numForUint32, 4294967296)
                 : fmod($numForUint32, 4294967296) + 4294967296);
             // Step 4: Let numberLen be ToNumber(Desc.[[Value]]).
             // Per spec, this is a second, separate coercion that may trigger
             // valueOf/toPrimitive again with observable side effects.
-            $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
+            $num = \Phasis\Spec\TypeConversion::toNumber($desc->value);
             // Step 5: RangeError before any configurable/enumerable validation.
             if ((float) $uint32 !== $num) {
-                throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                throw new \Phasis\Exceptions\RangeError('Invalid array length');
             }
             // Now check configurable/enumerable (after coercion per spec).
             if ($desc->configurable === true || $desc->enumerable === true) {
@@ -717,10 +717,10 @@ class JsArray extends JsObject
         return parent::hasOwnProperty($name);
     }
 
-    public function getOwnPropertyDescriptor(string $name): ?\PhpJs\Object\PropertyDescriptor
+    public function getOwnPropertyDescriptor(string $name): ?\Phasis\Object\PropertyDescriptor
     {
         if ($name === 'length') {
-            return new \PhpJs\Object\PropertyDescriptor(
+            return new \Phasis\Object\PropertyDescriptor(
                 value: JsNumber::of((float) $this->length),
                 writable: $this->lengthWritable,
                 enumerable: false,
@@ -819,7 +819,7 @@ class JsArray extends JsObject
     {
         if ($name === 'length') {
             if ($strict) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot delete property 'length' of [object Array]"
                 );
             }
@@ -865,7 +865,7 @@ class JsArray extends JsObject
     private function prototypeChainHasProxy(): bool
     {
         for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
-            if ($cur instanceof \PhpJs\Value\JsProxy) {
+            if ($cur instanceof \Phasis\Value\JsProxy) {
                 return true;
             }
         }
@@ -882,7 +882,7 @@ class JsArray extends JsObject
     private function prototypeChainHasTypedArray(): bool
     {
         for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
-            if ($cur instanceof \PhpJs\Value\JsTypedArray) {
+            if ($cur instanceof \Phasis\Value\JsTypedArray) {
                 return true;
             }
         }

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\BuiltIn\SymbolConstructor;
+use Phasis\BuiltIn\SymbolConstructor;
 
 /**
  * JavaScript FinalizationRegistry object.
@@ -42,12 +42,12 @@ class JsFinalizationRegistry extends JsObject
         $validTarget = $target instanceof JsObject
             || ($target instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($target));
         if (!$validTarget) {
-            throw new \PhpJs\Exceptions\TypeError('Invalid FinalizationRegistry target');
+            throw new \Phasis\Exceptions\TypeError('Invalid FinalizationRegistry target');
         }
 
         // Per spec: heldValue must not be the same as target.
         if ($target === $heldValue) {
-            throw new \PhpJs\Exceptions\TypeError('target and holdings must not be the same');
+            throw new \Phasis\Exceptions\TypeError('target and holdings must not be the same');
         }
 
         // Per spec: unregisterToken must be an object, non-registered symbol, or undefined.
@@ -56,7 +56,7 @@ class JsFinalizationRegistry extends JsObject
                 || ($unregisterToken instanceof JsSymbol
                     && !SymbolConstructor::isRegisteredSymbol($unregisterToken));
             if (!$validToken) {
-                throw new \PhpJs\Exceptions\TypeError('Invalid unregister token');
+                throw new \Phasis\Exceptions\TypeError('Invalid unregister token');
             }
         }
 
@@ -84,7 +84,7 @@ class JsFinalizationRegistry extends JsObject
             || ($unregisterToken instanceof JsSymbol
                 && !SymbolConstructor::isRegisteredSymbol($unregisterToken));
         if (!$validToken) {
-            throw new \PhpJs\Exceptions\TypeError('Invalid unregister token');
+            throw new \Phasis\Exceptions\TypeError('Invalid unregister token');
         }
 
         $removed = false;

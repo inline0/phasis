@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast\Declaration;
+namespace Phasis\Ast\Declaration;
 
-use PhpJs\Ast\Node;
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Ast\Node;
+use Phasis\Lexer\SourceLocation;
 
 /**
  * import defaultExport from 'source';

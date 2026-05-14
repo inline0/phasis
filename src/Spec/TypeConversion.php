@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Spec;
+namespace Phasis\Spec;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Value\JsBigInt;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Value\JsBigInt;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * ES spec type conversion algorithms (section 7.1).
@@ -51,17 +51,17 @@ final class TypeConversion
 
         try {
             // Check for [Symbol.toPrimitive] method first (spec step 1.a).
-            $toPrimSym = \PhpJs\BuiltIn\SymbolConstructor::toPrimitive();
+            $toPrimSym = \Phasis\BuiltIn\SymbolConstructor::toPrimitive();
             $exoticToPrim = $value->getBySymbol($toPrimSym);
             if (!$exoticToPrim instanceof JsUndefined && !$exoticToPrim instanceof JsNull) {
                 if (
                     !$exoticToPrim instanceof JsFunction
-                    && !($exoticToPrim instanceof \PhpJs\Value\JsProxy && $exoticToPrim->isCallable())
+                    && !($exoticToPrim instanceof \Phasis\Value\JsProxy && $exoticToPrim->isCallable())
                 ) {
                     throw new TypeError('Symbol.toPrimitive is not a function');
                 }
-                $hintStr = new \PhpJs\Value\JsString($hint);
-                $result = $exoticToPrim instanceof \PhpJs\Value\JsProxy
+                $hintStr = new \Phasis\Value\JsString($hint);
+                $result = $exoticToPrim instanceof \Phasis\Value\JsProxy
                     ? $exoticToPrim->apply($value, [$hintStr])
                     : $exoticToPrim->call($value, [$hintStr]);
                 if ($result instanceof JsObject) {
@@ -91,7 +91,7 @@ final class TypeConversion
                     if (!$result instanceof JsObject) {
                         return $result;
                     }
-                } elseif ($method instanceof \PhpJs\Value\JsProxy && $method->isCallable()) {
+                } elseif ($method instanceof \Phasis\Value\JsProxy && $method->isCallable()) {
                     // Per spec, IsCallable accepts callable Proxy. The proxy
                     // routes the invocation through its apply trap so toString
                     // / valueOf overrides remain observable.
@@ -215,7 +215,7 @@ final class TypeConversion
             return new JsBigInt($negative ? '-' . $dec : $dec);
         }
 
-        throw new \PhpJs\Exceptions\SyntaxError("Cannot convert \"{$trimmed}\" to a BigInt");
+        throw new \Phasis\Exceptions\SyntaxError("Cannot convert \"{$trimmed}\" to a BigInt");
     }
 
     /**
@@ -481,7 +481,7 @@ final class TypeConversion
         // semantics layer as a regular `undefined`. Treat it identically here
         // so that string coercion via template literals, String(), `+`, etc.
         // produces "undefined" rather than the sentinel's empty fallback.
-        if ($value instanceof \PhpJs\Value\JsOptionalUndefined) {
+        if ($value instanceof \Phasis\Value\JsOptionalUndefined) {
             return 'undefined';
         }
         if ($value instanceof JsUndefined) {
@@ -576,7 +576,7 @@ final class TypeConversion
         $wrapper = new JsObject($wrapperProto);
         $wrapper->defineOwnProperty(
             '[[PrimitiveValue]]',
-            \PhpJs\Object\PropertyDescriptor::data($value, false, false, false),
+            \Phasis\Object\PropertyDescriptor::data($value, false, false, false),
         );
 
         // Per spec, valueOf is inherited from the prototype (e.g. Boolean.prototype.valueOf),
@@ -586,7 +586,7 @@ final class TypeConversion
             ($value instanceof JsBoolean || $value instanceof JsNumber || $value instanceof JsString)
             && $wrapperProto === null
         ) {
-            $wrapper->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+            $wrapper->defineOwnProperty('valueOf', \Phasis\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable('valueOf', fn() => $value, 0),
                 true,
                 false,
@@ -605,14 +605,14 @@ final class TypeConversion
             for ($i = 0; $i < $len; $i++) {
                 $codeUnit = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
                 $ch = JsString::utf16CodeUnitToUtf8($codeUnit);
-                $wrapper->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                $wrapper->defineOwnProperty((string) $i, \Phasis\Object\PropertyDescriptor::data(
                     new JsString($ch),
                     false,
                     true,
                     false,
                 ));
             }
-            $wrapper->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+            $wrapper->defineOwnProperty('length', \Phasis\Object\PropertyDescriptor::data(
                 JsNumber::of((float) $len),
                 false,
                 false,
@@ -624,7 +624,7 @@ final class TypeConversion
         if ($value instanceof JsBigInt) {
             $wrapper->defineOwnProperty(
                 '[[BigIntData]]',
-                \PhpJs\Object\PropertyDescriptor::data($value, false, false, false),
+                \Phasis\Object\PropertyDescriptor::data($value, false, false, false),
             );
             $bigIntProto = JsBigInt::getPrototype();
             if ($bigIntProto !== null) {
@@ -655,7 +655,7 @@ final class TypeConversion
      */
     private static function resolveRealmPrototype(string $ctorName): ?JsObject
     {
-        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $interp = \Phasis\Engine::getCurrentInterpreter();
         if ($interp === null) {
             return null;
         }
@@ -745,13 +745,13 @@ final class TypeConversion
         $integerIndex = self::toIntegerOrInfinity($value);
 
         if ($integerIndex < 0) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid index');
+            throw new \Phasis\Exceptions\RangeError('Invalid index');
         }
 
         $index = (int) min($integerIndex, 9007199254740991.0);
 
         if ((float) $index !== $integerIndex) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid index');
+            throw new \Phasis\Exceptions\RangeError('Invalid index');
         }
 
         return $index;

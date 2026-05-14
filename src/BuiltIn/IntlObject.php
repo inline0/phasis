@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\RangeError;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\RangeError;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Intl namespace object and all Intl constructors.
@@ -391,7 +391,7 @@ class IntlObject
         if ($intrinsicName === null) {
             return null;
         }
-        $realm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($newTarget);
+        $realm = \Phasis\Spec\AbstractOperations::getFunctionRealm($newTarget);
         if ($realm === null) {
             return null;
         }
@@ -2097,7 +2097,7 @@ class IntlObject
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_ instanceof \Phasis\Value\JsProxy
                 || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.NumberFormat.prototype.resolvedOptions called on non-NumberFormat');
@@ -3226,7 +3226,7 @@ class IntlObject
      */
     private static function extractHighPrecisionNumeric(JsValue $val): ?string
     {
-        if ($val instanceof \PhpJs\Value\JsBigInt) {
+        if ($val instanceof \Phasis\Value\JsBigInt) {
             $abs = ltrim($val->value, '-');
             $fitsInDouble = strlen($abs) < 16
                 || (strlen($abs) === 16 && strcmp($abs, '9007199254740992') <= 0);
@@ -3351,7 +3351,7 @@ class IntlObject
      */
     private static function numericArgToFloat(JsValue $val): float
     {
-        if ($val instanceof \PhpJs\Value\JsBigInt) {
+        if ($val instanceof \Phasis\Value\JsBigInt) {
             return (float) $val->value;
         }
         return TypeConversion::toNumber($val);
@@ -4409,7 +4409,7 @@ class IntlObject
             if ($dateArg instanceof JsObject && $dateArg->has('getTime')) {
                 $getTime = $dateArg->get('getTime');
                 if ($getTime instanceof JsFunction) {
-                    $interp = \PhpJs\Engine::getCurrentInterpreter();
+                    $interp = \Phasis\Engine::getCurrentInterpreter();
                     if ($interp !== null) {
                         $result = $interp->callFunction($getTime, $dateArg, []);
                         $timestampMs = $result instanceof JsNumber ? $result->value : NAN;
@@ -4490,7 +4490,7 @@ class IntlObject
             if ($dateArg instanceof JsObject && $dateArg->has('getTime')) {
                 $getTime = $dateArg->get('getTime');
                 if ($getTime instanceof JsFunction) {
-                    $interp = \PhpJs\Engine::getCurrentInterpreter();
+                    $interp = \Phasis\Engine::getCurrentInterpreter();
                     if ($interp !== null) {
                         $r = $interp->callFunction($getTime, $dateArg, []);
                         $timestampMs = $r instanceof JsNumber ? $r->value : NAN;
@@ -4926,7 +4926,7 @@ class IntlObject
             // "non-implementor" branch the test allows.
             if (
                 !$this_ instanceof JsObject
-                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_ instanceof \Phasis\Value\JsProxy
                 || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DateTimeFormat.prototype.resolvedOptions called on non-DateTimeFormat');
@@ -7880,7 +7880,7 @@ class IntlObject
                 $parts[] = $region;
             }
             if ($variantsVal instanceof JsArray) {
-                $variantLen = (int) \PhpJs\Spec\TypeConversion::toNumber($variantsVal->get('length'));
+                $variantLen = (int) \Phasis\Spec\TypeConversion::toNumber($variantsVal->get('length'));
                 for ($vi = 0; $vi < $variantLen; $vi++) {
                     $vs = $variantsVal->get((string) $vi);
                     if ($vs instanceof JsString) {
@@ -11374,7 +11374,7 @@ class IntlObject
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_ instanceof \Phasis\Value\JsProxy
                 || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DurationFormat.prototype.format called on non-DurationFormat');
@@ -11395,7 +11395,7 @@ class IntlObject
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_ instanceof \Phasis\Value\JsProxy
                 || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
@@ -11419,7 +11419,7 @@ class IntlObject
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_ instanceof \Phasis\Value\JsProxy
                 || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
@@ -11839,7 +11839,7 @@ class IntlObject
             || $duration instanceof JsNull
             || $duration instanceof JsBoolean
             || $duration instanceof JsNumber
-            || $duration instanceof \PhpJs\Value\JsBigInt
+            || $duration instanceof \Phasis\Value\JsBigInt
             || $duration instanceof JsSymbol
         ) {
             throw new TypeError('Intl.DurationFormat requires a duration object');
@@ -11962,7 +11962,7 @@ class IntlObject
             || $duration instanceof JsNull
             || $duration instanceof JsBoolean
             || $duration instanceof JsNumber
-            || $duration instanceof \PhpJs\Value\JsBigInt
+            || $duration instanceof \Phasis\Value\JsBigInt
             || $duration instanceof JsSymbol
         ) {
             throw new TypeError('Intl.DurationFormat.format requires a duration object');

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast\Expression;
+namespace Phasis\Ast\Expression;
 
-use PhpJs\Ast\Node;
-use PhpJs\Ast\Statement\BlockStatement;
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Ast\Node;
+use Phasis\Ast\Statement\BlockStatement;
+use Phasis\Lexer\SourceLocation;
 
 class StaticBlock extends Node
 {

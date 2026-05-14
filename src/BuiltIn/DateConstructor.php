@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Date constructor and prototype methods.
@@ -644,7 +644,7 @@ class DateConstructor
         // thisTimeValue(proxy) must throw TypeError. Internal slots bypass
         // Proxy traps via the target, but here we want to reject Proxy
         // receivers explicitly.
-        if ($value instanceof \PhpJs\Value\JsProxy) {
+        if ($value instanceof \Phasis\Value\JsProxy) {
             return false;
         }
         // Fast path: the internal-slot table is a direct array lookup,
@@ -749,7 +749,7 @@ class DateConstructor
     private static function toISOString(float $tv): string
     {
         if (is_nan($tv)) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid time value');
+            throw new \Phasis\Exceptions\RangeError('Invalid time value');
         }
 
         $ms = (int) $tv;
@@ -1642,7 +1642,7 @@ class DateConstructor
         $validateIntlOptions = static function (array $args): void {
             $localesArg = $args[0] ?? JsUndefined::instance();
             $optionsArg = $args[1] ?? JsUndefined::instance();
-            $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+            $env = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv();
             if ($env === null) {
                 return;
             }
@@ -1672,7 +1672,7 @@ class DateConstructor
             string $required,
             float $tv,
         ): ?JsString {
-            $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+            $env = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv();
             if ($env === null) {
                 return null;
             }
@@ -1694,7 +1694,7 @@ class DateConstructor
             $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
             $newObj->set('[[NewTarget]]', $dtfCtor);
             ($dtfCtor->getNativeCallable())($newObj, [$localesArg, $finalOptions]);
-            $interp = \PhpJs\Engine::getCurrentInterpreter();
+            $interp = \Phasis\Engine::getCurrentInterpreter();
             $formatGetter = $proto instanceof JsObject
                 ? $proto->getOwnPropertyDescriptor('format')
                 : null;
@@ -1838,7 +1838,7 @@ class DateConstructor
                 }
                 $tv = self::dateValueOf($this_);
                 if (is_nan($tv)) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid time value');
+                    throw new \Phasis\Exceptions\RangeError('Invalid time value');
                 }
                 $ms = (string) (int) $tv;
                 $ns = bcmul($ms, '1000000');

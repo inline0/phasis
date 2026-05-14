@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Lexer;
+namespace Phasis\Lexer;
 
-use PhpJs\Exceptions\SyntaxError;
+use Phasis\Exceptions\SyntaxError;
 
 class Lexer
 {

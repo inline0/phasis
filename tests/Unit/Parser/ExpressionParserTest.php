@@ -2,30 +2,30 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Unit\Parser;
+namespace Phasis\Tests\Unit\Parser;
 
-use PhpJs\Ast\Expression\ArrowFunction;
-use PhpJs\Ast\Expression\AssignmentExpression;
-use PhpJs\Ast\Expression\BinaryExpression;
-use PhpJs\Ast\Expression\CallExpression;
-use PhpJs\Ast\Expression\ConditionalExpression;
-use PhpJs\Ast\Expression\FunctionExpression;
-use PhpJs\Ast\Expression\Identifier;
-use PhpJs\Ast\Expression\Literal;
-use PhpJs\Ast\Expression\LogicalExpression;
-use PhpJs\Ast\Expression\MemberExpression;
-use PhpJs\Ast\Expression\NewExpression;
-use PhpJs\Ast\Expression\ObjectExpression;
-use PhpJs\Ast\Expression\ArrayExpression;
-use PhpJs\Ast\Expression\SequenceExpression;
-use PhpJs\Ast\Expression\SpreadElement;
-use PhpJs\Ast\Expression\TemplateLiteral;
-use PhpJs\Ast\Expression\ThisExpression;
-use PhpJs\Ast\Expression\UnaryExpression;
-use PhpJs\Ast\Expression\UpdateExpression;
-use PhpJs\Ast\Node;
-use PhpJs\Ast\Statement\ExpressionStatement;
-use PhpJs\Parser\Parser;
+use Phasis\Ast\Expression\ArrowFunction;
+use Phasis\Ast\Expression\AssignmentExpression;
+use Phasis\Ast\Expression\BinaryExpression;
+use Phasis\Ast\Expression\CallExpression;
+use Phasis\Ast\Expression\ConditionalExpression;
+use Phasis\Ast\Expression\FunctionExpression;
+use Phasis\Ast\Expression\Identifier;
+use Phasis\Ast\Expression\Literal;
+use Phasis\Ast\Expression\LogicalExpression;
+use Phasis\Ast\Expression\MemberExpression;
+use Phasis\Ast\Expression\NewExpression;
+use Phasis\Ast\Expression\ObjectExpression;
+use Phasis\Ast\Expression\ArrayExpression;
+use Phasis\Ast\Expression\SequenceExpression;
+use Phasis\Ast\Expression\SpreadElement;
+use Phasis\Ast\Expression\TemplateLiteral;
+use Phasis\Ast\Expression\ThisExpression;
+use Phasis\Ast\Expression\UnaryExpression;
+use Phasis\Ast\Expression\UpdateExpression;
+use Phasis\Ast\Node;
+use Phasis\Ast\Statement\ExpressionStatement;
+use Phasis\Parser\Parser;
 use PHPUnit\Framework\TestCase;
 
 class ExpressionParserTest extends TestCase

@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Regex;
+namespace Phasis\Regex;
 
-use PhpJs\Exceptions\SyntaxError;
-use PhpJs\Regex\Ast\Anchor;
-use PhpJs\Regex\Ast\Backreference;
-use PhpJs\Regex\Ast\CharClass;
-use PhpJs\Regex\Ast\Disjunction;
-use PhpJs\Regex\Ast\Group;
-use PhpJs\Regex\Ast\Literal;
-use PhpJs\Regex\Ast\Lookaround;
-use PhpJs\Regex\Ast\Node;
-use PhpJs\Regex\Ast\Pattern;
-use PhpJs\Regex\Ast\Quantified;
-use PhpJs\Regex\Ast\Sequence;
+use Phasis\Exceptions\SyntaxError;
+use Phasis\Regex\Ast\Anchor;
+use Phasis\Regex\Ast\Backreference;
+use Phasis\Regex\Ast\CharClass;
+use Phasis\Regex\Ast\Disjunction;
+use Phasis\Regex\Ast\Group;
+use Phasis\Regex\Ast\Literal;
+use Phasis\Regex\Ast\Lookaround;
+use Phasis\Regex\Ast\Node;
+use Phasis\Regex\Ast\Pattern;
+use Phasis\Regex\Ast\Quantified;
+use Phasis\Regex\Ast\Sequence;
 
 /**
  * ECMAScript regex pattern parser. Builds an AST from the source
@@ -241,7 +241,7 @@ class Parser
         $ch = $this->src[$this->pos];
         if ($ch === '.') {
             $this->pos++;
-            return new \PhpJs\Regex\Ast\Dot();
+            return new \Phasis\Regex\Ast\Dot();
         }
         if ($ch === '^') {
             $this->pos++;
@@ -537,9 +537,9 @@ class Parser
         }
         if (str_contains($body, '=')) {
             [$name, $value] = explode('=', $body, 2);
-            return new \PhpJs\Regex\Ast\UnicodeProperty($name, $value, $negated);
+            return new \Phasis\Regex\Ast\UnicodeProperty($name, $value, $negated);
         }
-        return new \PhpJs\Regex\Ast\UnicodeProperty($body, null, $negated);
+        return new \Phasis\Regex\Ast\UnicodeProperty($body, null, $negated);
     }
 
     private function parseNamedBackref(): Node
@@ -724,7 +724,7 @@ class Parser
                 $this->pos = $j + 1;
                 $body = $this->parseDisjunction();
                 $this->expect(')');
-                return new \PhpJs\Regex\Ast\ModifierGroup(
+                return new \Phasis\Regex\Ast\ModifierGroup(
                     $body,
                     $addI,
                     $addM,
@@ -854,8 +854,8 @@ class Parser
      *
      * @param-out list<array{0:int,1:int}> $extraRanges
      * @param list<array{0:int,1:int}> $extraRanges
-     * @param list<\PhpJs\Regex\Ast\UnicodeProperty> $extraProperties
-     * @param-out list<\PhpJs\Regex\Ast\UnicodeProperty> $extraProperties
+     * @param list<\Phasis\Regex\Ast\UnicodeProperty> $extraProperties
+     * @param-out list<\Phasis\Regex\Ast\UnicodeProperty> $extraProperties
      */
     private function parseClassAtom(array &$extraRanges, array &$extraProperties = []): ?int
     {
@@ -874,7 +874,7 @@ class Parser
         if (($ch === 'p' || $ch === 'P') && $this->unicode) {
             $negProp = ($ch === 'P');
             $node = $this->parseUnicodePropertyEscape($negProp);
-            if ($node instanceof \PhpJs\Regex\Ast\UnicodeProperty) {
+            if ($node instanceof \Phasis\Regex\Ast\UnicodeProperty) {
                 $extraProperties[] = $node;
                 return null;
             }

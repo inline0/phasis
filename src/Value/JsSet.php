@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Spec\AbstractOperations;
+use Phasis\Spec\AbstractOperations;
 
 /**
  * JavaScript Set object.

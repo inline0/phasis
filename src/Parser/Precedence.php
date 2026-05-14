@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Parser;
+namespace Phasis\Parser;
 
-use PhpJs\Lexer\TokenType;
+use Phasis\Lexer\TokenType;
 
 /**
  * Operator precedence levels for Pratt parsing.

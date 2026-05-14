@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * RegExp.escape(string) per ES spec proposal.
@@ -38,7 +38,7 @@ class RegExpEscape
         return static function (JsValue $this_, array $args): JsValue {
             $arg = $args[0] ?? JsUndefined::instance();
             if (!$arg instanceof JsString) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     TypeConversion::toString($arg) . ' is not a string',
                 );
             }

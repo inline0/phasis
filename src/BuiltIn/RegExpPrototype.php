@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Implements RegExp.prototype[Symbol.search], [Symbol.match], [Symbol.replace],
@@ -128,7 +128,7 @@ class RegExpPrototype
                     !$this_ instanceof JsObject
                     || !$this_->hasOwnProperty('[[IteratingRegExp]]')
                 ) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'next called on non-RegExp string iterator'
                     );
                 }
@@ -286,7 +286,7 @@ class RegExpPrototype
         };
 
         $addSymbol = static function (
-            \PhpJs\Value\JsSymbol $sym,
+            \Phasis\Value\JsSymbol $sym,
             string $name,
             \Closure $fn,
             int $length,
@@ -307,7 +307,7 @@ class RegExpPrototype
         // Per spec 22.2.6.14: RegExp.prototype.test calls RegExpExec.
         $addMethod('test', static function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype.test called on incompatible receiver'
                 );
             }
@@ -328,7 +328,7 @@ class RegExpPrototype
         // Per spec §22.2.6.15: RegExp.prototype.toString returns /source/flags.
         $addMethod('toString', static function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.toString called on non-object');
+                throw new \Phasis\Exceptions\TypeError('RegExp.prototype.toString called on non-object');
             }
             $source = TypeConversion::toString($this_->get('source'));
             $flags = TypeConversion::toString($this_->get('flags'));
@@ -357,15 +357,15 @@ class RegExpPrototype
                 'get ' . $propName,
                 static function (JsValue $this_, array $args) use ($proto, $propName, $flagChar): JsValue {
                     if (!$this_ instanceof JsObject) {
-                        throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
+                        throw new \Phasis\Exceptions\TypeError("get {$propName} called on non-object");
                     }
                     // Per spec, internal slots like [[OriginalFlags]] /
                     // [[RegExpMatcher]] are not exposed through Proxy
                     // [[GetOwnProperty]] traps. A Proxy wrapping a RegExp
                     // does not itself have the slot — accessing the source/
                     // flags getters with such a Proxy as `this` must throw.
-                    if ($this_ instanceof \PhpJs\Value\JsProxy) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                    if ($this_ instanceof \Phasis\Value\JsProxy) {
+                        throw new \Phasis\Exceptions\TypeError(
                             "get {$propName} requires that 'this' be a RegExp object",
                         );
                     }
@@ -383,7 +383,7 @@ class RegExpPrototype
                             }
                             return JsUndefined::instance();
                         }
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "get {$propName} requires that 'this' be a RegExp object"
                         );
                     }
@@ -425,7 +425,7 @@ class RegExpPrototype
             'get flags',
             static function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
-                    throw new \PhpJs\Exceptions\TypeError('get flags called on non-object');
+                    throw new \Phasis\Exceptions\TypeError('get flags called on non-object');
                 }
                 $result = '';
                 if (TypeConversion::toBoolean($this_->get('hasIndices'))) {
@@ -476,14 +476,14 @@ class RegExpPrototype
         // Re-initializes the regexp in-place with new pattern and flags.
         $addMethod('compile', static function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype.compile called on incompatible receiver',
                 );
             }
             // Check for [[RegExpMatcher]] internal slot (we use [[PCREPattern]]).
             $pcreDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
             if ($pcreDesc === null) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype.compile called on incompatible receiver',
                 );
             }
@@ -494,7 +494,7 @@ class RegExpPrototype
             // from a different realm reaches a different RegExp.prototype
             // (each Engine installs its own), so compile-from-other-realm
             // surfaces as TypeError per legacy-regexp tests.
-            $currentRealm = \PhpJs\Engine::getCurrentRealm();
+            $currentRealm = \Phasis\Engine::getCurrentRealm();
             if ($currentRealm !== null) {
                 $env = $currentRealm->getGlobalEnv();
                 $thisRegExpProto = null;
@@ -508,7 +508,7 @@ class RegExpPrototype
                     }
                 }
                 if ($thisRegExpProto !== null && $this_->getPrototype() !== $thisRegExpProto) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'Method RegExp.prototype.compile called on incompatible receiver',
                     );
                 }
@@ -517,10 +517,10 @@ class RegExpPrototype
             // Per Annex B step 3: if [[LegacyFeaturesEnabled]] is false, throw TypeError.
             $legacyDesc = $this_->getOwnPropertyDescriptor("[[LegacyFeaturesEnabled]]");
             if (
-                $legacyDesc !== null && $legacyDesc->value instanceof \PhpJs\Value\JsBoolean
+                $legacyDesc !== null && $legacyDesc->value instanceof \Phasis\Value\JsBoolean
                 && !$legacyDesc->value->toBoolean()
             ) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Method RegExp.prototype.compile called on incompatible receiver",
                 );
             }
@@ -539,7 +539,7 @@ class RegExpPrototype
 
             if ($isRegExp) {
                 if (!$flagsArg instanceof JsUndefined) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'Cannot supply flags when constructing one RegExp from another',
                     );
                 }
@@ -572,7 +572,7 @@ class RegExpPrototype
 
             // Create a temporary regexp to validate and get compiled data.
             // This propagates SyntaxError for invalid patterns/flags.
-            $temp = \PhpJs\Engine::createRegExpOrThrow($p, $f);
+            $temp = \Phasis\Engine::createRegExpOrThrow($p, $f);
 
             // Force-update internal slots. These are non-writable, non-configurable
             // data properties, so defineOwnProperty would silently reject the change.
@@ -631,17 +631,17 @@ class RegExpPrototype
     {
         return static function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on non-object');
+                throw new \Phasis\Exceptions\TypeError('RegExp.prototype.exec called on non-object');
             }
 
             // Step 1: confirm R has [[RegExpMatcher]] (we use [[PCREPattern]]).
             if ($this_->getOwnPropertyDescriptor('[[PCREPattern]]') === null) {
-                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
+                throw new \Phasis\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
             }
 
             // Per spec: if no argument, convert undefined to "undefined".
             $str = isset($args[0]) ? TypeConversion::toString($args[0])
-                : TypeConversion::toString(\PhpJs\Value\JsUndefined::instance());
+                : TypeConversion::toString(\Phasis\Value\JsUndefined::instance());
             // lastIndex is a UTF-16 code unit offset (spec
             // 22.2.7.2 RegExpBuiltinExec step 6), so $strLen must be the
             // UTF-16 code unit count too — mb_strlen gives codepoints,
@@ -676,7 +676,7 @@ class RegExpPrototype
             $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
             $pcrePatternVal = $pcrePatternDesc->value;
             if (!$pcrePatternVal instanceof JsString) {
-                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
+                throw new \Phasis\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
             }
             $pcrePattern = $pcrePatternVal->value;
 
@@ -706,7 +706,7 @@ class RegExpPrototype
             $customFlagsDesc = $this_->getOwnPropertyDescriptor('[[CustomRegexFlags]]');
             if (
                 $customAstDesc !== null
-                && $customAstDesc->value instanceof \PhpJs\Value\JsHostValue
+                && $customAstDesc->value instanceof \Phasis\Value\JsHostValue
                 && $customFlagsDesc !== null
                 && $customFlagsDesc->value instanceof JsString
             ) {
@@ -723,7 +723,7 @@ class RegExpPrototype
                         $isSticky,
                         $hasIndices,
                     );
-                } catch (\PhpJs\Regex\MatcherBudgetExceeded) {
+                } catch (\Phasis\Regex\MatcherBudgetExceeded) {
                     // Pattern triggered catastrophic backtracking
                     // in our tree-walker; let PCRE2 handle it
                     // instead of failing the whole test chunk.
@@ -756,11 +756,11 @@ class RegExpPrototype
                 $patternStr = $sourceVal instanceof JsString ? $sourceVal->value : '';
                 $patFlags = $flagsVal instanceof JsString ? $flagsVal->value : '';
                 try {
-                    $regexAst = (new \PhpJs\Regex\Parser($patternStr, $patFlags))->parse();
+                    $regexAst = (new \Phasis\Regex\Parser($patternStr, $patFlags))->parse();
                     $this_->defineOwnProperty(
                         '[[CustomRegexAst]]',
                         PropertyDescriptor::data(
-                            new \PhpJs\Value\JsHostValue($regexAst),
+                            new \Phasis\Value\JsHostValue($regexAst),
                             false,
                             false,
                             false,
@@ -1031,7 +1031,7 @@ class RegExpPrototype
      */
     private static function execCustomMatcher(
         JsObject $this_,
-        \PhpJs\Regex\Ast\Pattern $ast,
+        \Phasis\Regex\Ast\Pattern $ast,
         string $flags,
         string $str,
         int $lastIndex,
@@ -1039,7 +1039,7 @@ class RegExpPrototype
         bool $isSticky,
         bool $hasIndices,
     ): ?JsObject {
-        $matcher = new \PhpJs\Regex\Matcher($ast, $flags);
+        $matcher = new \Phasis\Regex\Matcher($ast, $flags);
         $startCu = $lastIndex;
         $stickyOnly = $isSticky;
         $match = null;
@@ -1205,7 +1205,7 @@ class RegExpPrototype
         $esPattern = $srcDesc->value->value;
 
         // Analyze the pattern for repeated groups.
-        $analysis = \PhpJs\Runtime\Interpreter::analyzeRepeatedGroups($esPattern);
+        $analysis = \Phasis\Runtime\Interpreter::analyzeRepeatedGroups($esPattern);
         if (empty($analysis['repeatedGroups']) && empty($analysis['nullableNonCapturingGroups'])) {
             return $matches;
         }
@@ -1215,7 +1215,7 @@ class RegExpPrototype
         $pcreFlags = $lastSlash !== false ? substr($pcrePattern, $lastSlash + 1) : 'u';
 
         // Build transform function using the current interpreter.
-        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $interp = \Phasis\Engine::getCurrentInterpreter();
         if ($interp === null) {
             return $matches;
         }
@@ -1228,7 +1228,7 @@ class RegExpPrototype
         };
 
         // Fix 1: Extend match for nullable quantified groups.
-        $matches = \PhpJs\Runtime\Interpreter::fixNullableQuantifier(
+        $matches = \Phasis\Runtime\Interpreter::fixNullableQuantifier(
             $matches,
             $analysis,
             $str,
@@ -1237,7 +1237,7 @@ class RegExpPrototype
         );
 
         // Fix 2: Reset captures inside repeated groups to last iteration values.
-        $matches = \PhpJs\Runtime\Interpreter::fixRepeatedGroupCaptures(
+        $matches = \Phasis\Runtime\Interpreter::fixRepeatedGroupCaptures(
             $matches,
             $analysis,
             $pcreFlags,
@@ -1245,7 +1245,7 @@ class RegExpPrototype
         );
 
         // Fix 3: Reset captures inside nullable non-capturing groups.
-        $matches = \PhpJs\Runtime\Interpreter::fixNullableNonCapturingGroupCaptures(
+        $matches = \Phasis\Runtime\Interpreter::fixNullableNonCapturingGroupCaptures(
             $matches,
             $analysis,
         );
@@ -1262,7 +1262,7 @@ class RegExpPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype[@@search] called on incompatible receiver'
                 );
             }
@@ -1275,7 +1275,7 @@ class RegExpPrototype
             // Per spec, the comparisons use SameValue (not SameValueZero),
             // so -0 vs +0 is observable: if lastIndex was -0 and exec set
             // it to +0 the spec considers them different and restores -0.
-            if (!\PhpJs\Spec\AbstractOperations::sameValue($previousLastIndex, JsNumber::of(0.0))) {
+            if (!\Phasis\Spec\AbstractOperations::sameValue($previousLastIndex, JsNumber::of(0.0))) {
                 $this_->set('lastIndex', JsNumber::of(0.0), true);
             }
 
@@ -1284,7 +1284,7 @@ class RegExpPrototype
 
             // Restore lastIndex if changed.
             $currentLastIndex = $this_->get('lastIndex');
-            if (!\PhpJs\Spec\AbstractOperations::sameValue($currentLastIndex, $previousLastIndex)) {
+            if (!\Phasis\Spec\AbstractOperations::sameValue($currentLastIndex, $previousLastIndex)) {
                 $this_->set('lastIndex', $previousLastIndex, true);
             }
 
@@ -1305,7 +1305,7 @@ class RegExpPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype[@@match] called on incompatible receiver'
                 );
             }
@@ -1367,7 +1367,7 @@ class RegExpPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype[@@replace] called on incompatible receiver'
                 );
             }
@@ -1519,7 +1519,7 @@ class RegExpPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype[@@matchAll] called on incompatible receiver'
                 );
             }
@@ -1530,7 +1530,7 @@ class RegExpPrototype
             // flags = ToString(R.flags); matcher = Construct(C, R, flags);
             // matcher.lastIndex = R.lastIndex.
             $globalRegExp = null;
-            $interp = \PhpJs\Engine::getCurrentInterpreter();
+            $interp = \Phasis\Engine::getCurrentInterpreter();
             if ($interp !== null) {
                 $g = $interp->getGlobalValue('RegExp');
                 if ($g instanceof JsFunction) {
@@ -1545,17 +1545,17 @@ class RegExpPrototype
                     // Use default %RegExp% — already in $C.
                 } elseif (
                     ($species instanceof JsFunction && $species->isConstructable())
-                    || ($species instanceof \PhpJs\Value\JsProxy && $species->isConstructable())
+                    || ($species instanceof \Phasis\Value\JsProxy && $species->isConstructable())
                 ) {
-                    /** @var JsFunction|\PhpJs\Value\JsProxy $species */
+                    /** @var JsFunction|\Phasis\Value\JsProxy $species */
                     $C = $species;
                 } else {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'Species constructor must be a constructor'
                     );
                 }
             } elseif (!$rCtor instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'RegExp constructor must be an object'
                 );
             }
@@ -1566,13 +1566,13 @@ class RegExpPrototype
             $fullUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
 
             if ($C === null) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'RegExp constructor is not available'
                 );
             }
             $matcherV = $C->construct([$this_, new JsString($flags)]);
             if (!$matcherV instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Species constructor must return an object'
                 );
             }
@@ -1590,7 +1590,7 @@ class RegExpPrototype
             $iterator = new JsObject(self::getRegExpStringIteratorProto());
             $iterator->defineOwnProperty(
                 '[[Done]]',
-                \PhpJs\Object\PropertyDescriptor::data(
+                \Phasis\Object\PropertyDescriptor::data(
                     new JsBoolean(false),
                     true,
                     false,
@@ -1599,7 +1599,7 @@ class RegExpPrototype
             );
             $iterator->defineOwnProperty(
                 '[[IteratingRegExp]]',
-                \PhpJs\Object\PropertyDescriptor::data(
+                \Phasis\Object\PropertyDescriptor::data(
                     $matcher,
                     false,
                     false,
@@ -1608,7 +1608,7 @@ class RegExpPrototype
             );
             $iterator->defineOwnProperty(
                 '[[IteratedString]]',
-                \PhpJs\Object\PropertyDescriptor::data(
+                \Phasis\Object\PropertyDescriptor::data(
                     new JsString($S),
                     false,
                     false,
@@ -1617,7 +1617,7 @@ class RegExpPrototype
             );
             $iterator->defineOwnProperty(
                 '[[Global]]',
-                \PhpJs\Object\PropertyDescriptor::data(
+                \Phasis\Object\PropertyDescriptor::data(
                     new JsBoolean($global),
                     false,
                     false,
@@ -1626,7 +1626,7 @@ class RegExpPrototype
             );
             $iterator->defineOwnProperty(
                 '[[Unicode]]',
-                \PhpJs\Object\PropertyDescriptor::data(
+                \Phasis\Object\PropertyDescriptor::data(
                     new JsBoolean($fullUnicode),
                     false,
                     false,
@@ -1646,7 +1646,7 @@ class RegExpPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype[@@split] called on incompatible receiver'
                 );
             }
@@ -1661,10 +1661,10 @@ class RegExpPrototype
             // regex) to take effect before splitting begins.
             $splitter = $this_;
             $unicodeMatching = false;
-            $regExpCtor = \PhpJs\Engine::getCurrentInterpreter()
-                ? \PhpJs\Engine::getCurrentInterpreter()->getGlobalValue('RegExp')
+            $regExpCtor = \Phasis\Engine::getCurrentInterpreter()
+                ? \Phasis\Engine::getCurrentInterpreter()->getGlobalValue('RegExp')
                 : null;
-            if ($regExpCtor instanceof \PhpJs\Value\JsFunction) {
+            if ($regExpCtor instanceof \Phasis\Value\JsFunction) {
                 // SpeciesConstructor: per spec 7.3.20:
                 //   1. C = Get(O, "constructor"); 2. If C undefined, return default;
                 //   3. If Type(C) is not Object, throw TypeError;
@@ -1674,18 +1674,18 @@ class RegExpPrototype
                 $ctorVal = $this_->get('constructor');
                 if (!($ctorVal instanceof JsUndefined)) {
                     if (!$ctorVal instanceof JsObject) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             'Property `constructor` is not an object'
                         );
                     }
                     $speciesSymbol = SymbolConstructor::species();
                     $speciesVal = $ctorVal->getBySymbol($speciesSymbol);
-                    if ($speciesVal instanceof JsUndefined || $speciesVal instanceof \PhpJs\Value\JsNull) {
+                    if ($speciesVal instanceof JsUndefined || $speciesVal instanceof \Phasis\Value\JsNull) {
                         // Use default
-                    } elseif ($speciesVal instanceof \PhpJs\Value\JsFunction && $speciesVal->isConstructable()) {
+                    } elseif ($speciesVal instanceof \Phasis\Value\JsFunction && $speciesVal->isConstructable()) {
                         $C = $speciesVal;
                     } else {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             '@@species must be a constructor'
                         );
                     }
@@ -1699,7 +1699,7 @@ class RegExpPrototype
                 }
                 // Construct(C, [rx, newFlags]): calls new C(rx, flags).
                 // This triggers IsRegExp on rx which may access Symbol.match.
-                $interp = \PhpJs\Engine::getCurrentInterpreter();
+                $interp = \Phasis\Engine::getCurrentInterpreter();
                 if ($interp !== null) {
                     $splitter = $interp->callNew($C, [$this_, new JsString($flags)]);
                     if (!$splitter instanceof JsObject) {
@@ -1965,17 +1965,17 @@ class RegExpPrototype
         $customFlagsDesc = $rx->getOwnPropertyDescriptor('[[CustomRegexFlags]]');
         if (
             $customAstDesc !== null
-            && $customAstDesc->value instanceof \PhpJs\Value\JsHostValue
+            && $customAstDesc->value instanceof \Phasis\Value\JsHostValue
             && $customFlagsDesc !== null
             && $customFlagsDesc->value instanceof JsString
         ) {
             try {
-                $matcher = new \PhpJs\Regex\Matcher(
+                $matcher = new \Phasis\Regex\Matcher(
                     $customAstDesc->value->value,
                     $customFlagsDesc->value->value,
                 );
                 return $matcher->matchTest($S, 0);
-            } catch (\PhpJs\Regex\MatcherBudgetExceeded) {
+            } catch (\Phasis\Regex\MatcherBudgetExceeded) {
                 // Pattern triggered catastrophic backtracking in the
                 // tree-walker; let the slow path try PCRE2 instead.
                 return null;
@@ -2011,11 +2011,11 @@ class RegExpPrototype
             $patternStr = $sourceVal instanceof JsString ? $sourceVal->value : '';
             $patFlags = $flagsVal instanceof JsString ? $flagsVal->value : '';
             try {
-                $regexAst = (new \PhpJs\Regex\Parser($patternStr, $patFlags))->parse();
+                $regexAst = (new \Phasis\Regex\Parser($patternStr, $patFlags))->parse();
                 $rx->defineOwnProperty(
                     '[[CustomRegexAst]]',
                     PropertyDescriptor::data(
-                        new \PhpJs\Value\JsHostValue($regexAst),
+                        new \Phasis\Value\JsHostValue($regexAst),
                         false,
                         false,
                         false,
@@ -2030,9 +2030,9 @@ class RegExpPrototype
                         false,
                     ),
                 );
-                $matcher = new \PhpJs\Regex\Matcher($regexAst, $patFlags);
+                $matcher = new \Phasis\Regex\Matcher($regexAst, $patFlags);
                 return $matcher->matchTest($S, 0);
-            } catch (\PhpJs\Regex\MatcherBudgetExceeded) {
+            } catch (\Phasis\Regex\MatcherBudgetExceeded) {
                 return null;
             } catch (\Throwable) {
                 return null;
@@ -2057,14 +2057,14 @@ class RegExpPrototype
             if ($result instanceof JsObject) {
                 return $result;
             }
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'RegExp exec must return an Object or null'
             );
         }
         // Per spec 22.2.5.2.1 step 6: throw TypeError if R lacks [[RegExpMatcher]].
         $pcreDesc = $rx->getOwnPropertyDescriptor('[[PCREPattern]]');
         if ($pcreDesc === null) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Method RegExp.prototype.exec called on incompatible receiver'
             );
         }

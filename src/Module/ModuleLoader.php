@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Module;
+namespace Phasis\Module;
 
-use PhpJs\Ast\Declaration\ExportDeclaration;
-use PhpJs\Ast\Declaration\ExportSpecifier;
-use PhpJs\Ast\Declaration\FunctionDeclaration;
-use PhpJs\Ast\Declaration\ImportDeclaration;
-use PhpJs\Ast\Declaration\VariableDeclaration;
-use PhpJs\Ast\Declaration\ClassDeclaration;
-use PhpJs\Ast\Node;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Parser\Parser;
-use PhpJs\Runtime\Environment;
-use PhpJs\Runtime\Interpreter;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Ast\Declaration\ExportDeclaration;
+use Phasis\Ast\Declaration\ExportSpecifier;
+use Phasis\Ast\Declaration\FunctionDeclaration;
+use Phasis\Ast\Declaration\ImportDeclaration;
+use Phasis\Ast\Declaration\VariableDeclaration;
+use Phasis\Ast\Declaration\ClassDeclaration;
+use Phasis\Ast\Node;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Parser\Parser;
+use Phasis\Runtime\Environment;
+use Phasis\Runtime\Interpreter;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * Handles ES module loading, parsing, linking, and evaluation.
@@ -83,7 +83,7 @@ class ModuleLoader
             // value so subsequent callers observe the rejection per
             // EvaluateSync semantics.
             if ($cached->evaluationError !== null) {
-                throw new \PhpJs\Exceptions\JsThrowable($cached->evaluationError);
+                throw new \Phasis\Exceptions\JsThrowable($cached->evaluationError);
             }
             // A previously deferred-only module may have been linked
             // but its body never ran — its only importer was the
@@ -107,7 +107,7 @@ class ModuleLoader
             ) {
                 $this->evaluateModuleBodyOnDemand($cached);
                 if ($cached->evaluationError !== null) {
-                    throw new \PhpJs\Exceptions\JsThrowable($cached->evaluationError);
+                    throw new \Phasis\Exceptions\JsThrowable($cached->evaluationError);
                 }
             }
             return $cached->namespace;
@@ -148,7 +148,7 @@ class ModuleLoader
     {
         $source = @file_get_contents($resolved);
         if ($source === false) {
-            throw new \PhpJs\Exceptions\TypeError("Cannot find module '{$specifier}'");
+            throw new \Phasis\Exceptions\TypeError("Cannot find module '{$specifier}'");
         }
 
         // Nested loads issued during linking (from finalizeExports /
@@ -350,13 +350,13 @@ class ModuleLoader
         // a .json source becomes a synthetic module whose only export is
         // `default`, holding the parsed JSON value.
         if (str_ends_with(strtolower($absolutePath), '.json')) {
-            $parsed = \PhpJs\BuiltIn\JsonObject::parseSource($source);
+            $parsed = \Phasis\BuiltIn\JsonObject::parseSource($source);
             $namespace->defineOwnProperty(
                 'default',
                 PropertyDescriptor::data($parsed, false, true, false),
             );
             $namespace->setPrototype(null);
-            $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+            $toStringTagSym = \Phasis\BuiltIn\SymbolConstructor::toStringTag();
             $namespace->definePropertyBySymbol(
                 $toStringTagSym,
                 PropertyDescriptor::data(new JsString('Module'), false, false, false),
@@ -422,7 +422,7 @@ class ModuleLoader
             // [[DefineOwnProperty]] rejects new properties, so the flag must
             // not be set while we are still building the namespace.
             $namespace->setPrototype(null);
-            $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+            $toStringTagSym = \Phasis\BuiltIn\SymbolConstructor::toStringTag();
             $namespace->definePropertyBySymbol(
                 $toStringTagSym,
                 PropertyDescriptor::data(new JsString('Module'), false, false, false),
@@ -522,7 +522,7 @@ class ModuleLoader
         if ($deferredBodies !== []) {
             $iter = 0;
             while ($deferredBodies !== [] && $iter++ < 100000) {
-                \PhpJs\Value\JsPromise::drainMicrotasks();
+                \Phasis\Value\JsPromise::drainMicrotasks();
                 $progress = false;
                 $remaining = [];
                 foreach ($deferredBodies as $entry) {
@@ -549,7 +549,7 @@ class ModuleLoader
                     // Either all pending TLA deps are still pending or
                     // the loop is genuinely deadlocked — either way the
                     // microtask drain is the only way forward.
-                    \PhpJs\Value\JsPromise::drainMicrotasks();
+                    \Phasis\Value\JsPromise::drainMicrotasks();
                 }
             }
         }
@@ -560,11 +560,11 @@ class ModuleLoader
             $iter = 0;
             $allSettled = false;
             while (!$allSettled && $iter++ < 100000) {
-                \PhpJs\Value\JsPromise::drainMicrotasks();
+                \Phasis\Value\JsPromise::drainMicrotasks();
                 $allSettled = true;
                 foreach ($asyncRecords as $r) {
                     $p = $r->evaluationPromise;
-                    if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                    if ($p !== null && $p->getState() === \Phasis\Value\JsPromise::STATE_PENDING) {
                         $allSettled = false;
                         break;
                     }
@@ -574,7 +574,7 @@ class ModuleLoader
             // caller of loadModule sees the failure.
             foreach ($asyncRecords as $r) {
                 $p = $r->evaluationPromise;
-                if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                if ($p !== null && $p->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
                     $this->interpreter->throwJsValue($p->getResolvedValue());
                 }
             }
@@ -613,7 +613,7 @@ class ModuleLoader
                 continue;
             }
             $p = $dep->evaluationPromise;
-            if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+            if ($p !== null && $p->getState() === \Phasis\Value\JsPromise::STATE_PENDING) {
                 $result[] = $dep;
             }
             // Recurse into the dep's own deps so a chain
@@ -627,7 +627,7 @@ class ModuleLoader
      * evaluation promise is rejected. Returns the rejected JsValue or
      * null if none has rejected yet.
      */
-    private function firstRejectedDep(ModuleRecord $record): ?\PhpJs\Value\JsValue
+    private function firstRejectedDep(ModuleRecord $record): ?\Phasis\Value\JsValue
     {
         $visited = [];
         $stack = [$record];
@@ -646,7 +646,7 @@ class ModuleLoader
                     return $dep->evaluationError;
                 }
                 $p = $dep->evaluationPromise;
-                if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                if ($p !== null && $p->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
                     return $p->getResolvedValue();
                 }
                 $stack[] = $dep;
@@ -678,7 +678,7 @@ class ModuleLoader
      * and TLA cases identically: the body either completes inline or
      * yields its evaluation promise back via the onAsyncStart hook.
      *
-     * @param array{program: \PhpJs\Ast\Program, moduleEnv: Environment, prevModulePath: ?string} $pending
+     * @param array{program: \Phasis\Ast\Program, moduleEnv: Environment, prevModulePath: ?string} $pending
      * @param list<ModuleRecord> $asyncRecords
      */
     private function runDeferredBody(ModuleRecord $record, array $pending, array &$asyncRecords): void
@@ -691,12 +691,12 @@ class ModuleLoader
                 $pending['program']->body,
                 $pending['moduleEnv'],
                 alreadyHoisted: true,
-                onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record, &$asyncRecords): void {
+                onAsyncStart: function (\Phasis\Value\JsPromise $p) use ($record, &$asyncRecords): void {
                     $record->evaluationPromise = $p;
                     $asyncRecords[] = $record;
                 },
             );
-        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+        } catch (\Phasis\Exceptions\JsThrowable $e) {
             $record->evaluationError = $e->jsValue;
             throw $e;
         } finally {
@@ -809,7 +809,7 @@ class ModuleLoader
         }
         $source = @file_get_contents($resolved);
         if ($source === false) {
-            throw new \PhpJs\Exceptions\TypeError("Cannot find module '{$specifier}'");
+            throw new \Phasis\Exceptions\TypeError("Cannot find module '{$specifier}'");
         }
         if ($this->linking) {
             return $this->linkModule($resolved, $source);
@@ -848,8 +848,8 @@ class ModuleLoader
         // observable MOP traps fire a one-shot trigger that runs the
         // module body before returning.
         $self = $this;
-        $deferred = new \PhpJs\Value\JsDeferredModuleNamespace(
-            function (\PhpJs\Value\JsDeferredModuleNamespace $ns) use ($self, $record): void {
+        $deferred = new \Phasis\Value\JsDeferredModuleNamespace(
+            function (\Phasis\Value\JsDeferredModuleNamespace $ns) use ($self, $record): void {
                 // Per ECMA-262 EnsureDeferredNamespaceEvaluation, the
                 // deferred namespace can only complete if
                 // ReadyForSyncExecution(record) is true. The spec walks
@@ -860,7 +860,7 @@ class ModuleLoader
                 // mid-evaluation module throws TypeError without
                 // attempting to evaluate the target's body.
                 if (!$self->isReadyForSyncExecution($record)) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'Cannot access deferred namespace of module that is currently evaluating'
                     );
                 }
@@ -868,7 +868,7 @@ class ModuleLoader
                 // JsValue (per EvaluateSync — rejected evaluation
                 // promises propagate forever).
                 if ($record->evaluationError !== null) {
-                    throw new \PhpJs\Exceptions\JsThrowable($record->evaluationError);
+                    throw new \Phasis\Exceptions\JsThrowable($record->evaluationError);
                 }
                 // Run the module body if it has not already been
                 // evaluated by an eager importer. The export-binding
@@ -922,7 +922,7 @@ class ModuleLoader
         $seen[$record->path] = true;
         if ($record->bodyEvaluated && $record->evaluationError === null) {
             $promise = $record->evaluationPromise;
-            if ($promise === null || $promise->getState() !== \PhpJs\Value\JsPromise::STATE_PENDING) {
+            if ($promise === null || $promise->getState() !== \Phasis\Value\JsPromise::STATE_PENDING) {
                 // ~evaluated~: ok.
             } else {
                 // ~evaluating-async~: not ok.
@@ -933,7 +933,7 @@ class ModuleLoader
             return false;
         }
         $promise = $record->evaluationPromise;
-        if ($promise !== null && $promise->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+        if ($promise !== null && $promise->getState() === \Phasis\Value\JsPromise::STATE_PENDING) {
             return false;
         }
         // Not yet evaluated. ~linked~ state: walk requested modules.
@@ -964,7 +964,7 @@ class ModuleLoader
     {
         foreach ($this->modules as $record) {
             $deferred = $record->deferredNamespace;
-            if (!($deferred instanceof \PhpJs\Value\JsDeferredModuleNamespace)) {
+            if (!($deferred instanceof \Phasis\Value\JsDeferredModuleNamespace)) {
                 continue;
             }
             if ($deferred->isFinalized()) {
@@ -981,9 +981,9 @@ class ModuleLoader
             }
             $deferred->setBypassTrigger(false);
             $deferred->definePropertyBySymbol(
-                \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
-                \PhpJs\Object\PropertyDescriptor::data(
-                    new \PhpJs\Value\JsString('Deferred Module'),
+                \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+                \Phasis\Object\PropertyDescriptor::data(
+                    new \Phasis\Value\JsString('Deferred Module'),
                     false,
                     false,
                     false,
@@ -1039,22 +1039,22 @@ class ModuleLoader
                     $pending['program']->body,
                     $pending['moduleEnv'],
                     alreadyHoisted: true,
-                    onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record): void {
+                    onAsyncStart: function (\Phasis\Value\JsPromise $p) use ($record): void {
                         $record->evaluationPromise = $p;
                         // Drain microtasks until this module's TLA promise
                         // settles. Lazy triggers run synchronously from the
                         // host's perspective so the consumer of the
                         // deferred namespace sees fully-evaluated exports.
                         $iter = 0;
-                        while ($p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
-                            \PhpJs\Value\JsPromise::drainMicrotasks();
+                        while ($p->getState() === \Phasis\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
+                            \Phasis\Value\JsPromise::drainMicrotasks();
                         }
-                        if ($p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                        if ($p->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
                             $this->interpreter->throwJsValue($p->getResolvedValue());
                         }
                     },
                 );
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 // Stash the thrown value so subsequent deferred-namespace
                 // accesses re-throw the same JsValue (per spec
                 // EvaluateSync: a rejected evaluation promise propagates
@@ -1185,12 +1185,12 @@ class ModuleLoader
             foreach ($record->indirectExports as $exportName => $_) {
                 $resolution = $this->resolveExport($path, $exportName, []);
                 if ($resolution === null) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Indirect re-export '{$exportName}' in module '{$path}' does not resolve",
                     );
                 }
                 if ($resolution === 'ambiguous') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Indirect re-export '{$exportName}' in module '{$path}' is ambiguous",
                     );
                 }
@@ -1198,12 +1198,12 @@ class ModuleLoader
             foreach ($record->importEntries as $entry) {
                 $resolution = $this->resolveExport($entry['source'], $entry['exportName'], []);
                 if ($resolution === null) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Module '{$entry['source']}' does not export '{$entry['exportName']}'",
                     );
                 }
                 if ($resolution === 'ambiguous') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Ambiguous import '{$entry['exportName']}' from '{$entry['source']}'",
                     );
                 }
@@ -1291,7 +1291,7 @@ class ModuleLoader
         // Relative path: resolve relative to referrer.
         if ($specifier !== '' && ($specifier[0] === '.' || str_starts_with($specifier, './'))) {
             if ($referrer === null) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot resolve relative module specifier '{$specifier}' without a referrer",
                 );
             }
@@ -1300,7 +1300,7 @@ class ModuleLoader
         }
 
         // Bare specifiers: not supported in our simple loader.
-        throw new \PhpJs\Exceptions\TypeError(
+        throw new \Phasis\Exceptions\TypeError(
             "Cannot resolve module specifier '{$specifier}'",
         );
     }
@@ -1669,10 +1669,10 @@ class ModuleLoader
      */
     private function collectBindingPatternNames(Node $pattern): array
     {
-        if ($pattern instanceof \PhpJs\Ast\Expression\Identifier) {
+        if ($pattern instanceof \Phasis\Ast\Expression\Identifier) {
             return [$pattern->name];
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\ArrayPattern) {
             $out = [];
             foreach ($pattern->elements as $elem) {
                 if ($elem !== null) {
@@ -1681,21 +1681,21 @@ class ModuleLoader
             }
             return $out;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\ObjectPattern) {
             $out = [];
             foreach ($pattern->properties as $p) {
-                if ($p instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                if ($p instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                     $out = array_merge($out, $this->collectBindingPatternNames($p->value));
-                } elseif ($p instanceof \PhpJs\Ast\Pattern\RestElement) {
+                } elseif ($p instanceof \Phasis\Ast\Pattern\RestElement) {
                     $out = array_merge($out, $this->collectBindingPatternNames($p->argument));
                 }
             }
             return $out;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
             return $this->collectBindingPatternNames($pattern->left);
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\RestElement) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\RestElement) {
             return $this->collectBindingPatternNames($pattern->argument);
         }
         return [];
@@ -1725,18 +1725,18 @@ class ModuleLoader
         if (!($node instanceof Node)) {
             return false;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\AwaitExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\AwaitExpression) {
             return true;
         }
         // Function bodies, arrow functions, methods, classes, and
         // generators introduce a new function scope where `await`
         // is local. Treat them as opaque.
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             return false;
         }

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\BuiltIn\SymbolConstructor;
+use Phasis\BuiltIn\SymbolConstructor;
 
 /**
  * JavaScript WeakMap object.
@@ -47,7 +47,7 @@ class JsWeakMap extends JsObject
             !$key instanceof JsObject
             && !($key instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($key))
         ) {
-            throw new \PhpJs\Exceptions\TypeError('Invalid value used as weak map key');
+            throw new \Phasis\Exceptions\TypeError('Invalid value used as weak map key');
         }
         $id = spl_object_id($key);
         $this->keys[$id] = $key;

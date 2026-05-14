@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class NumberConstructor
 {
@@ -117,8 +117,8 @@ class NumberConstructor
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
 
         // Register the prototype so TypeConversion::toObject can link Number wrapper objects.
-        \PhpJs\Value\JsNumber::resetNumberPrototype();
-        \PhpJs\Value\JsNumber::setNumberPrototype($proto);
+        \Phasis\Value\JsNumber::resetNumberPrototype();
+        \Phasis\Value\JsNumber::setNumberPrototype($proto);
     }
 
     private static function createPrototype(): JsObject
@@ -147,27 +147,27 @@ class NumberConstructor
             $numValue = self::extractNumberValue($this_);
             $localesArg = $args[0] ?? JsUndefined::instance();
             $optionsArg = $args[1] ?? JsUndefined::instance();
-            $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+            $env = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv();
             // Construct an Intl.NumberFormat and delegate formatting
             // through its `format` getter so style/unit/notation/sign
             // options take effect (matches V8). Falls back to a bare
             // decimal rendering if Intl isn't available.
             if ($env !== null) {
                 $intlObj = $env->get('Intl', false);
-                if ($intlObj instanceof \PhpJs\Value\JsObject) {
+                if ($intlObj instanceof \Phasis\Value\JsObject) {
                     $nfCtor = $intlObj->get('NumberFormat');
-                    if ($nfCtor instanceof \PhpJs\Value\JsFunction) {
+                    if ($nfCtor instanceof \Phasis\Value\JsFunction) {
                         $proto = $nfCtor->get('prototype');
-                        $newObj = new \PhpJs\Value\JsObject($proto instanceof \PhpJs\Value\JsObject ? $proto : null);
+                        $newObj = new \Phasis\Value\JsObject($proto instanceof \Phasis\Value\JsObject ? $proto : null);
                         $newObj->set('[[NewTarget]]', $nfCtor);
                         ($nfCtor->getNativeCallable())($newObj, [$localesArg, $optionsArg]);
-                        $interp = \PhpJs\Engine::getCurrentInterpreter();
-                        $formatGetter = $proto instanceof \PhpJs\Value\JsObject
+                        $interp = \Phasis\Engine::getCurrentInterpreter();
+                        $formatGetter = $proto instanceof \Phasis\Value\JsObject
                             ? $proto->getOwnPropertyDescriptor('format')
                             : null;
                         if (
                             $formatGetter !== null
-                            && $formatGetter->get instanceof \PhpJs\Value\JsFunction
+                            && $formatGetter->get instanceof \Phasis\Value\JsFunction
                             && $interp !== null
                         ) {
                             $bound = $interp->callFunction(
@@ -175,7 +175,7 @@ class NumberConstructor
                                 $newObj,
                                 [],
                             );
-                            if ($bound instanceof \PhpJs\Value\JsFunction) {
+                            if ($bound instanceof \Phasis\Value\JsFunction) {
                                 $formatted = $interp->callFunction(
                                     $bound,
                                     JsUndefined::instance(),
@@ -253,7 +253,7 @@ class NumberConstructor
 
             // Infinity/NaN from ToIntegerOrInfinity means out of range.
             if (is_infinite($fdRaw) || is_nan($fdRaw) || $fdRaw < 0 || $fdRaw > 100) {
-                throw new \PhpJs\Exceptions\RangeError('toFixed() digits argument must be between 0 and 100');
+                throw new \Phasis\Exceptions\RangeError('toFixed() digits argument must be between 0 and 100');
             }
             $digits = (int) $fdRaw;
 
@@ -290,7 +290,7 @@ class NumberConstructor
             $radix = ($radixArg instanceof JsUndefined) ? 10 : (int) TypeConversion::toNumber($radixArg);
 
             if ($radix < 2 || $radix > 36) {
-                throw new \PhpJs\Exceptions\RangeError('toString() radix must be between 2 and 36');
+                throw new \Phasis\Exceptions\RangeError('toString() radix must be between 2 and 36');
             }
 
             if (is_nan($numValue)) {
@@ -444,7 +444,7 @@ class NumberConstructor
                     return $prim;
                 }
             }
-            throw new \PhpJs\Exceptions\TypeError('Number.prototype.valueOf requires that \'this\' be a Number');
+            throw new \Phasis\Exceptions\TypeError('Number.prototype.valueOf requires that \'this\' be a Number');
         };
     }
 
@@ -468,7 +468,7 @@ class NumberConstructor
             }
 
             if ($precision < 1 || $precision > 100) {
-                throw new \PhpJs\Exceptions\RangeError('toPrecision() argument must be between 1 and 100');
+                throw new \Phasis\Exceptions\RangeError('toPrecision() argument must be between 1 and 100');
             }
 
             $absValue = abs($numValue);
@@ -543,7 +543,7 @@ class NumberConstructor
             $fractionDigits = $fdIsUndefined ? null : (int) $fdNum;
 
             if ($fractionDigits !== null && ($fractionDigits < 0 || $fractionDigits > 100)) {
-                throw new \PhpJs\Exceptions\RangeError('toExponential() argument must be between 0 and 100');
+                throw new \Phasis\Exceptions\RangeError('toExponential() argument must be between 0 and 100');
             }
 
             if ($numValue === 0.0) {
@@ -747,6 +747,6 @@ class NumberConstructor
                 return $prim->value;
             }
         }
-        throw new \PhpJs\Exceptions\TypeError('Number.prototype method requires that \'this\' be a Number');
+        throw new \Phasis\Exceptions\TypeError('Number.prototype method requires that \'this\' be a Number');
     }
 }

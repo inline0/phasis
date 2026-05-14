@@ -8,7 +8,7 @@ declare(strict_types=1);
 // Snapshot of Reingold-Dershowitz-equivalent chinese calendar arithmetic
 // for the range extended-year -2900..3500. ICU 76+ matches the
 // V8 / test262 reference; ICU 70/74 on older Linux distros diverges, so
-// php-js carries this snapshot rather than dispatching through IntlCalendar.
+// phasis carries this snapshot rather than dispatching through IntlCalendar.
 //
 // Each extended-year maps to an 8-byte packed record:
 //   int32 LE  newYearDays   = days since ISO 1970-01-01 for M01-01

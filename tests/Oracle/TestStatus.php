@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Oracle;
+namespace Phasis\Tests\Oracle;
 
 enum TestStatus
 {

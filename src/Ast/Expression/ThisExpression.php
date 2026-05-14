@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast\Expression;
+namespace Phasis\Ast\Expression;
 
-use PhpJs\Ast\Node;
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Ast\Node;
+use Phasis\Lexer\SourceLocation;
 
 class ThisExpression extends Node
 {

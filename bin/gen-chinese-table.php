@@ -170,7 +170,7 @@ echo "//\n";
 echo "// Snapshot of Reingold-Dershowitz-equivalent {$cal} calendar arithmetic\n";
 echo "// for the range extended-year {$START}..{$END}. ICU 76+ matches the\n";
 echo "// V8 / test262 reference; ICU 70/74 on older Linux distros diverges, so\n";
-echo "// php-js carries this snapshot rather than dispatching through IntlCalendar.\n";
+echo "// phasis carries this snapshot rather than dispatching through IntlCalendar.\n";
 echo "//\n";
 echo "// Each extended-year maps to an 8-byte packed record:\n";
 echo "//   int32 LE  newYearDays   = days since ISO 1970-01-01 for M01-01\n";

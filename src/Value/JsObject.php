@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Object\PropertyMap;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Object\PropertyMap;
 
 class JsObject implements JsValue
 {
@@ -245,22 +245,22 @@ class JsObject implements JsValue
             $desc = $this->properties->get($name);
             if ($desc !== null) {
                 if ($desc->get !== null && $desc->set === null) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot set property {$name} of #<Object> which has only a getter"
                     );
                 }
                 if ($desc->writable === false) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot assign to read only property '{$name}' of object '#<Object>'"
                     );
                 }
             }
             if (!$this->extensible) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot add property {$name}, object is not extensible"
                 );
             }
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot assign to read only property '{$name}' of object '#<Object>'"
             );
         }
@@ -420,7 +420,7 @@ class JsObject implements JsValue
             if ($desc->isAccessorDescriptor()) {
                 // Accessor without setter: fail silently (or throw in strict mode).
                 if ($strict) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot set property Symbol() which has only a getter"
                     );
                 }
@@ -428,7 +428,7 @@ class JsObject implements JsValue
             }
             if ($desc->writable === false) {
                 if ($strict) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot assign to read only property 'Symbol()' of object '#<Object>'"
                     );
                 }
@@ -441,7 +441,7 @@ class JsObject implements JsValue
         // Adding a new symbol property: check extensibility.
         if (!$this->extensible) {
             if ($strict) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot add property Symbol(), object is not extensible"
                 );
             }
@@ -593,7 +593,7 @@ class JsObject implements JsValue
                         return false;
                     }
                     if (
-                        $desc->value !== null && !\PhpJs\Spec\AbstractOperations::sameValue(
+                        $desc->value !== null && !\Phasis\Spec\AbstractOperations::sameValue(
                             $desc->value,
                             $current->value ?? JsUndefined::instance(),
                         )
@@ -681,7 +681,7 @@ class JsObject implements JsValue
         if (isset($this->privateFieldBrands[$name])) {
             // Strip the internal brand suffix (@N) from the name for the error.
             $displayName = preg_replace('/@\d+$/', '', $name);
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot initialize {$displayName} twice on the same object",
             );
         }
@@ -693,7 +693,7 @@ class JsObject implements JsValue
     public function getPrivateField(string $name): JsValue
     {
         if (!isset($this->privateFieldBrands[$name])) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot read private member {$name} from an object whose class did not declare it",
             );
         }
@@ -706,7 +706,7 @@ class JsObject implements JsValue
                     return $interp->callFunction($val[0], $this, []);
                 }
             }
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "'{$name}' was defined without a getter",
             );
         }
@@ -719,7 +719,7 @@ class JsObject implements JsValue
     public function setPrivateFieldValue(string $name, JsValue $value): void
     {
         if (!isset($this->privateFieldBrands[$name])) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot write private member {$name} to an object whose class did not declare it",
             );
         }
@@ -727,7 +727,7 @@ class JsObject implements JsValue
         if (isset($this->privateMethods[$name])) {
             // Strip the internal brand suffix (@N) from the name for the error message.
             $displayName = preg_replace('/@\d+$/', '', $name);
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot assign to private method {$displayName}",
             );
         }
@@ -741,7 +741,7 @@ class JsObject implements JsValue
                     return;
                 }
             }
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "'{$name}' was defined without a setter",
             );
         }
@@ -787,7 +787,7 @@ class JsObject implements JsValue
     {
         if (isset($this->privateFieldBrands[$name])) {
             $displayName = preg_replace('/@\d+$/', '', $name);
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 "Cannot initialize {$displayName} twice on the same object",
             );
         }
@@ -827,7 +827,7 @@ class JsObject implements JsValue
 
         if ($desc->configurable === false) {
             if ($strict) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     "Cannot delete property '{$name}' of #<Object>"
                 );
             }
@@ -953,8 +953,8 @@ class JsObject implements JsValue
         // integer indices (none for namespaces) and Symbol-keyed entries.
         if ($this->isModuleNamespace) {
             usort($nonIndexStrings, static function (string $a, string $b): int {
-                $ua = \PhpJs\Value\JsString::utf8ToUtf16LE($a);
-                $ub = \PhpJs\Value\JsString::utf8ToUtf16LE($b);
+                $ua = \Phasis\Value\JsString::utf8ToUtf16LE($a);
+                $ub = \Phasis\Value\JsString::utf8ToUtf16LE($b);
                 $len = min(strlen($ua), strlen($ub));
                 for ($i = 0; $i < $len; $i += 2) {
                     $ca = ord($ua[$i]) | (ord($ua[$i + 1]) << 8);
@@ -1049,8 +1049,8 @@ class JsObject implements JsValue
         // (i.e. lexicographic by UTF-16 code unit).
         if ($this->isModuleNamespace) {
             usort($nonIndexStrings, static function (JsString $a, JsString $b): int {
-                $ua = \PhpJs\Value\JsString::utf8ToUtf16LE($a->value);
-                $ub = \PhpJs\Value\JsString::utf8ToUtf16LE($b->value);
+                $ua = \Phasis\Value\JsString::utf8ToUtf16LE($a->value);
+                $ub = \Phasis\Value\JsString::utf8ToUtf16LE($b->value);
                 $len = min(strlen($ua), strlen($ub));
                 for ($i = 0; $i < $len; $i += 2) {
                     $ca = ord($ua[$i]) | (ord($ua[$i + 1]) << 8);
@@ -1267,7 +1267,7 @@ class JsObject implements JsValue
                         }
                     })()
                     : ($current->value ?? JsUndefined::instance());
-                if (!\PhpJs\Spec\AbstractOperations::sameValue($currentValue, $desc->value)) {
+                if (!\Phasis\Spec\AbstractOperations::sameValue($currentValue, $desc->value)) {
                     return false;
                 }
             }
@@ -1352,7 +1352,7 @@ class JsObject implements JsValue
                     // If writable is false and configurable is false, reject value change.
                     $currentVal = $current->value ?? JsUndefined::instance();
                     $changed = $desc->value !== null
-                        && !\PhpJs\Spec\AbstractOperations::sameValue($desc->value, $currentVal);
+                        && !\Phasis\Spec\AbstractOperations::sameValue($desc->value, $currentVal);
                     if ($changed) {
                         return false;
                     }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * JavaScript DataView object.
@@ -350,12 +350,12 @@ class JsDataView extends JsObject
     public function validateNotDetached(): void
     {
         if ($this->buffer->isDetached()) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Cannot perform DataView operation on a detached ArrayBuffer'
             );
         }
         if ($this->isOutOfBounds()) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Cannot perform DataView operation on an out-of-bounds DataView'
             );
         }
@@ -381,7 +381,7 @@ class JsDataView extends JsObject
     {
         $len = $this->getByteLength();
         if ($offset < 0 || $offset + $size > $len) {
-            throw new \PhpJs\Exceptions\RangeError(
+            throw new \Phasis\Exceptions\RangeError(
                 'Offset is outside the bounds of the DataView'
             );
         }

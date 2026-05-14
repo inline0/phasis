@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast\Statement;
+namespace Phasis\Ast\Statement;
 
-use PhpJs\Ast\Node;
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Ast\Node;
+use Phasis\Lexer\SourceLocation;
 
 class IfStatement extends Node
 {

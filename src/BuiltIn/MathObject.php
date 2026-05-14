@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 class MathObject
 {
@@ -109,7 +109,7 @@ class MathObject
         $m('sumPrecise', self::sumPreciseFn(), 1);
 
         // Symbol.toStringTag = "Math" (non-writable, non-enumerable, configurable)
-        $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+        $toStringTagSym = \Phasis\BuiltIn\SymbolConstructor::toStringTag();
         $math->definePropertyBySymbol(
             $toStringTagSym,
             PropertyDescriptor::data(new JsString('Math'), false, false, true),
@@ -409,36 +409,36 @@ class MathObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $iterable = $args[0] ?? JsUndefined::instance();
-            if ($iterable instanceof JsUndefined || $iterable instanceof \PhpJs\Value\JsNull) {
-                throw new \PhpJs\Exceptions\TypeError('Math.sumPrecise requires an iterable argument');
+            if ($iterable instanceof JsUndefined || $iterable instanceof \Phasis\Value\JsNull) {
+                throw new \Phasis\Exceptions\TypeError('Math.sumPrecise requires an iterable argument');
             }
-            if (!$iterable instanceof \PhpJs\Value\JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+            if (!$iterable instanceof \Phasis\Value\JsObject) {
+                throw new \Phasis\Exceptions\TypeError(
                     TypeConversion::toString($iterable) . ' is not iterable',
                 );
             }
 
             $values = [];
-            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
             $iteratorMethod = $iterable->getBySymbol($iterSym);
-            if (!$iteratorMethod instanceof \PhpJs\Value\JsFunction) {
-                throw new \PhpJs\Exceptions\TypeError('object is not iterable');
+            if (!$iteratorMethod instanceof \Phasis\Value\JsFunction) {
+                throw new \Phasis\Exceptions\TypeError('object is not iterable');
             }
 
             $iterator = $iteratorMethod->call($iterable, []);
-            if (!$iterator instanceof \PhpJs\Value\JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('object is not iterable');
+            if (!$iterator instanceof \Phasis\Value\JsObject) {
+                throw new \Phasis\Exceptions\TypeError('object is not iterable');
             }
 
             $nextMethod = $iterator->get('next');
-            if (!$nextMethod instanceof \PhpJs\Value\JsFunction) {
-                throw new \PhpJs\Exceptions\TypeError('object is not iterable');
+            if (!$nextMethod instanceof \Phasis\Value\JsFunction) {
+                throw new \Phasis\Exceptions\TypeError('object is not iterable');
             }
 
             $typeErr = null;
             while (true) {
                 $result = $nextMethod->call($iterator, []);
-                if (!$result instanceof \PhpJs\Value\JsObject) {
+                if (!$result instanceof \Phasis\Value\JsObject) {
                     break;
                 }
                 if (TypeConversion::toBoolean($result->get('done'))) {
@@ -446,8 +446,8 @@ class MathObject
                 }
                 $val = $result->get('value');
                 // Per spec: value must be a Number; reject all other types.
-                if (!$val instanceof \PhpJs\Value\JsNumber) {
-                    $typeErr = new \PhpJs\Exceptions\TypeError(
+                if (!$val instanceof \Phasis\Value\JsNumber) {
+                    $typeErr = new \Phasis\Exceptions\TypeError(
                         'Math.sumPrecise elements must be numbers',
                     );
                     break;
@@ -457,7 +457,7 @@ class MathObject
             if ($typeErr !== null) {
                 // IteratorClose: invoke iterator.return if present, then re-throw.
                 $returnMethod = $iterator->get('return');
-                if ($returnMethod instanceof \PhpJs\Value\JsFunction) {
+                if ($returnMethod instanceof \Phasis\Value\JsFunction) {
                     try {
                         $returnMethod->call($iterator, []);
                     } catch (\Throwable) {

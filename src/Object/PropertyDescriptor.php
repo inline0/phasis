@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Object;
+namespace Phasis\Object;
 
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsValue;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsValue;
 
 class PropertyDescriptor
 {

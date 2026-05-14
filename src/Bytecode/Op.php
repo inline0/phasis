@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
 /**
  * Opcode constants for the bytecode VM. Plain int constants (not an

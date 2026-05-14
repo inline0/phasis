@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\BuiltIn\SymbolConstructor;
-use PhpJs\Spec\TypeConversion;
+use Phasis\BuiltIn\SymbolConstructor;
+use Phasis\Spec\TypeConversion;
 
 /**
  * JavaScript TypedArray object.
@@ -70,7 +70,7 @@ class JsTypedArray extends JsObject
         parent::__construct($prototype);
 
         if (!isset(self::TYPES[$typeName])) {
-            throw new \PhpJs\Exceptions\TypeError("Invalid typed array type: {$typeName}");
+            throw new \Phasis\Exceptions\TypeError("Invalid typed array type: {$typeName}");
         }
 
         [$this->bytesPerElement, $this->packFormat, $this->isBigInt, $this->clamped] = self::TYPES[$typeName];
@@ -92,13 +92,13 @@ class JsTypedArray extends JsObject
     public function validateNotDetached(): void
     {
         if ($this->buffer->isDetached()) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Cannot perform %TypedArray%.prototype method'
                 . ' on a detached ArrayBuffer'
             );
         }
         if ($this->isOutOfBounds()) {
-            throw new \PhpJs\Exceptions\TypeError(
+            throw new \Phasis\Exceptions\TypeError(
                 'Cannot perform %TypedArray%.prototype method'
                 . ' on an out-of-bounds TypedArray'
             );
@@ -125,7 +125,7 @@ class JsTypedArray extends JsObject
         if ($this->autoLength) {
             return false;
         }
-        $isShared = $this->buffer instanceof \PhpJs\Value\JsSharedArrayBuffer;
+        $isShared = $this->buffer instanceof \Phasis\Value\JsSharedArrayBuffer;
         if ($this->buffer->isResizable() && !$isShared) {
             return false;
         }
@@ -168,7 +168,7 @@ class JsTypedArray extends JsObject
      * string-keyed own properties in insertion order, then symbol-keyed own
      * properties in insertion order.
      *
-     * @return list<\PhpJs\Value\JsValue>
+     * @return list<\Phasis\Value\JsValue>
      */
     public function ordinaryOwnPropertyKeys(): array
     {
@@ -176,14 +176,14 @@ class JsTypedArray extends JsObject
         if (!$this->buffer->isDetached() && !$this->isOutOfBounds()) {
             $len = $this->getLength();
             for ($i = 0; $i < $len; $i++) {
-                $keys[] = new \PhpJs\Value\JsString((string) $i);
+                $keys[] = new \Phasis\Value\JsString((string) $i);
             }
         }
         // Ordinary string/symbol keys follow; filter out any that collide
         // with the integer indices already emitted (e.g. stale properties).
         $rest = parent::ordinaryOwnPropertyKeys();
         foreach ($rest as $k) {
-            if ($k instanceof \PhpJs\Value\JsString) {
+            if ($k instanceof \Phasis\Value\JsString) {
                 if (
                     ctype_digit($k->value)
                     && self::isCanonicalNumericIndex($k->value)
@@ -212,10 +212,10 @@ class JsTypedArray extends JsObject
     private function coerceTypedArrayValue(JsValue $value): JsValue
     {
         if ($this->isBigInt) {
-            return \PhpJs\Spec\TypeConversion::toBigInt($value);
+            return \Phasis\Spec\TypeConversion::toBigInt($value);
         }
-        $num = \PhpJs\Spec\TypeConversion::toNumber($value);
-        return new \PhpJs\Value\JsNumber($num);
+        $num = \Phasis\Spec\TypeConversion::toNumber($value);
+        return new \Phasis\Value\JsNumber($num);
     }
 
     public function delete(string $name, bool $strict = false): bool
@@ -234,7 +234,7 @@ class JsTypedArray extends JsObject
                 && !$this->buffer->isDetached()
             ) {
                 if ($strict) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot delete property '{$name}' of TypedArray",
                     );
                 }
@@ -274,7 +274,7 @@ class JsTypedArray extends JsObject
      */
     private static function resolveCurrentRealmArrayBufferProto(): ?JsObject
     {
-        $realm = \PhpJs\Engine::getCurrentRealm();
+        $realm = \Phasis\Engine::getCurrentRealm();
         if ($realm === null) {
             return null;
         }
@@ -677,13 +677,13 @@ class JsTypedArray extends JsObject
      */
     public function getOwnPropertyDescriptor(
         string $name,
-    ): ?\PhpJs\Object\PropertyDescriptor {
+    ): ?\Phasis\Object\PropertyDescriptor {
         if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
             $index = (int) $name;
             if ($index >= 0 && $index < $this->getLength()) {
                 // Per spec 10.4.5.1, TypedArray integer indices are
                 // writable, enumerable, and (since ES2023) configurable.
-                return \PhpJs\Object\PropertyDescriptor::data(
+                return \Phasis\Object\PropertyDescriptor::data(
                     $this->getIndex($index),
                     true,
                     true,
@@ -710,7 +710,7 @@ class JsTypedArray extends JsObject
      */
     public function defineOwnProperty(
         string $name,
-        \PhpJs\Object\PropertyDescriptor $desc,
+        \Phasis\Object\PropertyDescriptor $desc,
     ): bool {
         // ctype_digit catches only round-trippable small integer strings.
         // Very large digit strings like "1000000000000000000000" are NOT a

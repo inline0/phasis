@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast;
+namespace Phasis\Ast;
 
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Lexer\SourceLocation;
 
 abstract class Node
 {

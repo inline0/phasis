@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * Deferred module namespace exotic object per the import-defer
@@ -165,7 +165,7 @@ class JsDeferredModuleNamespace extends JsObject
 
     public function getOwnPropertyDescriptor(
         string $name,
-    ): ?\PhpJs\Object\PropertyDescriptor {
+    ): ?\Phasis\Object\PropertyDescriptor {
         if (!$this->bypassTrigger && !$this->shouldSkipTrigger($name)) {
             $this->ensureEvaluated();
         }
@@ -204,7 +204,7 @@ class JsDeferredModuleNamespace extends JsObject
         return parent::delete($name, $strict);
     }
 
-    public function defineOwnProperty(string $name, \PhpJs\Object\PropertyDescriptor $desc): bool
+    public function defineOwnProperty(string $name, \Phasis\Object\PropertyDescriptor $desc): bool
     {
         if (!$this->bypassTrigger && !$this->shouldSkipTrigger($name)) {
             $this->ensureEvaluated();

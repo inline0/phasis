@@ -5,8 +5,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use PhpJs\Engine;
-use PhpJs\Parser\Parser;
+use Phasis\Engine;
+use Phasis\Parser\Parser;
 
 $args = array_slice($argv, 1);
 $opts = getopt('e:', ['ast', 'repl']);

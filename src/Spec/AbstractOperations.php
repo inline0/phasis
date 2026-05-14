@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Spec;
+namespace Phasis\Spec;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Value\JsBigInt;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Value\JsBigInt;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * ES spec abstract comparison and operator algorithms.
@@ -33,7 +33,7 @@ final class AbstractOperations
      *   revoked, a TypeError is thrown (per spec step 3).
      * - Otherwise falls back to the currently active realm.
      */
-    public static function getFunctionRealm(JsValue $obj): ?\PhpJs\Engine
+    public static function getFunctionRealm(JsValue $obj): ?\Phasis\Engine
     {
         $seen = [];
         while (true) {
@@ -51,7 +51,7 @@ final class AbstractOperations
                 }
                 return $obj->realm;
             }
-            if ($obj instanceof \PhpJs\Value\JsProxy) {
+            if ($obj instanceof \Phasis\Value\JsProxy) {
                 if ($obj->isRevoked()) {
                     throw new TypeError(
                         'Cannot perform GetFunctionRealm on a proxy that has been revoked'
@@ -62,7 +62,7 @@ final class AbstractOperations
             }
             break;
         }
-        return \PhpJs\Engine::getCurrentRealm();
+        return \Phasis\Engine::getCurrentRealm();
     }
 
     /**
@@ -72,7 +72,7 @@ final class AbstractOperations
      * looks up the named intrinsic on GetFunctionRealm(constructor)'s
      * global environment via $intrinsicLookup($globalEnv).
      *
-     * @param callable(\PhpJs\Runtime\Environment): ?JsObject $intrinsicLookup
+     * @param callable(\Phasis\Runtime\Environment): ?JsObject $intrinsicLookup
      *   Closure that resolves the intrinsic in the target realm's
      *   global environment. Returns null when the intrinsic is not
      *   installed (callers fall back to the current realm).
@@ -112,7 +112,7 @@ final class AbstractOperations
      * realm's copy.
      */
     public static function realmIntrinsicPrototype(
-        \PhpJs\Runtime\Environment $globalEnv,
+        \Phasis\Runtime\Environment $globalEnv,
         string $constructorName,
     ): ?JsObject {
         // Map well-known constructor names that are not exposed as
@@ -158,8 +158,8 @@ final class AbstractOperations
         }
 
         // Annex B: [[IsHTMLDDA]] objects are == null and == undefined.
-        $xIsHTMLDDA = \PhpJs\Value\JsHTMLDDA::isHTMLDDA($x);
-        $yIsHTMLDDA = \PhpJs\Value\JsHTMLDDA::isHTMLDDA($y);
+        $xIsHTMLDDA = \Phasis\Value\JsHTMLDDA::isHTMLDDA($x);
+        $yIsHTMLDDA = \Phasis\Value\JsHTMLDDA::isHTMLDDA($y);
         if ($xIsHTMLDDA && ($y instanceof JsNull || $y instanceof JsUndefined)) {
             return true;
         }
@@ -512,7 +512,7 @@ final class AbstractOperations
         // 13.10.2 step 2: let instOfHandler = GetMethod(C, @@hasInstance).
         // getBySymbol may invoke a getter that throws; let the exception propagate.
         $instOfHandler = $right->getBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::hasInstance()
+            \Phasis\BuiltIn\SymbolConstructor::hasInstance()
         );
 
         // GetMethod returns undefined for both undefined and null property values.
@@ -529,7 +529,7 @@ final class AbstractOperations
         // callable target are themselves callable; bail only when neither
         // path applies.
         $isCallable = $right instanceof JsFunction
-            || ($right instanceof \PhpJs\Value\JsProxy && $right->isCallable());
+            || ($right instanceof \Phasis\Value\JsProxy && $right->isCallable());
         if (!$isCallable) {
             throw new TypeError('Right-hand side of instanceof is not callable');
         }

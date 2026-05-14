@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
 
 /**
  * Arguments exotic object per ES spec 10.4.4.

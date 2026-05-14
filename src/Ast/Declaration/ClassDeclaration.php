@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Ast\Declaration;
+namespace Phasis\Ast\Declaration;
 
-use PhpJs\Ast\Expression\Identifier;
-use PhpJs\Ast\Node;
-use PhpJs\Lexer\SourceLocation;
+use Phasis\Ast\Expression\Identifier;
+use Phasis\Ast\Node;
+use Phasis\Lexer\SourceLocation;
 
 class ClassDeclaration extends Node
 {

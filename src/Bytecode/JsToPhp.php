@@ -2,31 +2,31 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
-use PhpJs\Ast\Declaration\FunctionDeclaration;
-use PhpJs\Ast\Declaration\VariableDeclaration;
-use PhpJs\Ast\Expression\AssignmentExpression;
-use PhpJs\Ast\Expression\BinaryExpression;
-use PhpJs\Ast\Expression\CallExpression;
-use PhpJs\Ast\Expression\ConditionalExpression;
-use PhpJs\Ast\Expression\Identifier;
-use PhpJs\Ast\Expression\Literal;
-use PhpJs\Ast\Expression\LogicalExpression;
-use PhpJs\Ast\Expression\UnaryExpression;
-use PhpJs\Ast\Expression\UpdateExpression;
-use PhpJs\Ast\Node;
-use PhpJs\Ast\Statement\BlockStatement;
-use PhpJs\Ast\Statement\BreakStatement;
-use PhpJs\Ast\Statement\ContinueStatement;
-use PhpJs\Ast\Statement\DoWhileStatement;
-use PhpJs\Ast\Statement\EmptyStatement;
-use PhpJs\Ast\Statement\ExpressionStatement;
-use PhpJs\Ast\Statement\ForStatement;
-use PhpJs\Ast\Statement\IfStatement;
-use PhpJs\Ast\Statement\ReturnStatement;
-use PhpJs\Ast\Statement\WhileStatement;
-use PhpJs\Value\JsFunction;
+use Phasis\Ast\Declaration\FunctionDeclaration;
+use Phasis\Ast\Declaration\VariableDeclaration;
+use Phasis\Ast\Expression\AssignmentExpression;
+use Phasis\Ast\Expression\BinaryExpression;
+use Phasis\Ast\Expression\CallExpression;
+use Phasis\Ast\Expression\ConditionalExpression;
+use Phasis\Ast\Expression\Identifier;
+use Phasis\Ast\Expression\Literal;
+use Phasis\Ast\Expression\LogicalExpression;
+use Phasis\Ast\Expression\UnaryExpression;
+use Phasis\Ast\Expression\UpdateExpression;
+use Phasis\Ast\Node;
+use Phasis\Ast\Statement\BlockStatement;
+use Phasis\Ast\Statement\BreakStatement;
+use Phasis\Ast\Statement\ContinueStatement;
+use Phasis\Ast\Statement\DoWhileStatement;
+use Phasis\Ast\Statement\EmptyStatement;
+use Phasis\Ast\Statement\ExpressionStatement;
+use Phasis\Ast\Statement\ForStatement;
+use Phasis\Ast\Statement\IfStatement;
+use Phasis\Ast\Statement\ReturnStatement;
+use Phasis\Ast\Statement\WhileStatement;
+use Phasis\Value\JsFunction;
 
 /**
  * JS-to-PHP source compiler. Emits a PHP closure that runs the JS
@@ -278,11 +278,11 @@ final class JsToPhp
                     $compiler->emitLine('return (float)(' . $value . ');');
                 } elseif ($type === 'boolean') {
                     $compiler->emitLine(
-                        'return \\PhpJs\\Value\\JsBoolean::of((bool)(' . $value . '));'
+                        'return \\Phasis\\Value\\JsBoolean::of((bool)(' . $value . '));'
                     );
                 } elseif ($type === 'numeric') {
                     $compiler->emitLine(
-                        'return \\PhpJs\\Value\\JsNumber::of((float)(' . $value . '));'
+                        'return \\Phasis\\Value\\JsNumber::of((float)(' . $value . '));'
                     );
                 } else {
                     return null;
@@ -339,10 +339,10 @@ final class JsToPhp
                     // as a "fell off body" sentinel here, but better
                     // is to emit a Bailout so the caller falls back.
                     $compiler->emitLine(
-                        'throw new \\PhpJs\\Bytecode\\Bailout("numeric body fall-off");'
+                        'throw new \\Phasis\\Bytecode\\Bailout("numeric body fall-off");'
                     );
                 } else {
-                    $compiler->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
+                    $compiler->emitLine('return \\Phasis\\Value\\JsUndefined::instance();');
                 }
             }
         } catch (Bailout) {
@@ -360,7 +360,7 @@ final class JsToPhp
         // until it OOMs. Use a static counter local to the closure
         // so we don't depend on private CallStack APIs.
         $bodyPrologue = "static \$_jstophp_depth = 0;\n"
-            . "if (\$_jstophp_depth >= 512) { throw new \\PhpJs\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
+            . "if (\$_jstophp_depth >= 512) { throw new \\Phasis\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
             . "\$_jstophp_depth++;\n"
             . "try {\n";
         $bodyEpilogue = "} finally { \$_jstophp_depth--; }\n";
@@ -494,7 +494,7 @@ final class JsToPhp
             // assignments in our profile deal with numeric slots.
             return 'numeric';
         }
-        if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\MemberExpression) {
             // Member reads are unboxed numeric via the dataSlots path
             // (with runtime JsNumber assertion).
             return 'numeric';
@@ -585,8 +585,8 @@ final class JsToPhp
         }
         if (
             $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             // Nested function: shadows the binding only if it has a
             // param of the same name; conservatively bail.
@@ -598,7 +598,7 @@ final class JsToPhp
         // `foo`. Skip it so `const foo = args.foo;` doesn't get
         // flagged as a self-referential init. Also skip the .key of
         // a non-computed object-literal Property for the same reason.
-        if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\MemberExpression) {
             if (self::initReadsName($node->object, $name)) {
                 return true;
             }
@@ -607,7 +607,7 @@ final class JsToPhp
             }
             return false;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\Property) {
+        if ($node instanceof \Phasis\Ast\Expression\Property) {
             if ($node->computed && self::initReadsName($node->key, $name)) {
                 return true;
             }
@@ -673,8 +673,8 @@ final class JsToPhp
         }
         if (
             $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             // Nested function: its body has its own scope.
             return false;
@@ -711,16 +711,16 @@ final class JsToPhp
         if (
             $node instanceof IfStatement
             || $node instanceof ConditionalExpression
-            || $node instanceof \PhpJs\Ast\Statement\SwitchStatement
-            || $node instanceof \PhpJs\Ast\Statement\TryStatement
+            || $node instanceof \Phasis\Ast\Statement\SwitchStatement
+            || $node instanceof \Phasis\Ast\Statement\TryStatement
             || $node instanceof LogicalExpression
         ) {
             return true;
         }
         if (
             $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             return false;
         }
@@ -760,8 +760,8 @@ final class JsToPhp
         }
         if (
             $body instanceof FunctionDeclaration
-            || $body instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $body instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $body instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $body instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             return false;
         }
@@ -796,7 +796,7 @@ final class JsToPhp
             return self::exprHasTailCall($node->left)
                 || self::exprHasTailCall($node->right);
         }
-        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\SequenceExpression) {
             $exprs = $node->expressions;
             return $exprs !== [] && self::exprHasTailCall($exprs[count($exprs) - 1]);
         }
@@ -809,10 +809,10 @@ final class JsToPhp
             // 'super' / 'arguments' / 'new.target' — all per-call.
             return $node->name === 'arguments' || $node->name === 'super';
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ThisExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\ThisExpression) {
             return true;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\MetaProperty) {
+        if ($node instanceof \Phasis\Ast\Expression\MetaProperty) {
             return true;
         }
         // Don't descend into nested function bodies — those have their
@@ -820,7 +820,7 @@ final class JsToPhp
         // reference is what matters.
         if (
             $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
         ) {
             return false;
         }
@@ -911,11 +911,11 @@ final class JsToPhp
                 throw new Bailout('using declaration');
             }
             foreach ($node->declarations as $decl) {
-                if ($decl->id instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+                if ($decl->id instanceof \Phasis\Ast\Pattern\ObjectPattern) {
                     // Object destructuring: collect each shorthand /
                     // identifier-bound property as a numeric local.
                     foreach ($decl->id->properties as $prop) {
-                        if (!$prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                        if (!$prop instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                             throw new Bailout('non-AssignmentProperty in pattern');
                         }
                         if ($prop->computed) {
@@ -943,10 +943,10 @@ final class JsToPhp
                     // to this name appears in the body.
                     $this->unassignedDeclares[$name] = true;
                 }
-                if ($decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression) {
+                if ($decl->init instanceof \Phasis\Ast\Expression\ObjectExpression) {
                     $this->markLocalAsObject($name);
                 }
-                if ($decl->init instanceof \PhpJs\Ast\Expression\ArrayExpression) {
+                if ($decl->init instanceof \Phasis\Ast\Expression\ArrayExpression) {
                     $this->markLocalAsArray($name);
                 }
                 if ($decl->init !== null && self::isAsciiStringLiteral($decl->init)) {
@@ -1035,8 +1035,8 @@ final class JsToPhp
     {
         if (
             $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             $blocked = $this->initialNestedScope($node);
             $this->scanNestedBody($node->body, $blocked);
@@ -1062,15 +1062,15 @@ final class JsToPhp
             $blocked[$fnNode->id->name] = true;
         }
         if (
-            $fnNode instanceof \PhpJs\Ast\Expression\FunctionExpression
+            $fnNode instanceof \Phasis\Ast\Expression\FunctionExpression
             && $fnNode->name !== null
         ) {
             $blocked[$fnNode->name] = true;
         }
         $params = match (true) {
             $fnNode instanceof FunctionDeclaration => $fnNode->params,
-            $fnNode instanceof \PhpJs\Ast\Expression\FunctionExpression => $fnNode->params,
-            $fnNode instanceof \PhpJs\Ast\Expression\ArrowFunction => $fnNode->params,
+            $fnNode instanceof \Phasis\Ast\Expression\FunctionExpression => $fnNode->params,
+            $fnNode instanceof \Phasis\Ast\Expression\ArrowFunction => $fnNode->params,
             default => [],
         };
         foreach ($params as $p) {
@@ -1078,12 +1078,12 @@ final class JsToPhp
                 $blocked[$p->name] = true;
             }
             if (
-                $p instanceof \PhpJs\Ast\Pattern\AssignmentPattern
+                $p instanceof \Phasis\Ast\Pattern\AssignmentPattern
                 && $p->left instanceof Identifier
             ) {
                 $blocked[$p->left->name] = true;
             }
-            if ($p instanceof \PhpJs\Ast\Pattern\RestElement && $p->argument instanceof Identifier) {
+            if ($p instanceof \Phasis\Ast\Pattern\RestElement && $p->argument instanceof Identifier) {
                 $blocked[$p->argument->name] = true;
             }
         }
@@ -1124,15 +1124,15 @@ final class JsToPhp
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             $deeper = $this->initialNestedScope($node);
             $this->scanNestedBody($node->body, $deeper);
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\MemberExpression
+            $node instanceof \Phasis\Ast\Expression\MemberExpression
             && !$node->computed
         ) {
             // For `obj.prop`, only `obj` is a name read; `prop` is a
@@ -1141,7 +1141,7 @@ final class JsToPhp
             $this->scanNestedBody($node->object, $blocked);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\Property && !$node->computed) {
+        if ($node instanceof \Phasis\Ast\Expression\Property && !$node->computed) {
             // Same reasoning for object-literal `{ key: value }`:
             // `key` is a property name, not a binding read. Only walk
             // value.
@@ -1165,7 +1165,7 @@ final class JsToPhp
             $blocked[$pattern->name] = true;
             return;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\ArrayPattern) {
             foreach ($pattern->elements as $el) {
                 if ($el !== null) {
                     $this->collectPatternNames($el, $blocked);
@@ -1173,22 +1173,22 @@ final class JsToPhp
             }
             return;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\ObjectPattern) {
             foreach ($pattern->properties as $prop) {
-                if ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                if ($prop instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                     $this->collectPatternNames($prop->value, $blocked);
                 }
-                if ($prop instanceof \PhpJs\Ast\Pattern\RestElement) {
+                if ($prop instanceof \Phasis\Ast\Pattern\RestElement) {
                     $this->collectPatternNames($prop->argument, $blocked);
                 }
             }
             return;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
             $this->collectPatternNames($pattern->left, $blocked);
             return;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\RestElement) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\RestElement) {
             $this->collectPatternNames($pattern->argument, $blocked);
             return;
         }
@@ -1234,7 +1234,7 @@ final class JsToPhp
             }
             $this->collectCalleeUsage($node->callee);
             foreach ($node->arguments as $arg) {
-                if ($arg instanceof \PhpJs\Ast\Expression\SpreadElement) {
+                if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
                     continue;
                 }
                 $this->collectCalleeUsage($arg);
@@ -1313,10 +1313,10 @@ final class JsToPhp
             } else {
                 $this->emitLine(
                     $php . ' = isset($args[' . $idx . ']) && $args[' . $idx . '] '
-                    . 'instanceof \\PhpJs\\Value\\JsNumber ? $args[' . $idx . ']->value : null;'
+                    . 'instanceof \\Phasis\\Value\\JsNumber ? $args[' . $idx . ']->value : null;'
                 );
                 $this->emitLine(
-                    'if (' . $php . ' === null) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric arg"); }'
+                    'if (' . $php . ' === null) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric arg"); }'
                 );
             }
         }
@@ -1459,13 +1459,13 @@ final class JsToPhp
             $this->assignedNames[$node->left->name] = true;
             if (
                 $node->operator === '='
-                && $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
+                && $node->right instanceof \Phasis\Ast\Expression\ObjectExpression
             ) {
                 $this->markLocalAsObject($node->left->name);
             }
             if (
                 $node->operator === '='
-                && $node->right instanceof \PhpJs\Ast\Expression\ArrayExpression
+                && $node->right instanceof \Phasis\Ast\Expression\ArrayExpression
             ) {
                 $this->markLocalAsArray($node->left->name);
             }
@@ -1546,8 +1546,8 @@ final class JsToPhp
                 // names match the pattern's targets and assign directly,
                 // skipping the JsObject construction entirely.
                 if (
-                    $decl->id instanceof \PhpJs\Ast\Pattern\ObjectPattern
-                    && $decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression
+                    $decl->id instanceof \Phasis\Ast\Pattern\ObjectPattern
+                    && $decl->init instanceof \Phasis\Ast\Expression\ObjectExpression
                 ) {
                     $this->emitDestructureFromLiteral($decl->id, $decl->init);
                     continue;
@@ -1572,7 +1572,7 @@ final class JsToPhp
                         $this->slotVar($name) . ' = ' . var_export($lit->value, true) . ';'
                     );
                 } elseif (
-                    $decl->init instanceof \PhpJs\Ast\Expression\ArrayExpression
+                    $decl->init instanceof \Phasis\Ast\Expression\ArrayExpression
                     && $kind === 'array'
                 ) {
                     // Array literal init: empty `[]` → fresh JsArray.
@@ -1582,10 +1582,10 @@ final class JsToPhp
                         throw new Bailout('non-empty array literal');
                     }
                     $this->emitLine(
-                        $this->slotVar($name) . ' = new \\PhpJs\\Value\\JsArray();'
+                        $this->slotVar($name) . ' = new \\Phasis\\Value\\JsArray();'
                     );
                 } elseif (
-                    $decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression
+                    $decl->init instanceof \Phasis\Ast\Expression\ObjectExpression
                     && $kind === 'object'
                 ) {
                     // Object literal init: emit JsObject construction
@@ -1731,7 +1731,7 @@ final class JsToPhp
                     // produce JsUndefined per spec.
                     throw new Bailout('numeric mode: bare return');
                 }
-                $this->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
+                $this->emitLine('return \\Phasis\\Value\\JsUndefined::instance();');
             } else {
                 $type = $this->inferExpressionType($node->argument);
                 if ($this->numericMode && $type !== 'numeric') {
@@ -1745,7 +1745,7 @@ final class JsToPhp
                 if ($this->numericMode) {
                     $this->emitLine('return (float)(' . $val . ');');
                 } elseif ($type === 'boolean') {
-                    $this->emitLine('return \\PhpJs\\Value\\JsBoolean::of((bool)(' . $val . '));');
+                    $this->emitLine('return \\Phasis\\Value\\JsBoolean::of((bool)(' . $val . '));');
                 } else {
                     // Default to numeric wrap. inferExpressionType
                     // returns 'unknown' for shapes we can't classify
@@ -1755,7 +1755,7 @@ final class JsToPhp
                     if ($type !== 'numeric') {
                         throw new Bailout('return type ' . $type . ' not yet wrappable');
                     }
-                    $this->emitLine('return \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));');
+                    $this->emitLine('return \\Phasis\\Value\\JsNumber::of((float)(' . $val . '));');
                 }
             }
             return;
@@ -1772,14 +1772,14 @@ final class JsToPhp
      * which the tree-walker handles via spec destructure semantics.
      */
     private function emitDestructureFromLiteral(
-        \PhpJs\Ast\Pattern\ObjectPattern $pattern,
-        \PhpJs\Ast\Expression\ObjectExpression $literal,
+        \Phasis\Ast\Pattern\ObjectPattern $pattern,
+        \Phasis\Ast\Expression\ObjectExpression $literal,
     ): void {
         // Build a key → AST value map from the literal so pattern
         // targets can fetch their values without a runtime lookup.
         $keyMap = [];
         foreach ($literal->properties as $prop) {
-            if (!$prop instanceof \PhpJs\Ast\Expression\Property) {
+            if (!$prop instanceof \Phasis\Ast\Expression\Property) {
                 throw new Bailout('non-Property in destructure source');
             }
             if ($prop->kind !== 'init' || $prop->computed) {
@@ -1796,7 +1796,7 @@ final class JsToPhp
             $keyMap[$key] = $prop->value;
         }
         foreach ($pattern->properties as $prop) {
-            if (!$prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+            if (!$prop instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                 throw new Bailout('non-AssignmentProperty in pattern');
             }
             if ($prop->computed) {
@@ -1840,12 +1840,12 @@ final class JsToPhp
      * VariableDeclaration init for an object-typed local, or
      * AssignmentExpression `=` with an object-typed local LHS.
      */
-    private function emitObjectLiteral(\PhpJs\Ast\Expression\ObjectExpression $node): string
+    private function emitObjectLiteral(\Phasis\Ast\Expression\ObjectExpression $node): string
     {
         $temp = $this->newTemp('obj');
-        $this->pendingStatements[] = $temp . ' = new \\PhpJs\\Value\\JsObject();';
+        $this->pendingStatements[] = $temp . ' = new \\Phasis\\Value\\JsObject();';
         foreach ($node->properties as $prop) {
-            if (!$prop instanceof \PhpJs\Ast\Expression\Property) {
+            if (!$prop instanceof \Phasis\Ast\Expression\Property) {
                 throw new Bailout('non-Property in object literal');
             }
             if ($prop->kind !== 'init') {
@@ -1881,32 +1881,32 @@ final class JsToPhp
     {
         if ($node instanceof Literal) {
             if ($node->value === null) {
-                return '\\PhpJs\\Value\\JsNull::instance()';
+                return '\\Phasis\\Value\\JsNull::instance()';
             }
             if (is_bool($node->value)) {
-                return '\\PhpJs\\Value\\JsBoolean::of(' . ($node->value ? 'true' : 'false') . ')';
+                return '\\Phasis\\Value\\JsBoolean::of(' . ($node->value ? 'true' : 'false') . ')';
             }
             if (is_int($node->value) || is_float($node->value)) {
-                return '\\PhpJs\\Value\\JsNumber::of((float) ' . (string) (float) $node->value . ')';
+                return '\\Phasis\\Value\\JsNumber::of((float) ' . (string) (float) $node->value . ')';
             }
             if (is_string($node->value)) {
-                return 'new \\PhpJs\\Value\\JsString(' . var_export($node->value, true) . ')';
+                return 'new \\Phasis\\Value\\JsString(' . var_export($node->value, true) . ')';
             }
             throw new Bailout('unknown literal type in object literal');
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ObjectExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\ObjectExpression) {
             return $this->emitObjectLiteral($node);
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ArrayExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\ArrayExpression) {
             $arrTemp = $this->newTemp('arr');
-            $this->pendingStatements[] = $arrTemp . ' = new \\PhpJs\\Value\\JsArray();';
+            $this->pendingStatements[] = $arrTemp . ' = new \\Phasis\\Value\\JsArray();';
             foreach ($node->elements as $el) {
                 if ($el === null) {
                     // Hole: bail; spec hole semantics need a sparse
                     // JsArray, but our tracked locals stay dense.
                     throw new Bailout('array literal hole in object literal');
                 }
-                if ($el instanceof \PhpJs\Ast\Expression\SpreadElement) {
+                if ($el instanceof \Phasis\Ast\Expression\SpreadElement) {
                     throw new Bailout('spread in array literal');
                 }
                 $elRef = $this->emitJsValueExpression($el);
@@ -1919,7 +1919,7 @@ final class JsToPhp
         // not a literal but resolves to a numeric raw double. The
         // numeric emitExpression bails for non-numeric subtrees.
         $valueExpr = $this->emitExpression($node);
-        return '\\PhpJs\\Value\\JsNumber::of((float)(' . $valueExpr . '))';
+        return '\\Phasis\\Value\\JsNumber::of((float)(' . $valueExpr . '))';
     }
 
     /**
@@ -2011,14 +2011,14 @@ final class JsToPhp
                 $verCacheVar = '$_fvver_' . $safe;
                 $this->pendingStatements[] = 'static ' . $envCacheVar
                     . ' = null, ' . $verCacheVar . ' = -1, ' . $php . ' = 0.0;';
-                $this->pendingStatements[] = '$_curVer = \\PhpJs\\Runtime\\Environment::'
+                $this->pendingStatements[] = '$_curVer = \\Phasis\\Runtime\\Environment::'
                     . '$globalBindingsVersion;';
                 $this->pendingStatements[] = 'if ($env !== ' . $envCacheVar
                     . ' || $_curVer !== ' . $verCacheVar . ') {';
                 $this->pendingStatements[] = '    ' . $box
                     . ' = $env->get(' . var_export($name, true) . ');';
                 $this->pendingStatements[] = '    if (!(' . $box
-                    . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric freevar"); }';
+                    . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric freevar"); }';
                 // Update the cache only AFTER the JsNumber check
                 // succeeds. If the value is not numeric we throw
                 // Bailout, and the cache must stay unchanged so the
@@ -2125,7 +2125,7 @@ final class JsToPhp
             // the receiver's PHP local. Only supports identifier
             // receiver + identifier key (the obj-prop bench shape).
             if (
-                $node->left instanceof \PhpJs\Ast\Expression\MemberExpression
+                $node->left instanceof \Phasis\Ast\Expression\MemberExpression
                 && !$node->left->computed
                 && $node->left->object instanceof Identifier
                 && $node->left->property instanceof Identifier
@@ -2143,7 +2143,7 @@ final class JsToPhp
                 $val = $this->emitExpression($node->right);
                 $temp = $this->newTemp('mw');
                 $this->pendingStatements[] = $temp
-                    . ' = \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));';
+                    . ' = \\Phasis\\Value\\JsNumber::of((float)(' . $val . '));';
                 $this->pendingStatements[] = $recv . '->properties->dataSlots['
                     . var_export($key, true) . '] = ' . $temp . ';';
                 // Expression value of assignment is the assigned RHS;
@@ -2156,7 +2156,7 @@ final class JsToPhp
             // setDenseElement. Bounds-checks at runtime via the dense
             // mode guard so a sparse-mutation pattern bails to spec.
             if (
-                $node->left instanceof \PhpJs\Ast\Expression\MemberExpression
+                $node->left instanceof \Phasis\Ast\Expression\MemberExpression
                 && $node->left->computed
                 && $node->left->object instanceof Identifier
                 && $node->operator === '='
@@ -2175,9 +2175,9 @@ final class JsToPhp
                 $valTemp = $this->newTemp('av');
                 $this->pendingStatements[] = $idxLocal . ' = (int) ' . $idxExpr . ';';
                 $this->pendingStatements[] = $valTemp
-                    . ' = \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));';
+                    . ' = \\Phasis\\Value\\JsNumber::of((float)(' . $val . '));';
                 $this->pendingStatements[] = 'if (!' . $recv
-                    . '->isDenseMode()) { throw new \\PhpJs\\Bytecode\\Bailout("array write on non-dense receiver"); }';
+                    . '->isDenseMode()) { throw new \\Phasis\\Bytecode\\Bailout("array write on non-dense receiver"); }';
                 $this->pendingStatements[] = $recv . '->setDenseElement('
                     . $idxLocal . ', ' . $valTemp . ');';
                 // Maintain length invariant: extending past current
@@ -2200,7 +2200,7 @@ final class JsToPhp
             // marked the local as object-typed.
             if (
                 $node->operator === '='
-                && $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
+                && $node->right instanceof \Phasis\Ast\Expression\ObjectExpression
                 && ($this->localTypes[$name] ?? null) === 'object'
             ) {
                 $temp = $this->emitObjectLiteral($node->right);
@@ -2275,7 +2275,7 @@ final class JsToPhp
         if ($node instanceof CallExpression) {
             return $this->emitCallExpression($node);
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ObjectExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\ObjectExpression) {
             // Object literals are only allowed as the RHS of a
             // VariableDeclaration or assignment to an object-typed
             // local. emitObjectLiteral handles both contexts; reaching
@@ -2286,7 +2286,7 @@ final class JsToPhp
             // coercion via valueOf).
             throw new Bailout('object literal in numeric context');
         }
-        if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
+        if ($node instanceof \Phasis\Ast\Expression\MemberExpression) {
             // Read of obj.prop or arr[i]. Receiver must be a known
             // object-typed local (dataSlots dereferenced, unbox to
             // numeric), an array-typed local with key 'length'
@@ -2312,11 +2312,11 @@ final class JsToPhp
                 $valLocal = $this->newTemp('av');
                 $this->pendingStatements[] = $idxLocal . ' = (int) ' . $idxExpr . ';';
                 $this->pendingStatements[] = 'if (!' . $recv
-                    . '->isDenseMode()) { throw new \\PhpJs\\Bytecode\\Bailout("array read on non-dense receiver"); }';
+                    . '->isDenseMode()) { throw new \\Phasis\\Bytecode\\Bailout("array read on non-dense receiver"); }';
                 $this->pendingStatements[] = $valLocal . ' = ' . $recv
                     . '->getDenseElements()[' . $idxLocal . '] ?? null;';
                 $this->pendingStatements[] = 'if (!(' . $valLocal
-                    . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric array element"); }';
+                    . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric array element"); }';
                 return $valLocal . '->value';
             }
             if ($node->computed) {
@@ -2344,7 +2344,7 @@ final class JsToPhp
             $this->pendingStatements[] = $temp . ' = ' . $recv
                 . '->properties->dataSlots[' . var_export($key, true) . '] ?? null;';
             $this->pendingStatements[] = 'if (!(' . $temp
-                . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric member read"); }';
+                . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric member read"); }';
             return $temp . '->value';
         }
         throw new Bailout('unsupported expr: ' . $node->type());
@@ -2366,7 +2366,7 @@ final class JsToPhp
         // method through the prototype chain. Returns the new length
         // as a numeric raw double, matching the VM inline path.
         if (
-            $node->callee instanceof \PhpJs\Ast\Expression\MemberExpression
+            $node->callee instanceof \Phasis\Ast\Expression\MemberExpression
             && !$node->callee->computed
             && $node->callee->object instanceof Identifier
             && $node->callee->property instanceof Identifier
@@ -2377,13 +2377,13 @@ final class JsToPhp
                 && ($this->localTypes[$recvName] ?? 'numeric') === 'array'
                 && $node->callee->property->name === 'push'
                 && count($node->arguments) === 1
-                && !($node->arguments[0] instanceof \PhpJs\Ast\Expression\SpreadElement)
+                && !($node->arguments[0] instanceof \Phasis\Ast\Expression\SpreadElement)
             ) {
                 $argExpr = $this->emitExpression($node->arguments[0]);
                 $recv = $this->slotVar($recvName);
                 $valTemp = $this->newTemp('av');
                 $this->pendingStatements[] = $valTemp
-                    . ' = \\PhpJs\\Value\\JsNumber::of(' . $argExpr . ');';
+                    . ' = \\Phasis\\Value\\JsNumber::of(' . $argExpr . ');';
                 $this->pendingStatements[] = $recv . '->push(' . $valTemp . ');';
                 return '((float) ' . $recv . '->getLength())';
             }
@@ -2402,7 +2402,7 @@ final class JsToPhp
         // contract is `JsNumber` — anything else triggers a Bailout
         // so the VM / tree-walker fallback handles non-numeric cases.
         $this->pendingStatements[] = 'if (!(' . $resultTemp
-            . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric call result"); }';
+            . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric call result"); }';
         return $resultTemp . '->value';
     }
 
@@ -2427,7 +2427,7 @@ final class JsToPhp
         // shape doesn't fit so the caller falls back to spec dispatch.
         $argRawExprs = [];
         foreach ($node->arguments as $arg) {
-            if ($arg instanceof \PhpJs\Ast\Expression\SpreadElement) {
+            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
                 return null;
             }
             $argRawExprs[] = $this->emitExpression($arg);
@@ -2452,14 +2452,14 @@ final class JsToPhp
         $resultTemp = $this->newTemp('cn');
         if (!$isLocalFnCallee) {
             $this->pendingStatements[] = 'if (!(' . $calleeRef
-                . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function callee"); }';
+                . ' instanceof \\Phasis\\Value\\JsFunction)) { throw new \\Phasis\\Bytecode\\Bailout("non-function callee"); }';
         }
         // Prefer phpCompiledNumeric. Fall back to phpCompiled with
         // JsNumber boxing of args + unboxing of result. If neither
         // exists, fall back to callFunction (and unbox).
         $boxedArgs = [];
         foreach ($argRawExprs as $expr) {
-            $boxedArgs[] = '\\PhpJs\\Value\\JsNumber::of(' . $expr . ')';
+            $boxedArgs[] = '\\Phasis\\Value\\JsNumber::of(' . $expr . ')';
         }
         $boxedArgsArr = '[' . implode(', ', $boxedArgs) . ']';
         $this->pendingStatements[] = $resultTemp . ' = '
@@ -2479,9 +2479,9 @@ final class JsToPhp
             . $boxedArgsArr . ', ' . $calleeRef . '->closure, $interp, '
             . $calleeRef . '->phpCompiledNodes)'
             . ' : $interp->callFunction(' . $calleeRef . ', '
-            . '\\PhpJs\\Value\\JsUndefined::instance(), ' . $boxedArgsArr . ');';
+            . '\\Phasis\\Value\\JsUndefined::instance(), ' . $boxedArgsArr . ');';
         $this->pendingStatements[] = '    if (!(' . $boxedResult
-            . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric call result"); }';
+            . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric call result"); }';
         $this->pendingStatements[] = '    ' . $resultTemp . ' = ' . $boxedResult . '->value;';
         $this->pendingStatements[] = '}';
         return $resultTemp;
@@ -2497,7 +2497,7 @@ final class JsToPhp
     {
         $resultTemp = $this->emitCallCore($node);
         $this->pendingStatements[] = 'if (!(' . $resultTemp
-            . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function call result"); }';
+            . ' instanceof \\Phasis\\Value\\JsFunction)) { throw new \\Phasis\\Bytecode\\Bailout("non-function call result"); }';
         return $resultTemp;
     }
 
@@ -2519,7 +2519,7 @@ final class JsToPhp
         // left-to-right argument evaluation.
         $argRawExprs = [];
         foreach ($node->arguments as $arg) {
-            if ($arg instanceof \PhpJs\Ast\Expression\SpreadElement) {
+            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
                 throw new Bailout('spread arg');
             }
             $argRawExprs[] = $this->emitExpression($arg);
@@ -2547,7 +2547,7 @@ final class JsToPhp
         // Box args, build the args array, dispatch.
         $boxedArgs = [];
         foreach ($argRawExprs as $expr) {
-            $boxedArgs[] = '\\PhpJs\\Value\\JsNumber::of(' . $expr . ')';
+            $boxedArgs[] = '\\Phasis\\Value\\JsNumber::of(' . $expr . ')';
         }
         $argsArr = '[' . implode(', ', $boxedArgs) . ']';
         $resultTemp = $this->newTemp('cr');
@@ -2569,7 +2569,7 @@ final class JsToPhp
         // global / outer-scope bindings can change shape between calls.
         if (!$isLocalFnCallee) {
             $this->pendingStatements[] = 'if (!(' . $calleeRef
-                . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function callee"); }';
+                . ' instanceof \\Phasis\\Value\\JsFunction)) { throw new \\Phasis\\Bytecode\\Bailout("non-function callee"); }';
         }
         // Direct closure dispatch when phpCompiled is set. The compile
         // path only runs for non-native callees (callFunctionInner
@@ -2583,7 +2583,7 @@ final class JsToPhp
             . $argsArr . ', ' . $calleeRef . '->closure, $interp, '
             . $calleeRef . '->phpCompiledNodes)'
             . ' : $interp->callFunction(' . $calleeRef . ', '
-            . '\\PhpJs\\Value\\JsUndefined::instance(), ' . $argsArr . ');';
+            . '\\Phasis\\Value\\JsUndefined::instance(), ' . $argsArr . ');';
         return $resultTemp;
     }
 

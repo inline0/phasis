@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Object;
+namespace Phasis\Object;
 
-use PhpJs\Value\JsValue;
+use Phasis\Value\JsValue;
 
 /**
  * Property map with separate fast / slow stores.
@@ -143,7 +143,7 @@ class PropertyMap
         if ($len === 10 && strcmp($key, '4294967294') > 0) {
             return;
         }
-        \PhpJs\Value\JsArray::$protoIntegerPropsVersion++;
+        \Phasis\Value\JsArray::$protoIntegerPropsVersion++;
     }
 
     /** @return list<string> Keys in insertion order. */

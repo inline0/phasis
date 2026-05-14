@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Object\PropertyDescriptor;
 
 /**
  * Represents a JavaScript Promise.
@@ -240,7 +240,7 @@ class JsPromise extends JsObject
             try {
                 $then = $value->get('then');
             } catch (\Throwable $e) {
-                if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                if ($e instanceof \Phasis\Exceptions\JsThrowable) {
                     $this->reject($e->jsValue);
                 } else {
                     $this->reject(new JsString($e->getMessage()));
@@ -281,7 +281,7 @@ class JsPromise extends JsObject
                     } catch (\Throwable $e) {
                         if (!$resolved) {
                             $resolved = true;
-                            if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                            if ($e instanceof \Phasis\Exceptions\JsThrowable) {
                                 $promise->reject($e->jsValue);
                             } else {
                                 $promise->reject(new JsString($e->getMessage()));
@@ -355,9 +355,9 @@ class JsPromise extends JsObject
                 try {
                     $result = $onFulfilled->call(JsUndefined::instance(), [$this->value]);
                     $child->resolve($result);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $child->reject($e->jsValue);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     $child->reject(new JsString($e->getMessage()));
                 } catch (\Throwable $e) {
                     $child->reject(new JsString($e->getMessage()));
@@ -370,9 +370,9 @@ class JsPromise extends JsObject
                 try {
                     $result = $onRejected->call(JsUndefined::instance(), [$this->value]);
                     $child->resolve($result);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $child->reject($e->jsValue);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     $child->reject(new JsString($e->getMessage()));
                 } catch (\Throwable $e) {
                     $child->reject(new JsString($e->getMessage()));
@@ -514,7 +514,7 @@ class JsPromise extends JsObject
                     } else {
                         $child->resolve($originalValue);
                     }
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $child->reject($e->jsValue);
                 } catch (\Throwable $e) {
                     $child->reject(new JsString($e->getMessage()));
@@ -530,7 +530,7 @@ class JsPromise extends JsObject
                     } else {
                         $child->reject($reason);
                     }
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     $child->reject($e->jsValue);
                 } catch (\Throwable $e) {
                     $child->reject(new JsString($e->getMessage()));
@@ -549,7 +549,7 @@ class JsPromise extends JsObject
                 } else {
                     $child->resolve($this->value);
                 }
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $child->reject($e->jsValue);
             } catch (\Throwable $e) {
                 $child->reject(new JsString($e->getMessage()));
@@ -562,7 +562,7 @@ class JsPromise extends JsObject
                 } else {
                     $child->reject($this->value);
                 }
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
                 $child->reject($e->jsValue);
             } catch (\Throwable $e) {
                 $child->reject(new JsString($e->getMessage()));
@@ -628,7 +628,7 @@ class JsPromise extends JsObject
         $interp = JsFunction::getInterpreterInstance();
         if ($interp !== null) {
             $err = $interp->phpExceptionToJsValue(
-                new \PhpJs\Exceptions\TypeError($message),
+                new \Phasis\Exceptions\TypeError($message),
             );
             if ($err instanceof JsObject) {
                 return $err;

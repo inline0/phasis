@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Unit\Lexer;
+namespace Phasis\Tests\Unit\Lexer;
 
-use PhpJs\Lexer\Lexer;
-use PhpJs\Lexer\TokenType;
+use Phasis\Lexer\Lexer;
+use Phasis\Lexer\TokenType;
 use PHPUnit\Framework\TestCase;
 
 class LexerTest extends TestCase
@@ -118,7 +118,7 @@ class LexerTest extends TestCase
         // then fail on the trailing backtick. Instead, manually check the first token.
         try {
             $tokens = $lexer->tokenize();
-        } catch (\PhpJs\Exceptions\SyntaxError) {
+        } catch (\Phasis\Exceptions\SyntaxError) {
             // Expected: the trailing ` after } starts an unterminated template
         }
         // Verify the TemplateHead was correctly identified regardless
@@ -263,7 +263,7 @@ class LexerTest extends TestCase
 
     public function testUnterminatedString(): void
     {
-        $this->expectException(\PhpJs\Exceptions\SyntaxError::class);
+        $this->expectException(\Phasis\Exceptions\SyntaxError::class);
         $this->tokenize('"unterminated');
     }
 

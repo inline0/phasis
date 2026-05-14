@@ -2,78 +2,78 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Parser;
+namespace Phasis\Parser;
 
-use PhpJs\Ast\Declaration\ClassDeclaration;
-use PhpJs\Ast\Declaration\ExportDeclaration;
-use PhpJs\Ast\Declaration\ExportSpecifier;
-use PhpJs\Ast\Declaration\FunctionDeclaration;
-use PhpJs\Ast\Declaration\ImportDeclaration;
-use PhpJs\Ast\Declaration\ImportSpecifier;
-use PhpJs\Ast\Declaration\VariableDeclaration;
-use PhpJs\Ast\Declaration\VariableDeclarator;
-use PhpJs\Ast\Expression\ArrayExpression;
-use PhpJs\Ast\Expression\ArrowFunction;
-use PhpJs\Ast\Expression\AssignmentExpression;
-use PhpJs\Ast\Expression\AwaitExpression;
-use PhpJs\Ast\Expression\BinaryExpression;
-use PhpJs\Ast\Expression\CallExpression;
-use PhpJs\Ast\Expression\ClassExpression;
-use PhpJs\Ast\Expression\ClassMethod;
-use PhpJs\Ast\Expression\ClassProperty;
-use PhpJs\Ast\Expression\PrivateIdentifier;
-use PhpJs\Ast\Expression\StaticBlock;
-use PhpJs\Ast\Expression\ConditionalExpression;
-use PhpJs\Ast\Expression\ImportExpression;
-use PhpJs\Ast\Expression\MetaProperty;
-use PhpJs\Ast\Expression\FunctionExpression;
-use PhpJs\Ast\Expression\Identifier;
-use PhpJs\Ast\Expression\Literal;
-use PhpJs\Ast\Expression\LogicalExpression;
-use PhpJs\Ast\Expression\MemberExpression;
-use PhpJs\Ast\Expression\NewExpression;
-use PhpJs\Ast\Expression\ObjectExpression;
-use PhpJs\Ast\Expression\Property;
-use PhpJs\Ast\Expression\SequenceExpression;
-use PhpJs\Ast\Expression\SpreadElement;
-use PhpJs\Ast\Expression\TemplateLiteral;
-use PhpJs\Ast\Expression\TemplateElement;
-use PhpJs\Ast\Expression\TaggedTemplate;
-use PhpJs\Ast\Expression\ThisExpression;
-use PhpJs\Ast\Expression\UnaryExpression;
-use PhpJs\Ast\Expression\UpdateExpression;
-use PhpJs\Ast\Expression\YieldExpression;
-use PhpJs\Ast\Node;
-use PhpJs\Ast\Pattern\ArrayPattern;
-use PhpJs\Ast\Pattern\AssignmentPattern;
-use PhpJs\Ast\Pattern\AssignmentProperty;
-use PhpJs\Ast\Pattern\ObjectPattern;
-use PhpJs\Ast\Pattern\RestElement;
-use PhpJs\Ast\Program;
-use PhpJs\Ast\Statement\BlockStatement;
-use PhpJs\Ast\Statement\BreakStatement;
-use PhpJs\Ast\Statement\CatchClause;
-use PhpJs\Ast\Statement\ContinueStatement;
-use PhpJs\Ast\Statement\DebuggerStatement;
-use PhpJs\Ast\Statement\DoWhileStatement;
-use PhpJs\Ast\Statement\EmptyStatement;
-use PhpJs\Ast\Statement\ExpressionStatement;
-use PhpJs\Ast\Statement\ForInStatement;
-use PhpJs\Ast\Statement\ForOfStatement;
-use PhpJs\Ast\Statement\ForStatement;
-use PhpJs\Ast\Statement\IfStatement;
-use PhpJs\Ast\Statement\LabeledStatement;
-use PhpJs\Ast\Statement\ReturnStatement;
-use PhpJs\Ast\Statement\SwitchCase;
-use PhpJs\Ast\Statement\SwitchStatement;
-use PhpJs\Ast\Statement\ThrowStatement;
-use PhpJs\Ast\Statement\TryStatement;
-use PhpJs\Ast\Statement\WhileStatement;
-use PhpJs\Ast\Statement\WithStatement;
-use PhpJs\Lexer\Lexer;
-use PhpJs\Lexer\SourceLocation;
-use PhpJs\Lexer\Token;
-use PhpJs\Lexer\TokenType;
+use Phasis\Ast\Declaration\ClassDeclaration;
+use Phasis\Ast\Declaration\ExportDeclaration;
+use Phasis\Ast\Declaration\ExportSpecifier;
+use Phasis\Ast\Declaration\FunctionDeclaration;
+use Phasis\Ast\Declaration\ImportDeclaration;
+use Phasis\Ast\Declaration\ImportSpecifier;
+use Phasis\Ast\Declaration\VariableDeclaration;
+use Phasis\Ast\Declaration\VariableDeclarator;
+use Phasis\Ast\Expression\ArrayExpression;
+use Phasis\Ast\Expression\ArrowFunction;
+use Phasis\Ast\Expression\AssignmentExpression;
+use Phasis\Ast\Expression\AwaitExpression;
+use Phasis\Ast\Expression\BinaryExpression;
+use Phasis\Ast\Expression\CallExpression;
+use Phasis\Ast\Expression\ClassExpression;
+use Phasis\Ast\Expression\ClassMethod;
+use Phasis\Ast\Expression\ClassProperty;
+use Phasis\Ast\Expression\PrivateIdentifier;
+use Phasis\Ast\Expression\StaticBlock;
+use Phasis\Ast\Expression\ConditionalExpression;
+use Phasis\Ast\Expression\ImportExpression;
+use Phasis\Ast\Expression\MetaProperty;
+use Phasis\Ast\Expression\FunctionExpression;
+use Phasis\Ast\Expression\Identifier;
+use Phasis\Ast\Expression\Literal;
+use Phasis\Ast\Expression\LogicalExpression;
+use Phasis\Ast\Expression\MemberExpression;
+use Phasis\Ast\Expression\NewExpression;
+use Phasis\Ast\Expression\ObjectExpression;
+use Phasis\Ast\Expression\Property;
+use Phasis\Ast\Expression\SequenceExpression;
+use Phasis\Ast\Expression\SpreadElement;
+use Phasis\Ast\Expression\TemplateLiteral;
+use Phasis\Ast\Expression\TemplateElement;
+use Phasis\Ast\Expression\TaggedTemplate;
+use Phasis\Ast\Expression\ThisExpression;
+use Phasis\Ast\Expression\UnaryExpression;
+use Phasis\Ast\Expression\UpdateExpression;
+use Phasis\Ast\Expression\YieldExpression;
+use Phasis\Ast\Node;
+use Phasis\Ast\Pattern\ArrayPattern;
+use Phasis\Ast\Pattern\AssignmentPattern;
+use Phasis\Ast\Pattern\AssignmentProperty;
+use Phasis\Ast\Pattern\ObjectPattern;
+use Phasis\Ast\Pattern\RestElement;
+use Phasis\Ast\Program;
+use Phasis\Ast\Statement\BlockStatement;
+use Phasis\Ast\Statement\BreakStatement;
+use Phasis\Ast\Statement\CatchClause;
+use Phasis\Ast\Statement\ContinueStatement;
+use Phasis\Ast\Statement\DebuggerStatement;
+use Phasis\Ast\Statement\DoWhileStatement;
+use Phasis\Ast\Statement\EmptyStatement;
+use Phasis\Ast\Statement\ExpressionStatement;
+use Phasis\Ast\Statement\ForInStatement;
+use Phasis\Ast\Statement\ForOfStatement;
+use Phasis\Ast\Statement\ForStatement;
+use Phasis\Ast\Statement\IfStatement;
+use Phasis\Ast\Statement\LabeledStatement;
+use Phasis\Ast\Statement\ReturnStatement;
+use Phasis\Ast\Statement\SwitchCase;
+use Phasis\Ast\Statement\SwitchStatement;
+use Phasis\Ast\Statement\ThrowStatement;
+use Phasis\Ast\Statement\TryStatement;
+use Phasis\Ast\Statement\WhileStatement;
+use Phasis\Ast\Statement\WithStatement;
+use Phasis\Lexer\Lexer;
+use Phasis\Lexer\SourceLocation;
+use Phasis\Lexer\Token;
+use Phasis\Lexer\TokenType;
 
 class Parser
 {
@@ -103,21 +103,21 @@ class Parser
     /**
      * Tracks nodes that were wrapped in parentheses, for IsIdentifierRef checks.
      *
-     * @var \SplObjectStorage<\PhpJs\Ast\Node, null>
+     * @var \SplObjectStorage<\Phasis\Ast\Node, null>
      */
     private \SplObjectStorage $parenthesized;
 
     /**
      * Tracks ArrayExpressions where a trailing comma followed a rest element.
      *
-     * @var \SplObjectStorage<\PhpJs\Ast\Node, null>
+     * @var \SplObjectStorage<\Phasis\Ast\Node, null>
      */
     private \SplObjectStorage $arrayExpressionsWithTrailingCommaAfterRest;
 
     /**
      * Tracks string Literal nodes that contain a legacy octal escape.
      *
-     * @var \SplObjectStorage<\PhpJs\Ast\Node, null>
+     * @var \SplObjectStorage<\Phasis\Ast\Node, null>
      */
     private \SplObjectStorage $stringsWithLegacyOctal;
 
@@ -248,14 +248,14 @@ class Parser
         $exported = [];
         $addExport = function (string $name) use (&$exported): void {
             if (isset($exported[$name])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Duplicate export of '{$name}'",
                 );
             }
             $exported[$name] = true;
         };
         foreach ($body as $stmt) {
-            if (!($stmt instanceof \PhpJs\Ast\Declaration\ExportDeclaration)) {
+            if (!($stmt instanceof \Phasis\Ast\Declaration\ExportDeclaration)) {
                 continue;
             }
             if ($stmt->isDefault) {
@@ -270,8 +270,8 @@ class Parser
             if ($stmt->declaration !== null) {
                 $inner = $stmt->declaration;
                 if (
-                    $inner instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-                    || $inner instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+                    $inner instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+                    || $inner instanceof \Phasis\Ast\Declaration\ClassDeclaration
                 ) {
                     if ($inner->id !== null) {
                         $addExport($inner->id->name);
@@ -295,8 +295,8 @@ class Parser
     private static function validateBreakContinueProgram(Node $node): void
     {
         if (
-            $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
         ) {
             self::validateBreakContinue($node->body);
             // Also walk the body to find nested functions/classes/arrows
@@ -304,7 +304,7 @@ class Parser
             self::walkForNestedFunctionScopes($node->body);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+        if ($node instanceof \Phasis\Ast\Expression\ArrowFunction) {
             self::validateBreakContinue($node->body);
             self::walkForNestedFunctionScopes($node->body);
             return;
@@ -313,11 +313,11 @@ class Parser
         // scope, validated when we hit its FunctionExpression. Static
         // blocks are also validated separately.
         if (
-            $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
         ) {
             foreach ($node->body as $element) {
-                if ($element instanceof \PhpJs\Ast\Expression\StaticBlock) {
+                if ($element instanceof \Phasis\Ast\Expression\StaticBlock) {
                     self::validateBreakContinue($element->body);
                 }
                 self::validateBreakContinueProgram($element);
@@ -657,7 +657,7 @@ class Parser
                 foreach ($stmt->declarations as $d) {
                     foreach (self::collectPatternNames($d->id) as $n) {
                         if (isset($lexNames[$n]) || isset($plainFuncNames[$n])) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Identifier '{$n}' has already been declared",
                             );
                         }
@@ -667,7 +667,7 @@ class Parser
             } elseif ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
                 $n = $stmt->id->name;
                 if (isset($lexNames[$n]) || isset($plainFuncNames[$n])) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Identifier '{$n}' has already been declared",
                     );
                 }
@@ -680,14 +680,14 @@ class Parser
                     // duplicates with other plain function declarations, but
                     // still conflict with let/const/class and with var.
                     if (isset($lexNames[$n])) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Identifier '{$n}' has already been declared",
                         );
                     }
                     $plainFuncNames[$n] = true;
                 } else {
                     if (isset($lexNames[$n]) || isset($plainFuncNames[$n])) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Identifier '{$n}' has already been declared",
                         );
                     }
@@ -704,7 +704,7 @@ class Parser
         }
         foreach (array_keys($lexNames) as $n) {
             if (isset($varNames[$n])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Identifier '{$n}' has already been declared",
                 );
             }
@@ -713,7 +713,7 @@ class Parser
         // declarations in the same block — only dup-function is relaxed.
         foreach (array_keys($plainFuncNames) as $n) {
             if (isset($varNames[$n])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Identifier '{$n}' has already been declared",
                 );
             }
@@ -743,14 +743,14 @@ class Parser
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\IfStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\IfStatement) {
             self::collectVarDeclaredNames($node->consequent, $out);
             if ($node->alternate !== null) {
                 self::collectVarDeclaredNames($node->alternate, $out);
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\ForStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\ForStatement) {
             if ($node->init instanceof Node) {
                 self::collectVarDeclaredNames($node->init, $out);
             }
@@ -758,8 +758,8 @@ class Parser
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Statement\ForInStatement
-            || $node instanceof \PhpJs\Ast\Statement\ForOfStatement
+            $node instanceof \Phasis\Ast\Statement\ForInStatement
+            || $node instanceof \Phasis\Ast\Statement\ForOfStatement
         ) {
             if ($node->left instanceof VariableDeclaration) {
                 self::collectVarDeclaredNames($node->left, $out);
@@ -768,17 +768,17 @@ class Parser
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Statement\WhileStatement
-            || $node instanceof \PhpJs\Ast\Statement\DoWhileStatement
+            $node instanceof \Phasis\Ast\Statement\WhileStatement
+            || $node instanceof \Phasis\Ast\Statement\DoWhileStatement
         ) {
             self::collectVarDeclaredNames($node->body, $out);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\WithStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\WithStatement) {
             self::collectVarDeclaredNames($node->body, $out);
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\SwitchStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\SwitchStatement) {
             foreach ($node->cases as $case) {
                 foreach ($case->consequent as $s) {
                     self::collectVarDeclaredNames($s, $out);
@@ -786,7 +786,7 @@ class Parser
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement) {
             self::collectVarDeclaredNames($node->block, $out);
             if ($node->handler !== null) {
                 self::collectVarDeclaredNames($node->handler->body, $out);
@@ -796,7 +796,7 @@ class Parser
             }
             return;
         }
-        if ($node instanceof \PhpJs\Ast\Statement\LabeledStatement) {
+        if ($node instanceof \Phasis\Ast\Statement\LabeledStatement) {
             self::collectVarDeclaredNames($node->body, $out);
             return;
         }
@@ -808,7 +808,7 @@ class Parser
         if ($pattern instanceof Identifier) {
             return [$pattern->name];
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\ArrayPattern) {
             $out = [];
             foreach ($pattern->elements as $elem) {
                 if ($elem !== null) {
@@ -817,21 +817,21 @@ class Parser
             }
             return $out;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\ObjectPattern) {
             $out = [];
             foreach ($pattern->properties as $p) {
-                if ($p instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                if ($p instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
                     $out = array_merge($out, self::collectPatternNames($p->value));
-                } elseif ($p instanceof \PhpJs\Ast\Pattern\RestElement) {
+                } elseif ($p instanceof \Phasis\Ast\Pattern\RestElement) {
                     $out = array_merge($out, self::collectPatternNames($p->argument));
                 }
             }
             return $out;
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\AssignmentPattern) {
             return self::collectPatternNames($pattern->left);
         }
-        if ($pattern instanceof \PhpJs\Ast\Pattern\RestElement) {
+        if ($pattern instanceof \Phasis\Ast\Pattern\RestElement) {
             return self::collectPatternNames($pattern->argument);
         }
         return [];
@@ -1604,7 +1604,7 @@ class Parser
                 && $prop->key instanceof Identifier
                 && self::isReservedWordIdentifierName($prop->key->name)
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Unexpected reserved word '{$prop->key->name}' as shorthand property",
                     $prop->key->location,
                 );
@@ -1621,7 +1621,7 @@ class Parser
                 && $prop->key instanceof Identifier
                 && ($prop->key->name === 'eval' || $prop->key->name === 'arguments')
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Unexpected '{$prop->key->name}' as binding identifier in strict mode",
                     $prop->key->location,
                 );
@@ -1634,21 +1634,21 @@ class Parser
      * Recurse into parenthesized/comma expressions to catch covered forms
      * (e.g. `delete (x.#y)`). Stops at non-transparent nodes.
      */
-    private static function validateDeleteArgument(Node $argument, \PhpJs\Lexer\Token $token): void
+    private static function validateDeleteArgument(Node $argument, \Phasis\Lexer\Token $token): void
     {
         $node = $argument;
         // Unwrap conditional chain / sequence without evaluation.
         while (true) {
             if (
-                $node instanceof \PhpJs\Ast\Expression\MemberExpression
-                && $node->property instanceof \PhpJs\Ast\Expression\PrivateIdentifier
+                $node instanceof \Phasis\Ast\Expression\MemberExpression
+                && $node->property instanceof \Phasis\Ast\Expression\PrivateIdentifier
             ) {
                 throw new ParseError(
                     "Cannot delete a private member",
                     $token,
                 );
             }
-            if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+            if ($node instanceof \Phasis\Ast\Expression\SequenceExpression) {
                 $exprs = $node->expressions;
                 $last = $exprs === [] ? null : $exprs[array_key_last($exprs)];
                 if ($last instanceof Node) {
@@ -1726,7 +1726,7 @@ class Parser
         }
         if ($key instanceof Literal && is_float($key->value)) {
             // Numeric literal PropName is ToString(value).
-            return (new \PhpJs\Value\JsNumber($key->value))->toJsString();
+            return (new \Phasis\Value\JsNumber($key->value))->toJsString();
         }
         return null;
     }
@@ -1754,14 +1754,14 @@ class Parser
         // still descend into computed property names (which are evaluated
         // in the surrounding context).
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
         ) {
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             // Heritage expression and computed class element keys are
             // evaluated in the enclosing context; descend into them but
@@ -1781,17 +1781,17 @@ class Parser
         }
         // Arrow functions inherit `arguments` and `super` from the outer
         // scope — still forbidden.
-        if ($node instanceof \PhpJs\Ast\Expression\Identifier && $node->name === 'arguments') {
-            throw new \PhpJs\Exceptions\SyntaxError(
+        if ($node instanceof \Phasis\Ast\Expression\Identifier && $node->name === 'arguments') {
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'arguments' is not allowed in class field initializers",
             );
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\CallExpression
-            && $node->callee instanceof \PhpJs\Ast\Expression\Identifier
+            $node instanceof \Phasis\Ast\Expression\CallExpression
+            && $node->callee instanceof \Phasis\Ast\Expression\Identifier
             && $node->callee->name === 'super'
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'super' call is not allowed in class field initializers",
             );
         }
@@ -1824,15 +1824,15 @@ class Parser
         if ($allowPattern) {
             // `=` accepts ObjectLiteral/ArrayLiteral as destructuring targets.
             if (
-                $node instanceof \PhpJs\Ast\Expression\ObjectExpression
-                || $node instanceof \PhpJs\Ast\Expression\ArrayExpression
+                $node instanceof \Phasis\Ast\Expression\ObjectExpression
+                || $node instanceof \Phasis\Ast\Expression\ArrayExpression
             ) {
                 return true;
             }
             // Patterns after reinterpretation.
             if (
-                $node instanceof \PhpJs\Ast\Pattern\ObjectPattern
-                || $node instanceof \PhpJs\Ast\Pattern\ArrayPattern
+                $node instanceof \Phasis\Ast\Pattern\ObjectPattern
+                || $node instanceof \Phasis\Ast\Pattern\ArrayPattern
             ) {
                 return true;
             }
@@ -1991,7 +1991,7 @@ class Parser
                 if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression not permitted in generator parameters',
-                        new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                        new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                     );
                 }
             }
@@ -2047,30 +2047,30 @@ class Parser
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             return;
         }
         // super.prop / super[expr]
         if (
-            $node instanceof \PhpJs\Ast\Expression\MemberExpression
-            && $node->object instanceof \PhpJs\Ast\Expression\Identifier
+            $node instanceof \Phasis\Ast\Expression\MemberExpression
+            && $node->object instanceof \Phasis\Ast\Expression\Identifier
             && $node->object->name === 'super'
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'super' keyword not allowed in this context",
             );
         }
         // super()
         if (
-            $node instanceof \PhpJs\Ast\Expression\CallExpression
-            && $node->callee instanceof \PhpJs\Ast\Expression\Identifier
+            $node instanceof \Phasis\Ast\Expression\CallExpression
+            && $node->callee instanceof \Phasis\Ast\Expression\Identifier
             && $node->callee->name === 'super'
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'super' call not allowed in this context",
             );
         }
@@ -2116,7 +2116,7 @@ class Parser
         self::collectVarDeclaredNames($body, $varNames);
         foreach ($bound as $n) {
             if (isset($varNames[$n])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Identifier '{$n}' has already been declared",
                 );
             }
@@ -2145,7 +2145,7 @@ class Parser
                 || ($node instanceof AssignmentExpression && $node->operator === '=')
             )
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid destructuring assignment target: parenthesized pattern',
             );
         }
@@ -2155,14 +2155,14 @@ class Parser
                 $prop = $node->properties[$i];
                 if ($prop instanceof Property) {
                     if ($prop->kind !== 'init' || $prop->method) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Invalid destructuring pattern: method definition not allowed',
                         );
                     }
                     $this->validateAsAssignmentPattern($prop->value);
                 } elseif ($prop instanceof SpreadElement) {
                     if ($i !== $count - 1) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Object rest element must be last',
                         );
                     }
@@ -2179,18 +2179,18 @@ class Parser
                     continue;
                 }
                 if ($el instanceof SequenceExpression) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Invalid destructuring pattern: comma expression not allowed',
                     );
                 }
                 if ($el instanceof SpreadElement) {
                     if ($i !== $count - 1) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Array rest element must be last',
                         );
                     }
                     if ($el->argument instanceof AssignmentExpression) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Array rest element may not have a default initializer',
                         );
                     }
@@ -2201,7 +2201,7 @@ class Parser
             }
             // Reject trailing comma after a rest element in patterns.
             if ($this->arrayExpressionsWithTrailingCommaAfterRest->offsetExists($node)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Trailing comma not allowed after rest element in pattern',
                 );
             }
@@ -2214,7 +2214,7 @@ class Parser
                 && $node->left instanceof Identifier
                 && ($node->left->name === 'eval' || $node->left->name === 'arguments')
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Binding identifier '{$node->left->name}' may not be used in strict mode",
                 );
             }
@@ -2233,14 +2233,14 @@ class Parser
                 || self::isStrictModeFutureReserved($node->name)
             )
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "Binding identifier '{$node->name}' may not be used in strict mode",
             );
         }
         // Per §13.10.1: MetaProperty (new.target, import.meta) is never a
         // valid AssignmentTarget, including inside a destructuring pattern.
-        if ($node instanceof \PhpJs\Ast\Expression\MetaProperty) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+        if ($node instanceof \Phasis\Ast\Expression\MetaProperty) {
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid destructuring assignment target: MetaProperty',
             );
         }
@@ -2248,7 +2248,7 @@ class Parser
             $node instanceof Identifier
             && ($node->name === '[[NewTarget]]' || $node->name === '[[ImportMeta]]')
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid destructuring assignment target: MetaProperty',
             );
         }
@@ -2261,12 +2261,12 @@ class Parser
         if (
             !($node instanceof Identifier)
             && !($node instanceof MemberExpression)
-            && !($node instanceof \PhpJs\Ast\Pattern\ArrayPattern)
-            && !($node instanceof \PhpJs\Ast\Pattern\ObjectPattern)
-            && !($node instanceof \PhpJs\Ast\Pattern\AssignmentPattern)
-            && !($node instanceof \PhpJs\Ast\Pattern\RestElement)
+            && !($node instanceof \Phasis\Ast\Pattern\ArrayPattern)
+            && !($node instanceof \Phasis\Ast\Pattern\ObjectPattern)
+            && !($node instanceof \Phasis\Ast\Pattern\AssignmentPattern)
+            && !($node instanceof \Phasis\Ast\Pattern\RestElement)
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid destructuring assignment target',
             );
         }
@@ -2278,19 +2278,19 @@ class Parser
             return false;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\YieldExpression
-            || $node instanceof \PhpJs\Ast\Expression\AwaitExpression
+            $node instanceof \Phasis\Ast\Expression\YieldExpression
+            || $node instanceof \Phasis\Ast\Expression\AwaitExpression
         ) {
             return true;
         }
         // Don't descend into nested function/class bodies — those define
         // their own [Yield]/[Await] context.
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
             return false;
         }
@@ -2318,17 +2318,17 @@ class Parser
      */
     private function validateNoTopLevelReturnNodes(Node $node): void
     {
-        if ($node instanceof \PhpJs\Ast\Statement\ReturnStatement) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+        if ($node instanceof \Phasis\Ast\Statement\ReturnStatement) {
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Illegal return statement inside class static block',
             );
         }
         if (
             $node instanceof FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
             || $node instanceof ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
         ) {
             return;
         }
@@ -2371,14 +2371,14 @@ class Parser
         if ($node instanceof BreakStatement) {
             if ($node->label === null) {
                 if ($loopDepth === 0 && $switchDepth === 0) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Illegal break statement: no enclosing loop or switch',
                     );
                 }
                 return;
             }
             if (!isset($labels[$node->label])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Undefined label '{$node->label}'",
                 );
             }
@@ -2387,14 +2387,14 @@ class Parser
         if ($node instanceof ContinueStatement) {
             if ($node->label === null) {
                 if ($loopDepth === 0) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Illegal continue statement: no enclosing loop',
                     );
                 }
                 return;
             }
             if (!isset($labels[$node->label]) || $labels[$node->label] !== 'loop') {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Undefined label '{$node->label}' for continue",
                 );
             }
@@ -2402,30 +2402,30 @@ class Parser
         }
         // Function/class boundaries reset all break/continue/label scopes.
         if (
-            $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
         ) {
             return;
         }
         $isLoop = $node instanceof ForStatement
-            || $node instanceof \PhpJs\Ast\Statement\ForInStatement
-            || $node instanceof \PhpJs\Ast\Statement\ForOfStatement
-            || $node instanceof \PhpJs\Ast\Statement\WhileStatement
+            || $node instanceof \Phasis\Ast\Statement\ForInStatement
+            || $node instanceof \Phasis\Ast\Statement\ForOfStatement
+            || $node instanceof \Phasis\Ast\Statement\WhileStatement
             || $node instanceof DoWhileStatement;
-        $isSwitch = $node instanceof \PhpJs\Ast\Statement\SwitchStatement;
+        $isSwitch = $node instanceof \Phasis\Ast\Statement\SwitchStatement;
         if ($node instanceof LabeledStatement) {
             if (isset($labels[$node->label])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Label '{$node->label}' has already been declared",
                 );
             }
             $kind = ($node->body instanceof ForStatement
-                || $node->body instanceof \PhpJs\Ast\Statement\ForInStatement
-                || $node->body instanceof \PhpJs\Ast\Statement\ForOfStatement
-                || $node->body instanceof \PhpJs\Ast\Statement\WhileStatement
+                || $node->body instanceof \Phasis\Ast\Statement\ForInStatement
+                || $node->body instanceof \Phasis\Ast\Statement\ForOfStatement
+                || $node->body instanceof \Phasis\Ast\Statement\WhileStatement
                 || $node->body instanceof DoWhileStatement)
                 ? 'loop' : 'block';
             $newLabels = $labels;
@@ -2459,7 +2459,7 @@ class Parser
         array $params,
         Node $body,
     ): void {
-        if (!$body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+        if (!$body instanceof \Phasis\Ast\Statement\BlockStatement) {
             return;
         }
         $paramNames = [];
@@ -2492,7 +2492,7 @@ class Parser
             }
             foreach ($names as $n) {
                 if (isset($paramNames[$n])) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Identifier '{$n}' has already been declared",
                     );
                 }
@@ -2506,9 +2506,9 @@ class Parser
     private function validateStrictDirectiveWithNonSimpleParams(
         array $params,
         Node $body,
-        \PhpJs\Lexer\SourceLocation $location,
+        \Phasis\Lexer\SourceLocation $location,
     ): void {
-        if (!$body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+        if (!$body instanceof \Phasis\Ast\Statement\BlockStatement) {
             return;
         }
         $nonSimple = self::hasNonSimpleParameterList($params);
@@ -2516,7 +2516,7 @@ class Parser
         if ($bodyStrict && $nonSimple) {
             throw new ParseError(
                 "Illegal 'use strict' directive in function with non-simple parameter list",
-                new \PhpJs\Lexer\Token(TokenType::String, '', $location),
+                new \Phasis\Lexer\Token(TokenType::String, '', $location),
             );
         }
         // A `use strict` directive in the body retroactively promotes all
@@ -2555,7 +2555,7 @@ class Parser
                     ) {
                         throw new ParseError(
                             "Parameter name '{$name}' may not be used in strict mode",
-                            new \PhpJs\Lexer\Token(TokenType::Identifier, $name, $location),
+                            new \Phasis\Lexer\Token(TokenType::Identifier, $name, $location),
                         );
                     }
                 }
@@ -2568,7 +2568,7 @@ class Parser
      */
     private static function validateUniqueParameterNames(
         array $params,
-        \PhpJs\Lexer\SourceLocation $location,
+        \Phasis\Lexer\SourceLocation $location,
     ): void {
         $seen = [];
         foreach ($params as $p) {
@@ -2576,7 +2576,7 @@ class Parser
                 if (isset($seen[$name])) {
                     throw new ParseError(
                         "Duplicate parameter name '{$name}' not allowed in this context",
-                        new \PhpJs\Lexer\Token(TokenType::Identifier, $name, $location),
+                        new \Phasis\Lexer\Token(TokenType::Identifier, $name, $location),
                     );
                 }
                 $seen[$name] = true;
@@ -2595,7 +2595,7 @@ class Parser
             return;
         }
         if ($node instanceof Literal && $this->stringsWithLegacyOctal->offsetExists($node)) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Octal escape sequences are not allowed in strict mode',
             );
         }
@@ -2614,7 +2614,7 @@ class Parser
         }
     }
 
-    private static function bodyHasUseStrictDirective(\PhpJs\Ast\Statement\BlockStatement $body): bool
+    private static function bodyHasUseStrictDirective(\Phasis\Ast\Statement\BlockStatement $body): bool
     {
         foreach ($body->body as $stmt) {
             if (!$stmt instanceof ExpressionStatement) {
@@ -2639,10 +2639,10 @@ class Parser
     {
         foreach ($params as $p) {
             if (
-                $p instanceof \PhpJs\Ast\Pattern\AssignmentPattern
-                || $p instanceof \PhpJs\Ast\Pattern\ArrayPattern
-                || $p instanceof \PhpJs\Ast\Pattern\ObjectPattern
-                || $p instanceof \PhpJs\Ast\Pattern\RestElement
+                $p instanceof \Phasis\Ast\Pattern\AssignmentPattern
+                || $p instanceof \Phasis\Ast\Pattern\ArrayPattern
+                || $p instanceof \Phasis\Ast\Pattern\ObjectPattern
+                || $p instanceof \Phasis\Ast\Pattern\RestElement
             ) {
                 return true;
             }
@@ -2684,9 +2684,9 @@ class Parser
             // are allowed because the outer ParenthesizedExpression IS
             // a PrimaryExpression / LHS.
             if (
-                ($superClass instanceof \PhpJs\Ast\Expression\ArrowFunction
-                    || $superClass instanceof \PhpJs\Ast\Expression\AssignmentExpression
-                    || $superClass instanceof \PhpJs\Ast\Expression\ConditionalExpression)
+                ($superClass instanceof \Phasis\Ast\Expression\ArrowFunction
+                    || $superClass instanceof \Phasis\Ast\Expression\AssignmentExpression
+                    || $superClass instanceof \Phasis\Ast\Expression\ConditionalExpression)
                 && !$this->parenthesized->offsetExists($superClass)
             ) {
                 throw new ParseError(
@@ -2867,7 +2867,7 @@ class Parser
                 }
             }
             // Track PrivateBoundNames for duplicate detection.
-            if ($element instanceof ClassMethod && $element->key instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
+            if ($element instanceof ClassMethod && $element->key instanceof \Phasis\Ast\Expression\PrivateIdentifier) {
                 $pName = $element->key->name;
                 $pKind = $element->kind; // 'method' | 'get' | 'set' | 'constructor'
                 $pStatic = $element->static;
@@ -2889,7 +2889,7 @@ class Parser
                     }
                 }
                 $privateNames[] = ['name' => $pName, 'kind' => $pKind, 'static' => $pStatic];
-            } elseif ($element instanceof ClassProperty && $element->key instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
+            } elseif ($element instanceof ClassProperty && $element->key instanceof \Phasis\Ast\Expression\PrivateIdentifier) {
                 $pName = $element->key->name;
                 foreach ($privateNames as $prev) {
                     if ($prev['name'] === $pName) {
@@ -2917,7 +2917,7 @@ class Parser
             if ($el->kind === 'constructor') {
                 $ctorCount++;
                 if ($ctorCount > 1) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'A class may only have one constructor',
                     );
                 }
@@ -2928,7 +2928,7 @@ class Parser
                     $name === 'constructor'
                     && in_array($el->kind, ['get', 'set'], true)
                 ) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "A constructor cannot be a get/set method",
                     );
                 }
@@ -2936,7 +2936,7 @@ class Parser
                     $name === 'constructor'
                     && ($el->value->generator || $el->value->async)
                 ) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Class constructor cannot be a generator or async',
                     );
                 }
@@ -2944,7 +2944,7 @@ class Parser
             if ($el->static && !$el->computed) {
                 $name = self::staticPropName($el->key);
                 if ($name === 'prototype') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Class static method cannot be named 'prototype'",
                     );
                 }
@@ -3244,7 +3244,7 @@ class Parser
             $key instanceof PrivateIdentifier
             && (ltrim($key->name, '#') === 'constructor')
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Private name #constructor is not allowed in class body',
             );
         }
@@ -3264,20 +3264,20 @@ class Parser
         if ($kind === 'get' && count($params) !== 0) {
             throw new ParseError(
                 'Getter must not have any formal parameters',
-                new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
             );
         }
         if ($kind === 'set') {
             if (count($params) !== 1) {
                 throw new ParseError(
                     'Setter must have exactly one formal parameter',
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                    new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                 );
             }
-            if ($params[0] instanceof \PhpJs\Ast\Pattern\RestElement) {
+            if ($params[0] instanceof \Phasis\Ast\Pattern\RestElement) {
                 throw new ParseError(
                     'Setter parameter must not be a rest element',
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                    new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                 );
             }
         }
@@ -3287,7 +3287,7 @@ class Parser
                 if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression or AwaitExpression not permitted in async/generator method parameters',
-                        new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                        new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                     );
                 }
             }
@@ -3335,19 +3335,19 @@ class Parser
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
             return;
         }
         if (
-            $node instanceof \PhpJs\Ast\Expression\CallExpression
-            && $node->callee instanceof \PhpJs\Ast\Expression\Identifier
+            $node instanceof \Phasis\Ast\Expression\CallExpression
+            && $node->callee instanceof \Phasis\Ast\Expression\Identifier
             && $node->callee->name === 'super'
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "'super' call is only allowed in derived class constructors",
             );
         }
@@ -3406,7 +3406,7 @@ class Parser
                 if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression or AwaitExpression not permitted in async/generator parameters',
-                        new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                        new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                     );
                 }
             }
@@ -3646,8 +3646,8 @@ class Parser
                 // BindingPattern (array/object destructuring) with an initializer
                 // is always a SyntaxError, even in non-strict mode.
                 if (
-                    $id instanceof \PhpJs\Ast\Pattern\ArrayPattern
-                    || $id instanceof \PhpJs\Ast\Pattern\ObjectPattern
+                    $id instanceof \Phasis\Ast\Pattern\ArrayPattern
+                    || $id instanceof \Phasis\Ast\Pattern\ObjectPattern
                 ) {
                     throw new ParseError(
                         'for-in with destructuring pattern and initializer is not allowed',
@@ -3913,7 +3913,7 @@ class Parser
         foreach ($cases as $case) {
             if ($case->test === null) {
                 if ($defaultSeen) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'More than one default clause in switch statement',
                     );
                 }
@@ -3981,7 +3981,7 @@ class Parser
                 $seen = [];
                 foreach ($names as $n) {
                     if (isset($seen[$n])) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Identifier '{$n}' has already been declared",
                         );
                     }
@@ -3996,7 +3996,7 @@ class Parser
                         $this->strictMode
                         && ($n === 'eval' || $n === 'arguments')
                     ) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Binding identifier '{$n}' may not be used in strict mode",
                         );
                     }
@@ -4033,7 +4033,7 @@ class Parser
                         }
                         foreach ($declared as $n) {
                             if (isset($paramSet[$n])) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Identifier '{$n}' has already been declared",
                                 );
                             }
@@ -4101,7 +4101,7 @@ class Parser
         if ($this->strictMode) {
             throw new ParseError(
                 "'with' statements are not allowed in strict mode",
-                new \PhpJs\Lexer\Token(TokenType::With, 'with', $location),
+                new \Phasis\Lexer\Token(TokenType::With, 'with', $location),
             );
         }
         $this->expect(TokenType::LeftParen);
@@ -4121,7 +4121,7 @@ class Parser
         $cur = $stmt;
         while ($cur instanceof LabeledStatement) {
             if ($cur->body instanceof FunctionDeclaration) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Labelled function declaration cannot appear as body of a control statement',
                 );
             }
@@ -4258,18 +4258,18 @@ class Parser
             // AwaitExpression and YieldExpression are not valid simple
             // assignment targets (spec §13.1.1 Early Errors).
             if (
-                $left instanceof \PhpJs\Ast\Expression\AwaitExpression
-                || $left instanceof \PhpJs\Ast\Expression\YieldExpression
+                $left instanceof \Phasis\Ast\Expression\AwaitExpression
+                || $left instanceof \Phasis\Ast\Expression\YieldExpression
             ) {
                 throw new ParseError(
-                    $left instanceof \PhpJs\Ast\Expression\AwaitExpression
+                    $left instanceof \Phasis\Ast\Expression\AwaitExpression
                         ? "Invalid left-hand side in assignment: AwaitExpression"
                         : "Invalid left-hand side in assignment: YieldExpression",
                     $op,
                 );
             }
             // new.target and import.meta are invalid assignment targets.
-            if ($left instanceof \PhpJs\Ast\Expression\MetaProperty) {
+            if ($left instanceof \Phasis\Ast\Expression\MetaProperty) {
                 throw new ParseError(
                     "Invalid left-hand side in assignment: MetaProperty",
                     $op,
@@ -4298,7 +4298,7 @@ class Parser
             // has AssignmentTargetType "invalid" per §13.2.8.
             if (
                 $op->value === '='
-                && ($left instanceof ObjectExpression || $left instanceof \PhpJs\Ast\Expression\ArrayExpression)
+                && ($left instanceof ObjectExpression || $left instanceof \Phasis\Ast\Expression\ArrayExpression)
                 && $this->parenthesized->offsetExists($left)
             ) {
                 throw new ParseError(
@@ -4311,7 +4311,7 @@ class Parser
             // rest-with-default, rest-with-trailing-comma, nested literals, etc.
             if (
                 $op->value === '='
-                && ($left instanceof ObjectExpression || $left instanceof \PhpJs\Ast\Expression\ArrayExpression)
+                && ($left instanceof ObjectExpression || $left instanceof \Phasis\Ast\Expression\ArrayExpression)
             ) {
                 $this->validateAsAssignmentPattern($left);
             }
@@ -4372,7 +4372,7 @@ class Parser
                     && $prop->value->operator === '='
                     && $prop->value->left === $prop->key
                 ) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         'Invalid shorthand property initializer outside destructuring',
                     );
                 }
@@ -5034,7 +5034,7 @@ class Parser
         // Per Annex B.1.1, NonOctalDecimalIntegerLiteral (e.g. `08`, `09`)
         // is forbidden in strict mode.
         if ($token->rawValue === 'nonoctaldecimal' && $this->strictMode) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Decimal integer literal with leading 0 is not allowed in strict mode',
             );
         }
@@ -5062,7 +5062,7 @@ class Parser
         } elseif (str_starts_with($raw, '0lo')) {
             // Annex B legacy octal integer literal. Forbidden in strict code.
             if ($this->strictMode) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     'Octal literals are not allowed in strict mode',
                     $token->location,
                 );
@@ -5122,9 +5122,9 @@ class Parser
             $pattern = $m[1];
             $flags = $m[2];
             self::validateRegExpFlagsAtParseTime($flags, $token);
-            \PhpJs\Runtime\Interpreter::validateRegExpModifierGroups($pattern);
-            if (\PhpJs\Runtime\Interpreter::hasDuplicateNamedGroupsInSameAlternative($pattern)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+            \Phasis\Runtime\Interpreter::validateRegExpModifierGroups($pattern);
+            if (\Phasis\Runtime\Interpreter::hasDuplicateNamedGroupsInSameAlternative($pattern)) {
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Invalid regular expression: /{$pattern}/: Duplicate capture group name",
                 );
             }
@@ -5138,26 +5138,26 @@ class Parser
      * Per §22.2.1.5 RegularExpressionFlags. Each flag may appear at most
      * once and must be one of the recognized characters.
      */
-    private static function validateRegExpFlagsAtParseTime(string $flags, \PhpJs\Lexer\Token $token): void
+    private static function validateRegExpFlagsAtParseTime(string $flags, \Phasis\Lexer\Token $token): void
     {
         static $allowed = ['g', 'i', 'm', 's', 'u', 'v', 'y', 'd'];
         $seen = [];
         for ($i = 0, $n = strlen($flags); $i < $n; $i++) {
             $c = $flags[$i];
             if (!in_array($c, $allowed, true)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Invalid regular expression flag '{$c}'",
                 );
             }
             if (isset($seen[$c])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Invalid regular expression flag '{$c}'",
                 );
             }
             $seen[$c] = true;
         }
         if (isset($seen['u']) && isset($seen['v'])) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid regular expression: cannot combine u and v flags',
             );
         }
@@ -5242,7 +5242,7 @@ class Parser
                 $lastClosedGroupWasLookbehind = false;
                 $lastClosedGroupWasLookahead = false;
                 if ($i + 1 >= $len) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: \\ at end of pattern",
                     );
                 }
@@ -5262,14 +5262,14 @@ class Parser
                         if ($j < $end) {
                             // Non-hex byte before close-brace.
                             if ($unicode) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                                 );
                             }
                         }
                         $hex = $hexLen === 0 ? '' : substr($pattern, $hexStart, $hexLen);
                         if ($unicode && ($j >= $len || $pattern[$j] !== '}' || $hex === '')) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                             );
                         }
@@ -5279,7 +5279,7 @@ class Parser
                         if ($unicode) {
                             $stripped = ltrim($hex, '0');
                             if (strlen($stripped) > 6 || ($stripped !== '' && hexdec($stripped) > 0x10FFFF)) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Code point out of range",
                                 );
                             }
@@ -5290,13 +5290,13 @@ class Parser
                     }
                     if ($unicode) {
                         if ($i + 5 >= $len) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                             );
                         }
                         for ($k = 2; $k < 6; $k++) {
                             if (!ctype_xdigit($pattern[$i + $k])) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                                 );
                             }
@@ -5320,11 +5320,11 @@ class Parser
                             // \0 is the NUL character (allowed).
                         } elseif ($digits[0] === '0') {
                             // Leading-zero octals are forbidden in u-mode.
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid escape",
                             );
                         } elseif ($num > $captureCount) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid back reference",
                             );
                         }
@@ -5340,7 +5340,7 @@ class Parser
                     // back to treating \k as a literal escape.
                     if ($i + 2 >= $len || $pattern[$i + 2] !== '<') {
                         if ($unicode || $hasNamedGroup) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid named back reference",
                             );
                         }
@@ -5355,7 +5355,7 @@ class Parser
                         $unknownName = !$invalidName && !isset($groupNames[$name]);
                         if ($invalidName) {
                             if ($unicode || $hasNamedGroup) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid named back reference",
                                 );
                             }
@@ -5363,7 +5363,7 @@ class Parser
                             // and treat \k as literal "k".
                         } elseif ($unknownName) {
                             if ($unicode || $hasNamedGroup) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid named capture referenced",
                                 );
                             }
@@ -5380,7 +5380,7 @@ class Parser
                     static $allowedIdEscape = ['^', '$', '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '|', '/', '\\',
                         'd', 'D', 's', 'S', 'w', 'W', 'b', 'B', 'f', 'n', 'r', 't', 'v', '0', 'c', 'x', 'u', 'p', 'P', 'k'];
                     if (!in_array($next, $allowedIdEscape, true) && !ctype_digit($next)) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid escape",
                         );
                     }
@@ -5390,7 +5390,7 @@ class Parser
                     $hex1 = $i + 2 < $len ? $pattern[$i + 2] : '';
                     $hex2 = $i + 3 < $len ? $pattern[$i + 3] : '';
                     if (!ctype_xdigit($hex1) || !ctype_xdigit($hex2)) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid \\x escape",
                         );
                     }
@@ -5401,7 +5401,7 @@ class Parser
                 if ($next === 'c' && $unicode) {
                     $after = $i + 2 < $len ? $pattern[$i + 2] : '';
                     if (!($after >= 'A' && $after <= 'Z') && !($after >= 'a' && $after <= 'z')) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: \\c must be followed by a letter in unicode mode",
                         );
                     }
@@ -5421,29 +5421,29 @@ class Parser
                             // are deferred to runtime to avoid
                             // false-positive SyntaxErrors.
                             if ($unicode && $propExpr === '') {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Empty property name",
                                 );
                             }
                             if ($unicode && (str_starts_with($propExpr, '^') || str_contains($propExpr, '^'))) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid property name",
                                 );
                             }
                             if ($unicode && str_contains($propExpr, '=')) {
                                 $parts = explode('=', $propExpr, 2);
                                 if ($parts[0] === '' || $parts[1] === '') {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
-                                if (\PhpJs\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                if (\Phasis\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Binary property used with value",
                                     );
                                 }
-                                if (\PhpJs\Runtime\Interpreter::isNonBinaryUnicodePropertyName($parts[0]) === false) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                if (\Phasis\Runtime\Interpreter::isNonBinaryUnicodePropertyName($parts[0]) === false) {
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
@@ -5451,29 +5451,29 @@ class Parser
                                 // exactly: if we recognise the property name
                                 // as General_Category, the value must be a
                                 // canonical-cased GC value.
-                                $normName = \PhpJs\Runtime\Interpreter::normalizeUnicodePropertyName($parts[0]);
+                                $normName = \Phasis\Runtime\Interpreter::normalizeUnicodePropertyName($parts[0]);
                                 if (
                                     $normName === 'General_Category'
-                                    && \PhpJs\Runtime\Interpreter::isGeneralCategoryValue($parts[1]) === false
+                                    && \Phasis\Runtime\Interpreter::isGeneralCategoryValue($parts[1]) === false
                                 ) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property value",
                                     );
                                 }
                             }
                             if ($unicode && !str_contains($propExpr, '=')) {
-                                if (\PhpJs\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                if (\Phasis\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
                                 // Properties of strings (\q-eligible) only
                                 // legal in v-mode.
                                 if (
-                                    \PhpJs\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
+                                    \Phasis\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
                                 ) {
                                     if (!$isVFlag) {
-                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                        throw new \Phasis\Exceptions\SyntaxError(
                                             "Invalid regular expression: /{$pattern}/: Property of strings only allowed in /v",
                                         );
                                     }
@@ -5481,7 +5481,7 @@ class Parser
                                     // be negated; \P{Emoji_Keycap_Sequence}
                                     // is an early error.
                                     if ($next === 'P') {
-                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                        throw new \Phasis\Exceptions\SyntaxError(
                                             "Invalid regular expression: /{$pattern}/: \\P{} property of strings cannot be negated",
                                         );
                                     }
@@ -5492,13 +5492,13 @@ class Parser
                             continue;
                         }
                         if ($unicode) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Unterminated property",
                             );
                         }
                     } elseif ($unicode) {
                         // In u-mode, \p / \P MUST be followed by `{...}`.
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid escape",
                         );
                     }
@@ -5567,7 +5567,7 @@ class Parser
                         $j >= $len || $decodedName === '' || $decodedName === null
                         || !self::isValidGroupName($decodedName)
                     ) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid named capture group",
                         );
                     }
@@ -5579,7 +5579,7 @@ class Parser
                 // No other `(?X` constructs are valid (modifier groups are
                 // handled by validateRegExpModifierGroups already).
                 if (!in_array($third, ['i', 'm', 's', '-'], true)) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Invalid group",
                     );
                 }
@@ -5604,7 +5604,7 @@ class Parser
             }
             if (!$inClass && $c === ')') {
                 if ($groupOpen === 0) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Unmatched ')'",
                     );
                 }
@@ -5618,17 +5618,17 @@ class Parser
             }
             if (!$inClass && ($c === '*' || $c === '+' || $c === '?')) {
                 if (!$prevAtom) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Nothing to repeat",
                     );
                 }
                 if ($lastClosedGroupWasLookbehind) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Lookbehind cannot be quantified",
                     );
                 }
                 if ($lastClosedGroupWasLookahead && $unicode) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Lookahead cannot be quantified in unicode mode",
                     );
                 }
@@ -5663,22 +5663,22 @@ class Parser
                     }
                     if ($j < $len && $pattern[$j] === '}') {
                         if (!$prevAtom) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Nothing to repeat",
                             );
                         }
                         if ($lastClosedGroupWasLookbehind) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Lookbehind cannot be quantified",
                             );
                         }
                         if ($lastClosedGroupWasLookahead && $unicode) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Lookahead cannot be quantified in unicode mode",
                             );
                         }
                         if ($hasComma && $second !== '' && (int) $first > (int) $second) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: numbers out of order in {n,m} quantifier",
                             );
                         }
@@ -5694,7 +5694,7 @@ class Parser
                     }
                 }
                 if ($unicode) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Lone quantifier brackets",
                     );
                 }
@@ -5711,7 +5711,7 @@ class Parser
             // brackets land here during the structural pass; the v-flag
             // transform handles them later.
             if ($unicode && !$isVFlag && !$inClass && ($c === '}' || $c === ']')) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Invalid regular expression: /{$pattern}/: Lone quantifier brackets",
                 );
             }
@@ -5724,12 +5724,12 @@ class Parser
             $i++;
         }
         if ($inClass) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "Invalid regular expression: /{$pattern}/: Unterminated character class",
             );
         }
         if ($groupOpen !== 0) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 "Invalid regular expression: /{$pattern}/: Unmatched '('",
             );
         }
@@ -5979,7 +5979,7 @@ class Parser
             }
             if ($c === '\\') {
                 if ($i + 1 >= $len) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: \\ at end of pattern",
                     );
                 }
@@ -5991,7 +5991,7 @@ class Parser
                     if ($i + 2 < $len && $pattern[$i + 2] === '-' && $i + 3 < $len && $pattern[$i + 3] !== ']') {
                         $isVDifference = $isVFlag && $pattern[$i + 3] === '-';
                         if (!$isVDifference) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid character class",
                             );
                         }
@@ -6004,44 +6004,44 @@ class Parser
                                 $j++;
                             }
                             if ($j >= $len) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid Unicode property",
                                 );
                             }
                             $propExpr = substr($pattern, $i + 3, $j - ($i + 3));
                             if ($propExpr === '') {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Empty property name",
                                 );
                             }
                             if (str_contains($propExpr, '=')) {
                                 $parts = explode('=', $propExpr, 2);
                                 if ($parts[0] === '' || $parts[1] === '') {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
-                                if (\PhpJs\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                if (\Phasis\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Binary property used with value",
                                     );
                                 }
                             } else {
-                                if (\PhpJs\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                if (\Phasis\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
+                                    throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
                                 if (
-                                    \PhpJs\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
+                                    \Phasis\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
                                 ) {
                                     if (!$isVFlag) {
-                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                        throw new \Phasis\Exceptions\SyntaxError(
                                             "Invalid regular expression: /{$pattern}/: Property of strings only allowed in /v",
                                         );
                                     }
                                     if ($next === 'P' || $isNegated) {
-                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                        throw new \Phasis\Exceptions\SyntaxError(
                                             "Invalid regular expression: /{$pattern}/: Negated property of strings",
                                         );
                                     }
@@ -6063,7 +6063,7 @@ class Parser
                         $hex = '';
                         while ($j < $len && $pattern[$j] !== '}') {
                             if (!ctype_xdigit($pattern[$j])) {
-                                throw new \PhpJs\Exceptions\SyntaxError(
+                                throw new \Phasis\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                                 );
                             }
@@ -6071,7 +6071,7 @@ class Parser
                             $j++;
                         }
                         if ($j >= $len || $hex === '' || hexdec($hex) > 0x10FFFF) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                             );
                         }
@@ -6080,13 +6080,13 @@ class Parser
                         continue;
                     }
                     if ($i + 5 >= $len) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                         );
                     }
                     for ($k = 2; $k < 6; $k++) {
                         if (!ctype_xdigit($pattern[$i + $k])) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                             );
                         }
@@ -6105,7 +6105,7 @@ class Parser
                             $j++;
                         }
                         if ($j >= $len) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
+                            throw new \Phasis\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Unterminated \\q{}",
                             );
                         }
@@ -6118,7 +6118,7 @@ class Parser
                 static $allowedClassIdEscape = ['^', '$', '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '|', '/', '\\', '-',
                     'b', 'B', 'f', 'n', 'r', 't', 'v', '0', 'c', 'x', 'k'];
                 if (!in_array($next, $allowedClassIdEscape, true)) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Invalid escape",
                     );
                 }
@@ -6127,7 +6127,7 @@ class Parser
                     $hex1 = $i + 2 < $len ? $pattern[$i + 2] : '';
                     $hex2 = $i + 3 < $len ? $pattern[$i + 3] : '';
                     if (!ctype_xdigit($hex1) || !ctype_xdigit($hex2)) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid \\x escape",
                         );
                     }
@@ -6144,14 +6144,14 @@ class Parser
                 // these range-validity checks.
                 $isVDifference = $isVFlag && $next === '-';
                 if (!$isVDifference && $prevWasClassEscape && $next !== ']') {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Invalid character class range",
                     );
                 }
                 if (!$isVDifference && $next === '\\') {
                     $nn = $i + 2 < $len ? $pattern[$i + 2] : '';
                     if (in_array($nn, ['d', 'D', 's', 'S', 'w', 'W', 'p', 'P'], true)) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid character class range",
                         );
                     }
@@ -6169,7 +6169,7 @@ class Parser
                     $isClassStart = ($prevChar === '[' || $prevChar === '^');
                     $isClassEnd = ($next === ']' || $next === '');
                     if ($isClassStart && $isClassEnd) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Lone hyphen in /v class",
                         );
                     }
@@ -6209,7 +6209,7 @@ class Parser
                 continue;
             }
             if ($isVFlag && in_array($c, ['(', ')', '{', '}', '/', '|'], true)) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Invalid regular expression: /{$pattern}/: Unescaped class-set syntax character",
                 );
             }
@@ -6225,7 +6225,7 @@ class Parser
                 && $pattern[$i + 1] === $c
                 && in_array($c, $vDoublePunct, true)
             ) {
-                throw new \PhpJs\Exceptions\SyntaxError(
+                throw new \Phasis\Exceptions\SyntaxError(
                     "Invalid regular expression: /{$pattern}/: Reserved class-set double punctuator",
                 );
             }
@@ -6244,7 +6244,7 @@ class Parser
                 $afterChar = $afterIdx < $len ? $pattern[$afterIdx] : ']';
                 $isClassEnd = ($afterChar === ']');
                 if ($isClassStart || $isClassEnd) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Empty operand for class-set intersection",
                     );
                 }
@@ -6252,7 +6252,7 @@ class Parser
             $prevWasClassEscape = false;
             $i++;
         }
-        throw new \PhpJs\Exceptions\SyntaxError(
+        throw new \Phasis\Exceptions\SyntaxError(
             "Invalid regular expression: /{$pattern}/: Unterminated character class",
         );
     }
@@ -6494,7 +6494,7 @@ class Parser
      * SyntaxError. In script top-level code or non-async functions, it is
      * a normal identifier.
      */
-    private function parseAwaitAsIdentifier(\PhpJs\Lexer\Token $token): Node
+    private function parseAwaitAsIdentifier(\Phasis\Lexer\Token $token): Node
     {
         if (
             $this->inAsync
@@ -6514,7 +6514,7 @@ class Parser
      * always a keyword (and handled earlier as YieldExpression). In strict
      * mode outside generators, it is a reserved word.
      */
-    private function parseYieldAsIdentifier(\PhpJs\Lexer\Token $token): Node
+    private function parseYieldAsIdentifier(\Phasis\Lexer\Token $token): Node
     {
         if ($this->strictMode || $this->inGenerator) {
             throw new ParseError(
@@ -6742,7 +6742,7 @@ class Parser
             if (self::containsYieldOrAwaitExpression($p)) {
                 throw new ParseError(
                     'YieldExpression or AwaitExpression not permitted in arrow function parameters',
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                    new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                 );
             }
         }
@@ -6829,12 +6829,12 @@ class Parser
                 $el = $elements[$i];
                 if ($el instanceof RestElement) {
                     if ($i !== $count - 1) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Rest element must be last element',
                         );
                     }
                     if ($el->argument instanceof AssignmentPattern) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             'Rest element may not have a default initializer',
                         );
                     }
@@ -6856,7 +6856,7 @@ class Parser
                         && $prop->key instanceof Identifier
                         && self::isReservedWordIdentifierName($prop->key->name)
                     ) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
+                        throw new \Phasis\Exceptions\SyntaxError(
                             "Unexpected reserved word '{$prop->key->name}' as shorthand property",
                             $prop->key->location,
                         );
@@ -6885,7 +6885,7 @@ class Parser
             || $expr instanceof TemplateLiteral
             || $expr instanceof TaggedTemplate
         ) {
-            throw new \PhpJs\Exceptions\SyntaxError(
+            throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid arrow function parameter list',
             );
         }
@@ -6991,7 +6991,7 @@ class Parser
             if ($name === '__proto__') {
                 $protoCount++;
                 if ($protoCount > 1) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
+                    throw new \Phasis\Exceptions\SyntaxError(
                         "Duplicate __proto__ fields are not allowed in object literals",
                     );
                 }
@@ -7119,7 +7119,7 @@ class Parser
                             $isGenerator
                                 ? 'YieldExpression not permitted in generator parameters'
                                 : 'AwaitExpression not permitted in async method parameters',
-                            new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                            new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                         );
                     }
                 }
@@ -7172,7 +7172,7 @@ class Parser
                         $isGenerator
                             ? 'YieldExpression not permitted in generator parameters'
                             : 'AwaitExpression not permitted in async method parameters',
-                        new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                        new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                     );
                 }
             }
@@ -7205,7 +7205,7 @@ class Parser
             $params = $this->parseFormalParameters();
             // Per §15.5.1 / §15.6.1: getters take exactly 0 parameters,
             // setters take exactly 1 (and it cannot be a rest element).
-            $errToken = new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location);
+            $errToken = new \Phasis\Lexer\Token(TokenType::Identifier, '', $location);
             if ($kind === 'get' && count($params) !== 0) {
                 throw new ParseError(
                     'Getter must not have any formal parameters',
@@ -7219,14 +7219,14 @@ class Parser
                         $errToken,
                     );
                 }
-                if ($params[0] instanceof \PhpJs\Ast\Pattern\RestElement) {
+                if ($params[0] instanceof \Phasis\Ast\Pattern\RestElement) {
                     throw new ParseError(
                         'Setter parameter must not be a rest element',
                         $errToken,
                     );
                 }
                 if (
-                    $params[0] instanceof \PhpJs\Ast\Pattern\AssignmentPattern
+                    $params[0] instanceof \Phasis\Ast\Pattern\AssignmentPattern
                     && $params[0]->left instanceof Identifier
                     && ($params[0]->left->name === 'arguments' || $params[0]->left->name === 'eval')
                     && $this->strictMode
@@ -7281,7 +7281,7 @@ class Parser
             if ($computed) {
                 throw new ParseError(
                     'Computed property key cannot be used as shorthand',
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
+                    new \Phasis\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
                 );
             }
             // The shorthand value side is an IdentifierReference, which can
@@ -7289,7 +7289,7 @@ class Parser
             if (self::isReservedWordIdentifierName($key->name)) {
                 throw new ParseError(
                     "Unexpected reserved word '{$key->name}' as shorthand property",
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
+                    new \Phasis\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
                 );
             }
             // The shorthand value side is an IdentifierReference, which in
@@ -7298,7 +7298,7 @@ class Parser
             if ($this->strictMode && self::isStrictReservedWordIdentifier($key->name)) {
                 throw new ParseError(
                     "Unexpected reserved word '{$key->name}'",
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
+                    new \Phasis\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
                 );
             }
             // 'eval' and 'arguments' as shorthand here are IdentifierReferences
@@ -7318,7 +7318,7 @@ class Parser
             ) {
                 throw new ParseError(
                     "Unexpected reserved word 'await' as binding identifier",
-                    new \PhpJs\Lexer\Token(TokenType::Await, $key->name, $key->location),
+                    new \Phasis\Lexer\Token(TokenType::Await, $key->name, $key->location),
                 );
             }
             // `yield` cannot be IdentifierReference inside generators or
@@ -7329,7 +7329,7 @@ class Parser
             ) {
                 throw new ParseError(
                     "Unexpected reserved word 'yield' as binding identifier",
-                    new \PhpJs\Lexer\Token(TokenType::Yield, $key->name, $key->location),
+                    new \Phasis\Lexer\Token(TokenType::Yield, $key->name, $key->location),
                 );
             }
             $shorthand = true;
@@ -7480,7 +7480,7 @@ class Parser
                 if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression not permitted in generator parameters',
-                        new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                        new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                     );
                 }
             }
@@ -7640,7 +7640,7 @@ class Parser
             if (self::containsYieldOrAwaitExpression($p)) {
                 throw new ParseError(
                     'YieldExpression or AwaitExpression not permitted in async/generator parameters',
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                    new \Phasis\Lexer\Token(TokenType::Identifier, '', $location),
                 );
             }
         }
@@ -7683,9 +7683,9 @@ class Parser
                 $this->strictMode = $prevStrict;
             }
             if (
-                ($superClass instanceof \PhpJs\Ast\Expression\ArrowFunction
-                    || $superClass instanceof \PhpJs\Ast\Expression\AssignmentExpression
-                    || $superClass instanceof \PhpJs\Ast\Expression\ConditionalExpression)
+                ($superClass instanceof \Phasis\Ast\Expression\ArrowFunction
+                    || $superClass instanceof \Phasis\Ast\Expression\AssignmentExpression
+                    || $superClass instanceof \Phasis\Ast\Expression\ConditionalExpression)
                 && !$this->parenthesized->offsetExists($superClass)
             ) {
                 throw new ParseError(
@@ -7809,7 +7809,7 @@ class Parser
             // it a CoverParenthesizedExpressionAndArrowParameterList (a
             // PrimaryExpression, i.e. MemberExpression).
             if (
-                $callee instanceof \PhpJs\Ast\Expression\ImportExpression
+                $callee instanceof \Phasis\Ast\Expression\ImportExpression
                 && !$this->parenthesized->offsetExists($callee)
             ) {
                 throw new ParseError(
@@ -8020,7 +8020,7 @@ class Parser
                     }
                 }
                 $this->expect(TokenType::RightParen);
-                return new \PhpJs\Ast\Expression\ImportExpression(
+                return new \Phasis\Ast\Expression\ImportExpression(
                     $location,
                     $source,
                     $options,

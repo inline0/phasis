@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Interop;
+namespace Phasis\Interop;
 
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsArrayBuffer;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsDataView;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsTypedArray;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsArrayBuffer;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsDataView;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsTypedArray;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 final class PhpToJs
 {

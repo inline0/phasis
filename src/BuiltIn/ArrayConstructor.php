@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\AbstractOperations;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
-use PhpJs\Object\PropertyDescriptor;
+use Phasis\Exceptions\TypeError;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\AbstractOperations;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
+use Phasis\Object\PropertyDescriptor;
 
 class ArrayConstructor
 {
@@ -51,9 +51,9 @@ class ArrayConstructor
             $protoToUse = null;
             if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                 $newTarget = $this_->get('[[NewTarget]]');
-                $protoToUse = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+                $protoToUse = \Phasis\Spec\AbstractOperations::getPrototypeFromConstructor(
                     $newTarget,
-                    static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Array'),
+                    static fn ($env) => \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Array'),
                 );
             }
             if (count($args) === 1 && $args[0] instanceof JsNumber) {
@@ -61,7 +61,7 @@ class ArrayConstructor
                 $len = (int) $n;
                 // Array length must be a valid uint32 (0 to 4294967295)
                 if ((float) $len !== $n || $len < 0 || $len > 0xFFFFFFFF) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    throw new \Phasis\Exceptions\RangeError('Invalid array length');
                 }
                 $arr = new JsArray([], $protoToUse);
                 $arr->setLength($len);
@@ -80,7 +80,7 @@ class ArrayConstructor
         $isArrayFn->setNonConstructable();
         $constructor->defineOwnProperty(
             'isArray',
-            \PhpJs\Object\PropertyDescriptor::data($isArrayFn, true, false, true),
+            \Phasis\Object\PropertyDescriptor::data($isArrayFn, true, false, true),
         );
         $fromFn = JsFunction::fromCallable('from', self::from(), 1);
         $fromFn->setNonConstructable();
@@ -90,13 +90,13 @@ class ArrayConstructor
         $constructor->defineOwnProperty('fromAsync', PropertyDescriptor::data($fromAsyncFn, true, false, true));
         $ofFn = JsFunction::fromCallable('of', self::of(), 0);
         $ofFn->setNonConstructable();
-        $constructor->defineOwnProperty('of', \PhpJs\Object\PropertyDescriptor::data($ofFn, true, false, true));
+        $constructor->defineOwnProperty('of', \Phasis\Object\PropertyDescriptor::data($ofFn, true, false, true));
 
         // Array.prototype with all standard methods.
         // Array.prototype's [[Prototype]] must be Object.prototype, not a previous engine's
         // Array.prototype (which JsArray::$globalPrototype might point to between engines).
         // Explicitly pass the current Object.prototype to avoid the static leakage.
-        $proto = new JsArray([], \PhpJs\Value\JsObject::getGlobalPrototype());
+        $proto = new JsArray([], \Phasis\Value\JsObject::getGlobalPrototype());
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
         self::installPrototypeMethods($proto);
         // Symbol.iterator on Array.prototype, not on each instance.
@@ -137,7 +137,7 @@ class ArrayConstructor
 
         $constructor->defineOwnProperty(
             'prototype',
-            \PhpJs\Object\PropertyDescriptor::data($proto, false, false, false),
+            \Phasis\Object\PropertyDescriptor::data($proto, false, false, false),
         );
         JsArray::setGlobalPrototype($proto);
 
@@ -178,15 +178,15 @@ class ArrayConstructor
             // non-Array fallback surfaces the same error before we try to
             // iterate a gargantuan length.
             if ($len < 0 || $len > 4294967295) {
-                throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                throw new \Phasis\Exceptions\RangeError('Invalid array length');
             }
             // Pin the prototype to the CURRENT realm's %Array.prototype% so
             // a previously-created sibling realm cannot leak its prototype
             // through JsArray::$globalPrototype (which is process-wide).
-            $thisRealm = \PhpJs\Engine::getCurrentRealm();
+            $thisRealm = \Phasis\Engine::getCurrentRealm();
             $arrProto = null;
             if ($thisRealm !== null) {
-                $arrProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                $arrProto = \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype(
                     $thisRealm->getGlobalEnv(),
                     'Array',
                 );
@@ -213,8 +213,8 @@ class ArrayConstructor
             $c instanceof JsFunction
             && $c->isConstructable()
         ) {
-            $thisRealm = \PhpJs\Engine::getCurrentRealm();
-            $realmC = \PhpJs\Spec\AbstractOperations::getFunctionRealm($c);
+            $thisRealm = \Phasis\Engine::getCurrentRealm();
+            $realmC = \Phasis\Spec\AbstractOperations::getFunctionRealm($c);
             if ($thisRealm !== null && $realmC !== null && $thisRealm !== $realmC) {
                 $otherArray = $realmC->getGlobalEnv()->has('Array')
                     ? $realmC->getGlobalEnv()->get('Array')
@@ -338,7 +338,7 @@ class ArrayConstructor
                 // Per §23.1.3.22 step 5: DeletePropertyOrThrow uses
                 // throw=true. Fails for non-configurable indices.
                 if (!$o->delete($index, true)) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot delete property '{$index}' of '[object Array]'",
                     );
                 }
@@ -372,12 +372,12 @@ class ArrayConstructor
                         $o->set($to, $o->get($from), true);
                     } else {
                         if (!$o->delete($to, true)) {
-                            throw new \PhpJs\Exceptions\TypeError("Cannot delete property '{$to}'");
+                            throw new \Phasis\Exceptions\TypeError("Cannot delete property '{$to}'");
                         }
                     }
                 }
                 if (!$o->delete((string) ($len - 1), true)) {
-                    throw new \PhpJs\Exceptions\TypeError("Cannot delete property '" . ($len - 1) . "'");
+                    throw new \Phasis\Exceptions\TypeError("Cannot delete property '" . ($len - 1) . "'");
                 }
                 // Per spec, Set(O, "length", len - 1, true).
                 $o->set('length', JsNumber::of((float) ($len - 1)), true);
@@ -401,7 +401,7 @@ class ArrayConstructor
                 }
                 $deleteOrThrow = static function (JsObject $obj, string $key): void {
                     if (!$obj->delete($key, true)) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "Cannot delete property '{$key}'",
                         );
                     }
@@ -593,7 +593,7 @@ class ArrayConstructor
                 $count = max(0, $end - $start);
 
                 if ($count > 4294967295) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    throw new \Phasis\Exceptions\RangeError('Invalid array length');
                 }
 
                 // ArraySpeciesCreate(O, count) per spec.
@@ -608,7 +608,7 @@ class ArrayConstructor
                             PropertyDescriptor::data($this_->get($from), true, true, true),
                         );
                         if (!$ok) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 "Cannot define property '{$n}' on target",
                             );
                         }
@@ -774,7 +774,7 @@ class ArrayConstructor
                             PropertyDescriptor::data($mapped, true, true, true),
                         );
                         if (!$ok) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 "Cannot define property '{$key}' on target",
                             );
                         }
@@ -820,7 +820,7 @@ class ArrayConstructor
                             PropertyDescriptor::data($val, true, true, true),
                         );
                         if (!$ok) {
-                            throw new \PhpJs\Exceptions\TypeError(
+                            throw new \Phasis\Exceptions\TypeError(
                                 "Cannot define property '{$to}' on target",
                             );
                         }
@@ -1216,7 +1216,7 @@ class ArrayConstructor
                 // TypeError if [[Delete]] returns false (e.g. non-configurable).
                 $deleteOrThrow = static function (JsObject $o, string $key): void {
                     if (!$o->delete($key, true)) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "Cannot delete property '{$key}'",
                         );
                     }
@@ -1279,7 +1279,7 @@ class ArrayConstructor
                 // Per spec step 4: length + insertCount - actualDeleteCount
                 // must not exceed 2^53-1.
                 if ($len + $insertCount - $deleteCount > 9007199254740991) {
-                    throw new \PhpJs\Exceptions\TypeError('Array length exceeds the supported limit');
+                    throw new \Phasis\Exceptions\TypeError('Array length exceeds the supported limit');
                 }
 
                 // ArraySpeciesCreate(O, actualDeleteCount) per spec.
@@ -1386,7 +1386,7 @@ class ArrayConstructor
                 // and a JsProxy whose target has a [[Call]] slot.
                 $compareFnArg = $args[0] ?? JsUndefined::instance();
                 $isCallableCompareFn = $compareFnArg instanceof JsFunction
-                    || ($compareFnArg instanceof \PhpJs\Value\JsProxy && $compareFnArg->isCallable());
+                    || ($compareFnArg instanceof \Phasis\Value\JsProxy && $compareFnArg->isCallable());
                 if (!$compareFnArg instanceof JsUndefined && !$isCallableCompareFn) {
                     throw new TypeError($compareFnArg->display() . ' is not a function');
                 }
@@ -1415,7 +1415,7 @@ class ArrayConstructor
                         return -1;
                     }
                     if ($compareFn !== null) {
-                        if ($compareFn instanceof \PhpJs\Value\JsProxy) {
+                        if ($compareFn instanceof \Phasis\Value\JsProxy) {
                             $result = $compareFn->apply(JsUndefined::instance(), [$a, $b]);
                         } else {
                             $result = $compareFn->call(JsUndefined::instance(), [$a, $b]);
@@ -1448,7 +1448,7 @@ class ArrayConstructor
                 // Step 8 uses DeletePropertyOrThrow.
                 for ($i = $itemCount; $i < $len; $i++) {
                     if (!$this_->delete((string) $i, true)) {
-                        throw new \PhpJs\Exceptions\TypeError(
+                        throw new \Phasis\Exceptions\TypeError(
                             "Cannot delete property '{$i}' of '[object Array]'",
                         );
                     }
@@ -1496,7 +1496,7 @@ class ArrayConstructor
             'toLocaleString',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
-                    throw new \PhpJs\Exceptions\TypeError('Cannot convert undefined or null to object');
+                    throw new \Phasis\Exceptions\TypeError('Cannot convert undefined or null to object');
                 }
                 // Per spec: pass exactly (locales, options) through to each element's
                 // toLocaleString. Skip undefined/null elements (they contribute "").
@@ -1569,7 +1569,7 @@ class ArrayConstructor
                 $o = self::toObject($this_);
                 $len = self::lengthOfArrayLike($o);
                 if ($len > 4294967295) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    throw new \Phasis\Exceptions\RangeError('Invalid array length');
                 }
                 $result = new JsArray();
                 for ($k = 0; $k < $len; $k++) {
@@ -1587,14 +1587,14 @@ class ArrayConstructor
             function (JsValue $this_, array $args): JsValue {
                 $compareFnArg = $args[0] ?? JsUndefined::instance();
                 $isCallableCompareFn = $compareFnArg instanceof JsFunction
-                    || ($compareFnArg instanceof \PhpJs\Value\JsProxy && $compareFnArg->isCallable());
+                    || ($compareFnArg instanceof \Phasis\Value\JsProxy && $compareFnArg->isCallable());
                 if (!$compareFnArg instanceof JsUndefined && !$isCallableCompareFn) {
                     throw new TypeError($compareFnArg->display() . ' is not a function');
                 }
                 $o = self::toObject($this_);
                 $len = self::lengthOfArrayLike($o);
                 if ($len > 4294967295) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    throw new \Phasis\Exceptions\RangeError('Invalid array length');
                 }
                 $compareFn = $isCallableCompareFn ? $compareFnArg : null;
                 // Collect all elements (no holes: toSorted reads every index).
@@ -1615,7 +1615,7 @@ class ArrayConstructor
                         return -1;
                     }
                     if ($compareFn !== null) {
-                        $result = $compareFn instanceof \PhpJs\Value\JsProxy
+                        $result = $compareFn instanceof \Phasis\Value\JsProxy
                             ? $compareFn->apply(JsUndefined::instance(), [$a, $b])
                             : $compareFn->call(JsUndefined::instance(), [$a, $b]);
                         $num = TypeConversion::toNumber($result);
@@ -1670,7 +1670,7 @@ class ArrayConstructor
                 }
                 // ArrayCreate: newLen > 2^32 - 1 is RangeError.
                 if ($newLen > 4294967295) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    throw new \Phasis\Exceptions\RangeError('Invalid array length');
                 }
 
                 // Build the result list densely, then hand it to the JsArray
@@ -1700,7 +1700,7 @@ class ArrayConstructor
                 $len = self::lengthOfArrayLike($o);
                 $relativeIndex = TypeConversion::toIntegerOrInfinity($args[0] ?? JsUndefined::instance());
                 if ($relativeIndex === INF || $relativeIndex === -INF) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid index');
+                    throw new \Phasis\Exceptions\RangeError('Invalid index');
                 }
                 $intRelative = (int) $relativeIndex;
                 if ($relativeIndex >= 0) {
@@ -1710,10 +1710,10 @@ class ArrayConstructor
                 }
                 $value = $args[1] ?? JsUndefined::instance();
                 if ($actualIndex < 0 || $actualIndex >= $len) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid index');
+                    throw new \Phasis\Exceptions\RangeError('Invalid index');
                 }
                 if ($len > 4294967295) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    throw new \Phasis\Exceptions\RangeError('Invalid array length');
                 }
                 $result = new JsArray();
                 for ($k = 0; $k < $len; $k++) {
@@ -1806,13 +1806,13 @@ class ArrayConstructor
         // next method on the prototype. Validates internal slots via hidden property.
         $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method Array Iterator.prototype.next called on incompatible receiver',
                 );
             }
             $slotDesc = $this_->getOwnPropertyDescriptor('[[ArrayIteratorData]]');
             if ($slotDesc === null) {
-                throw new \PhpJs\Exceptions\TypeError(
+                throw new \Phasis\Exceptions\TypeError(
                     'Method Array Iterator.prototype.next called on incompatible receiver',
                 );
             }
@@ -1840,15 +1840,15 @@ class ArrayConstructor
             // Per spec 23.1.5.2.1 step 8: if the array is a TypedArray
             // with a detached buffer, throw TypeError. For resizable buffers
             // also throw if the view is now out of bounds.
-            if ($array instanceof \PhpJs\Value\JsTypedArray) {
+            if ($array instanceof \Phasis\Value\JsTypedArray) {
                 $buffer = $array->getBuffer();
                 if ($buffer->isDetached()) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'Cannot perform Array Iterator.prototype.next on a detached ArrayBuffer',
                     );
                 }
                 if ($array->isOutOfBounds()) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         'Cannot perform Array Iterator.prototype.next on an out-of-bounds TypedArray',
                     );
                 }
@@ -1859,7 +1859,7 @@ class ArrayConstructor
             // the internal slot, NOT the observable `length` property, so
             // a defineProperty override on length cannot fake the
             // iteration count.
-            if ($array instanceof \PhpJs\Value\JsTypedArray) {
+            if ($array instanceof \Phasis\Value\JsTypedArray) {
                 $len = $array->getLength();
             } else {
                 $len = self::getLen($array);
@@ -1911,7 +1911,7 @@ class ArrayConstructor
         // (very early bootstrap or detached call) build a fresh one rather
         // than reuse a stale process-global cache.
         $proto = null;
-        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $interp = \Phasis\Engine::getCurrentInterpreter();
         if ($interp !== null) {
             $env = $interp->getGlobalEnv();
             if ($env->has('__ArrayIteratorPrototype__')) {
@@ -1965,7 +1965,7 @@ class ArrayConstructor
         if ($arg instanceof JsArray) {
             return true;
         }
-        if ($arg instanceof \PhpJs\Value\JsProxy) {
+        if ($arg instanceof \Phasis\Value\JsProxy) {
             if ($arg->isRevoked()) {
                 throw new TypeError('Cannot perform \'IsArray\' on a proxy that has been revoked');
             }
@@ -1985,9 +1985,9 @@ class ArrayConstructor
      */
     private static function constructWith(JsFunction $ctor, array $args): JsObject
     {
-        $proto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+        $proto = \Phasis\Spec\AbstractOperations::getPrototypeFromConstructor(
             $ctor,
-            static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+            static fn ($env) => \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
         );
         $newObj = new JsObject($proto);
         $newObj->defineOwnProperty('[[NewTarget]]', PropertyDescriptor::data($ctor, false, false, false));
@@ -2030,7 +2030,7 @@ class ArrayConstructor
                 || $arrayLike instanceof JsString
                 || $arrayLike instanceof JsNumber
                 || $arrayLike instanceof JsBoolean
-                || $arrayLike instanceof \PhpJs\Value\JsBigInt
+                || $arrayLike instanceof \Phasis\Value\JsBigInt
                 || $arrayLike instanceof JsSymbol
             ) {
                 $iterSym = SymbolConstructor::iterator();
@@ -2048,7 +2048,7 @@ class ArrayConstructor
                 }
 
                 $iterMethodCallable = $iteratorMethod instanceof JsFunction
-                    || $iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA;
+                    || $iteratorMethod instanceof \Phasis\Value\JsHTMLDDA;
                 // Per spec GetMethod: if V is not undefined/null and not
                 // callable, throw TypeError. Primitives like a string or
                 // number set as @@iterator must reject Array.from instead
@@ -2072,7 +2072,7 @@ class ArrayConstructor
 
                     // Use the iterator protocol. HTMLDDA's [[Call]] returns null,
                     // which fails the "iterator is not an object" check below.
-                    if ($iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                    if ($iteratorMethod instanceof \Phasis\Value\JsHTMLDDA) {
                         $iterator = JsNull::instance();
                     } else {
                         /** @var JsFunction $iteratorMethod */
@@ -2190,7 +2190,7 @@ class ArrayConstructor
             } else {
                 // ArrayCreate(len): length must fit in a canonical array index.
                 if ($len > 4294967295) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    throw new \Phasis\Exceptions\RangeError('Invalid array length');
                 }
                 $a = new JsArray();
             }
@@ -2228,7 +2228,7 @@ class ArrayConstructor
      * Array.fromAsync(asyncItems, mapFn?, thisArg?).
      *
      * Per spec, returns a Promise that resolves to an Array.
-     * Since php-js is synchronous, thenables and promises are resolved eagerly.
+     * Since phasis is synchronous, thenables and promises are resolved eagerly.
      */
     private static function fromAsync(Environment $env): \Closure
     {
@@ -2244,11 +2244,11 @@ class ArrayConstructor
             $mapFn = null;
             if (!$mapFnRaw instanceof JsUndefined) {
                 if (!$mapFnRaw instanceof JsFunction) {
-                    $promise = new \PhpJs\Value\JsPromise();
+                    $promise = new \Phasis\Value\JsPromise();
                     $promise->reject(
                         self::buildErrorObject(
                             $env,
-                            new \PhpJs\Exceptions\TypeError('mapfn is not a function'),
+                            new \Phasis\Exceptions\TypeError('mapfn is not a function'),
                         )
                     );
                     return $promise;
@@ -2256,7 +2256,7 @@ class ArrayConstructor
                 $mapFn = $mapFnRaw;
             }
 
-            $promise = new \PhpJs\Value\JsPromise();
+            $promise = new \Phasis\Value\JsPromise();
             try {
                 $isConstructor = ($c instanceof JsFunction && $c->isConstructable());
 
@@ -2360,7 +2360,7 @@ class ArrayConstructor
                             }
                         };
                         $rejectErr = function (\Throwable $e) use ($promise, $env): void {
-                            if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                            if ($e instanceof \Phasis\Exceptions\JsThrowable) {
                                 $promise->reject($e->jsValue);
                             } else {
                                 $promise->reject(self::buildErrorObject($env, $e));
@@ -2424,7 +2424,7 @@ class ArrayConstructor
                                 // synchronous code after fromAsync's return
                                 // can mutate the source between iterations.
                                 if ($stepHolder->step !== null) {
-                                    \PhpJs\Value\JsPromise::scheduleCallback($stepHolder->step);
+                                    \Phasis\Value\JsPromise::scheduleCallback($stepHolder->step);
                                 }
                             } catch (\Throwable $e) {
                                 $rejectErr($e);
@@ -2446,7 +2446,7 @@ class ArrayConstructor
                                 // awaitValue (which would no-op when already
                                 // inside drainMicrotasks). For non-promise
                                 // results, deliver directly.
-                                if ($stepResult instanceof \PhpJs\Value\JsPromise) {
+                                if ($stepResult instanceof \Phasis\Value\JsPromise) {
                                     $resolverFn = JsFunction::fromCallable(
                                         '',
                                         function (JsValue $t, array $args) use ($afterResult): JsValue {
@@ -2459,7 +2459,7 @@ class ArrayConstructor
                                         '',
                                         function (JsValue $t, array $args) use ($rejectErr): JsValue {
                                             $reason = $args[0] ?? JsUndefined::instance();
-                                            $rejectErr(new \PhpJs\Exceptions\JsThrowable($reason));
+                                            $rejectErr(new \Phasis\Exceptions\JsThrowable($reason));
                                             return JsUndefined::instance();
                                         },
                                         1,
@@ -2507,7 +2507,7 @@ class ArrayConstructor
                     // Per spec, the non-constructor path is `A = ? ArrayCreate(len)`.
                     // ArrayCreate throws RangeError for len > 2^32 - 1.
                     if ($lenNum > 0xFFFFFFFF) {
-                        throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                        throw new \Phasis\Exceptions\RangeError('Invalid array length');
                     }
                     $a = new JsArray();
                 }
@@ -2530,7 +2530,7 @@ class ArrayConstructor
                 }
                 $promise->resolve($a);
             } catch (\Throwable $e) {
-                if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                if ($e instanceof \Phasis\Exceptions\JsThrowable) {
                     $promise->reject($e->jsValue);
                 } else {
                     $promise->reject(self::buildErrorObject($env, $e));
@@ -2548,10 +2548,10 @@ class ArrayConstructor
     private static function buildErrorObject(Environment $env, \Throwable $e): JsValue
     {
         $ctorName = match (true) {
-            $e instanceof \PhpJs\Exceptions\TypeError => 'TypeError',
-            $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
-            $e instanceof \PhpJs\Exceptions\ReferenceError => 'ReferenceError',
-            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
+            $e instanceof \Phasis\Exceptions\TypeError => 'TypeError',
+            $e instanceof \Phasis\Exceptions\RangeError => 'RangeError',
+            $e instanceof \Phasis\Exceptions\ReferenceError => 'ReferenceError',
+            $e instanceof \Phasis\Exceptions\SyntaxError => 'SyntaxError',
             default => 'Error',
         };
         try {
@@ -2571,7 +2571,7 @@ class ArrayConstructor
 
     /**
      * Synchronously resolve a value that may be a Promise or thenable.
-     * Since php-js is synchronous, Promises are eagerly resolved.
+     * Since phasis is synchronous, Promises are eagerly resolved.
      */
     private static function awaitValue(JsValue $value): JsValue
     {
@@ -2580,17 +2580,17 @@ class ArrayConstructor
         // that resolves to a thenable runs the thenable's then() too.
         $iterations = 0;
         while ($iterations++ < 32) {
-            if ($value instanceof \PhpJs\Value\JsPromise) {
+            if ($value instanceof \Phasis\Value\JsPromise) {
                 // A promise that's still pending may have a thenable
                 // resolution scheduled as a microtask (per spec
                 // PromiseResolveThenableJob). Drain microtasks so the
                 // thenable's then() runs before we read the value.
-                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
-                    \PhpJs\Value\JsPromise::drainMicrotasks();
+                if ($value->getState() === \Phasis\Value\JsPromise::STATE_PENDING) {
+                    \Phasis\Value\JsPromise::drainMicrotasks();
                 }
-                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                if ($value->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
                     $reason = $value->getResolvedValue();
-                    throw new \PhpJs\Exceptions\JsThrowable($reason);
+                    throw new \Phasis\Exceptions\JsThrowable($reason);
                 }
                 $next = $value->getResolvedValue();
                 if ($next === $value) {
@@ -2620,7 +2620,7 @@ class ArrayConstructor
                     );
                     $thenMethod->call($value, [$resolveHandler, $rejectHandler]);
                     if ($rejected !== null) {
-                        throw new \PhpJs\Exceptions\JsThrowable($rejected);
+                        throw new \Phasis\Exceptions\JsThrowable($rejected);
                     }
                     if ($resolved === $value) {
                         return $resolved;
@@ -2654,7 +2654,7 @@ class ArrayConstructor
                     PropertyDescriptor::data($args[$k], true, true, true),
                 );
                 if (!$ok) {
-                    throw new \PhpJs\Exceptions\TypeError(
+                    throw new \Phasis\Exceptions\TypeError(
                         "Cannot define property '{$k}' on target",
                     );
                 }

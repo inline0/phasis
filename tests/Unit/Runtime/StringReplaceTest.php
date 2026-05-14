@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Tests\Unit\Runtime;
+namespace Phasis\Tests\Unit\Runtime;
 
-use PhpJs\Engine;
+use Phasis\Engine;
 use PHPUnit\Framework\TestCase;
 
 class StringReplaceTest extends TestCase

@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsArray;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsProxy;
-use PhpJs\Value\JsValue;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsProxy;
+use Phasis\Value\JsValue;
 
 /**
  * The Reflect built-in object.
@@ -49,7 +49,7 @@ class ReflectObject
                 // TypedArray exotic [[Get]] handles numeric indices directly;
                 // its prototype-chain hop happens inside ::get(), so use the
                 // public get() rather than the JsObject internalGet path.
-                if ($target instanceof \PhpJs\Value\JsTypedArray) {
+                if ($target instanceof \Phasis\Value\JsTypedArray) {
                     return $target->get($name);
                 }
                 // Spec [[Get]] accepts any value as receiver. For non-object
@@ -77,7 +77,7 @@ class ReflectObject
                     // trap (and its invariant validation). Falling through to
                     // ordinarySetSymbol would bypass the trap and lose the
                     // post-trap invariant checks (e.g. nw/nc data property).
-                    if ($target instanceof \PhpJs\Value\JsProxy) {
+                    if ($target instanceof \Phasis\Value\JsProxy) {
                         $target->setBySymbol($propKey, $value);
                         return new JsBoolean(true);
                     }
@@ -90,7 +90,7 @@ class ReflectObject
                 // the typed array itself. Per spec TypedArraySetElement,
                 // ToNumber/ToBigInt is called BEFORE the valid-index check, so
                 // a throwing valueOf surfaces even on out-of-bounds writes.
-                if ($target instanceof \PhpJs\Value\JsTypedArray) {
+                if ($target instanceof \Phasis\Value\JsTypedArray) {
                     $indexStr = $propKey->toJsString();
                     $isCanonical = $indexStr === '-0'
                         || $indexStr === 'NaN'
@@ -98,7 +98,7 @@ class ReflectObject
                         || $indexStr === '-Infinity'
                         || (
                             is_numeric($indexStr)
-                            && (new \PhpJs\Value\JsNumber((float) $indexStr))->toJsString() === $indexStr
+                            && (new \Phasis\Value\JsNumber((float) $indexStr))->toJsString() === $indexStr
                         );
                     if ($isCanonical) {
                         if ($receiver === $target) {
@@ -126,7 +126,7 @@ class ReflectObject
                 // Proxy targets always run through their [[Set]] trap, even
                 // when the receiver is a primitive — the trap is observable
                 // and the receiver is passed through verbatim.
-                if ($target instanceof \PhpJs\Value\JsProxy) {
+                if ($target instanceof \Phasis\Value\JsProxy) {
                     return new JsBoolean(
                         $target->setWithValueReceiver($propKey->toJsString(), $value, $receiver)
                     );
@@ -344,14 +344,14 @@ class ReflectObject
             JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
                 $target = $args[0] ?? JsUndefined::instance();
                 $isCallable = $target instanceof JsFunction
-                    || ($target instanceof \PhpJs\Value\JsProxy && $target->isCallable());
+                    || ($target instanceof \Phasis\Value\JsProxy && $target->isCallable());
                 if (!$isCallable) {
                     throw new TypeError('Reflect.apply: target must be a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 $argsList = $args[2] ?? JsUndefined::instance();
                 $callArgs = self::toArgumentsList($argsList, 'Reflect.apply');
-                if ($target instanceof \PhpJs\Value\JsProxy) {
+                if ($target instanceof \Phasis\Value\JsProxy) {
                     return $target->apply($thisArg, $callArgs);
                 }
                 return $target->call($thisArg, $callArgs);
@@ -429,9 +429,9 @@ class ReflectObject
                     if ($useProto === null) {
                         // Per GetPrototypeFromConstructor: fall back to
                         // GetFunctionRealm(newTarget).[[%Object.prototype%]].
-                        $ntRealm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($newTarget);
+                        $ntRealm = \Phasis\Spec\AbstractOperations::getFunctionRealm($newTarget);
                         if ($ntRealm !== null) {
-                            $useProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                            $useProto = \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype(
                                 $ntRealm->getGlobalEnv(),
                                 'Object',
                             );
@@ -475,10 +475,10 @@ class ReflectObject
                         // Look up the intrinsic by the target constructor's own name:
                         // Reflect.construct(realm3.Array, [], newTargetProxy) should
                         // resolve to GetFunctionRealm(newTargetProxy).Array.prototype.
-                        $ntRealm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($newTarget);
+                        $ntRealm = \Phasis\Spec\AbstractOperations::getFunctionRealm($newTarget);
                         if ($ntRealm !== null) {
                             $intrinsicName = $target->getName();
-                            $resolved = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                            $resolved = \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype(
                                 $ntRealm->getGlobalEnv(),
                                 $intrinsicName,
                             );
@@ -799,7 +799,7 @@ class ReflectObject
         // mandated field order, hasGet / hasSet tracking, and validation
         // (mixed data + accessor → TypeError) all match the
         // Object.defineProperty path.
-        return \PhpJs\BuiltIn\ObjectConstructor::toPropertyDescriptor($obj);
+        return \Phasis\BuiltIn\ObjectConstructor::toPropertyDescriptor($obj);
     }
 
     /** Convert a PropertyDescriptor to a JsObject. */

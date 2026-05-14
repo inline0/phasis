@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 /**
  * BigInt primitive value.
@@ -76,17 +76,17 @@ class JsBigInt implements JsValue
 
     public function toNumber(): float
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot convert a BigInt value to a number');
+        throw new \Phasis\Exceptions\TypeError('Cannot convert a BigInt value to a number');
     }
 
     public function toInt32(): int
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot convert a BigInt value to a number');
+        throw new \Phasis\Exceptions\TypeError('Cannot convert a BigInt value to a number');
     }
 
     public function toUint32(): int
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot convert a BigInt value to a number');
+        throw new \Phasis\Exceptions\TypeError('Cannot convert a BigInt value to a number');
     }
 
     public function toJsString(): string

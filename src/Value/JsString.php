@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 class JsString implements JsValue
 {
@@ -40,7 +40,7 @@ class JsString implements JsValue
 
     public function toNumber(): float
     {
-        return \PhpJs\Spec\TypeConversion::stringToNumber($this->value);
+        return \Phasis\Spec\TypeConversion::stringToNumber($this->value);
     }
 
     public function toInt32(): int

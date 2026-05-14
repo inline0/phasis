@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Bytecode;
+namespace Phasis\Bytecode;
 
-use PhpJs\Value\JsValue;
+use Phasis\Value\JsValue;
 
 /**
  * Result of compiling a JsFunction body to bytecode. Holds the flat
@@ -52,7 +52,7 @@ final class CompiledFunction
      * field initializers) still runs in the tree-walker; the enclosing
      * function is what actually gets VM-compiled now.
      *
-     * @var list<\PhpJs\Ast\Node>
+     * @var list<\Phasis\Ast\Node>
      */
     public array $classNodes = [];
 
@@ -77,7 +77,7 @@ final class CompiledFunction
      * @param list<string>  $names       Identifier name table.
      * @param list<string>  $localNames  Slot index → name (diagnostics).
      * @param list<int>     $paramSlots  Parameter index → local slot.
-     * @param list<\PhpJs\Ast\Node> $nestedFns Templates for nested fns.
+     * @param list<\Phasis\Ast\Node> $nestedFns Templates for nested fns.
      * @param bool $needsThis       True when LOAD_THIS appears anywhere
      *        in the bytecode. Lets executeFunction skip the
      *        defineVar('this', ...) that the tree-walker performs.

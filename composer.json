@@ -1,5 +1,5 @@
 {
-    "name": "inline0/php-js",
+    "name": "phasis/phasis",
     "description": "Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without Node.js, FFI, or extensions.",
     "type": "library",
     "license": "MIT",
@@ -14,12 +14,12 @@
     },
     "autoload": {
         "psr-4": {
-            "PhpJs\\": "src/"
+            "Phasis\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "PhpJs\\Tests\\": "tests/"
+            "Phasis\\Tests\\": "tests/"
         }
     },
     "scripts": {

@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\BuiltIn;
+namespace Phasis\BuiltIn;
 
-use PhpJs\Engine;
-use PhpJs\Exceptions\TypeError;
-use PhpJs\Object\PropertyDescriptor;
-use PhpJs\Runtime\Environment;
-use PhpJs\Spec\TypeConversion;
-use PhpJs\Value\JsBoolean;
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsNull;
-use PhpJs\Value\JsNumber;
-use PhpJs\Value\JsObject;
-use PhpJs\Value\JsString;
-use PhpJs\Value\JsSymbol;
-use PhpJs\Value\JsUndefined;
-use PhpJs\Value\JsValue;
+use Phasis\Engine;
+use Phasis\Exceptions\TypeError;
+use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\Environment;
+use Phasis\Spec\TypeConversion;
+use Phasis\Value\JsBoolean;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsNull;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
+use Phasis\Value\JsUndefined;
+use Phasis\Value\JsValue;
 
 /**
  * ShadowRealm constructor and prototype methods.
@@ -180,7 +180,7 @@ class ShadowRealmConstructor
 
                 try {
                     $result = self::evaluateInRealm($engine, $sourceText->value, $outerRealm);
-                } catch (\PhpJs\Exceptions\SyntaxError $e) {
+                } catch (\Phasis\Exceptions\SyntaxError $e) {
                     // SyntaxError must surface in the OUTER realm so a
                     // cross-realm ShadowRealm exposes
                     // OtherRealm.SyntaxError, not the inner engine's.
@@ -189,7 +189,7 @@ class ShadowRealmConstructor
                         'SyntaxError',
                         $e->getMessage(),
                     );
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     // Per spec: errors from the other realm are wrapped into a TypeError
                     // from the caller's realm.
                     throw self::makeOuterRealmTypeError($outerRealm, $e->getMessage());
@@ -234,9 +234,9 @@ class ShadowRealmConstructor
                 // The exportName check is a Type test (not a coercion),
                 // so a non-string with a throwing toString must throw
                 // TypeError without invoking the toString hook.
-                $specifier = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-                $exportName = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
-                $specifierStr = \PhpJs\Spec\TypeConversion::toString($specifier);
+                $specifier = $args[0] ?? \Phasis\Value\JsUndefined::instance();
+                $exportName = $args[1] ?? \Phasis\Value\JsUndefined::instance();
+                $specifierStr = \Phasis\Spec\TypeConversion::toString($specifier);
                 if (!$exportName instanceof JsString) {
                     throw new TypeError('ShadowRealm.prototype.importValue exportName must be a string');
                 }
@@ -249,7 +249,7 @@ class ShadowRealmConstructor
                     ? $callerInterpreter->getCurrentModulePath()
                     : null;
 
-                $promise = new \PhpJs\Value\JsPromise();
+                $promise = new \Phasis\Value\JsPromise();
                 try {
                     $innerInterpreter = $engine->getInterpreter();
                     Engine::setCurrentInterpreter($innerInterpreter);
@@ -262,7 +262,7 @@ class ShadowRealmConstructor
                         Engine::setCurrentInterpreter($callerInterpreter);
                     }
                     $value = $namespace->get($exportNameStr);
-                    if ($value instanceof \PhpJs\Value\JsUndefined && !$namespace->has($exportNameStr)) {
+                    if ($value instanceof \Phasis\Value\JsUndefined && !$namespace->has($exportNameStr)) {
                         $promise->reject(self::buildTypeError(
                             "Export '" . $exportNameStr . "' not found in module"
                         ));
@@ -311,7 +311,7 @@ class ShadowRealmConstructor
         string $sourceText,
         ?Engine $callerRealm = null,
     ): JsValue {
-        $parser = new \PhpJs\Parser\Parser($sourceText);
+        $parser = new \Phasis\Parser\Parser($sourceText);
         $program = $parser->parse();
         $callerInterpreter = Engine::getCurrentInterpreter();
 
@@ -375,7 +375,7 @@ class ShadowRealmConstructor
             || $value instanceof JsNumber
             || $value instanceof JsString
             || $value instanceof JsSymbol
-            || $value instanceof \PhpJs\Value\JsBigInt
+            || $value instanceof \Phasis\Value\JsBigInt
         ) {
             return $value;
         }
@@ -386,7 +386,7 @@ class ShadowRealmConstructor
         }
 
         // Callable Proxy objects are also callable.
-        if ($value instanceof \PhpJs\Value\JsProxy && $value->isCallable()) {
+        if ($value instanceof \Phasis\Value\JsProxy && $value->isCallable()) {
             return self::createWrappedCallable($value, $callerRealm);
         }
 
@@ -412,7 +412,7 @@ class ShadowRealmConstructor
                 $wrappedArgs[] = $arg;
             } elseif ($arg instanceof JsFunction) {
                 $wrappedArgs[] = self::createWrappedFunction($arg, $callerRealm);
-            } elseif ($arg instanceof \PhpJs\Value\JsProxy && $arg->isCallable()) {
+            } elseif ($arg instanceof \Phasis\Value\JsProxy && $arg->isCallable()) {
                 $wrappedArgs[] = self::createWrappedCallable($arg, $callerRealm);
             } else {
                 throw self::makeOuterRealmTypeError(
@@ -432,7 +432,7 @@ class ShadowRealmConstructor
             || $value instanceof JsNumber
             || $value instanceof JsString
             || $value instanceof JsSymbol
-            || $value instanceof \PhpJs\Value\JsBigInt;
+            || $value instanceof \Phasis\Value\JsBigInt;
     }
 
     /**
@@ -445,7 +445,7 @@ class ShadowRealmConstructor
     private static function makeOuterRealmTypeError(
         ?Engine $outerRealm,
         string $message,
-    ): \PhpJs\Exceptions\RuntimeError {
+    ): \Phasis\Exceptions\RuntimeError {
         return self::makeOuterRealmError($outerRealm, 'TypeError', $message);
     }
 
@@ -460,15 +460,15 @@ class ShadowRealmConstructor
         ?Engine $outerRealm,
         string $name,
         string $message,
-    ): \PhpJs\Exceptions\RuntimeError {
+    ): \Phasis\Exceptions\RuntimeError {
         if ($outerRealm === null) {
             // No outer realm captured (legacy SR or non-SR brand-check
             // path): fall back to the current realm's PHP exception
             // class so existing harness expectations still pass.
             return match ($name) {
                 'TypeError' => new TypeError($message),
-                'SyntaxError' => new \PhpJs\Exceptions\SyntaxError($message),
-                default => new \PhpJs\Exceptions\RuntimeError($message),
+                'SyntaxError' => new \Phasis\Exceptions\SyntaxError($message),
+                default => new \Phasis\Exceptions\RuntimeError($message),
             };
         }
         $globalEnv = $outerRealm->getGlobalEnv();
@@ -485,7 +485,7 @@ class ShadowRealmConstructor
                 }
             }
         }
-        return new \PhpJs\Exceptions\JsThrowable($err, $name . ': ' . $message);
+        return new \Phasis\Exceptions\JsThrowable($err, $name . ': ' . $message);
     }
 
     /**
@@ -557,7 +557,7 @@ class ShadowRealmConstructor
                 // (which becomes "callerRealm" for the nested call).
                 try {
                     $wrappedArgs = self::wrapArguments($args, $targetRealm);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
                     // The non-wrappable TypeError was minted in
                     // targetRealm by the wrap helper. Re-throw it in
                     // callerRealm so the outer assertion sees the
@@ -579,7 +579,7 @@ class ShadowRealmConstructor
                         JsUndefined::instance(),
                         $wrappedArgs,
                     );
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     // Spec step 8: abrupt completion from Call →
                     // throw a TypeError of callerRealm.
                     throw self::makeOuterRealmTypeError($callerRealm, $e->getMessage());
@@ -611,7 +611,7 @@ class ShadowRealmConstructor
      * Create a wrapped function for a callable Proxy.
      */
     private static function createWrappedCallable(
-        \PhpJs\Value\JsProxy $target,
+        \Phasis\Value\JsProxy $target,
         ?Engine $callerRealm = null,
     ): JsFunction {
         // For a callable Proxy we don't have a single resolved
@@ -627,7 +627,7 @@ class ShadowRealmConstructor
                 $wrappedArgs = self::wrapArguments($args, $callerRealm);
                 try {
                     $result = $target->apply(JsUndefined::instance(), $wrappedArgs);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
                     throw self::makeOuterRealmTypeError($callerRealm, $e->getMessage());
                 }
                 return self::getWrappedValue($result, $callerRealm);
@@ -653,7 +653,7 @@ class ShadowRealmConstructor
         // caller realm (WrappedFunctionCreate step 8).
         try {
             $target->getOwnPropertyDescriptor('length');
-        } catch (\PhpJs\Exceptions\JsThrowable) {
+        } catch (\Phasis\Exceptions\JsThrowable) {
             throw new TypeError('WrappedFunctionCreate: target length descriptor threw');
         } catch (\Throwable $e) {
             throw new TypeError('WrappedFunctionCreate: ' . $e->getMessage());
@@ -664,7 +664,7 @@ class ShadowRealmConstructor
         // -Infinity → 0, otherwise ToIntegerOrInfinity clamped to >= 0.
         try {
             $targetLength = $target->get('length');
-        } catch (\PhpJs\Exceptions\JsThrowable) {
+        } catch (\Phasis\Exceptions\JsThrowable) {
             throw new TypeError('WrappedFunctionCreate: target length getter threw');
         } catch (\Throwable $e) {
             throw new TypeError('WrappedFunctionCreate: ' . $e->getMessage());
@@ -691,7 +691,7 @@ class ShadowRealmConstructor
         // 7 is ? Get, propagated by WrappedFunctionCreate step 8).
         try {
             $targetName = $target->get('name');
-        } catch (\PhpJs\Exceptions\JsThrowable) {
+        } catch (\Phasis\Exceptions\JsThrowable) {
             throw new TypeError('WrappedFunctionCreate: target name getter threw');
         } catch (\Throwable $e) {
             throw new TypeError('WrappedFunctionCreate: ' . $e->getMessage());

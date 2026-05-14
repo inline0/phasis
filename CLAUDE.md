@@ -1,6 +1,6 @@
-# php-js
+# Phasis
 
-Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shelling out to Node.js, without FFI, without extensions. Node.js (V8) is the oracle: if V8 produces a result, php-js must produce the same result. Compliance is measured against test262, the official ECMAScript conformance test suite.
+Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shelling out to Node.js, without FFI, without extensions. Node.js (V8) is the oracle: if V8 produces a result, phasis must produce the same result. Compliance is measured against test262, the official ECMAScript conformance test suite.
 
 ## Quick Reference
 
@@ -23,7 +23,7 @@ Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shell
 # Oracle management
 ./bin/oracle <name>                      # Capture Node.js output for scenario
 ./bin/oracle --refresh <name>            # Re-capture (after Node version update)
-./bin/actual <name>                      # Run php-js, capture output
+./bin/actual <name>                      # Run phasis, capture output
 ./bin/compare <name>                     # Diff oracle vs actual
 
 # Unit tests (no Node.js needed)
@@ -36,9 +36,9 @@ composer cs:fix                          # Fix coding standards
 composer analyse                         # PHPStan static analysis
 
 # CLI
-./bin/php-js script.js                   # Execute a JavaScript file
-./bin/php-js -e "1 + 2"                  # Evaluate expression
-./bin/php-js --repl                      # Interactive REPL
+./bin/phasis script.js                   # Execute a JavaScript file
+./bin/phasis -e "1 + 2"                  # Evaluate expression
+./bin/phasis --repl                      # Interactive REPL
 ```
 
 ## Non-Negotiable Testing Rule
@@ -109,7 +109,7 @@ Not a JIT compiler. Not a competitor to V8 for raw throughput. This is a tree-wa
 ## Project Structure
 
 ```
-php-js/
+phasis/
 ├── src/
 │   ├── Engine.php                       # Top-level facade (eval, execFile, setGlobal, etc.)
 │   │
@@ -249,9 +249,9 @@ php-js/
 │       └── InternalError.php            # Stack overflow, resource limits
 │
 ├── bin/
-│   ├── php-js                           # CLI entry point (run files, eval, REPL)
+│   ├── phasis                           # CLI entry point (run files, eval, REPL)
 │   ├── oracle                           # Capture Node.js output for a scenario
-│   ├── actual                           # Run php-js, capture output
+│   ├── actual                           # Run phasis, capture output
 │   ├── compare                          # Diff oracle vs actual
 │   ├── test-scenario                    # Full pipeline: oracle → actual → compare
 │   ├── test-regression                  # Run all scenarios
@@ -284,7 +284,7 @@ php-js/
 │   │       └── HostFunctionTest.php      # PHP callables in JS
 │   └── Oracle/
 │       ├── OracleCapture.php            # Runs Node.js, captures output
-│       ├── ActualCapture.php            # Runs php-js, captures output
+│       ├── ActualCapture.php            # Runs phasis, captures output
 │       ├── ScenarioComparator.php       # Diffs oracle vs actual
 │       ├── ScenarioRunner.php           # Orchestrates: setup → oracle → actual → compare
 │       ├── ScenarioRepository.php       # Discovers and loads scenarios
@@ -514,21 +514,21 @@ $engine->eval('post.title = "New Title"');                       // Mutates the 
 
 Same oracle-driven verification model as pitmaster, greph, and php-browser (sibling projects in this repo). The principle is identical:
 
-**Chromium is to php-browser as canonical `git` is to Pitmaster as Node.js (V8) is to php-js.**
+**Chromium is to php-browser as canonical `git` is to Pitmaster as Node.js (V8) is to phasis.**
 
 ```
 1. SETUP    → a JavaScript source file or snippet
 2. ORACLE   → Node.js executes it, output is captured as truth
-3. ACTUAL   → php-js executes it, output is captured
+3. ACTUAL   → phasis executes it, output is captured
 4. COMPARE  → oracle vs actual, diff measures the gap
 ```
 
 ### Relationship to sibling projects
 
-| Concept | php-browser | pitmaster | greph | php-js |
+| Concept | php-browser | pitmaster | greph | phasis |
 |---|---|---|---|---|
 | Oracle | Chromium | `git` | `grep` + `rg` + `sg` | Node.js (V8) |
-| Actual | PHP renderer | Pitmaster | greph | php-js |
+| Actual | PHP renderer | Pitmaster | greph | phasis |
 | Test suite | Fixture snapshots | git interop | Scenario corpus | **test262** (50,000+ tests) |
 | Pipeline | oracle → render → compare | oracle → actual → compare | oracle → actual → compare | oracle → actual → compare |
 | Combined | `./bin/test-fixture` | `./bin/test-scenario` | `./bin/test-scenario` | `./bin/test-scenario` |
@@ -551,7 +551,7 @@ scenarios/operators/arithmetic/
 ├── oracle/
 │   └── output.txt                # Node.js output: "3\nab\n"
 ├── actual/
-│   └── output.txt                # php-js output
+│   └── output.txt                # phasis output
 └── reports/
     └── comparison.json
 ```
@@ -564,7 +564,7 @@ test262 tests are self-verifying: they pass if they don't throw, fail if they do
 test262/test/language/expressions/addition/S11.6.1_A1.js
     ├── Frontmatter: { description, features, includes, flags, negative }
     ├── Harness: assert.js, sta.js loaded first
-    ├── Execute in php-js
+    ├── Execute in phasis
     └── Result: PASS (no exception) or FAIL (exception / wrong exception)
 ```
 
@@ -639,7 +639,7 @@ The runner:
 
 ### Comparison with test262.fyi
 
-test262.fyi runs the same suite daily against V8, SpiderMonkey, JavaScriptCore, QuickJS, Hermes, and others. php-js compliance reports follow the same format so you can compare directly:
+test262.fyi runs the same suite daily against V8, SpiderMonkey, JavaScriptCore, QuickJS, Hermes, and others. phasis compliance reports follow the same format so you can compare directly:
 
 | Engine | Compliance |
 |---|---|
@@ -648,7 +648,7 @@ test262.fyi runs the same suite daily against V8, SpiderMonkey, JavaScriptCore, 
 | JavaScriptCore (Safari) | 99.4% |
 | QuickJS | ~97% |
 | Hermes (React Native) | ~95% |
-| **php-js** | **see COMPAT.md** |
+| **phasis** | **see COMPAT.md** |
 
 ## Compliance Tracking
 

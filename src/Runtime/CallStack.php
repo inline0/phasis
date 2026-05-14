@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Runtime;
+namespace Phasis\Runtime;
 
-use PhpJs\Exceptions\InternalError;
+use Phasis\Exceptions\InternalError;
 
 /**
  * Call-stack bookkeeping for stack-overflow detection and Error.stack

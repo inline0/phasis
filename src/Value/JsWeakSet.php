@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\BuiltIn\SymbolConstructor;
+use Phasis\BuiltIn\SymbolConstructor;
 
 /**
  * JavaScript WeakSet object.
@@ -37,7 +37,7 @@ class JsWeakSet extends JsObject
             $this->symbolMembers[spl_object_id($value)] = true;
             return;
         }
-        throw new \PhpJs\Exceptions\TypeError('Invalid value used in weak set');
+        throw new \Phasis\Exceptions\TypeError('Invalid value used in weak set');
     }
 
     public function weakSetHas(JsValue $value): bool

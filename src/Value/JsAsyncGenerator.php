@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
-use PhpJs\Exceptions\JsThrowable;
-use PhpJs\Exceptions\RuntimeError;
-use PhpJs\Runtime\Environment;
+use Phasis\Exceptions\JsThrowable;
+use Phasis\Exceptions\RuntimeError;
+use Phasis\Runtime\Environment;
 
 /**
  * Represents a JavaScript async generator object returned by calling an async generator function.
@@ -839,9 +839,9 @@ class JsAsyncGenerator extends JsObject
      * Create a proper TypeError JsObject for incompatible receiver errors.
      * Uses the TypeError constructor from $env so that instanceof TypeError works.
      *
-     * @param \PhpJs\Runtime\Environment $env
+     * @param \Phasis\Runtime\Environment $env
      */
-    public static function makeIncompatibleReceiverError(\PhpJs\Runtime\Environment $env, string $method): JsValue
+    public static function makeIncompatibleReceiverError(\Phasis\Runtime\Environment $env, string $method): JsValue
     {
         $message = "Method AsyncGenerator.prototype.{$method} called on incompatible receiver";
         try {

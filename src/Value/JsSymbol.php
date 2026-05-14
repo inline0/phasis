@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Value;
+namespace Phasis\Value;
 
 class JsSymbol implements JsValue
 {
@@ -25,7 +25,7 @@ class JsSymbol implements JsValue
         // global env so getPrototypeOf on a symbol returns the calling
         // realm's prototype, not a stale one from a sibling Engine
         // (e.g. a ShadowRealm) that wrote the static last.
-        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $interp = \Phasis\Engine::getCurrentInterpreter();
         if ($interp !== null) {
             $env = $interp->getGlobalEnv();
             $symVal = $env->get('Symbol', false);
@@ -79,22 +79,22 @@ class JsSymbol implements JsValue
 
     public function toNumber(): float
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot convert a Symbol value to a number');
+        throw new \Phasis\Exceptions\TypeError('Cannot convert a Symbol value to a number');
     }
 
     public function toInt32(): int
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot convert a Symbol value to a number');
+        throw new \Phasis\Exceptions\TypeError('Cannot convert a Symbol value to a number');
     }
 
     public function toUint32(): int
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot convert a Symbol value to a number');
+        throw new \Phasis\Exceptions\TypeError('Cannot convert a Symbol value to a number');
     }
 
     public function toJsString(): string
     {
-        throw new \PhpJs\Exceptions\TypeError('Cannot convert a Symbol value to a string');
+        throw new \Phasis\Exceptions\TypeError('Cannot convert a Symbol value to a string');
     }
 
     public function display(): string

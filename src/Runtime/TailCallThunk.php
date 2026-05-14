@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PhpJs\Runtime;
+namespace Phasis\Runtime;
 
-use PhpJs\Value\JsFunction;
-use PhpJs\Value\JsValue;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsValue;
 
 /**
  * Represents a pending tail call that should be trampolined
