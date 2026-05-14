@@ -193,8 +193,19 @@
     // -- Test runners --------------------------------------------------------
 
     global.test = function (fn, name) {
+        const t = {
+            add_cleanup: function () {},
+            step: function (cb) { return cb.call(this); },
+            step_func: function (cb) { const self = this; return function () { return cb.apply(self, arguments); }; },
+            step_func_done: function (cb) { return function () { if (cb) cb.apply(this, arguments); }; },
+            unreached_func: function (msg) {
+                return function () { throw AssertionError(msg || "unreached"); };
+            },
+            step_timeout: function () {},  // no real timer; treat as no-op
+            done: function () {},
+        };
         try {
-            fn();
+            fn.call(t);
             report("PASS", name);
         } catch (e) {
             report("FAIL", name, (e && e.message) || String(e));
@@ -272,7 +283,19 @@
     global.subsetTestByKey = function () { return true; };
 
     // setup() is mostly a no-op for us — fixtures use it to declare metadata.
-    global.setup = function () {};
+    // setup() either accepts options-only OR a function-to-run.
+    // The function form is essentially a synchronous-setup hook; we
+    // run it immediately so any module-scope state (handlers, fixtures)
+    // is populated before tests execute.
+    global.setup = function (fnOrOptions, maybeOptions) {
+        if (typeof fnOrOptions === "function") {
+            try {
+                fnOrOptions();
+            } catch (_) {
+                // Setup errors are surfaced through the next test that runs.
+            }
+        }
+    };
 
     // done() / add_completion_callback / add_result_callback — no-ops; we
     // report per-subtest already.

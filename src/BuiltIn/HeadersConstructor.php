@@ -683,8 +683,18 @@ class HeadersConstructor
 
     private static function fillFromInit(JsObject $headers, JsValue $init): void
     {
-        if ($init instanceof JsUndefined || $init instanceof JsNull) {
+        // `undefined` is missing-init; treat as no-op per WebIDL "optional".
+        if ($init instanceof JsUndefined) {
             return;
+        }
+        // `null` is NOT a valid HeadersInit per the WHATWG IDL — the union
+        // (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
+        // doesn't include nullable. WebIDL conversion rejects null with
+        // TypeError. WPT explicitly tests this.
+        if ($init instanceof JsNull) {
+            throw new TypeError(
+                "Failed to construct 'Headers': The provided value is null."
+            );
         }
         if (!$init instanceof JsObject) {
             throw new TypeError(
