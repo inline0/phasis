@@ -1280,12 +1280,20 @@ final class VM
                                 && $callee->getHomeObject() === null
                             ) {
                                 try {
-                                    $stack[$sp++] = ($callee->phpCompiled)(
+                                    // Compute the result first, push only after
+                                    // the call returns. PHP evaluates `$stack[$sp++]`'s
+                                    // post-increment before the rhs, so a Bailout
+                                    // mid-call would leave $sp advanced with no
+                                    // value written — the fallback path below
+                                    // would then push at the wrong slot and
+                                    // future stack reads would observe stale data.
+                                    $result = ($callee->phpCompiled)(
                                         $args,
                                         $callee->closure,
                                         $this->interp,
                                         $callee->phpCompiledNodes,
                                     );
+                                    $stack[$sp++] = $result;
                                     $pc += 2;
                                     break;
                                 } catch (\Phasis\Bytecode\Bailout) {

@@ -1,0 +1,118 @@
+=== headings ===
+<h1>H1</h1>
+<h2>H2</h2>
+<h3>H3</h3>
+<h4>H4</h4>
+<h5>H5</h5>
+<h6>H6</h6>
+<h1>Alt H1</h1>
+<h2>Alt H2</h2>
+
+=== inline ===
+<p><strong>bold</strong> and <em>italic</em> and <em><strong>both</strong></em> and <del>strike</del> and <code>inline code</code> and a <a href="https://example.com">link</a> and an <img src="https://example.com/img.png" alt="alt">.</p>
+<p>Auto-link: <a href="https://example.com">https://example.com</a>.</p>
+
+=== lists ===
+<ul>
+<li>Top level a</li>
+<li>Top level b<ul>
+<li>Nested b.1</li>
+<li>Nested b.2<ul>
+<li>Deeper b.2.i</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Top level c</li>
+</ul>
+<ol>
+<li>First</li>
+<li>Second</li>
+<li>Third<ol>
+<li>Nested first</li>
+<li>Nested second</li>
+</ol>
+</li>
+</ol>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> Task done</li>
+<li><input disabled="" type="checkbox"> Task pending</li>
+</ul>
+
+=== code ===
+<pre><code>indented code block
+line two
+</code></pre>
+<pre><code class="language-js">function greet(name) {
+  return `hello, ${name}`;
+}
+</code></pre>
+<pre><code>plain fenced block
+</code></pre>
+
+=== blockquote ===
+<blockquote>
+<p>Outer quote.</p>
+<blockquote>
+<p>Nested quote.</p>
+<blockquote>
+<p>Triple-nested.</p>
+</blockquote>
+</blockquote>
+<p>Back to outer.</p>
+</blockquote>
+
+=== table ===
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th align="right">Age</th>
+<th align="center">Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Alice</td>
+<td align="right">30</td>
+<td align="center">admin</td>
+</tr>
+<tr>
+<td>Bob</td>
+<td align="right">25</td>
+<td align="center">user</td>
+</tr>
+<tr>
+<td>Carol</td>
+<td align="right">35</td>
+<td align="center">user</td>
+</tr>
+</tbody></table>
+
+=== hr ===
+<hr>
+<hr>
+<hr>
+
+=== htmlPassthrough ===
+<div class="note">
+Raw HTML passes through marked unchanged.
+</div>
+
+=== combined ===
+<h1>Project README</h1>
+<p>A short summary with <strong>bold</strong> emphasis and a <a href="./docs">link</a>.</p>
+<h2>Features</h2>
+<ul>
+<li>Fast</li>
+<li>Pure JS</li>
+<li><blockquote>
+<p>99% coverage</p>
+</blockquote>
+</li>
+</ul>
+<h2>Example</h2>
+<pre><code class="language-js">const x = compute(42);
+console.log(x);
+</code></pre>
+<p>See the <a href="#docs">docs</a> for more.</p>
+

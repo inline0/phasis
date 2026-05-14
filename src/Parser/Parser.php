@@ -5072,11 +5072,17 @@ class Parser
             $value = bindec(substr($raw, 2));
         } else {
             $value = (float) $raw;
-            $isInt = $value == (int) $value
-                && !str_contains($raw, '.')
+            // Test "fits in a PHP int and is integral" without ever
+            // casting an out-of-range float to int (PHP 8.5 emits a
+            // deprecation when the float exceeds PHP_INT_MAX, which
+            // poisons strict harnesses like PHPUnit's failOnWarning).
+            // Number.MAX_VALUE (1.7976e308) hits this when lodash and
+            // other libraries embed it as a numeric literal.
+            $isInt = !str_contains($raw, '.')
                 && !str_contains($raw, 'e')
                 && !str_contains($raw, 'E')
-                && abs($value) < PHP_INT_MAX;
+                && abs($value) < PHP_INT_MAX
+                && $value == (int) $value;
             if ($isInt) {
                 $value = (int) $raw;
             }

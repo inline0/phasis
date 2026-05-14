@@ -1,0 +1,101 @@
+name: Popular Packages
+
+# Runs vendored upstream JavaScript libraries (acorn, mustache.js,
+# lodash, marked, ...) through Phasis and asserts byte-equal output
+# against a Node.js oracle committed alongside each runner. This is
+# the "real-world smoke test" — does Phasis actually execute the
+# JavaScript people care about?
+#
+# Triggers:
+#   - on push to main (verifies nothing in the engine regressed)
+#   - on PRs (gates merges)
+#   - on workflow_dispatch (manual re-run)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/Popular/**'
+      - 'phpunit.xml.dist'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/popular.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/Popular/**'
+      - 'phpunit.xml.dist'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/popular.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: popular-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  popular:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-php8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.5-
+
+      - name: Install dependencies
+        run: |
+          for i in 1 2 3; do
+            composer install --no-interaction --prefer-dist && break
+            echo "composer install attempt $i failed; sleeping 10s..."
+            sleep 10
+          done
+          if [ ! -f vendor/autoload.php ]; then
+            echo "vendor/autoload.php missing after 3 install attempts; failing"
+            exit 1
+          fi
+
+      - name: Run popular-package suite
+        run: php -d memory_limit=512M vendor/bin/phpunit --testsuite popular
+
+      # Optional: regenerate Node oracles in CI to detect a divergence
+      # between what's committed and what Node currently produces. If
+      # any oracle drifts, the regenerate step fails and CI surfaces
+      # the diff. This is a "library was bumped without updating the
+      # oracle" detector. Runs on Node 20 (LTS at time of authoring).
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Verify oracles match Node.js
+        run: |
+          for dir in tests/Popular/*/; do
+            if [ -f "$dir/runner.js" ] && [ -f "$dir/oracle.txt" ]; then
+              node tests/Popular/gen-oracle.js "$dir" > /tmp/regen.txt
+              if ! diff -q "$dir/oracle.txt" /tmp/regen.txt > /dev/null; then
+                echo "::error::Oracle drift in $dir — Node.js output no longer matches committed oracle.txt"
+                diff "$dir/oracle.txt" /tmp/regen.txt | head -40
+                exit 1
+              fi
+            fi
+          done
+          echo "All oracles match Node.js output."
