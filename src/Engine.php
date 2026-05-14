@@ -243,6 +243,15 @@ class Engine
         \Phasis\BuiltIn\ShadowRealmConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\TemporalObject::install($this->globalEnv);
 
+        // Web Platform Pack (WHATWG / W3C, not TC39).
+        \Phasis\BuiltIn\DomExceptionConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\Base64Functions::install($this->globalEnv);
+        \Phasis\BuiltIn\PerformanceObject::install($this->globalEnv);
+        \Phasis\BuiltIn\TextEncoderConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\TextDecoderConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\UrlConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\StructuredCloneFunction::install($this->globalEnv);
+
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
         // When called as function, converts value to BigInt.
