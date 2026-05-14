@@ -252,6 +252,12 @@ class Engine
         \Phasis\BuiltIn\UrlConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\StructuredCloneFunction::install($this->globalEnv);
 
+        // Fetch Pack — round 1 foundations (independent value types).
+        \Phasis\BuiltIn\EventTargetConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\BlobConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\FormDataConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\HeadersConstructor::install($this->globalEnv);
+
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
         // When called as function, converts value to BigInt.
