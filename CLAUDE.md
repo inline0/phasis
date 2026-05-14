@@ -100,7 +100,7 @@ A JavaScript interpreter that:
 6. Provides direct PHP interop (share objects between PHP and JS without serialization)
 7. Achieves 100% test262 compliance (50,506 pass / 0 fail / 0 skip across the full 50,506-test suite; see COMPAT.md). The previously blocklisted SM stress fixtures (decodeURI/A2.5_T1, dst-offset-caching, toSpliced-dense, etc.) now pass under the bytecode VM with a per-test budget bump for isolated single-file chunks; the Chinese-calendar uncommon-leap-month gap was closed with a pure-PHP Reingold-Dershowitz extension to the chinese/dangi tables back to extended-year -7500.
 
-All without `exec('node ...')`. The only PHP requirement is PHP 8.2+ with `mbstring`. No extensions.
+All without `exec('node ...')`. Requirements: PHP 8.2+ with `ext-mbstring` and `ext-bcmath` (both ship enabled on every mainstream PHP build). `ext-intl` is optional but required for the Intl.* APIs and non-ISO Temporal calendars.
 
 ## What This Is Not
 
@@ -494,7 +494,7 @@ $engine->eval('post.title = "New Title"');                       // Mutates the 
 
 ## Key Rules
 
-1. Pure PHP. No extensions beyond `mbstring` (for UTF-16 string handling). No FFI. No `exec()`. No Node.js at runtime. The entire point is to run JavaScript inside PHP without external dependencies.
+1. Pure PHP. Required extensions are `mbstring` (UTF-16 string handling) and `bcmath` (BigInt arithmetic + integer-precision number handling) — both ship in every mainstream PHP build. `intl` is optional, used for Intl.* and non-ISO Temporal calendars (gated behind `extension_loaded('intl')`). No FFI. No `exec()`. No Node.js at runtime. The point is to run JavaScript inside PHP without external dependencies.
 2. Node.js (V8) is the oracle, test262 is the test suite. When behavior is ambiguous, run it in Node.js. When compliance is questioned, run test262. Never invent semantics.
 3. The interpreter is a tree-walker. Parse to AST, walk the AST, evaluate each node. No bytecode compilation, no JIT. Simplicity and correctness over performance.
 4. JavaScript values are PHP objects. `JsNumber`, `JsString`, `JsObject`, etc. Each has its own type conversion methods (`toNumber()`, `toString()`, `toBoolean()`). Never use raw PHP types internally.

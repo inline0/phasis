@@ -11,7 +11,11 @@ description: Install Phasis and run your first JavaScript from PHP.
 composer require phasis/phasis
 ```
 
-Phasis needs PHP 8.2 or later and the `mbstring` extension (which is enabled in nearly every PHP build). No other dependencies, no `exec`, no FFI.
+Phasis needs PHP 8.2 or later, plus the `mbstring` and `bcmath` extensions — both ship enabled on every mainstream PHP build (Homebrew, apt, RHEL, the official `php:cli` Docker image, shared-hosting providers). `bcmath` powers BigInt arithmetic and integer-precision number handling; without it `BigInt(...)` and large-integer TypedArray operations cannot run.
+
+`ext-intl` is optional. Phasis works without it, but the entire `Intl.*` family (`Collator`, `NumberFormat`, `DateTimeFormat`, `PluralRules`, `Locale`, `DisplayNames`, `ListFormat`, `RelativeTimeFormat`, `Segmenter`, `DurationFormat`) and the non-ISO Temporal calendars (`hebrew`, `islamic`, `japanese`, `persian`, etc.) need it. Install it whenever the host application exposes JS that touches locale-aware formatting.
+
+No `exec`, no FFI, no Node.js, no native extensions beyond the standard PHP build.
 
 ## Run a script from the CLI
 

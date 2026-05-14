@@ -1,0 +1,29 @@
+# `composer install` from source uses `git archive` to grab a tarball;
+# anything marked `export-ignore` is excluded from that tarball, which
+# keeps the published package small. Everything below is dev-only:
+# downstream consumers never need the test262 submodule, docs site,
+# CI configs, or local-only state.
+
+/.github                export-ignore
+/.compat-state*         export-ignore
+/.phpstan.cache         export-ignore
+/.phpunit.cache         export-ignore
+/.claude                export-ignore
+/.gitattributes         export-ignore
+/.gitignore             export-ignore
+/.gitmodules            export-ignore
+/docs                   export-ignore
+/tests                  export-ignore
+/test262                export-ignore
+/scenarios              export-ignore
+/phasis-stubs           export-ignore
+/phpstan-stubs          export-ignore
+/phpcs.xml              export-ignore
+/phpstan.neon           export-ignore
+/phpunit.xml.dist       export-ignore
+/BENCH.md               export-ignore
+/COMPAT.md              export-ignore
+/CLAUDE.md              export-ignore
+/bench                  export-ignore
+/bench.json             export-ignore
+/compat.json            export-ignore

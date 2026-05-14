@@ -20,7 +20,7 @@
 
 ## What is Phasis?
 
-Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`, no FFI, no binary extensions beyond `ext-mbstring`. The whole engine ships as a Composer package and runs anywhere PHP 8.2+ runs.
+Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`, no FFI, no binary extensions beyond `ext-mbstring` (always shipped) and `ext-bcmath` (shipped by default on every mainstream PHP build for BigInt arithmetic and integer-precision number handling). `ext-intl` is optional — Phasis runs without it, but the Intl.* APIs (Collator, NumberFormat, DateTimeFormat, …) and non-ISO Temporal calendars require it. The whole engine ships as a Composer package and runs anywhere PHP 8.2+ runs.
 
 **The problem:** PHP applications that need to run user-supplied JavaScript — templating engines, SSR shims, validation rules, content sandboxes, headless test runners — usually shell out to Node.js or skip the feature. Either path adds operational complexity: a second runtime, a serialization boundary, a network of subprocess pipes, and a hostile deployment story for shared hosting.
 
