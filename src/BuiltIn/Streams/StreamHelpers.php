@@ -397,4 +397,66 @@ final class StreamHelpers
     {
         return $v instanceof JsFunction ? $v : null;
     }
+
+    /**
+     * Build a real `ReadableStream` JsObject whose single chunk is a fresh
+     * Uint8Array wrapping the supplied PHP byte string. The stream is
+     * pre-started and pre-enqueued, then `close()`d, so the first read on
+     * a default reader yields `{value: Uint8Array(bytes), done: false}` and
+     * the second yields `{value: undefined, done: true}`.
+     *
+     * Used by the Body mixin (`Request.body` / `Response.body` getters) to
+     * surface fully-buffered request/response bodies as spec-compliant
+     * ReadableStream instances without forcing the caller to construct an
+     * underlying source. The result passes `body instanceof ReadableStream`
+     * and `Symbol.toStringTag === 'ReadableStream'`.
+     *
+     * Empty input still produces a valid, immediately-closed stream so
+     * `for await (const chunk of body) { … }` simply finishes without
+     * yielding anything (matches browser behavior for a fetch with an
+     * empty body).
+     */
+    public static function createReadableStreamFromBytes(string $bytes): JsObject
+    {
+        $proto = \Phasis\BuiltIn\Streams\ReadableStream::getPrototype();
+        $controllerProto = \Phasis\BuiltIn\Streams\ReadableStream::getControllerPrototype();
+        if (!$proto instanceof JsObject || !$controllerProto instanceof JsObject) {
+            // Streams have not been installed yet — fall back to a bare
+            // stream that will still pass the brand check via the slot.
+            $proto = new JsObject();
+            $controllerProto = new JsObject();
+        }
+
+        $stream = new JsObject($proto);
+        \Phasis\BuiltIn\Streams\ReadableStream::initializeStream($stream);
+
+        $controller = new JsObject($controllerProto);
+        $controller->setInternalProperty('[[IsReadableStreamDefaultController]]', true);
+        $controller->setInternalProperty('[[Stream]]', $stream);
+        self::resetQueue($controller);
+        $controller->setInternalProperty('[[Started]]', true);
+        $controller->setInternalProperty('[[Pulling]]', false);
+        $controller->setInternalProperty('[[PullAgain]]', false);
+        $controller->setInternalProperty('[[CloseRequested]]', false);
+        $controller->setInternalProperty('[[StrategyHWM]]', 0.0);
+        $controller->setInternalProperty('[[StrategySizeAlgorithm]]', null);
+        $controller->setInternalProperty(
+            '[[PullAlgorithm]]',
+            static fn(): JsPromise => self::promiseResolved(JsUndefined::instance())
+        );
+        $controller->setInternalProperty(
+            '[[CancelAlgorithm]]',
+            static fn(JsValue $_): JsPromise => self::promiseResolved(JsUndefined::instance())
+        );
+        $stream->setInternalProperty('[[Controller]]', $controller);
+        $stream->setInternalProperty('[[ControllerType]]', 'default');
+
+        if ($bytes !== '') {
+            $chunk = self::makeUint8Array($bytes);
+            \Phasis\BuiltIn\Streams\ReadableStream::defaultControllerEnqueue($controller, $chunk);
+        }
+        \Phasis\BuiltIn\Streams\ReadableStream::defaultControllerClose($controller);
+
+        return $stream;
+    }
 }

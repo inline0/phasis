@@ -50,9 +50,123 @@ class HeadersConstructor
 
     private static ?JsObject $iteratorPrototype = null;
 
+    /** Cache of Headers.prototype after install. */
+    private static ?JsObject $prototype = null;
+
     public static function reset(): void
     {
         self::$iteratorPrototype = null;
+        self::$prototype = null;
+    }
+
+    /**
+     * Brand check used by Request/Response constructors when consuming a
+     * Headers instance via the `headers` init option.
+     */
+    public static function isHeaders(JsValue $v): bool
+    {
+        return $v instanceof JsObject && $v->getInternalProperty(self::SLOT_BRAND) === true;
+    }
+
+    /**
+     * Build a fresh Headers JS object from PHP. Each `$initList` entry is
+     * `[name, value]`; names/values pass through the same normalization
+     * the JS constructor uses (lowercase + RFC 7230 validation, value
+     * trimming + CR/LF/NUL guard). The result has guard "none" so it can
+     * be freely mutated by the caller.
+     *
+     * Used by Response.json / Response.redirect and by Body extraction
+     * when defaulting Content-Type for a Request.
+     *
+     * @param list<array{0:string,1:string}> $initList
+     */
+    public static function create(Environment $env, array $initList = []): JsObject
+    {
+        // Locate Headers.prototype from the env's installed constructor so
+        // the result is `instanceof Headers` from JS.
+        $proto = self::$prototype;
+        if ($proto === null && $env->has('Headers')) {
+            $ctor = $env->get('Headers');
+            if ($ctor instanceof JsObject) {
+                $maybe = $ctor->get('prototype');
+                if ($maybe instanceof JsObject) {
+                    $proto = $maybe;
+                    self::$prototype = $proto;
+                }
+            }
+        }
+        if ($proto === null) {
+            // Defensive: should not happen because Headers installs before
+            // anything calls this helper, but keep a usable fallback.
+            $proto = self::buildPrototype();
+            self::$prototype = $proto;
+        }
+
+        $obj = new JsObject($proto);
+        $obj->setInternalProperty(self::SLOT_BRAND, true);
+        $obj->setInternalProperty(self::SLOT_GUARD, 'none');
+        $obj->setInternalProperty(self::SLOT_LIST, []);
+
+        foreach ($initList as $pair) {
+            $name = self::normalizeName($pair[0]);
+            $value = self::normalizeValue($pair[1]);
+            self::appendPair($obj, $name, $value);
+        }
+        return $obj;
+    }
+
+    /**
+     * Append a header pair to an existing Headers JS object from PHP. The
+     * name/value pass through the same normalization the JS API uses;
+     * the guard is currently ignored (v1 ships only "none").
+     */
+    public static function appendFromPhp(JsObject $headers, string $name, string $value): void
+    {
+        if (!self::isHeaders($headers)) {
+            return;
+        }
+        self::appendPair($headers, self::normalizeName($name), self::normalizeValue($value));
+    }
+
+    /**
+     * Set a header pair from PHP — replaces every existing entry for that
+     * name with a single new one. Mirrors `Headers.prototype.set`.
+     */
+    public static function setFromPhp(JsObject $headers, string $name, string $value): void
+    {
+        if (!self::isHeaders($headers)) {
+            return;
+        }
+        self::setPair($headers, self::normalizeName($name), self::normalizeValue($value));
+    }
+
+    /**
+     * Read a header value by name from PHP — returns null if absent.
+     * Matches `Headers.prototype.get` semantics (comma-joined multi-values
+     * except for Set-Cookie, which returns the first).
+     */
+    public static function getFromPhp(JsObject $headers, string $name): ?string
+    {
+        if (!self::isHeaders($headers)) {
+            return null;
+        }
+        $needle = strtolower($name);
+        $list = self::listOf($headers);
+        if ($needle === 'set-cookie') {
+            foreach ($list as $pair) {
+                if ($pair[0] === $needle) {
+                    return $pair[1];
+                }
+            }
+            return null;
+        }
+        $matches = [];
+        foreach ($list as $pair) {
+            if ($pair[0] === $needle) {
+                $matches[] = $pair[1];
+            }
+        }
+        return $matches === [] ? null : implode(', ', $matches);
     }
 
     public static function install(Environment $env): void
@@ -65,6 +179,7 @@ class HeadersConstructor
         $intrinsicProto = $iteratorIntrinsic instanceof JsObject ? $iteratorIntrinsic : null;
 
         $proto = self::buildPrototype();
+        self::$prototype = $proto;
 
         $constructor = JsFunction::fromCallable(
             'Headers',

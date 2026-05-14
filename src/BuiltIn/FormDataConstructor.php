@@ -42,6 +42,35 @@ class FormDataConstructor
     private static ?JsObject $iteratorPrototype = null;
     private static ?JsObject $intrinsicIteratorPrototype = null;
 
+    /**
+     * Brand check for FormData. True iff $v carries the [[IsFormData]]
+     * internal slot set during construction.
+     */
+    public static function isFormData(JsValue $v): bool
+    {
+        return $v instanceof JsObject && $v->getInternalProperty('[[IsFormData]]') === true;
+    }
+
+    /**
+     * Read the underlying entries list as `[name, value]` pairs. Value is
+     * a JsString or a Blob/File. Used by the Body mixin to serialize a
+     * FormData body into multipart/form-data on Request construction.
+     *
+     * @return list<array{0:string,1:JsValue}>
+     */
+    public static function getEntries(JsObject $self): array
+    {
+        if (!self::isFormData($self)) {
+            return [];
+        }
+        $list = $self->getInternalProperty('[[FormDataEntries]]');
+        if (!is_array($list)) {
+            return [];
+        }
+        /** @var list<array{0:string,1:JsValue}> $list */
+        return $list;
+    }
+
     public static function install(Environment $env): void
     {
         self::$iteratorPrototype = null;
