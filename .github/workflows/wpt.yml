@@ -1,0 +1,76 @@
+name: Web Platform Tests
+
+# Runs the Web Platform Tests subset Phasis ships under
+# tests/Wpt/fixtures/. This is the WHATWG / W3C analogue of the
+# compat-matrix workflow that runs test262 (TC39). Currently scoped
+# to: url/, encoding/, atob, structured-clone, hr-time.
+#
+# Each push / PR runs the suite. Failures block the merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/Wpt/**'
+      - 'phpunit.xml.dist'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/wpt.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/Wpt/**'
+      - 'phpunit.xml.dist'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/wpt.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: wpt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wpt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, bcmath, intl
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-php8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.5-
+
+      - name: Install dependencies
+        run: |
+          for i in 1 2 3; do
+            composer install --no-interaction --prefer-dist && break
+            echo "composer install attempt $i failed; sleeping 10s..."
+            sleep 10
+          done
+          if [ ! -f vendor/autoload.php ]; then
+            echo "vendor/autoload.php missing after 3 install attempts; failing"
+            exit 1
+          fi
+
+      - name: Run WPT runner (CLI)
+        run: php -d memory_limit=512M bin/wpt
+
+      - name: Run WPT PHPUnit testsuite
+        run: php -d memory_limit=512M vendor/bin/phpunit --testsuite wpt

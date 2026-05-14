@@ -16,6 +16,9 @@
         <testsuite name="popular">
             <directory>tests/Popular</directory>
         </testsuite>
+        <testsuite name="wpt">
+            <directory>tests/Wpt</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

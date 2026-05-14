@@ -1,0 +1,130 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+ini_set('memory_limit', '512M');
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Phasis\Tests\Wpt\WptRunner;
+
+$category = null;
+$json = false;
+$verbose = false;
+
+$args = array_slice($argv, 1);
+for ($i = 0; $i < count($args); $i++) {
+    $a = $args[$i];
+    if ($a === '--category' || $a === '-c') {
+        $category = $args[++$i] ?? null;
+    } elseif ($a === '--json') {
+        $json = true;
+    } elseif ($a === '--verbose' || $a === '-v') {
+        $verbose = true;
+    } elseif ($a === '--help' || $a === '-h') {
+        echo <<<HELP
+Phasis WPT runner
+
+Usage:
+  bin/wpt [--category <name>] [--json] [--verbose]
+
+Options:
+  --category, -c   Run fixtures only from this category (url, encoding,
+                   atob, structured-clone, hr-time). Default: all.
+  --json           Emit per-fixture JSON results instead of human output.
+  --verbose, -v    Print every subtest, not just the failures.
+  --help, -h       Show this message.
+
+Fixtures live in tests/Wpt/fixtures/<category>/*.any.js, sourced from
+web-platform-tests/wpt. The harness shim is at
+tests/Wpt/testharness-shim.js.
+HELP;
+        exit(0);
+    }
+}
+
+$categories = WptRunner::discoverFixtures();
+if ($category !== null) {
+    if (!isset($categories[$category])) {
+        fwrite(STDERR, "Unknown category '{$category}'. Available: " .
+            implode(', ', array_keys($categories)) . "\n");
+        exit(2);
+    }
+    $categories = [$category => $categories[$category]];
+}
+
+$runner = new WptRunner();
+$totalPass = 0;
+$totalFail = 0;
+$totalFiles = 0;
+$jsonOut = [];
+
+foreach ($categories as $cat => $files) {
+    if (!$json) {
+        echo "\n=== {$cat} (" . count($files) . " fixtures) ===\n";
+    }
+    foreach ($files as $file) {
+        $rel = basename($file);
+        $results = $runner->runFile($file);
+        $pass = 0;
+        $fail = 0;
+        foreach ($results as $r) {
+            if ($r['status'] === 'PASS') {
+                $pass++;
+            } else {
+                $fail++;
+            }
+        }
+        $totalPass += $pass;
+        $totalFail += $fail;
+        $totalFiles++;
+
+        if ($json) {
+            $jsonOut[] = [
+                'category' => $cat,
+                'fixture' => $rel,
+                'pass' => $pass,
+                'fail' => $fail,
+                'results' => $results,
+            ];
+        } else {
+            $status = $fail === 0 ? '✓' : '✗';
+            echo sprintf("  %s %-55s %d/%d\n", $status, $rel, $pass, $pass + $fail);
+            if ($verbose || $fail > 0) {
+                foreach ($results as $r) {
+                    if ($verbose || $r['status'] !== 'PASS') {
+                        $line = sprintf("      [%s] %s", $r['status'], $r['name']);
+                        echo $line . "\n";
+                        if ($r['message'] !== '') {
+                            echo "          " . $r['message'] . "\n";
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+if ($json) {
+    echo json_encode([
+        'totals' => [
+            'files' => $totalFiles,
+            'pass' => $totalPass,
+            'fail' => $totalFail,
+            'passRate' => $totalPass + $totalFail > 0
+                ? round($totalPass / ($totalPass + $totalFail) * 100, 2)
+                : 0.0,
+        ],
+        'fixtures' => $jsonOut,
+    ], JSON_PRETTY_PRINT) . "\n";
+} else {
+    echo "\n";
+    $rate = $totalPass + $totalFail > 0
+        ? round($totalPass / ($totalPass + $totalFail) * 100, 2)
+        : 0.0;
+    echo sprintf("Total: %d subtests across %d fixtures (%d pass, %d fail, %.2f%% pass rate)\n",
+        $totalPass + $totalFail, $totalFiles, $totalPass, $totalFail, $rate);
+}
+
+exit($totalFail > 0 ? 1 : 0);
