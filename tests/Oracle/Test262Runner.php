@@ -386,19 +386,24 @@ class Test262Runner
         $engine->setLimit('maxLoopIterations', 2_000_000);
         // Hard time limit per test: env override, default 30s. Tests
         // promoted to their own single-file chunk via test262_isolated_tests
-        // get a 120s budget instead — they were isolated precisely
+        // get a 200s budget instead — they were isolated precisely
         // because they approach or exceed 30s (SM DST cache stress with
         // its O(n^4) probe, the Sputnik decodeURI/decodeURIComponent
         // UTF-8 sweep at ~983K four-byte percent-encoded sequences, the
-        // SM TypedArray sort/ToNumber stress, etc.). Because each
-        // isolated test runs alone in its chunk, widening the per-test
-        // budget here does not steal time from neighbour tests.
+        // SM TypedArray sort/ToNumber stress, etc.). 200s gives ~5x
+        // headroom over the local M-class worst case (42s on
+        // dst-offset-caching) since CI's interpreter is roughly 3x
+        // slower. The chunk wall budget for shards that contain these
+        // isolated tests is matched in
+        // .github/workflows/compat-matrix.yml. Because each isolated
+        // test runs alone in its chunk, widening the per-test budget
+        // here does not steal time from neighbour tests.
         $envOverride = getenv('PHPJS_TEST_TIME_LIMIT');
         if ($envOverride !== false && $envOverride !== '') {
             $timeLimit = (int) $envOverride;
         } else {
             $relForLookup = $this->relativeForIsolatedLookup($testPath);
-            $timeLimit = isset($this->isolatedSet[$relForLookup]) ? 120 : 30;
+            $timeLimit = isset($this->isolatedSet[$relForLookup]) ? 200 : 30;
         }
         set_time_limit($timeLimit);
 

@@ -215,15 +215,29 @@ jobs:
           CHUNK=25
           # Per-chunk wall budget. 90s covers every JS-tree-walker test
           # we care about at CI's ~3x interpreter slowdown vs local.
-          # Stress fixtures that legitimately need more belong in
-          # HOST_GAP_BLOCKLIST (tests/Oracle/Test262Runner.php) with a
-          # "needs bytecode JIT" rationale, not multi-minute CI budgets.
+          # Shards that contain tests promoted to single-file chunks via
+          # test262_isolated_tests (config/support.php) get a wider
+          # budget — those tests were isolated precisely because they
+          # approach or exceed the default budget locally, and CI's
+          # slower interpreter pushes them past it. Tests that need
+          # multi-minute CI budgets even with isolation still belong
+          # in HOST_GAP_BLOCKLIST (tests/Oracle/Test262Runner.php).
           TIMEOUT=90
           case '${{ matrix.shard.id }}' in
             builtins-RegExp-property-escapes-*)
               JOBS=8
               CHUNK=5
               TIMEOUT=60
+              ;;
+            staging|builtins-lower-de)
+              # staging/sm/Date/dst-offset-caching-{1..8} runs an O(n^4)
+              # DST cache probe; locally 33-42s on M4, ~3x on CI puts
+              # the slowest shards over 120s. built-ins/lower-de hosts
+              # decodeURI/decodeURIComponent A2.5_T1 sweeps (~983K
+              # four-byte percent-encoded sequences). Both shards run
+              # most chunks fast; only the isolated stress files need
+              # the extended budget.
+              TIMEOUT=240
               ;;
           esac
           # Build --files-prefix / --files-exclude-prefix from optional
