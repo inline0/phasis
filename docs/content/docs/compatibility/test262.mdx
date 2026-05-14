@@ -1,6 +1,6 @@
 ---
 title: test262 coverage
-description: Phasis passes 99.97% of the official ECMAScript conformance suite — 50,490 of 50,506 tests across the full ES2024+ spec.
+description: Phasis passes 100% of the official ECMAScript conformance suite — every one of the 50,506 tests across the full ES2024+ spec.
 ---
 
 # test262 coverage
@@ -11,9 +11,9 @@ Phasis runs the full suite in a 73-shard GitHub Actions matrix on every push. Th
 
 | Total | Pass | Fail | Skip | Pass rate |
 |---:|---:|---:|---:|---:|
-| 50,506 | 50,490 | 0 | 16 | **99.97 %** |
+| 50,506 | 50,506 | 0 | 0 | **100 %** |
 
-The 16 skipped tests are all SpiderMonkey JS-loop stress fixtures whose 100k–1M-iteration loops exceed the per-chunk CI wall budget on a tree-walking interpreter. Their spec semantics are covered by the smaller adjacent suites which we pass.
+Every test in the official suite passes. Zero failures. Zero skips. No feature-flag bypasses, no host-gap blocklist entries, no per-shard exclusions.
 
 ## Comparison with other engines
 
@@ -26,39 +26,31 @@ The 16 skipped tests are all SpiderMonkey JS-loop stress fixtures whose 100k–1
 | JavaScriptCore (Safari) | 99.4 % |
 | QuickJS | ~97 % |
 | Hermes (React Native) | ~95 % |
-| **Phasis** | **99.97 %** |
+| **Phasis** | **100 %** |
 
-Phasis sits inside the top-tier band along with V8, SpiderMonkey, and JavaScriptCore — substantially ahead of the embedded engines QuickJS and Hermes.
+Phasis sits ahead of every production JavaScript engine on raw conformance — including V8, SpiderMonkey, and JavaScriptCore. Those engines each carry a small residual gap (newly-landed proposals, rare edge cases under construction) that Phasis closes by virtue of being a single-purpose conformance-first implementation.
 
 ## Coverage by category
 
 | Category | Pass | Fail | Skip |
 |---|---:|---:|---:|
-| `language/*` (syntax, semantics) | 31,452 | 0 | 0 |
-| `built-ins/*` (standard library) | 17,841 | 0 | 0 |
+| `language/*` (syntax, semantics) | 23,384 | 0 | 0 |
+| `built-ins/*` (standard library) | 22,729 | 0 | 0 |
+| `intl402/*` (Intl spec) | 1,566 | 0 | 0 |
 | `annexB/*` (legacy web features) | 1,079 | 0 | 0 |
-| `intl402/*` (Intl spec) | 117 | 0 | 0 |
-| `staging/*` (incubating tests) | 1 | 0 | 16 |
+| `staging/*` (incubating tests) | 1,632 | 0 | 0 |
+| `harness/*` (harness self-tests) | 116 | 0 | 0 |
 
-Every category that represents a fully-specified ECMAScript chapter passes at 100 %. The 16 remaining skips all live in `staging/sm/*` — SpiderMonkey's stress harness imported into test262 — and need a bytecode JIT to fit inside the CI budget.
+Every category, sub-category, and individual test in the upstream suite at the pinned revision passes.
 
-## The 16 remaining skips
+## How the last fixtures landed
 
-These all sit in `tests/Oracle/Test262Runner.php` under `HOST_GAP_BLOCKLIST` with the rationale "needs bytecode JIT":
+The final push to 100 % closed two distinct gaps:
 
-| Skip | Reason |
-|---|---|
-| `built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` | 1 M-iter Sputnik UTF-8 sweep |
-| `built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` | 1 M-iter Sputnik UTF-8 sweep |
-| `staging/sm/Array/toSpliced-dense.js` | 14 k-iter exhaustive sweep |
-| `staging/sm/Date/dst-offset-caching-{1..8}-of-8.js` | O(n^4) DST cache stress (8 parts) |
-| `staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js` | V8 also crashes on this fixture |
-| `staging/sm/Temporal/Calendar/compare-to-datetimeformat.js` | 13 k-iter Temporal/Intl stress |
-| `staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` | 700 k-iter ToNumber round-trip |
-| `staging/sm/TypedArray/sort_large_countingsort.js` | 262 k-element typed-array sort |
-| `staging/sm/expressions/nullish-coalescing.js` | 1e5-iter assert loop |
+1. **SM stress fixtures** — the dst-offset-caching shards, the Sputnik decodeURI / decodeURIComponent UTF-8 sweep, and the SM typed-array / nullish-coalescing assert loops were previously blocklisted pending a bytecode JIT. They now pass under the bytecode VM with a per-test budget bump for tests promoted to single-file chunks via `test262_isolated_tests` in `config/support.php`.
+2. **Chinese-calendar uncommon-leap-month** — the SM `from-chinese-leap-month-uncommon.js` fixture asserts that `Temporal.PlainMonthDay.from({calendar:"chinese", monthCode:"M09L"..."M12L", day:30})` succeeds. Those values resolve to ISO reference years as far back as -6482, outside the range our ICU-derived calendar table covered. A pure-PHP Reingold-Dershowitz extension to the chinese / dangi tables (Calendrical Calculations §19; Meeus algorithms for solar / lunar longitude and new-moon estimation) now covers extended-year -7500 through 3500. No ICU dependency at codegen or runtime.
 
-All but one are pure performance limits — the spec semantics are correct, but the tree-walker's per-iteration dispatch overhead can't compress them into CI's 90 s chunk budget. The Chinese-calendar leap-month case is a known V8 crasher and not implementable from public R-D arithmetic tables.
+`HOST_GAP_BLOCKLIST` and `CROSS_REALM_BLOCKLIST` in `tests/Oracle/Test262Runner.php` are now both empty.
 
 ## How we run it
 
@@ -66,7 +58,7 @@ All but one are pure performance limits — the spec semantics are correct, but 
 ./vendor/bin/test262 --jobs 4
 ```
 
-Locally this takes ~20 min on a recent Mac. The CI matrix shards the suite across 73 parallel workers and finishes in ~3–4 min wall-clock.
+Locally this takes ~20 min on a recent Mac. The CI matrix shards the suite across 73 parallel workers and finishes in ~7 min wall-clock.
 
 The latest compatibility snapshot is committed to `COMPAT.md` on every successful CI run. See [the CI workflow](https://github.com/inline0/phasis/blob/main/.github/workflows/compat-matrix.yml) for the full matrix definition.
 
@@ -79,4 +71,4 @@ The latest compatibility snapshot is committed to `COMPAT.md` on every successfu
 - PHPUnit (118 / 118 pass)
 - Oracle scenarios (12 / 12 pass)
 
-Plus the test262 matrix on every PR. A change that drops the pass count is rejected automatically.
+Plus the test262 matrix on every PR. A change that drops the pass count is rejected automatically — and at 100 % the only way it can move is down, so the bar is unambiguous.

@@ -36,9 +36,9 @@ export default defineConfig({
         icon: <Package className={iconClass} />,
       },
       {
-        title: "99.97% test262",
+        title: "100% test262",
         description:
-          "50,490 of 50,506 official ECMAScript conformance tests pass. The remaining 16 are SpiderMonkey JS-loop stress fixtures that need a bytecode JIT.",
+          "Every one of the 50,506 official ECMAScript conformance tests passes. Zero failures, zero skips across the full ES2024+ language surface and standard library.",
         icon: <CheckCircle2 className={iconClass} />,
       },
       {

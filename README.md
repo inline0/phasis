@@ -30,7 +30,7 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - Complete standard library (`Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`)
 - Direct PHP↔JS interop — share objects without serialization, bind PHP callables as JS functions
 - Resource limits for call depth, loop iterations, string length, output size, and wall-clock execution
-- 99.97 % of the official test262 suite passes (50,490 / 50,506)
+- 100 % of the official test262 suite passes (50,506 / 50,506)
 
 ## Quick Start
 
@@ -126,9 +126,9 @@ The complete test262 matrix runs in CI on every push across 73 parallel shards. 
 | JavaScriptCore (Safari) | 99.4 % |
 | QuickJS | ~97 % |
 | Hermes (React Native) | ~95 % |
-| **Phasis** | **99.97 %** |
+| **Phasis** | **100 %** |
 
-The 16 remaining skips are all SpiderMonkey JS-loop stress fixtures (1 M-iteration sweeps, O(n^4) DST cache probes) whose semantics are covered by the smaller adjacent suites we pass. See [`COMPAT.md`](./COMPAT.md) for the per-category breakdown.
+Every one of the 50,506 tests in the official suite passes. See [`COMPAT.md`](./COMPAT.md) for the per-category breakdown.
 
 ## Performance
 
