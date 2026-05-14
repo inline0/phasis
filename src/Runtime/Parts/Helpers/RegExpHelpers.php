@@ -2389,7 +2389,13 @@ trait RegExpHelpers
         }
         static $data = null;
         if ($data === null) {
-            $path = __DIR__ . '/../../config/regex_property_strings.php';
+            // dirname(__DIR__, 4) is the repo root (this file sits at
+            // src/Runtime/Parts/Helpers/). Originally `__DIR__/../../config/`
+            // pointed there from src/Runtime/Interpreter.php; the trait
+            // extraction moved this method two levels deeper, so the
+            // relative path has to be re-anchored to keep the data file
+            // resolvable.
+            $path = dirname(__DIR__, 4) . '/config/regex_property_strings.php';
             $data = file_exists($path) ? require $path : [];
         }
         return $data[$body] ?? null;

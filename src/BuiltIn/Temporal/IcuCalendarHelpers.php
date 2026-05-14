@@ -1685,7 +1685,12 @@ trait IcuCalendarHelpers
         if (isset(self::$lunisolarTables[$calendar])) {
             return;
         }
-        $path = __DIR__ . '/data/' . $calendar . '_calendar.php';
+        // dirname(__DIR__) backs out one level to src/BuiltIn/ so the
+        // data path resolves to src/BuiltIn/data/<cal>_calendar.php.
+        // Originally this trait sat in src/BuiltIn/TemporalObject.php
+        // where `__DIR__/data/` was correct; the trait extraction
+        // pushed us one directory deeper.
+        $path = dirname(__DIR__) . '/data/' . $calendar . '_calendar.php';
         if (!is_file($path)) {
             self::$lunisolarTables[$calendar] = ['blob' => '', 'start' => 0, 'end' => 0];
             return;

@@ -96,7 +96,11 @@ trait TimezoneHelpers
     {
         static $bundle = null;
         if ($bundle === null) {
-            $path = dirname(__DIR__, 2) . '/config/tzdata-snapshot.php';
+            // dirname(__DIR__, 3) is the repo root; this trait sits at
+            // src/BuiltIn/Temporal/. Originally `dirname(__DIR__, 2)` was
+            // computed from src/BuiltIn/TemporalObject.php (one level
+            // shallower); the trait extraction added a directory.
+            $path = dirname(__DIR__, 3) . '/config/tzdata-snapshot.php';
             $bundle = is_file($path) ? require $path : [];
             if (!is_array($bundle)) {
                 $bundle = [];
