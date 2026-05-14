@@ -1,0 +1,125 @@
+---
+title: Getting Started
+description: Install Phasis and run your first JavaScript from PHP.
+---
+
+# Getting Started
+
+## Install
+
+```bash
+composer require phasis/phasis
+```
+
+Phasis needs PHP 8.2 or later and the `mbstring` extension (which is enabled in nearly every PHP build). No other dependencies, no `exec`, no FFI.
+
+## Run a script from the CLI
+
+```bash
+./vendor/bin/phasis -e '1 + 2 * 3'
+# 7
+
+./vendor/bin/phasis -e '[1, 2, 3].map(x => x * x).join(",")'
+# 1,4,9
+
+./vendor/bin/phasis path/to/script.js
+```
+
+See the [CLI reference](/docs/cli) for the full command set.
+
+## Embed in PHP
+
+```php
+<?php
+
+require __DIR__ . '/vendor/autoload.php';
+
+use Phasis\Engine;
+
+$engine = new Engine();
+
+// Evaluate an expression
+$result = $engine->eval('1 + 2 * 3');
+echo $result;
+// 7
+
+// Execute a script file
+$engine->execFile('path/to/script.js');
+
+// Bridge a PHP value into the JS global scope
+$engine->setGlobal('config', ['debug' => true, 'version' => '1.0']);
+$engine->eval('console.log(config.version)');
+// 1.0
+```
+
+The `Engine` instance keeps its global state between calls, so subsequent `eval()` invocations see anything you defined earlier.
+
+## Call JS functions from PHP
+
+```php
+$engine->eval('function add(a, b) { return a + b; }');
+echo $engine->call('add', 2, 3);
+// 5
+```
+
+`call()` looks up the function by name on the global object and invokes it with the supplied PHP arguments (converted automatically to JS values).
+
+## Expose a PHP callable as a JS function
+
+```php
+$engine->setGlobal('fetchData', function (string $url): array {
+    return json_decode(file_get_contents($url), true);
+});
+
+$engine->eval('const users = fetchData("https://api.example.com/users")');
+```
+
+PHP closures are wrapped as JS functions. Their arguments are converted from JS to PHP on call, and their return values are converted back from PHP to JS.
+
+## Share PHP objects with JS
+
+```php
+class Counter {
+    public int $value = 0;
+    public function increment(): void { $this->value++; }
+}
+
+$counter = new Counter();
+$engine->setGlobal('counter', $counter);
+
+$engine->eval('counter.increment(); counter.increment();');
+
+echo $counter->value;
+// 2
+```
+
+The PHP object is referenced — not copied — so mutations from JS land back in the original PHP value.
+
+## Resource limits
+
+```php
+$engine = new Engine();
+$engine->setLimit('maxCallDepth', 100);
+$engine->setLimit('maxLoopIterations', 100_000);
+$engine->setLimit('maxStringLength', 10 * 1024 * 1024);
+```
+
+Each limit throws an `InternalError` when exceeded, which propagates to the PHP caller as a `RuntimeError` you can catch.
+
+## REPL
+
+```bash
+./vendor/bin/phasis --repl
+> 1 + 2
+3
+> const greet = name => `Hello, ${name}`
+> greet('Phasis')
+'Hello, Phasis'
+```
+
+## Next steps
+
+- [API reference](/docs/api) — full `Phasis\Engine` surface.
+- [Interop](/docs/interop) — value conversion rules, host functions, shared objects.
+- [Compatibility](/docs/compatibility) — what's implemented, test262 coverage.
+- [Advanced](/docs/advanced) — architecture, bytecode VM, benchmarks, oracle testing.

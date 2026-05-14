@@ -1,0 +1,131 @@
+---
+title: Oracle testing
+description: How Phasis stays spec-correct — Node.js as the oracle, test262 as the conformance suite, and an oracle-driven regression model shared across the Inline0 toolchain.
+---
+
+# Oracle testing
+
+Every implementation decision in Phasis is gated on one question: **does V8 produce the same output?**
+
+JavaScript has subtle semantics — `NaN !== NaN`, `-0 === 0`, `[1] + 1 === "11"`, the exact order of property enumeration, the timing of `Promise` microtasks. Re-deriving these by reading the spec is slow and error-prone. Phasis sidesteps that by treating Node.js (V8) as an oracle: write a JS scenario, run it through V8, capture the output as truth; run it through Phasis, capture the output again; diff.
+
+```
+1. SETUP    → a JavaScript source file or snippet
+2. ORACLE   → Node.js executes it, output captured as truth
+3. ACTUAL   → Phasis executes it, output captured
+4. COMPARE  → oracle vs actual, diff measures the gap
+```
+
+This is the same model used by other Inline0 projects:
+
+| Concept | php-browser | pitmaster | greph | **phasis** |
+|---|---|---|---|---|
+| Oracle | Chromium | canonical `git` | `grep` + `rg` + `sg` | **Node.js (V8)** |
+| Actual | PHP renderer | Pitmaster | greph | **phasis** |
+| Test suite | fixture snapshots | git interop | scenario corpus | **test262** (50,506 tests) |
+| Compliance doc | CSS_COVERAGE.md | compat-report | compat-report | **COMPAT.md** |
+
+## Two levels of testing
+
+### Level 1 — Custom scenarios
+
+Each scenario in `scenarios/` is a small JS program with known output:
+
+```
+scenarios/operators/arithmetic/
+├── scenario.json            # metadata
+├── setup/
+│   └── test.js              # source
+├── oracle/
+│   └── output.txt           # Node.js output (committed)
+├── actual/
+│   └── output.txt           # Phasis output (regenerated)
+└── reports/
+    └── comparison.json
+```
+
+Run a single scenario:
+
+```bash
+./bin/test-scenario operators/arithmetic
+```
+
+Run all scenarios:
+
+```bash
+./bin/test-regression
+./bin/test-regression --jobs 4
+./bin/test-regression --category expressions
+./bin/test-regression --fast
+```
+
+Refresh the oracle (after a Node.js version update):
+
+```bash
+./bin/oracle --refresh operators/arithmetic
+```
+
+Scenarios are organised by ECMAScript chapter: literals, operators, variables, control-flow, functions, objects, arrays, classes, builtins, errors, interop, edge cases.
+
+### Level 2 — test262
+
+The official conformance suite is checked out as a git submodule under `test262/`. Each test is self-verifying: it passes if it doesn't throw, fails if it does (or the reverse for `negative` tests). The harness (`assert.js`, `sta.js`) is loaded before each test.
+
+```bash
+./bin/test262                                    # full suite
+./bin/test262 --category built-ins/Array         # subset
+./bin/test262 --jobs 4                           # parallel
+./bin/test262 --report                           # compliance percentage
+./bin/compat-report                              # full COMPAT.md + compat.json
+```
+
+The runner parses each test's YAML frontmatter, checks the `features` and `flags` lists against the skip set in `config/support.php`, executes in strict and/or sloppy mode per `flags`, and asserts the expected outcome.
+
+## Compliance documentation
+
+`./bin/compat-report` is the canonical compliance snapshot generator. It runs the full test262 suite and writes:
+
+- **`compat.json`** — machine-readable per-group totals.
+- **`COMPAT.md`** — human-readable report with category breakdown.
+
+These files are committed to the repo and updated automatically by the `compat-matrix.yml` GitHub Actions workflow on every push.
+
+```bash
+./bin/compat-report --jobs 4
+```
+
+The repo always reflects the latest pass/fail/skip numbers without you having to re-run the suite locally.
+
+## CI matrix
+
+`compat-matrix.yml` shards test262 across 73 parallel workers — one per top-level category prefix (`built-ins/A`, `built-ins/B`, …, `language/expressions`, `language/statements`, `annexB`, `intl402`, `staging`, plus dedicated shards for the heavy property-escapes generator subdirectories).
+
+Each shard:
+
+1. Checks out the repo + test262 submodule.
+2. Caches the Composer install.
+3. Runs `bin/compat-report --match <prefix>` with a 90 s per-chunk timeout (or 60 s for property-escapes shards).
+4. Uploads its per-shard `state.json` and per-chunk results.
+
+A merge job downloads all 73 artifacts, deduplicates pending-vs-complete chunks across mismatched chunk sizes, regenerates `compat.json` + `COMPAT.md`, and pushes them back to `main` as `[skip ci]` commits.
+
+The full matrix typically completes in 3–4 minutes wall-clock.
+
+## verify-all
+
+For local pre-push checks, `./bin/verify-all` runs the quality gate that CI enforces:
+
+```
+=== PHPStan ===                  level 6, zero errors
+=== Code Standards ===           PHPCS, zero warnings
+=== PHPUnit ===                  118 / 118 pass
+=== Oracle Regression ===        12 / 12 scenarios pass
+```
+
+It is **not** sufficient on its own — test262 must also be sampled for any change touching the parser, interpreter, or built-ins. See `CLAUDE.md` for the per-change checklist.
+
+## Why this works
+
+Treating V8 as the source of truth removes nearly all spec-reading from the development loop. Disagreement with V8 always indicates a Phasis bug — never a spec ambiguity that can be argued. Once a fix lands, the corresponding test262 entries become permanent regression tests.
+
+The 99.97 % current pass rate is downstream of this discipline: every PR is judged against V8, and every regression in compliance is automatically rejected by CI.

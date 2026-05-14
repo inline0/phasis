@@ -1,0 +1,87 @@
+---
+title: Bytecode VM
+description: How Phasis compiles hot JS functions to PHP closures at runtime — and the bail-out semantics that keep the spec correct.
+---
+
+# Bytecode VM
+
+The default execution path is a tree-walker — visit each AST node, return a value. For hot functions that get called millions of times, the dispatch overhead per node is the bottleneck. Phasis layers a speculative bytecode-to-PHP-closure compiler on top to cut that overhead.
+
+## When the VM kicks in
+
+Every `JsFunction` has a hot-call counter. Once it crosses a threshold (default 100), the engine attempts to compile the function body to a PHP closure via `src/Bytecode/JsToPhp.php`.
+
+Compilation succeeds when the function body fits a known set of shapes:
+
+- Local variable assignments with predictable types.
+- Arithmetic on numbers.
+- Property access and method calls.
+- `for` / `while` loops with simple condition shapes.
+- `return` with a computable expression.
+- `if` / `else` over typed conditions.
+
+Compilation fails (and the function stays on the tree-walker) when the body contains:
+
+- `with` statements.
+- `try / catch / finally` (handled by the tree-walker for proper completion semantics).
+- `eval()` calls.
+- Direct `arguments` mutation.
+- Anything the compiler doesn't yet know how to lower.
+
+When compilation succeeds, the engine swaps the function's call path to the compiled closure. Subsequent calls run native PHP with one function-call overhead, not one-per-AST-node.
+
+## Bailouts
+
+The compiled fast path makes assumptions (numbers stay numbers, properties stay on the same shape). When an assumption is violated at runtime, the closure throws a `Bailout` and execution restarts in the tree-walker for that call.
+
+This is where spec correctness matters most. The tree-walker has to be able to re-execute the bailing-out call from scratch without observing any side effects from the failed fast path. Phasis handles this in two ways:
+
+1. **Pure prefixes** — the compiler scans for side effects before any speculation. If the function does I/O (console.log, host functions) before the speculation point, the fast path doesn't elide it; it commits and continues.
+2. **Compile-time refusal** — for shapes that would require rolling back observable side effects (a non-numeric `let r = fn()` where `fn()` mutates state), the compiler refuses to compile at all. The function stays on the tree-walker.
+
+The double-call bug fixed in commit `cd2b265` was exactly this: a non-numeric assignment would execute `fn()` on the fast path, throw `Bailout`, then re-execute on the tree-walker — running `fn()` twice with two sets of side effects. The fix routes those shapes to compile-time refusal.
+
+## VM dispatch (the second layer)
+
+Some functions compile to PHP closures; others fall through to an even simpler bytecode interpreter in `src/Bytecode/VM.php`. The bytecode is a flat array of opcodes (`LOAD_LOCAL`, `STORE_PROP`, `CALL_METHOD`, …) consumed by a `switch` dispatch.
+
+The VM exists for functions that aren't worth compiling to a PHP closure but are still hot enough to benefit from skipping AST traversal. Method calls on built-in objects (Array.prototype.map, String.prototype.split, …) go through fast paths in the VM that bypass the generic `callFunction` trampoline.
+
+## Built-in fast paths
+
+The largest perf wins came from teaching the VM about specific built-ins:
+
+- **`Atomics.load` / `store` / `compareExchange`** with `loadSpinHook` / `storeNotifyHook` cooperative scheduling — recovered 4 Atomics spin-loop tests.
+- **`Date.prototype.getTimezoneOffset`** with a direct-hashmap DST cache — 45 % speedup on SpiderMonkey DST stress.
+- **`String.fromCharCode`** with an inline ASCII fast path — saves ~1 M dispatches per typical sweep.
+- **`decodeURI` / `decodeURIComponent`** with a 12-char `%XX%XX%XX%XX` ultra-fast path using `hex2bin` bulk decode.
+- **`Object.keys` / `Object.values` / `Object.entries`** with direct property-map access.
+- **`Array.prototype.map` / `filter` / `forEach` / `reduce`** with native iteration over the underlying PHP array.
+
+Each fast path is gated by a "shape check" — if the receiver doesn't match the expected shape (e.g. a TypedArray view that isn't backed by a plain PHP `string`), the VM falls through to the spec-correct slow path.
+
+## What this doesn't do
+
+The bytecode VM is **not a JIT** in the V8 sense. It doesn't generate native machine code, doesn't have a type-feedback profiler, and doesn't do inlining across function boundaries. Each call still pays a `function_call` cost at the PHP level.
+
+Closing the remaining 100× gap with V8 would require a proper PHP-bytecode JIT — generating opcache-friendly PHP that the host's tracing JIT (PHP 8.5+) can compile to native. That's on the long-term roadmap.
+
+## Debugging
+
+To see what compiled and what didn't:
+
+```bash
+PHASIS_VM_TRACE=1 ./vendor/bin/phasis script.js
+```
+
+Emits one line per function as it transitions between tree-walker, compiled closure, and bailout. Useful when debugging unexpected perf cliffs.
+
+## Bench
+
+`bench/microbench.js` runs a dozen tiny benchmarks (loop-arith, loop-fib, fn-recurse, obj-create, obj-prop, arr-push, arr-map, str-concat, str-split-join, json-roundtrip, closure, destructure). Median wall time:
+
+```bash
+php bench/run.php
+```
+
+Current numbers are committed in `BENCH.md` after each `bench` workflow run. The full test262 suite + bench run together in ~6 min on the CI matrix.

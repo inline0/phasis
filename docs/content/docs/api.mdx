@@ -1,0 +1,162 @@
+---
+title: API
+description: The Phasis\Engine class is the public PHP entry point — eval, execFile, setGlobal, call, resource limits, and lifecycle.
+---
+
+# API
+
+The whole public API is one class: `Phasis\Engine`. Everything else (`JsValue`, `JsFunction`, `JsObject`, …) is engine-internal and only exposed to host functions that bridge PHP↔JS.
+
+## Construction
+
+```php
+use Phasis\Engine;
+
+$engine = new Engine();
+```
+
+A fresh `Engine` has the standard library installed (`Array`, `String`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, `console`, …) but no user-defined globals.
+
+## eval
+
+```php
+public function eval(string $source, ?string $sourceName = null): mixed
+```
+
+Parses and executes `$source` in the engine's global scope. Returns the value of the last evaluated expression (or `null` if the program had no trailing expression).
+
+```php
+$result = $engine->eval('1 + 2');           // 3
+$result = $engine->eval('JSON.stringify({a: 1})');  // '{"a":1}'
+$result = $engine->eval('[1,2,3].map(x => x * 2)'); // [2, 4, 6] (PHP array)
+```
+
+JavaScript exceptions thrown out of `eval()` surface as PHP `Phasis\Exceptions\JsThrowable`. The original `JsValue` is on the exception's `$jsValue` property.
+
+```php
+try {
+    $engine->eval('throw new Error("boom")');
+} catch (\Phasis\Exceptions\JsThrowable $e) {
+    echo $e->getMessage();
+    // boom
+}
+```
+
+## execFile
+
+```php
+public function execFile(string $path): mixed
+```
+
+Loads a file from disk and evaluates it. The path is used as the source name in stack traces. Modules (`.mjs` or files containing top-level `import`/`export`) are loaded with the ES-module loader; everything else is treated as a classic script.
+
+```php
+$engine->execFile(__DIR__ . '/script.js');
+```
+
+## setGlobal
+
+```php
+public function setGlobal(string $name, mixed $value): void
+```
+
+Binds a global variable visible to all subsequent JS evaluation. PHP values are converted to JS:
+
+| PHP type | JS type |
+|---|---|
+| `null` | `null` |
+| `bool` | `boolean` |
+| `int` / `float` | `number` |
+| `string` | `string` |
+| array (list) | `Array` |
+| array (assoc) | `Object` |
+| `Closure` / callable | `function` |
+| object | object (reference; mutations visible to PHP) |
+
+```php
+$engine->setGlobal('config', ['debug' => true, 'version' => '1.0']);
+$engine->setGlobal('log', fn(string $msg) => error_log($msg));
+$engine->setGlobal('post', $wordPressPost);   // passed by reference
+```
+
+Inside JS:
+
+```javascript
+console.log(config.version);   // "1.0"
+log('hello');                  // calls the PHP closure
+post.title = "Edited";          // mutates the PHP object
+```
+
+## call
+
+```php
+public function call(string $name, mixed ...$args): mixed
+```
+
+Calls a global JS function with PHP arguments (converted as for `setGlobal`). The return value is converted back to PHP.
+
+```php
+$engine->eval('function add(a, b) { return a + b; }');
+echo $engine->call('add', 2, 3);   // 5
+```
+
+## setLimit
+
+```php
+public function setLimit(string $limit, int $value): void
+```
+
+Resource limits enforced by the engine. Exceeding any of them throws `Phasis\Exceptions\InternalError` from inside JS, which the host can catch as `Phasis\Exceptions\JsThrowable`.
+
+| Limit | Default | Description |
+|---|---|---|
+| `maxCallDepth` | `100` | maximum function call stack depth |
+| `maxLoopIterations` | `100000` | maximum iterations per `for` / `while` loop |
+| `maxStringLength` | `10485760` (10 MiB) | maximum length of any string value |
+| `maxOutputSize` | `10485760` (10 MiB) | maximum total `console.log` output bytes |
+| `maxExecutionTime` | `60` | maximum wall-clock seconds for any single `eval()` / `execFile()` / `call()` invocation |
+
+```php
+$engine->setLimit('maxCallDepth', 200);
+$engine->setLimit('maxLoopIterations', 1_000_000);
+```
+
+## reset
+
+```php
+public function reset(): void
+```
+
+Clears all user-defined globals and rebuilds the standard library. The engine instance is reusable after `reset()`.
+
+## repl
+
+```php
+public function repl(): void
+```
+
+Drops into the interactive REPL on stdin/stdout. Used by `bin/phasis --repl`.
+
+## Exceptions
+
+| Class | When |
+|---|---|
+| `Phasis\Exceptions\JsThrowable` | uncaught JS `throw` reaches the PHP caller |
+| `Phasis\Exceptions\SyntaxError` | parse-time error |
+| `Phasis\Exceptions\RuntimeError` | host-side problem (file not found, IO error, etc.) |
+| `Phasis\Exceptions\InternalError` | resource limit exceeded |
+
+`JsThrowable` is the only one your application code is likely to catch deliberately — the rest typically indicate bugs in the script being evaluated or in the host integration.
+
+## Lifecycle
+
+`Engine` is cheap to construct (~few ms cold) and the standard library installs lazily. For most embedding scenarios a single long-lived engine per process is fine. For sandboxed multi-tenant use, construct one engine per tenant and `reset()` between requests if you want a clean slate.
+
+```php
+$engine = new Engine();
+foreach ($requests as $req) {
+    $engine->reset();
+    $engine->setGlobal('request', $req);
+    $engine->execFile($req->scriptPath);
+}
+```

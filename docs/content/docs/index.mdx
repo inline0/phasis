@@ -1,0 +1,40 @@
+---
+title: Phasis
+description: Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript in pure PHP — no Node.js, no FFI, no extensions beyond mbstring.
+---
+
+# Phasis
+
+Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScript in the host PHP process — without `exec('node …')`, without FFI, and without binary extensions beyond `ext-mbstring`.
+
+- **Embeddable** — drop a JS runtime into any PHP app, framework, or CLI tool via the `Phasis\Engine` class.
+- **Spec-compliant** — 99.97 % of the official test262 suite passes (50,490 / 50,506).
+- **Modern surface** — arrow functions, classes, async/await, Promises, generators, Symbol, BigInt, Proxy, Reflect, Temporal, Intl, TypedArrays, full module support.
+- **Direct PHP↔JS interop** — share PHP objects with JS without serialization. Bind PHP closures as JS functions and mutate PHP arrays from JS in place.
+
+## Why Phasis exists
+
+PHP applications that need to run user-supplied JavaScript — templating engines, frontend SSR shims, data-validation rules, content sandboxes, headless test runners — usually shell out to Node.js or skip the feature. Either path adds operational complexity: a second runtime, a serialization boundary, a network of subprocess pipes, and a hostile deployment story for shared hosting.
+
+Phasis closes that gap. Your PHP code can lex, parse, and execute JavaScript using only the standard library plus `mbstring`. The engine ships as a Composer package, runs anywhere PHP 8.2+ runs, and exposes a single small API surface.
+
+## What it does
+
+- Implements the full ECMAScript standard library: `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, generators, async iterators, modules.
+- Supports modern syntax — destructuring, spread/rest, computed properties, optional chaining, nullish coalescing, template literals, tagged templates, classes (with private fields, static blocks, decorators), top-level await.
+- Bridges PHP and JS values losslessly. Pass a PHP object into JS and mutations are visible to PHP. Pass a PHP callable and JS sees it as a function.
+- Sandboxes execution. Resource limits cover call depth, loop iterations, string length, console output, and wall-clock time. The host controls the runtime.
+- Verifies every change against Node.js (V8). Compliance is measured continuously against the official test262 suite in a 73-shard CI matrix.
+
+## What it is not
+
+Phasis is not a JIT compiler. It is a tree-walking interpreter with an opportunistic bytecode VM. Expect ~100× the runtime of V8 on dispatch-bound workloads. The trade-off is zero dependencies, pure PHP, and host-controlled execution — perfect for embedding JavaScript into PHP apps where correctness and isolation matter more than raw throughput.
+
+## Where to start
+
+- [Getting Started](/docs/getting-started) — install and run your first script.
+- [CLI](/docs/cli) — `bin/phasis` for running files, evaluating expressions, and the REPL.
+- [API](/docs/api) — embed `Phasis\Engine` in your PHP app.
+- [Interop](/docs/interop) — share PHP values and objects with JavaScript.
+- [Compatibility](/docs/compatibility) — test262 coverage and supported features.
+- [Advanced](/docs/advanced) — architecture, bytecode VM, benchmarks, and the oracle testing model.

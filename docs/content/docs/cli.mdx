@@ -1,0 +1,118 @@
+---
+title: CLI
+description: Complete command reference for the bin/phasis and bin/test262 executables.
+---
+
+# CLI
+
+Phasis ships two main executables in `bin/`:
+
+- **`bin/phasis`** — run JavaScript files, evaluate expressions, dump ASTs, open a REPL.
+- **`bin/test262`** — run the official ECMAScript conformance suite against Phasis.
+
+After `composer require phasis/phasis`, both are linked from `vendor/bin/`.
+
+## bin/phasis
+
+### Run a file
+
+```bash
+./vendor/bin/phasis script.js
+```
+
+Executes `script.js` end-to-end. `console.log` output is written to stdout; thrown JS exceptions exit with status 1 and the message on stderr.
+
+### Evaluate an expression
+
+```bash
+./vendor/bin/phasis -e 'Math.PI * 2'
+```
+
+The argument is evaluated as a complete script; the last expression's result is printed.
+
+### Dump the AST
+
+```bash
+./vendor/bin/phasis --ast script.js
+```
+
+Prints the parse tree as indented PHP-readable output. Useful for debugging parser issues or building tooling on top of Phasis.
+
+### REPL
+
+```bash
+./vendor/bin/phasis --repl
+```
+
+Interactive prompt that evaluates each entered line in a persistent `Engine`. Multi-line input is supported via continuation when the line ends inside an open block.
+
+### Read from stdin
+
+```bash
+echo 'console.log(2 + 2)' | ./vendor/bin/phasis -
+```
+
+Pass `-` as the file argument to read source from stdin.
+
+### Module mode
+
+```bash
+./vendor/bin/phasis --module entry.mjs
+```
+
+Parses the file as an ES module: `import` / `export`, top-level `await`, and `import.meta` are all available. Relative specifiers resolve from the file's own directory.
+
+## bin/test262
+
+`bin/test262` is the runner used by Phasis's own CI to measure compliance against the [official test262 suite](https://github.com/tc39/test262). It's useful as a regression harness when contributing changes.
+
+### Run a single category
+
+```bash
+./vendor/bin/test262 --category built-ins/Array
+```
+
+### Run the full suite
+
+```bash
+./vendor/bin/test262 --jobs 4
+```
+
+### Skip-features list
+
+The runner reads `config/support.php` from the project root to decide which test262 features to skip (e.g. `tail-call-optimization` is intentionally unsupported).
+
+### Other useful flags
+
+| Flag | Purpose |
+|---|---|
+| `--failures` | print one line per failing test |
+| `--limit N` | stop after the first N tests |
+| `--jobs N` | run N tests in parallel |
+| `--files-from file` | run only the tests listed in `file` |
+| `--json` | emit machine-readable summary on stdout |
+| `--no-progress` | suppress the progress line |
+
+See the [Compatibility section](/docs/compatibility) for the latest CI numbers.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | success — script ran to completion |
+| `1` | uncaught JS exception |
+| `2` | syntax / parse error |
+| `64` | invalid CLI arguments |
+| `65` | input file not found |
+
+Exit codes match what most JS runtimes use, so existing scripts can swap `node` for `phasis` without changing error handling.
+
+## Resource limits via environment
+
+```bash
+PHASIS_MAX_CALL_DEPTH=200 ./vendor/bin/phasis script.js
+PHASIS_MAX_LOOP_ITERATIONS=1000000 ./vendor/bin/phasis script.js
+PHASIS_MAX_EXECUTION_TIME=120 ./vendor/bin/phasis script.js
+```
+
+When the CLI starts an `Engine`, it reads these env vars and applies them via `setLimit()`. See [API reference](/docs/api) for the programmatic equivalents.

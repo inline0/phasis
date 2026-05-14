@@ -1,0 +1,146 @@
+---
+title: Spec surface
+description: Every ECMAScript built-in, syntactic feature, and standard-library object that Phasis ships.
+---
+
+# Spec surface
+
+Phasis targets the current ECMAScript specification (ES2024+) and tracks TC39 proposals at Stage 3 and above. This page is the human-readable index of what's actually shipped.
+
+## Language
+
+| Feature | Status |
+|---|:---:|
+| Lexical declarations (`let`, `const`) with TDZ | ✅ |
+| Block scope, function scope, module scope | ✅ |
+| Arrow functions (with lexical `this`) | ✅ |
+| Default parameters, rest parameters, spread | ✅ |
+| Destructuring (array, object, nested, defaults, rest) | ✅ |
+| Template literals, tagged templates | ✅ |
+| Computed property names | ✅ |
+| Shorthand properties and methods | ✅ |
+| Classes — constructors, methods, getters/setters, static | ✅ |
+| Class fields (public, private, static) | ✅ |
+| Private methods and accessors | ✅ |
+| `super` in methods and constructors | ✅ |
+| Decorators (Stage 3) | ✅ |
+| Static initializer blocks | ✅ |
+| Optional chaining (`?.`), nullish coalescing (`??`) | ✅ |
+| Logical assignment operators (`&&=`, `\|\|=`, `??=`) | ✅ |
+| Numeric separators (`1_000_000`) | ✅ |
+| BigInt literals (`123n`) and operators | ✅ |
+| Async functions, async generators, top-level await | ✅ |
+| Generators (sync and async) | ✅ |
+| `for…of`, `for…in`, `for await…of` | ✅ |
+| Iterators and iterables (Symbol.iterator) | ✅ |
+| Symbol primitives and well-known symbols | ✅ |
+| ES Modules (`import` / `export`, dynamic `import()`) | ✅ |
+| `import.meta` | ✅ |
+| `import attributes` (Stage 3) | ✅ |
+| Strict mode + Annex B legacy behaviours | ✅ |
+| Regular expressions (`/u`, `/v`, `/d`, named groups, lookbehind) | ✅ |
+| Automatic semicolon insertion (ASI) | ✅ |
+| Hashbang grammar (`#!/usr/bin/env phasis`) | ✅ |
+
+## Standard library
+
+### Fundamental
+
+| Object | Coverage |
+|---|---|
+| `Object` | full — `keys`, `values`, `entries`, `assign`, `create`, `freeze`, `seal`, `getOwnPropertyDescriptor(s)`, `setPrototypeOf`, `getOwnPropertyNames`, `getOwnPropertySymbols`, `hasOwn`, `groupBy`, `fromEntries`, etc. |
+| `Array` | full — every prototype method including `at`, `flatMap`, `flat`, `findLast`, `findLastIndex`, `toReversed`, `toSorted`, `toSpliced`, `with`, `group`, `groupToMap` |
+| `String` | full — `at`, `codePointAt`, `match`, `matchAll`, `replaceAll`, `padStart`, `padEnd`, `trimStart`, `trimEnd`, `isWellFormed`, `toWellFormed` |
+| `Number` | full — `isFinite`, `isInteger`, `isNaN`, `isSafeInteger`, `EPSILON`, `MAX_SAFE_INTEGER`, etc. |
+| `BigInt` | full — arbitrary-precision via bcmath |
+| `Boolean` | full |
+| `Math` | full — every method, every special-case for NaN / Infinity / -0 |
+| `JSON` | full — `parse`, `stringify`, custom replacers, reviver, indentation |
+| `Symbol` | full — `for`, `keyFor`, all well-known symbols, `Symbol.toPrimitive` |
+| `Function` | full — `call`, `apply`, `bind`, `length`, `name`, `prototype` semantics |
+
+### Collections
+
+| Object | Coverage |
+|---|---|
+| `Map` | full — including `groupBy` and live iteration |
+| `Set` | full — including `intersection`, `union`, `difference`, `symmetricDifference`, `isSubsetOf`, `isSupersetOf`, `isDisjointFrom` |
+| `WeakMap`, `WeakSet`, `WeakRef`, `FinalizationRegistry` | full |
+
+### Async
+
+| Object | Coverage |
+|---|---|
+| `Promise` | full — `all`, `race`, `any`, `allSettled`, `withResolvers`, async iteration |
+| `AsyncIterator`, `AsyncGenerator` | full |
+| Microtask scheduling | ✅ |
+
+### Binary data
+
+| Object | Coverage |
+|---|---|
+| `ArrayBuffer`, `SharedArrayBuffer` | full |
+| `DataView` | full — `getBigInt64`, `setBigInt64`, etc. |
+| `Int8Array`, `Uint8Array`, `Uint8ClampedArray`, `Int16Array`, `Uint16Array`, `Int32Array`, `Uint32Array`, `BigInt64Array`, `BigUint64Array`, `Float16Array`, `Float32Array`, `Float64Array` | full |
+| `Atomics` — `add`, `sub`, `and`, `or`, `xor`, `compareExchange`, `exchange`, `isLockFree`, `load`, `notify`, `pause`, `store`, `wait`, `waitAsync` | full (single-agent only) |
+
+### Reflection and proxies
+
+| Object | Coverage |
+|---|---|
+| `Proxy` | all 13 traps, revocable |
+| `Reflect` | all 14 static methods |
+
+### Errors
+
+| Object | Coverage |
+|---|---|
+| `Error`, `TypeError`, `RangeError`, `ReferenceError`, `SyntaxError`, `URIError`, `EvalError` | full |
+| `AggregateError` | full |
+| `SuppressedError` (Stage 3 explicit resource management) | full |
+
+### Dates and time
+
+| Object | Coverage |
+|---|---|
+| `Date` | full |
+| `Temporal` (Stage 3) | full — `Now`, `Instant`, `PlainDate`, `PlainTime`, `PlainDateTime`, `PlainYearMonth`, `PlainMonthDay`, `ZonedDateTime`, `Duration`, `TimeZone`, `Calendar` (incl. Hebrew, Chinese, Dangi, Ethiopic, etc.) |
+
+### Internationalisation
+
+| Object | Coverage |
+|---|---|
+| `Intl.Locale`, `Intl.Collator`, `Intl.DateTimeFormat`, `Intl.NumberFormat`, `Intl.PluralRules`, `Intl.RelativeTimeFormat`, `Intl.ListFormat`, `Intl.DisplayNames`, `Intl.Segmenter` | full (delegates to PHP's `intl` extension when available) |
+
+### Resource management
+
+| Object | Coverage |
+|---|---|
+| `DisposableStack`, `AsyncDisposableStack` (Stage 3) | full |
+| `Symbol.dispose`, `Symbol.asyncDispose` | full |
+| `using` / `await using` declarations | full |
+
+### Other
+
+| Object | Coverage |
+|---|---|
+| `RegExp` (incl. `/v` set notation, named captures, lookaround, sticky/global flags) | full |
+| `Iterator` helpers (Stage 3) — `map`, `filter`, `take`, `drop`, `flatMap`, `reduce`, `toArray`, `forEach`, `some`, `every`, `find` | full |
+| `ShadowRealm` (Stage 3) | full |
+| `globalThis` | ✅ |
+
+## What's not yet implemented
+
+- **SharedArrayBuffer worker semantics** beyond a single agent — multi-thread atomic notification across real OS threads requires `pcntl` and isn't on the roadmap. Single-agent atomics work.
+- **`Intl.Segmenter` with grapheme clusters that need ICU 76+** — depends on the host PHP's `intl` extension version.
+- **`Tail call optimization`** — proper tail calls (PTC) are optional in the spec; we don't implement them.
+
+## Versioning
+
+Phasis follows semver. The version line tracks ECMAScript spec drafts:
+
+| Phasis version | Spec target | Stage 3 proposals |
+|---|---|---|
+| 0.x | ES2024 | decorators, Temporal, explicit resource management, iterator helpers, set methods |
+
+A bump to 1.0 is gated on every Stage 4 proposal in the ES2025 draft being implemented and on a stable Promise drain semantics.

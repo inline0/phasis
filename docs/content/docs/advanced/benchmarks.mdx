@@ -1,0 +1,105 @@
+---
+title: Benchmarks
+description: Microbenchmark methodology, current numbers, and how to interpret Phasis's per-operation performance vs V8.
+---
+
+# Benchmarks
+
+Phasis is ~100× slower than V8 on dispatch-bound JavaScript. This isn't an apology — it's the inherent cost of a PHP tree-walker vs a native JIT. The number is useful when deciding whether to embed Phasis (answer: yes for most embedding workloads, no for compute-bound JS).
+
+## Microbenchmark suite
+
+`bench/microbench.js` runs a dozen pure-JS microbenchmarks designed to isolate specific operations. The runner (`bench/run.php`) executes each one in a fresh `Engine`, times five iterations, and records median/min/max wall time.
+
+```bash
+php bench/run.php
+```
+
+Current numbers (PHP 8.5, tracing JIT enabled, post the May 2026 perf work):
+
+| Test | Median |
+|---|---:|
+| `loop-arith` | 10 ms |
+| `loop-fib` | 3 ms |
+| `fn-recurse` | 22 ms |
+| `obj-create` | 14 ms |
+| `obj-prop` | 17 ms |
+| `arr-push` | 140 ms |
+| `arr-map` | 18 ms |
+| `str-concat` | 2 ms |
+| `str-split-join` | 38 ms |
+| `json-roundtrip` | 77 ms |
+| `closure` | 26 ms |
+| `destructure` | 3 ms |
+| **Total** | **~500 ms** |
+
+For comparison, the same suite runs in ~5 ms on V8. The 100× ratio is consistent across microbenchmarks; per-operation costs are dominated by AST dispatch overhead, not by any specific built-in.
+
+The full numbers are committed in `BENCH.md` after each `bench` workflow run.
+
+## Where the time goes
+
+Per-call overhead breakdown for a typical `Engine::call('foo', $args)`:
+
+```
+Argument PHP→JS conversion       ~5 µs
+Function lookup on global object ~2 µs
+Frame allocation + scope chain   ~3 µs
+Per-AST-node dispatch            ~1 µs × N nodes in body
+Return value JS→PHP conversion   ~2 µs
+```
+
+The variable cost is the `~1 µs × N` term. A function with 100 AST nodes pays ~100 µs of dispatch; one with 1,000 nodes pays ~1 ms. This linearity is what makes inner loops the worst case — every iteration re-pays the dispatch cost.
+
+Built-in fast paths (Array.map, JSON.parse, …) bypass the AST entirely for their core hot loops, which is why a single `JSON.parse(largeString)` is comparable to V8 — PHP's native string operations close the gap.
+
+## When perf matters
+
+For most embedding workloads, V8-vs-Phasis perf doesn't matter:
+
+- **Templating** — a typical SSR template runs in <10 ms even on Phasis.
+- **Validation rules** — user-supplied JS for form validation finishes in microseconds.
+- **Data transformations** — a `[1..1000].map(transform)` typically clocks in at <100 ms.
+- **Sandbox runners** — running short user-supplied scripts with a 1 s cap is comfortable for the host.
+
+It does matter for:
+
+- **Compute-heavy inner loops** — image processing, large-array reductions, simulations. Use a native PHP library and expose it via [host functions](/docs/interop/host-functions).
+- **Real-time animation logic** — anything driving 60 fps. Run that JS on the client (browser, native app), not the server.
+- **JS-implementation of computationally expensive algorithms** — cryptography, compression, parsing. PHP has native equivalents that are 1000× faster.
+
+The right mental model: Phasis is a **glue layer** for JS-shaped logic embedded in PHP-shaped applications. The PHP host handles compute; the JS layer handles configuration, branching, and small transformations.
+
+## Bench in CI
+
+A `bench` workflow runs the full microbenchmark suite under PHP 8.5 + tracing JIT in a Docker container. The result is committed to `BENCH.md` and any regression vs the previous baseline triggers a PR comment.
+
+The Docker isolation is required: PHP 8.5 + tracing JIT crashes on certain VM patterns we use. Running every perf change through the same Docker image catches those before push.
+
+```bash
+# Local equivalent of the CI bench
+docker run --rm -v "$PWD:/app" -w /app php:8.5-cli \
+  php -d opcache.enable_cli=1 -d opcache.jit=tracing \
+  -d opcache.jit_buffer_size=64M bench/run.php
+```
+
+## Profiling
+
+Phasis ships a built-in profile mode that emits per-AST-node timing:
+
+```bash
+PHASIS_PROFILE=1 ./vendor/bin/phasis script.js > /dev/null
+```
+
+Output goes to `php://stderr` as one line per call: `<node-type> <fn-name> <elapsed-µs>`. Pipe it to your favourite analysis tool. For PHP-level profiling (when you suspect the bottleneck is in the runtime itself, not in JS dispatch), Xdebug's profiler works against Phasis exactly like any other PHP code.
+
+## Roadmap
+
+The bytecode VM closed ~30% of the historical gap with V8 by avoiding AST traversal for common shapes. Further closing requires:
+
+- **Type feedback** — record observed types per call site and specialise the compiled closure.
+- **Inline caches** — cache property-access shapes so member lookups don't re-walk the prototype chain.
+- **Inlining** — flatten small JS function calls into the caller's compiled closure.
+- **PHP-bytecode emission** — emit opcodes that opcache + tracing JIT can lower to native machine code.
+
+Each of these is a multi-week project. The first three are tractable; the last requires deep PHP-internals work. None are necessary for the embedding workloads Phasis targets.
