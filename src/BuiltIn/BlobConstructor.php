@@ -156,7 +156,9 @@ class BlobConstructor
                 $this_->setInternalProperty('[[BlobType]]', $type);
                 return $this_;
             },
-            2,
+            // Per WebIDL, Blob has two optional args (blobParts?, options?),
+            // so the function-length advertised by the spec is 0.
+            0,
         );
         $ctor->setConstructable();
         $ctor->defineOwnProperty(
@@ -469,11 +471,67 @@ class BlobConstructor
      */
     private static function processPartsAndOptions(JsValue $parts, JsValue $options): array
     {
-        $bytes = '';
+        // Per WebIDL argument-conversion order: parts (arg 0) is fully
+        // converted to a list of BlobPart values BEFORE options (arg 1) is
+        // touched. That means every toString() on a parts element runs
+        // before any getter on options.
+        $rawParts = null;
+        if (!$parts instanceof JsUndefined) {
+            if (!$parts instanceof JsObject) {
+                throw new TypeError("Failed to construct 'Blob': blobParts must be a sequence");
+            }
+            $iterSym = SymbolConstructor::iterator();
+            $iterMethod = $parts->getBySymbol($iterSym);
+            if (!$iterMethod instanceof JsFunction) {
+                throw new TypeError(
+                    "Failed to construct 'Blob': blobParts is not iterable"
+                );
+            }
+            $iterator = $iterMethod->call($parts, []);
+            if (!$iterator instanceof JsObject) {
+                throw new TypeError(
+                    "Failed to construct 'Blob': iterator must return an object"
+                );
+            }
+            $next = $iterator->get('next');
+            if (!$next instanceof JsFunction) {
+                throw new TypeError(
+                    "Failed to construct 'Blob': iterator missing next()"
+                );
+            }
+            $rawParts = [];
+            while (true) {
+                $step = $next->call($iterator, []);
+                if (!$step instanceof JsObject) {
+                    throw new TypeError(
+                        "Failed to construct 'Blob': iterator result must be an object"
+                    );
+                }
+                if (TypeConversion::toBoolean($step->get('done'))) {
+                    break;
+                }
+                $element = $step->get('value');
+                // Pre-coerce stringifiable parts NOW so their toString()
+                // observes the left-to-right ordering relative to options.
+                // Blob / ArrayBuffer-like values are stored verbatim and
+                // converted to bytes once endings is known.
+                if (
+                    !self::isBlob($element)
+                    && !$element instanceof JsTypedArray
+                    && !$element instanceof JsDataView
+                    && !$element instanceof JsArrayBuffer
+                ) {
+                    $element = new JsString(TypeConversion::toString($element));
+                }
+                $rawParts[] = $element;
+            }
+        }
+
+        // Now process options (post parts conversion).
         $endings = 'transparent';
         $type = '';
-
         if ($options instanceof JsObject) {
+            // Spec order: "endings" before "type".
             $endingsVal = $options->get('endings');
             if (!$endingsVal instanceof JsUndefined) {
                 $endingsStr = TypeConversion::toString($endingsVal);
@@ -492,48 +550,12 @@ class BlobConstructor
             throw new TypeError("Blob: options must be a dictionary");
         }
 
-        if ($parts instanceof JsUndefined) {
-            return [$bytes, $type];
-        }
-
-        if (!$parts instanceof JsObject) {
-            throw new TypeError("Failed to construct 'Blob': blobParts must be a sequence");
-        }
-
-        // blobParts is an iterable of BlobPart. Walk via Symbol.iterator
-        // to match spec sequence semantics (also handles Array values).
-        $iterSym = SymbolConstructor::iterator();
-        $iterMethod = $parts->getBySymbol($iterSym);
-        if (!$iterMethod instanceof JsFunction) {
-            throw new TypeError(
-                "Failed to construct 'Blob': blobParts is not iterable"
-            );
-        }
-        $iterator = $iterMethod->call($parts, []);
-        if (!$iterator instanceof JsObject) {
-            throw new TypeError(
-                "Failed to construct 'Blob': iterator must return an object"
-            );
-        }
-        $next = $iterator->get('next');
-        if (!$next instanceof JsFunction) {
-            throw new TypeError(
-                "Failed to construct 'Blob': iterator missing next()"
-            );
-        }
-
-        while (true) {
-            $step = $next->call($iterator, []);
-            if (!$step instanceof JsObject) {
-                throw new TypeError(
-                    "Failed to construct 'Blob': iterator result must be an object"
-                );
+        // Assemble bytes from the pre-converted parts list.
+        $bytes = '';
+        if ($rawParts !== null) {
+            foreach ($rawParts as $element) {
+                $bytes .= self::partToBytes($element, $endings);
             }
-            if (TypeConversion::toBoolean($step->get('done'))) {
-                break;
-            }
-            $element = $step->get('value');
-            $bytes .= self::partToBytes($element, $endings);
         }
 
         return [$bytes, $type];
@@ -622,14 +644,47 @@ class BlobConstructor
         if (is_nan($num)) {
             $num = 0.0;
         }
-        // Match the spec's WebIDL [Clamp] semantics + relative resolution.
-        $idx = (int) $num;
+        // Per WebIDL `[Clamp] long long` (Blob.slice): round half to even,
+        // then clamp into the long long range. Phasis only needs the
+        // round-to-even step here — the index will be clamped against
+        // $size below.
+        $idx = self::clampToInt64($num);
         if ($idx < 0) {
             $idx = max($size + $idx, 0);
         } else {
             $idx = min($idx, $size);
         }
         return $idx;
+    }
+
+    /**
+     * WebIDL `[Clamp]` long long conversion: round half to even ("banker's
+     * rounding"). Required by Blob.slice() for the test262/WPT compliance
+     * with `[Clamp] long long start, end`.
+     */
+    private static function clampToInt64(float $num): int
+    {
+        if (is_nan($num)) {
+            return 0;
+        }
+        if ($num >= PHP_INT_MAX) {
+            return PHP_INT_MAX;
+        }
+        if ($num <= PHP_INT_MIN) {
+            return PHP_INT_MIN;
+        }
+        // Round half to even.
+        $floor = floor($num);
+        $diff = $num - $floor;
+        if ($diff < 0.5) {
+            return (int) $floor;
+        }
+        if ($diff > 0.5) {
+            return (int) ($floor + 1);
+        }
+        // Tie: pick the even neighbor.
+        $floorInt = (int) $floor;
+        return ($floorInt % 2 === 0) ? $floorInt : $floorInt + 1;
     }
 
     /**

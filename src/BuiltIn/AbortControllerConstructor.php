@@ -537,6 +537,8 @@ class AbortControllerConstructor
         // mutations are respected, with a fallback to a hand-built event
         // object if Event is somehow not installed yet.
         $event = self::buildAbortEvent();
+        // Per spec the user-agent-fired abort event is a trusted event.
+        $event->setInternalProperty('[[IsTrusted]]', true);
         $dispatch = $signal->get('dispatchEvent');
         if ($dispatch instanceof JsFunction) {
             $dispatch->call($signal, [$event]);

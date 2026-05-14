@@ -20,6 +20,34 @@ use PHPUnit\Framework\TestCase;
  */
 final class WptTest extends TestCase
 {
+    /** PID of the WPT test server when fetch-bearing fixtures need it. */
+    private static ?int $serverPid = null;
+
+    public static function setUpBeforeClass(): void
+    {
+        // Start the fetch test server once for the whole suite so HTTP-
+        // touching fixtures can resolve `http://127.0.0.1:8765/...` URLs.
+        // Tests that don't need fetch just ignore it.
+        $root = dirname(__DIR__, 2);
+        $logFile = sys_get_temp_dir() . '/phasis-wpt-srv-phpunit.log';
+        $cmd = sprintf(
+            '/usr/bin/env php -S 127.0.0.1:8765 -t %s %s > %s 2>&1 & echo $!',
+            escapeshellarg($root . '/tests/Wpt'),
+            escapeshellarg($root . '/tests/Wpt/fetch-server.php'),
+            escapeshellarg($logFile),
+        );
+        self::$serverPid = (int) trim((string) shell_exec($cmd));
+        usleep(400_000);
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$serverPid !== null && self::$serverPid > 0) {
+            @posix_kill(self::$serverPid, SIGTERM);
+            self::$serverPid = null;
+        }
+    }
+
     /** @return iterable<string, array{string}> */
     public static function fixtureProvider(): iterable
     {

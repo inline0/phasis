@@ -54,6 +54,44 @@ if ($category !== null) {
     $categories = [$category => $categories[$category]];
 }
 
+// Start the WPT fetch test server in the background for any fixture
+// whose source references `fetch(` or `RESOURCES_DIR` or a relative
+// `../resources/` URL. The server emulates the dozen-ish Python handlers
+// the imported fixtures hit.
+$serverPid = null;
+$serverNeeded = false;
+foreach (WptRunner::discoverFixtures() as $cat => $files) {
+    foreach ($files as $file) {
+        $src = file_get_contents($file) ?: '';
+        if (
+            str_contains($src, 'fetch(')
+            || str_contains($src, 'RESOURCES_DIR')
+            || str_contains($src, '../resources/')
+        ) {
+            $serverNeeded = true;
+            break 2;
+        }
+    }
+}
+if ($serverNeeded) {
+    $root = dirname(__DIR__);
+    $logFile = sys_get_temp_dir() . '/phasis-wpt-srv.log';
+    $cmd = sprintf(
+        '/usr/bin/env php -S 127.0.0.1:8765 -t %s %s > %s 2>&1 & echo $!',
+        escapeshellarg($root . '/tests/Wpt'),
+        escapeshellarg($root . '/tests/Wpt/fetch-server.php'),
+        escapeshellarg($logFile),
+    );
+    $serverPid = (int) trim((string) shell_exec($cmd));
+    // Give the server a moment to bind.
+    usleep(400_000);
+    register_shutdown_function(function () use ($serverPid): void {
+        if ($serverPid > 0) {
+            @posix_kill($serverPid, SIGTERM);
+        }
+    });
+}
+
 $runner = new WptRunner();
 $totalPass = 0;
 $totalFail = 0;

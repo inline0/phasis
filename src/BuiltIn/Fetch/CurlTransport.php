@@ -90,13 +90,20 @@ final class CurlTransport
 
         // Translate headers list-of-pairs to curl's flat header array. If
         // the same header appears multiple times curl forwards each one.
+        // Empty values use the `Name;` (semicolon) form so curl actually
+        // sends them — `Name: ` (colon + empty) is the documented sentinel
+        // for "remove this header" in CURLOPT_HTTPHEADER.
         $headerLines = [];
         if (is_array($headers)) {
             foreach ($headers as $pair) {
                 if (!is_array($pair) || count($pair) < 2) {
                     continue;
                 }
-                $headerLines[] = $pair[0] . ': ' . $pair[1];
+                if ($pair[1] === '') {
+                    $headerLines[] = $pair[0] . ';';
+                } else {
+                    $headerLines[] = $pair[0] . ': ' . $pair[1];
+                }
             }
         }
 
@@ -141,7 +148,11 @@ final class CurlTransport
                 $bodyBuf .= $chunk;
                 return strlen($chunk);
             },
-            CURLOPT_NOPROGRESS => false,
+            // NOPROGRESS=true disables curl's built-in progress meter on
+            // stderr. We toggle it back to false below if and only if an
+            // AbortSignal needs the progress callback for polling.
+            CURLOPT_NOPROGRESS => true,
+            CURLOPT_VERBOSE => false,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
         ];
@@ -158,6 +169,11 @@ final class CurlTransport
         // transfer (curl_exec returns false with CURLE_ABORTED_BY_CALLBACK).
         if ($signal !== null) {
             $signalRef = $signal;
+            // Re-enable the progress meter only because the callback below
+            // is only invoked when NOPROGRESS=false. (We still don't see
+            // dots on stderr because libcurl only writes them when no
+            // callback is installed.)
+            $options[CURLOPT_NOPROGRESS] = false;
             $options[CURLOPT_PROGRESSFUNCTION] = static function (
                 $curl,
                 $downloadTotal,

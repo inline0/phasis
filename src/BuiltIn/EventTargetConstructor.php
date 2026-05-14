@@ -348,8 +348,11 @@ class EventTargetConstructor
         }
 
         // Mark dispatched, set target/currentTarget, flip phase to AT_TARGET.
+        // Note: do NOT force `[[IsTrusted]]` here — script-created events
+        // already have it as false (from initEventSlots), and user-agent
+        // events that have been pre-flagged trusted (e.g. AbortController
+        // abort) must keep that bit through dispatch.
         $event->setInternalProperty('[[Dispatched]]', true);
-        $event->setInternalProperty('[[IsTrusted]]', false);
         $event->setInternalProperty('[[Target]]', $self);
         $event->setInternalProperty('[[CurrentTarget]]', $self);
         $event->setInternalProperty('[[EventPhase]]', 2); // AT_TARGET

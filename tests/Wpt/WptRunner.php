@@ -71,6 +71,53 @@ final class WptRunner
             ];
         });
 
+        // Synchronous microtask drain — the WPT shim uses this to flush
+        // Promise continuations between a fixture's `.then(cb)` and a
+        // subsequent assertion that reads the result. Phasis Promises
+        // resolve synchronously but their `.then` continuations are
+        // microtasks, so the shim needs an explicit drain.
+        $engine->setGlobal('__phasisDrainMicrotasks', function (): void {
+            \Phasis\Value\JsPromise::drainMicrotasks();
+        });
+
+        // Base URL the Request constructor uses to resolve relative URLs
+        // in fixtures that hardcode paths like `../resources/foo.py`.
+        // The fixtures live under `fetch/api/headers/`, so a relative
+        // `../resources/...` resolves into `fetch/api/resources/...`.
+        // Our PHP server, by contrast, routes `/resources/<name>`. To
+        // bridge the two we set the base such that the `..` jump lands
+        // directly on `/resources/`.
+        $engine->setGlobal(
+            '__phasisRequestBaseUrl',
+            'http://127.0.0.1:8765/headers/'
+        );
+
+        // Synchronous bytes accessor for Blob/File — works around the
+        // headless runner not being able to await Blob.text(). Returns
+        // a fresh Uint8Array over the Blob's raw bytes (so callers can
+        // round-trip binary cleanly — JsString would lose 0x80+ bytes
+        // through UTF-8 normalization).
+        $engine->setGlobalJsValue(
+            '__phasisBlobBytes',
+            \Phasis\Value\JsFunction::fromCallable(
+                '__phasisBlobBytes',
+                static function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
+                    $blob = $args[0] ?? null;
+                    if (
+                        $blob instanceof \Phasis\Value\JsObject
+                        && $blob->getInternalProperty('[[IsBlob]]') === true
+                    ) {
+                        $bytes = $blob->getInternalProperty('[[BlobBytes]]');
+                        return \Phasis\BuiltIn\TextEncoderConstructor::makeUint8Array(
+                            is_string($bytes) ? $bytes : ''
+                        );
+                    }
+                    return \Phasis\Value\JsNull::instance();
+                },
+                1,
+            )
+        );
+
         try {
             $engine->eval($this->harnessSource);
             $engine->eval($source);

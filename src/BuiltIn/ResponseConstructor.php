@@ -187,6 +187,9 @@ final class ResponseConstructor
                 self::fillHeadersFromValue($headers, $hInit);
             }
         }
+        // Switch the headers guard to "response" so subsequent
+        // append/set/delete go through the forbidden-response-header check.
+        HeadersConstructor::setGuard($headers, 'response');
         $instance->setInternalProperty('[[Headers]]', $headers);
 
         // -------- Body ---------------------------------------------------

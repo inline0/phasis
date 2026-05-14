@@ -151,7 +151,19 @@ final class RequestConstructor
             $url = (string) ($input->getInternalProperty('[[Url]]') ?? '');
         } else {
             $rawUrl = TypeConversion::toString($input);
-            $parsed = UrlParser::parse($rawUrl);
+            // Test environments (WPT runner) can install a base URL into the
+            // global `__phasisRequestBaseUrl`. The Fetch spec normally
+            // resolves Request input against the global "current settings
+            // object" base URL — we don't have a document, so consult the
+            // explicit base instead.
+            $base = null;
+            if ($env->has('__phasisRequestBaseUrl')) {
+                $baseV = $env->get('__phasisRequestBaseUrl');
+                if ($baseV instanceof JsString && $baseV->value !== '') {
+                    $base = UrlParser::parse($baseV->value);
+                }
+            }
+            $parsed = UrlParser::parse($rawUrl, $base);
             if ($parsed === null) {
                 throw new TypeError("Failed to construct 'Request': Invalid URL: '$rawUrl'");
             }
@@ -199,14 +211,25 @@ final class RequestConstructor
         $instance->setInternalProperty('[[Headers]]', $headers);
 
         // -------- Mode / credentials / cache / redirect / referrer / etc ----
-        $instance->setInternalProperty('[[Mode]]', self::pickString(
+        $mode = self::pickString(
             $sourceRequest,
             $initObj,
             '[[Mode]]',
             'mode',
             'cors',
             self::VALID_MODE,
-        ));
+        );
+        $instance->setInternalProperty('[[Mode]]', $mode);
+
+        // If mode is "no-cors", switch the headers' guard to "request-no-cors"
+        // and prune any entries that don't satisfy the safelist. Subsequent
+        // calls to append/set/delete on those headers go through the
+        // guard-aware paths in HeadersConstructor.
+        if ($mode === 'no-cors') {
+            HeadersConstructor::setGuard($headers, 'request-no-cors');
+        } else {
+            HeadersConstructor::setGuard($headers, 'request');
+        }
         $instance->setInternalProperty('[[Credentials]]', self::pickString(
             $sourceRequest,
             $initObj,

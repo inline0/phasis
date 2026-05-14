@@ -42,6 +42,19 @@ function dispatch(): array
         }
     }
 
+    // /cors/resources/not-cors-safelisted.json — small fixture file the
+    // WPT fetch headers tests load to discover non-CORS-safelisted names.
+    if ($path === '/cors/resources/not-cors-safelisted.json') {
+        // Each entry: [name, value]. The fixture concatenates this with a
+        // few more locally-defined entries before iterating.
+        $rows = [
+            ['authorization', 'whatever'],
+            ['foo', 'bar'],
+            ['x-foo', 'x-bar'],
+        ];
+        return [200, ['content-type' => 'application/json'], (string) json_encode($rows)];
+    }
+
     return [404, ['Content-Type' => 'text/plain'], "no route: {$path}"];
 }
 

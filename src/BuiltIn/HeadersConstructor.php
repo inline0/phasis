@@ -69,6 +69,31 @@ class HeadersConstructor
     }
 
     /**
+     * Switch the guard on an existing Headers instance and re-validate the
+     * stored list against the new guard. Entries that the new guard would
+     * have rejected are silently dropped. Used by Request/Response
+     * constructors after they know their mode/type.
+     */
+    public static function setGuard(JsObject $headers, string $guard): void
+    {
+        if (!self::isHeaders($headers)) {
+            return;
+        }
+        $headers->setInternalProperty(self::SLOT_GUARD, $guard);
+        // Re-filter the existing list: drop any pair that the guard now
+        // rejects. Pairs are validated by the *combined* per-name view, so
+        // we accumulate as we go and rebuild the list.
+        $oldList = self::listOf($headers);
+        $newList = [];
+        foreach ($oldList as $pair) {
+            if (self::isGuardAcceptable($newList, $guard, $pair[0], $pair[1])) {
+                $newList[] = $pair;
+            }
+        }
+        self::setList($headers, $newList);
+    }
+
+    /**
      * Build a fresh Headers JS object from PHP. Each `$initList` entry is
      * `[name, value]`; names/values pass through the same normalization
      * the JS constructor uses (lowercase + RFC 7230 validation, value
@@ -152,14 +177,6 @@ class HeadersConstructor
         }
         $needle = strtolower($name);
         $list = self::listOf($headers);
-        if ($needle === 'set-cookie') {
-            foreach ($list as $pair) {
-                if ($pair[0] === $needle) {
-                    return $pair[1];
-                }
-            }
-            return null;
-        }
         $matches = [];
         foreach ($list as $pair) {
             if ($pair[0] === $needle) {
@@ -273,14 +290,9 @@ class HeadersConstructor
                 }
                 $name = self::normalizeName(TypeConversion::toString($args[0]));
                 $list = self::listOf($this_);
-                if ($name === 'set-cookie') {
-                    foreach ($list as $pair) {
-                        if ($pair[0] === $name) {
-                            return new JsString($pair[1]);
-                        }
-                    }
-                    return JsNull::instance();
-                }
+                // Per Fetch spec, `get` combines ALL matching values via
+                // ", " regardless of header name. set-cookie has its own
+                // dedicated `getSetCookie()` accessor for the split form.
                 $matches = [];
                 foreach ($list as $pair) {
                     if ($pair[0] === $name) {
@@ -463,7 +475,10 @@ class HeadersConstructor
             return $result;
         }, 0);
         $nextFn->setNonConstructable();
-        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+        // Per the WHATWG infra "iterator prototype" object: the `next` method
+        // is writable, enumerable, configurable. WPT headers-basic checks
+        // these three flags explicitly.
+        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, true, true));
         $proto->definePropertyBySymbol(
             SymbolConstructor::toStringTag(),
             PropertyDescriptor::data(new JsString('Headers Iterator'), false, false, true),
@@ -532,9 +547,29 @@ class HeadersConstructor
 
     private static function appendPair(JsValue $self, string $name, string $value): void
     {
+        if (!$self instanceof JsObject) {
+            return;
+        }
+        $guard = $self->getInternalProperty(self::SLOT_GUARD);
+        if (!is_string($guard)) {
+            $guard = 'none';
+        }
+        if ($guard === 'immutable') {
+            throw new TypeError('Headers are immutable');
+        }
         $list = self::listOf($self);
-        $list[] = [$name, $value];
-        self::setList($self, $list);
+        // Some guards forbid the name entirely. Some forbid based on the
+        // *combined* would-be value — for those we project the post-append
+        // list and re-test.
+        if (self::guardForbidsName($guard, $name)) {
+            return;
+        }
+        $candidate = $list;
+        $candidate[] = [$name, $value];
+        if (!self::isGuardAcceptable($list, $guard, $name, $value)) {
+            return;
+        }
+        self::setList($self, $candidate);
     }
 
     /**
@@ -544,6 +579,21 @@ class HeadersConstructor
      */
     private static function setPair(JsValue $self, string $name, string $value): void
     {
+        if (!$self instanceof JsObject) {
+            return;
+        }
+        $guard = $self->getInternalProperty(self::SLOT_GUARD);
+        if (!is_string($guard)) {
+            $guard = 'none';
+        }
+        if ($guard === 'immutable') {
+            throw new TypeError('Headers are immutable');
+        }
+        if (self::guardForbidsName($guard, $name)) {
+            return;
+        }
+        // For set, build the candidate list first and then check whether the
+        // resulting single combined value passes the guard.
         $list = self::listOf($self);
         $seen = false;
         $newList = [];
@@ -553,15 +603,166 @@ class HeadersConstructor
                     $newList[] = [$name, $value];
                     $seen = true;
                 }
-                // Drop subsequent matches.
             } else {
                 $newList[] = $pair;
             }
         }
         if (!$seen) {
+            // Use the "would I be allowed to append this pair?" check.
+            if (!self::isGuardAcceptable($list, $guard, $name, $value)) {
+                return;
+            }
             $newList[] = [$name, $value];
+        } else {
+            // The single value replaces every prior value for this name;
+            // verify the new combined value is acceptable.
+            if (!self::isGuardAcceptable([], $guard, $name, $value)) {
+                return;
+            }
         }
         self::setList($self, $newList);
+    }
+
+    // ------------------------------------------------------------------
+    // Guard logic (per Fetch spec §2.2)
+    // ------------------------------------------------------------------
+
+    /**
+     * Does the guard outright forbid the given name? "response" guard
+     * forbids the "forbidden response-header names" set; "request-no-cors"
+     * is permissive on name (the value check does the rest).
+     */
+    private static function guardForbidsName(string $guard, string $name): bool
+    {
+        if ($guard === 'response') {
+            // Forbidden response-header names per the Fetch spec.
+            return $name === 'set-cookie' || $name === 'set-cookie2';
+        }
+        if ($guard === 'request') {
+            // Forbidden request-header names per the Fetch spec — a subset.
+            return in_array($name, self::forbiddenRequestNames(), true)
+                || self::isForbiddenRequestPrefix($name);
+        }
+        return false;
+    }
+
+    /** @return list<string> */
+    private static function forbiddenRequestNames(): array
+    {
+        return [
+            'accept-charset', 'accept-encoding', 'access-control-request-headers',
+            'access-control-request-method', 'connection', 'content-length',
+            'cookie', 'cookie2', 'date', 'dnt', 'expect', 'host', 'keep-alive',
+            'origin', 'referer', 'set-cookie', 'te', 'trailer', 'transfer-encoding',
+            'upgrade', 'via',
+        ];
+    }
+
+    private static function isForbiddenRequestPrefix(string $name): bool
+    {
+        return str_starts_with($name, 'proxy-') || str_starts_with($name, 'sec-');
+    }
+
+    /**
+     * For the no-cors guard, determine whether appending [name, value] on
+     * top of $existing produces an acceptable "CORS-safelisted request-
+     * header". Returns true for guards that don't care about the value.
+     *
+     * @param list<array{0:string,1:string}> $existing
+     */
+    private static function isGuardAcceptable(
+        array $existing,
+        string $guard,
+        string $name,
+        string $value
+    ): bool {
+        if ($guard !== 'request-no-cors') {
+            // Other guards either forbid the name outright (handled
+            // separately) or impose no value check.
+            return true;
+        }
+        // Only names in the safelisted set are allowed at all.
+        $allowed = ['accept', 'accept-language', 'content-language', 'content-type', 'range'];
+        if (!in_array($name, $allowed, true)) {
+            return false;
+        }
+        // Compute the combined value as get() would: comma-join existing
+        // matches with the new value appended.
+        $values = [];
+        foreach ($existing as $pair) {
+            if ($pair[0] === $name) {
+                $values[] = $pair[1];
+            }
+        }
+        $values[] = $value;
+        $combined = implode(', ', $values);
+
+        if ($name === 'accept' || $name === 'accept-language' || $name === 'content-language') {
+            if (strlen($combined) > 128) {
+                return false;
+            }
+            // Disallow CORS-unsafe bytes — anything outside 0x20-0x7E
+            // (except %09 HTAB) is rejected. The spec list excludes
+            // 0x22 ("), 0x28 ((), 0x29 ()), 0x3A (:), 0x3C (<),
+            // 0x3E (>), 0x3F (?), 0x40 (@), 0x5B ([), 0x5C (\),
+            // 0x5D (]), 0x7B ({), 0x7D (}), 0x7F. accept-language /
+            // content-language additionally restrict to a tiny set.
+            $len = strlen($combined);
+            for ($i = 0; $i < $len; $i++) {
+                $b = ord($combined[$i]);
+                if ($b < 0x20 && $b !== 0x09) {
+                    return false;
+                }
+                if ($b > 0x7E) {
+                    return false;
+                }
+                if (in_array($b, [0x22, 0x28, 0x29, 0x3A, 0x3C, 0x3E, 0x3F, 0x40, 0x5B, 0x5C, 0x5D, 0x7B, 0x7D, 0x7F], true)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        if ($name === 'content-type') {
+            if (strlen($combined) > 128) {
+                return false;
+            }
+            // Same byte-set restriction as above.
+            $len = strlen($combined);
+            for ($i = 0; $i < $len; $i++) {
+                $b = ord($combined[$i]);
+                if ($b < 0x20 && $b !== 0x09) {
+                    return false;
+                }
+                if ($b > 0x7E) {
+                    return false;
+                }
+                if (in_array($b, [0x22, 0x28, 0x29, 0x3A, 0x3C, 0x3E, 0x3F, 0x40, 0x5B, 0x5C, 0x5D, 0x7B, 0x7D, 0x7F], true)) {
+                    return false;
+                }
+            }
+            $essence = self::extractMimeEssence($combined);
+            return in_array($essence, [
+                'application/x-www-form-urlencoded',
+                'multipart/form-data',
+                'text/plain',
+            ], true);
+        }
+
+        // The only remaining safelisted name reaches here: range.
+        // Simple "bytes=N-M" form only.
+        return (bool) preg_match('/^bytes=\d+-\d*$/', $combined);
+    }
+
+    /**
+     * Extract the lowercase "type/subtype" essence of a possibly-parametered
+     * MIME type. Returns empty string on parse failure.
+     */
+    private static function extractMimeEssence(string $value): string
+    {
+        $semi = strpos($value, ';');
+        $essence = $semi === false ? $value : substr($value, 0, $semi);
+        return strtolower(trim($essence, " \t"));
     }
 
     /**
@@ -632,18 +833,62 @@ class HeadersConstructor
     }
 
     /**
-     * Validate + strip a header value. Leading/trailing HTTP whitespace
-     * (SPACE, TAB, CR, LF) is removed; the resulting body must contain no
-     * raw CR, LF, or NUL.
+     * Validate + strip a header value. The input MUST first be a valid
+     * ByteString (every UTF-16 code unit ≤ 0xFF) — that's the WebIDL
+     * conversion. Then leading/trailing HTTP whitespace (SPACE, TAB, CR,
+     * LF) is removed; the result must contain no raw CR, LF, or NUL.
+     *
+     * The string we receive here is already the PHP UTF-8 representation
+     * of the JS string. We check the original code-unit range by walking
+     * the UTF-8 bytes — any non-ASCII multi-byte sequence whose decoded
+     * code point exceeds 0xFF triggers the ByteString check.
      */
     private static function normalizeValue(string $value): string
     {
+        if (!self::isValidByteString($value)) {
+            throw new TypeError('Invalid header value: not a valid ByteString');
+        }
         // HTTP whitespace per the spec: HTAB, LF, CR, SPACE.
         $trimmed = trim($value, " \t\r\n");
         if (!self::isValidHeaderValue($trimmed)) {
             throw new TypeError('Invalid header value (contains CR, LF, or NUL)');
         }
         return $trimmed;
+    }
+
+    /**
+     * True iff every JS UTF-16 code unit of $value is ≤ 0xFF (i.e. the
+     * value is a valid WebIDL ByteString). Phasis strings are stored as
+     * UTF-8 internally, so we decode and check each code point.
+     */
+    private static function isValidByteString(string $value): bool
+    {
+        $len = strlen($value);
+        $i = 0;
+        while ($i < $len) {
+            $b = ord($value[$i]);
+            if ($b < 0x80) {
+                $i++;
+                continue;
+            }
+            if (($b & 0xE0) === 0xC0) {
+                // 2-byte UTF-8 sequence: max code point 0x7FF, which can
+                // exceed 0xFF (e.g. ÿ is C3 BF). Decode and check.
+                if ($i + 1 >= $len) {
+                    return false;
+                }
+                $b2 = ord($value[$i + 1]);
+                $cp = (($b & 0x1F) << 6) | ($b2 & 0x3F);
+                if ($cp > 0xFF) {
+                    return false;
+                }
+                $i += 2;
+                continue;
+            }
+            // 3- or 4-byte sequence — automatic > 0xFF.
+            return false;
+        }
+        return true;
     }
 
     private static function isValidHeaderName(string $name): bool
@@ -702,17 +947,10 @@ class HeadersConstructor
             );
         }
 
-        // Case 1: another Headers instance — copy its list verbatim
-        // (preserves multi-values and set-cookie multiplicity).
-        if ($init->getInternalProperty(self::SLOT_BRAND) === true) {
-            foreach (self::listOf($init) as $pair) {
-                self::appendPair($headers, $pair[0], $pair[1]);
-            }
-            return;
-        }
-
-        // Case 2: pair-sequence (anything iterable). The spec checks for
-        // Symbol.iterator before falling through to record handling.
+        // Per WebIDL overload resolution: check for Symbol.iterator FIRST.
+        // Any object (including a Headers instance) with a custom iterator
+        // is treated as a sequence — that's the WPT
+        // "Create headers with existing headers with custom iterator" case.
         $iterSym = SymbolConstructor::iterator();
         $iteratorMethod = $init->getBySymbol($iterSym);
         if ($iteratorMethod instanceof JsFunction) {
@@ -720,15 +958,56 @@ class HeadersConstructor
             return;
         }
 
-        // Case 3: record / plain object. Enumerate own enumerable string
-        // keys in insertion order; each value is ToString'd.
-        foreach ($init->ownKeys() as $key) {
-            $desc = $init->getOwnPropertyDescriptor($key);
+        // Case 1b: another Headers instance with no custom iterator — copy
+        // its list verbatim (preserves multi-values and set-cookie
+        // multiplicity). This branch is rarely hit because Headers.prototype
+        // exposes a Symbol.iterator method, but defining it as `undefined`
+        // on the instance lands us here.
+        if ($init->getInternalProperty(self::SLOT_BRAND) === true) {
+            foreach (self::listOf($init) as $pair) {
+                self::appendPair($headers, $pair[0], $pair[1]);
+            }
+            return;
+        }
+
+        // Case 3: record / plain object. Per WebIDL es-to-record:
+        //   For each key in [[OwnPropertyKeys]](init):  ← includes Symbols
+        //     1. let desc = [[GetOwnProperty]](key)
+        //     2. If desc !== undefined and desc.enumerable:
+        //        a. Convert key to ByteString (throws on Symbol or out-of-
+        //           range chars).
+        //        b. [[Get]](init, key) (now that the key is known valid).
+        //        c. Convert value to ByteString.
+        //        d. record[byteKey] = byteValue.
+        //   The order matters for Proxy traps — WPT headers-record verifies
+        //   the exact sequence of trap invocations.
+        $allKeys = $init->ordinaryOwnPropertyKeys();
+        foreach ($allKeys as $key) {
+            if ($key instanceof \Phasis\Value\JsSymbol) {
+                // Spec: still do the [[GetOwnProperty]] (so Proxy trap fires).
+                $desc = $init->getSymbolPropertyDescriptor($key);
+                if ($desc === null || !($desc->enumerable ?? false)) {
+                    continue;
+                }
+                // Symbol cannot be converted to a ByteString — throws.
+                throw new TypeError(
+                    "Cannot convert a Symbol value to a string"
+                );
+            }
+            if (!$key instanceof JsString) {
+                // ordinaryOwnPropertyKeys returns JsString | JsSymbol; the
+                // symbol branch above handled the latter so anything else
+                // is unreachable. Defence in depth.
+                continue;
+            }
+            $keyStr = $key->value;
+            $desc = $init->getOwnPropertyDescriptor($keyStr);
             if ($desc === null || !($desc->enumerable ?? false)) {
                 continue;
             }
-            $val = $init->get($key);
-            $name = self::normalizeName($key);
+            // Convert key to a valid ByteString header name before the [[Get]].
+            $name = self::normalizeName($keyStr);
+            $val = $init->get($keyStr);
             $value = self::normalizeValue(TypeConversion::toString($val));
             self::appendPair($headers, $name, $value);
         }
