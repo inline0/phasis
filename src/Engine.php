@@ -63,6 +63,41 @@ class Engine
     private ConsoleObject $console;
     private CallStack $callStack;
 
+    /**
+     * Optional embedder-supplied HTTP transport for `fetch()`. When null,
+     * `fetch()` uses `\Phasis\BuiltIn\Fetch\CurlTransport::send()`. The
+     * callable receives the request descriptor (method/url/headers/body/
+     * redirect/timeout) and the JS AbortSignal (may be null), and must
+     * return the response descriptor (status/statusText/headers/body).
+     *
+     * Set via `setFetchTransport()`.
+     *
+     * @var callable|null
+     */
+    private $fetchTransport = null;
+
+    /**
+     * Optional pre-flight policy hook for `fetch()`. Receives the Request
+     * and may: throw to deny outright; return null/void to pass through;
+     * return a Request to rewrite the outgoing call.
+     *
+     * Set via `setFetchPolicy()`.
+     *
+     * @var callable|null
+     */
+    private $fetchPolicy = null;
+
+    /**
+     * Optional cookie jar — any value with `get(url)` + `set(url, header)`
+     * methods (either a JsObject with JS functions for those names, or a
+     * PHP object implementing the same protocol). When set, `fetch()`
+     * folds the jar's cookies into the outgoing `Cookie:` header and
+     * pushes any `Set-Cookie` response headers back into the jar.
+     *
+     * @var mixed
+     */
+    private mixed $cookieJar = null;
+
     public function __construct()
     {
         // Clear any cached intrinsic prototypes from prior Engine instances
@@ -267,6 +302,10 @@ class Engine
         // Headers/Blob/FormData/Streams/AbortSignal for body extract).
         \Phasis\BuiltIn\RequestConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\ResponseConstructor::install($this->globalEnv);
+
+        // Fetch Pack — round 4: the actual fetch() global + navigator.
+        \Phasis\BuiltIn\NavigatorObject::install($this->globalEnv);
+        \Phasis\BuiltIn\FetchFunction::install($this->globalEnv);
 
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
@@ -1282,6 +1321,69 @@ class Engine
     public function getGlobalEnv(): Environment
     {
         return $this->globalEnv;
+    }
+
+    /**
+     * Swap in a custom HTTP transport for `fetch()`. The callable receives
+     * `(array $descriptor, ?\Phasis\Value\JsObject $signal)` and must
+     * return an array shaped `['status' => int, 'statusText' => string,
+     * 'headers' => list<[string,string]>, 'body' => string]`.
+     *
+     * Throwing from the callable rejects the fetch promise. To indicate
+     * an abort, throw a `\Phasis\BuiltIn\Fetch\TransportException` with
+     * kind="aborted"; anything else maps to TypeError.
+     */
+    public function setFetchTransport(callable $t): void
+    {
+        $this->fetchTransport = $t;
+    }
+
+    /**
+     * Install a pre-flight policy hook. The hook is called with the
+     * Request JsObject before the transport call:
+     *
+     *  - Return null/void → use the request as-is.
+     *  - Return a Request → replace the outgoing request.
+     *  - Throw → reject the fetch promise.
+     */
+    public function setFetchPolicy(callable $hook): void
+    {
+        $this->fetchPolicy = $hook;
+    }
+
+    /**
+     * Mount a cookie jar. The jar must respond to `get(url): string`
+     * (returning a `Cookie:` header value, e.g. "k=v; k2=v2") and
+     * `set(url, header): void` (receiving a single `Set-Cookie` line).
+     *
+     * Both JS-side JsObject (with JsFunction members named "get"/"set")
+     * and plain PHP objects with matching method names are accepted.
+     * Passing null clears the jar.
+     */
+    public function setCookieJar(mixed $jar): void
+    {
+        $this->cookieJar = $jar;
+    }
+
+    /**
+     * Read the currently installed fetch transport callable. Returns
+     * null when the default `CurlTransport::send()` should be used.
+     */
+    public function getFetchTransport(): ?callable
+    {
+        return $this->fetchTransport;
+    }
+
+    /** Read the currently installed fetch policy hook (may be null). */
+    public function getFetchPolicy(): ?callable
+    {
+        return $this->fetchPolicy;
+    }
+
+    /** Read the currently mounted cookie jar (may be null). */
+    public function getCookieJar(): mixed
+    {
+        return $this->cookieJar;
     }
 
     public function reset(): void
