@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Phasis\Runtime\Parts;
+namespace Phasis\Runtime\Parts\Helpers;
 
 use Phasis\Ast\Declaration\ClassDeclaration;
 use Phasis\Ast\Declaration\ExportDeclaration;
@@ -97,20 +97,87 @@ use Phasis\Runtime\CompletionType;
 use Phasis\Runtime\Reference;
 
 /**
- * Interpreter part: InterpreterHelpers. Composed into Interpreter via
- * `use Parts\InterpreterHelpers;`. `self::`/`$this->` references resolve
- * into the composing class.
+ * Interpreter helper part: AbruptCompletion. Composed back into the
+ * Interpreter via the InterpreterHelpers trait. `self::`/`$this->`
+ * resolve into the composing class.
  */
-trait InterpreterHelpers
+trait AbruptCompletion
 {
-    use Helpers\ReferenceResolution;
-    use Helpers\IteratorProtocol;
-    use Helpers\AbruptCompletion;
-    use Helpers\RegExpHelpers;
-    use Helpers\BigIntMath;
-    use Helpers\RegExpAnalysis;
+    /**
+     * Per ECMAScript spec: IsAnonymousFunctionDefinition.
+     * Returns true only if the node is a function/arrow/class expression WITHOUT a name.
+     * Used to determine whether name inference applies when assigning to a binding.
+     */
+    private function isAnonymousFunctionDefinitionNode(Node $node): bool
+    {
+        if ($node instanceof FunctionExpression && $node->name === null) {
+            return true;
+        }
+        if ($node instanceof ArrowFunction) {
+            return true;
+        }
+        if ($node instanceof ClassExpression && $node->id === null) {
+            return true;
+        }
+        return false;
+    }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
+    /**
+     * Check whether a function/class has an explicitly user-defined .name property.
+     *
+     * JsFunction constructor always sets .name (writable:false, enumerable:false, configurable:true)
+     * with a JsString value. If the .name property has been overridden by user code (e.g.
+     * static name() {} in a class body), the descriptor will differ (writable:true, or value
+     * is not a JsString). This lets name inference distinguish default .name from explicit .name.
+     */
+    private function hasExplicitNameProperty(JsFunction $fn): bool
+    {
+        $desc = $fn->getOwnPropertyDescriptor('name');
+        if ($desc === null) {
+            return false;
+        }
+        // If the name property is not a simple data property with a string value and
+        // writable:false, it was explicitly overridden (e.g. static name() {} method).
+        if ($desc->isAccessorDescriptor()) {
+            return true;
+        }
+        if ($desc->writable !== false) {
+            return true;
+        }
+        if (!$desc->value instanceof JsString) {
+            return true;
+        }
+        return false;
+    }
+
+    private function handleAbrupt(Completion $completion): JsValue
+    {
+        if ($completion->type === CompletionType::Throw) {
+            $this->throwJsValue($completion->value);
+        }
+        return $completion->value;
+    }
+
+    // phpExceptionToJsValue is defined earlier in this file.
+
+    /** @return never */
+    public function throwJsValue(JsValue $value): void
+    {
+        // Always use JsThrowable to preserve the original JS value.
+        // execTryStatement catches JsThrowable and extracts jsValue for the catch block.
+        // Use display() rather than ToString so that throwing a Symbol or
+        // other non-stringifiable primitive does not raise a secondary
+        // TypeError that replaces the original throw value.
+        throw new \Phasis\Exceptions\JsThrowable($value);
+    }
+
+    public function getCallStack(): CallStack
+    {
+        return $this->callStack;
+    }
+
+    public function getGlobalEnv(): Environment
+    {
+        return $this->globalEnv;
+    }
 }
