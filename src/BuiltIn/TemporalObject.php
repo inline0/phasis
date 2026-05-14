@@ -13316,12 +13316,15 @@ class TemporalObject
         // Lunisolar calendars can require longer search windows (M-d may exist
         // only every few years).
         $bestIso = null;
-        // Chinese / Dangi need a wider window because some leap months
-        // recur only every few hundred years and the test fixtures want
-        // the spec's "latest year ≤ 1972" reference. Hebrew/etc. stay
-        // small.
+        // Chinese / Dangi need a wide window because some "uncommon"
+        // leap months (M01L, M09L, M10L, M11L, M12L with 30 days)
+        // recur only every several thousand years; SM's
+        // `from-chinese-leap-month-uncommon` test asserts these exist
+        // at ISO -6482 etc., which means our search must reach the
+        // deep-past entries baked into the chinese / dangi tables
+        // (start = -7500). Hebrew/etc. stay small.
         $maxLookback = in_array($cal, ['chinese', 'dangi'], true)
-            ? 300
+            ? 10000
             : (in_array($cal, ['hebrew'], true) ? 30 : 8);
         // When the requested day is more than the calendar month allows
         // (e.g. day 31 in islamic-civil M02 which has 29), step the day

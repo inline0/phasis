@@ -113,12 +113,6 @@ class Test262Runner
      * @var array<string, string>
      */
     private const HOST_GAP_BLOCKLIST = [
-        // ICU4X Chinese-calendar leap-month resolution for years
-        // outside the common 19-year cycle (e.g. leap month 6 in
-        // 2128). Requires the Reingold-Dershowitz arithmetic.
-        // V8 itself crashes on this fixture in some builds.
-        'staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js'
-            => 'Chinese-calendar uncommon-leap-month arithmetic not implemented',
         // ---------------------------------------------------------------
         // Note: SpiderMonkey JS-loop stress fixtures (decodeURI/A2.5_T1,
         // decodeURIComponent/A2.5_T1, Array/toSpliced-dense,
