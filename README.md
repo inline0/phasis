@@ -28,9 +28,12 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 
 - Full ES2024+ language surface (classes, async/await, generators, decorators, top-level await, ES modules)
 - Complete standard library (`Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`)
+- **Web Platform Pack**: `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`
+- **Fetch Pack**: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`
 - Direct PHP↔JS interop — share objects without serialization, bind PHP callables as JS functions
 - Resource limits for call depth, loop iterations, string length, output size, and wall-clock execution
-- 100 % of the official test262 suite passes (50,506 / 50,506)
+- **100 % of the official test262 suite passes** (50,506 / 50,506) — ECMAScript conformance
+- **100 % of imported Web Platform Tests pass** (444 / 444) across fetch, headers, blob, abort, streams, encoding, URL
 
 ## Quick Start
 

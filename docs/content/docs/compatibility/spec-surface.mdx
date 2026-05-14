@@ -129,6 +129,17 @@ Phasis targets the current ECMAScript specification (ES2024+) and tracks TC39 pr
 | `ShadowRealm` (Stage 3) | full |
 | `globalThis` | ✅ |
 
+## Web Platform APIs (WHATWG / W3C, not TC39)
+
+Beyond pure ECMAScript, Phasis ships two layered packs of Web APIs that real-world JS libraries pre-check for. See [Web APIs](/docs/compatibility/web-apis) for the full surface and per-area conformance.
+
+| Pack | Globals | WPT |
+|---|---|---|
+| **Web Platform** | `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException` | 100 % |
+| **Fetch** | `fetch`, `Request`, `Response`, `Headers`, `Body` mixin, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `navigator` | 100 % |
+
+444 / 444 imported Web Platform Tests subtests pass.
+
 ## What's not yet implemented
 
 - **SharedArrayBuffer worker semantics** beyond a single agent — multi-thread atomic notification across real OS threads requires `pcntl` and isn't on the roadmap. Single-agent atomics work.

@@ -1,0 +1,149 @@
+---
+title: Web APIs (WHATWG / W3C)
+description: The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding, structuredClone, fetch, Streams, Blob, FormData, AbortSignal, and more. 100% Web Platform Tests conformance on the imported subset.
+---
+
+# Web APIs
+
+Beyond ECMAScript itself, Phasis ships two layered packs of WHATWG / W3C APIs:
+
+- **Web Platform Pack** — pure value types, no I/O: `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException`.
+- **Fetch Pack** — real HTTP from JavaScript: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `navigator`.
+
+Both packs are **on by default**. No flag, no setup — `typeof fetch` returns `"function"` on a fresh `new Engine()`.
+
+## Conformance
+
+| Area | Subtests | Status |
+|---|---:|---|
+| `URL` / `URLSearchParams` | 20 | 100 % |
+| `TextEncoder` / `TextDecoder` | 15 | 100 % |
+| `atob` / `btoa` | 6 | 100 % |
+| `structuredClone` | 11 | 100 % |
+| `performance.now` | 3 | 100 % |
+| `Headers` | 132 | 100 % |
+| `Blob` / `File` | 235 | 100 % |
+| `AbortController` / `AbortSignal` / `Event` | 22 | 100 % |
+| **Total** | **444** | **100 %** |
+
+Verified by `bin/wpt` against the official [Web Platform Tests](https://github.com/web-platform-tests/wpt). Run yourself:
+
+```bash
+bin/wpt                # everything
+bin/wpt --category headers --verbose   # one area, per-subtest output
+bin/wpt --json         # machine-readable
+```
+
+## fetch() example
+
+```js
+const res = await fetch("https://api.example.com/users", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "alice" }),
+});
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+const user = await res.json();
+```
+
+That works out of the box. The default transport is PHP `ext-curl`. Bodies stream through the WHATWG `ReadableStream` Phasis ships, so `for await (const chunk of res.body)` also works.
+
+## AbortController example
+
+```js
+const ctrl = new AbortController();
+setTimeout(() => ctrl.abort(), 5000);  // (setTimeout not yet shipped; abort manually instead)
+try {
+  const res = await fetch(slowUrl, { signal: ctrl.signal });
+} catch (e) {
+  if (e.name === "AbortError") {
+    // request was cancelled
+  }
+}
+```
+
+`AbortSignal.timeout(ms)` is also implemented (lazy-deadline — checks on `aborted` read rather than firing an event mid-event-loop; works for fetch transports that poll the signal during transfer).
+
+## Embedder controls (PHP side)
+
+Three hooks on the `Phasis\Engine` class control fetch behavior:
+
+```php
+$engine = new Phasis\Engine();
+
+// 1. Swap the HTTP transport. The callable receives a request descriptor
+//    and an optional AbortSignal; returns a response descriptor.
+$engine->setFetchTransport(function (array $request, $signal) {
+    // ... use Guzzle, Symfony HttpClient, your stub, etc.
+    return [
+        'status' => 200,
+        'statusText' => 'OK',
+        'headers' => [['content-type', 'application/json']],
+        'body' => '{"data":"value"}',
+    ];
+});
+
+// 2. Pre-flight policy hook — rewrite, deny, or allow.
+$engine->setFetchPolicy(function ($request) {
+    $url = $request->get('url')->value;
+    if (!str_starts_with($url, 'https://')) {
+        throw new \RuntimeException('HTTPS only');
+    }
+    return null;  // allow as-is; return modified Request to rewrite
+});
+
+// 3. Cookie jar. Opt-in. Accepts any object with get(url):string and
+//    set(url, header):void methods. JsObject or PHP object both work.
+$engine->setCookieJar($myJar);
+```
+
+If `setFetchTransport()` is not called, the default `CurlTransport` runs. The cookie jar is **opt-in** — no default jar, no cookies stored unless you provide one.
+
+## Streams example
+
+```js
+// Producer: ReadableStream that yields numbers 1..5
+const rs = new ReadableStream({
+  start(controller) {
+    for (let i = 1; i <= 5; i++) controller.enqueue(i);
+    controller.close();
+  },
+});
+
+// Consumer: async iteration
+for await (const value of rs) {
+  console.log(value);  // 1, 2, 3, 4, 5
+}
+
+// Pipe through a transform
+const ts = new TransformStream({
+  transform(chunk, controller) { controller.enqueue(chunk * 2); },
+});
+const doubled = new ReadableStream({
+  start(c) { [1, 2, 3].forEach(n => c.enqueue(n)); c.close(); }
+}).pipeThrough(ts);
+for await (const v of doubled) console.log(v);  // 2, 4, 6
+```
+
+Full Streams spec: `ReadableStream`, `WritableStream`, `TransformStream`, `ReadableStreamDefaultController`, `ReadableByteStreamController`, `ReadableStreamDefaultReader`, `ReadableStreamBYOBReader`, `ReadableStreamBYOBRequest`, `WritableStreamDefaultController`, `WritableStreamDefaultWriter`, `TransformStreamDefaultController`, `ByteLengthQueuingStrategy`, `CountQueuingStrategy`, plus `pipeTo` / `pipeThrough` / `tee`.
+
+## What's *not* shipped
+
+These browser-only or runtime-model APIs are deliberately out of scope — see [Known limitations](/docs/compatibility/limitations) for the full discussion:
+
+- `window`, `document`, the DOM tree
+- `localStorage`, `sessionStorage`, `IndexedDB`
+- `WebSocket`
+- `Worker`, `SharedWorker`, `MessageChannel`
+- `setTimeout`, `setInterval`, `queueMicrotask` (no event loop yet)
+- `crypto.subtle`, `crypto.getRandomValues`
+- `XMLHttpRequest` (superseded by `fetch`)
+- Service Workers, Push API, Notifications, BroadcastChannel
+
+Most of these can be polyfilled by the embedder via `$engine->setGlobal()` if needed.
+
+## Growing the WPT corpus
+
+The local WPT clone at `tests/Wpt/upstream/` is a sparse-checkout of [web-platform-tests/wpt](https://github.com/web-platform-tests/wpt) covering `fetch/`, `streams/`, `FileAPI/`, `xhr/formdata/`, `dom/abort/`, `dom/events/`. 304 fixtures available; 23 currently imported into `tests/Wpt/fixtures/`.
+
+To import more: copy any `*.any.js` file from `upstream/<area>/` into `tests/Wpt/fixtures/<category>/`. The runner picks it up on next run. Failures get logged via `bin/wpt --verbose`.

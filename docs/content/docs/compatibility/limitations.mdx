@@ -58,11 +58,20 @@ This matches the bare ECMAScript spec but not Node's behaviour. To use npm packa
 
 `WebAssembly` is not implemented. There's no PHP wasm runtime to bind to.
 
-## DOM / browser globals
+## Browser-only Web APIs we skip
 
-Phasis is a pure language engine — it has no `window`, `document`, `fetch`, `XMLHttpRequest`, `localStorage`, or any other browser global. Those live in the browser's JS host, not in the language.
+Phasis ships the full **Web Platform Pack** (`URL`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`) and the full **Fetch Pack** (`fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`) — see [Web APIs](/docs/compatibility/web-apis).
 
-For HTTP from JS, expose a PHP `fetch` host function (see [Host functions](/docs/interop/host-functions)). The same pattern applies for storage, IO, timers, etc.
+What's *not* shipped:
+
+- `window`, `document`, the DOM tree — Phasis isn't a browser.
+- `localStorage`, `sessionStorage`, `IndexedDB` — host-side concerns; the embedder owns persistence.
+- `WebSocket` — separate transport. Possible to add; not yet on the roadmap.
+- `Worker`, `SharedWorker`, `MessageChannel` — needs real OS threads, which PHP doesn't offer.
+- `setTimeout`, `setInterval`, `queueMicrotask` — needs an event loop. Phasis is synchronous-embeddable today; a runtime-model change would be required.
+- `crypto.subtle`, `crypto.getRandomValues` — separate threat model; possible add later.
+- `XMLHttpRequest` — superseded by `fetch`, which we *do* ship.
+- Service Workers, Push API, Notifications, BroadcastChannel — irrelevant outside a browser.
 
 ## Node globals
 
