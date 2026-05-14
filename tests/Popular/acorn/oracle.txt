@@ -1,0 +1,126 @@
+Program
+  ImportDeclaration
+    ImportSpecifier
+      Identifier name=foo
+      Identifier name=foo
+    Literal value="./bar.js"
+  ExportNamedDeclaration
+    ClassDeclaration
+      Identifier name=Counter
+      ClassBody
+        PropertyDefinition
+          PrivateIdentifier name=value
+          Literal value=0
+        MethodDefinition kind=constructor
+          Identifier name=constructor
+          FunctionExpression
+            AssignmentPattern
+              Identifier name=start
+              Literal value=0
+            BlockStatement
+              ExpressionStatement
+                AssignmentExpression op==
+                  MemberExpression
+                    ThisExpression
+                    PrivateIdentifier name=value
+                  Identifier name=start
+        MethodDefinition kind=method
+          Identifier name=increment
+          FunctionExpression
+            BlockStatement
+              ReturnStatement
+                UpdateExpression op=++
+                  MemberExpression
+                    ThisExpression
+                    PrivateIdentifier name=value
+        MethodDefinition kind=method
+          Identifier name=fromArray
+          FunctionExpression
+            Identifier name=arr
+            BlockStatement
+              ReturnStatement
+                CallExpression
+                  MemberExpression
+                    Identifier name=arr
+                    Identifier name=reduce
+                  ArrowFunctionExpression
+                    Identifier name=acc
+                    Identifier name=n
+                    BinaryExpression op=+
+                      Identifier name=acc
+                      Identifier name=n
+                  Literal value=0
+  VariableDeclaration kind=const
+    VariableDeclarator
+      Identifier name=range
+      ArrowFunctionExpression
+        Identifier name=a
+        Identifier name=b
+        CallExpression
+          MemberExpression
+            Identifier name=Array
+            Identifier name=from
+          ObjectExpression
+            Property kind=init
+              Identifier name=length
+              BinaryExpression op=-
+                Identifier name=b
+                Identifier name=a
+          ArrowFunctionExpression
+            Identifier name=_
+            Identifier name=i
+            BinaryExpression op=+
+              Identifier name=i
+              Identifier name=a
+  FunctionDeclaration
+    Identifier name=asyncRange
+    Identifier name=a
+    Identifier name=b
+    BlockStatement
+      ForOfStatement
+        VariableDeclaration kind=const
+          VariableDeclarator
+            Identifier name=n
+        CallExpression
+          Identifier name=range
+          Identifier name=a
+          Identifier name=b
+        BlockStatement
+          ExpressionStatement
+            YieldExpression
+              AwaitExpression
+                CallExpression
+                  MemberExpression
+                    Identifier name=Promise
+                    Identifier name=resolve
+                  BinaryExpression op=*
+                    Identifier name=n
+                    Literal value=2
+  VariableDeclaration kind=const
+    VariableDeclarator
+      ObjectPattern
+        Property kind=init
+          Identifier name=x
+          AssignmentPattern
+            Identifier name=x
+            Literal value=1
+        RestElement
+          Identifier name=rest
+      ObjectExpression
+        Property kind=init
+          Identifier name=x
+          Literal value=5
+        Property kind=init
+          Identifier name=y
+          Literal value=10
+  VariableDeclaration kind=const
+    VariableDeclarator
+      Identifier name=tagged
+      TaggedTemplateExpression
+        MemberExpression
+          Identifier name=String
+          Identifier name=raw
+        TemplateLiteral
+          Identifier name=x
+          TemplateElement
+          TemplateElement

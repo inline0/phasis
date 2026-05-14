@@ -13,6 +13,9 @@
         <testsuite name="oracle">
             <directory>tests/Oracle</directory>
         </testsuite>
+        <testsuite name="popular">
+            <directory>tests/Popular</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

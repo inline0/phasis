@@ -1,0 +1,25 @@
+=== template 0 ===
+Project: Phasis
+Description: Pure PHP JavaScript engine
+
+=== template 1 ===
+Escaped: &lt;script&gt;alert(1)&lt;&#x2F;script&gt;
+Raw: <script>alert(1)</script>
+
+=== template 2 ===
+Features:
+- Pure PHP: No Node, no FFI
+- Spec-compliant: 99.97% test262
+- Embeddable: Drop into any PHP app
+
+=== template 3 ===
+empty
+
+=== template 4 ===
+Repo: inline0/phasis
+
+=== template 5 ===
+- **Pure PHP**: No Node, no FFI- **Spec-compliant**: 99.97% test262- **Embeddable**: Drop into any PHP app
+=== template 6 ===
+PHASIS FTW
+
