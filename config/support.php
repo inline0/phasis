@@ -102,6 +102,20 @@ return [
         'staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js',
         'staging/sm/Temporal/PlainDate/from-constrain-japanese.js',
         'staging/sm/Temporal/PlainDate/from-constrain-hebrew.js',
+        // SM DST cache stress: O(n^4) probe of the JS-side DST cache.
+        // Each shard sweeps a different millennium-scale window.
+        'staging/sm/Date/dst-offset-caching-1-of-8.js',
+        'staging/sm/Date/dst-offset-caching-2-of-8.js',
+        'staging/sm/Date/dst-offset-caching-3-of-8.js',
+        'staging/sm/Date/dst-offset-caching-4-of-8.js',
+        'staging/sm/Date/dst-offset-caching-5-of-8.js',
+        'staging/sm/Date/dst-offset-caching-6-of-8.js',
+        'staging/sm/Date/dst-offset-caching-7-of-8.js',
+        'staging/sm/Date/dst-offset-caching-8-of-8.js',
+        // SM Temporal/Intl agreement test, 13K Temporal-vs-DateTimeFormat round-trips.
+        'staging/sm/Temporal/Calendar/compare-to-datetimeformat.js',
+        // SM nullish-coalescing assert loop, 1e5 iterations of the basic-cases bundle.
+        'staging/sm/expressions/nullish-coalescing.js',
         // Module DFS verification builds a deep import graph.
         'language/module-code/verify-dfs.js',
         // Long regex literal in expressions sweep slows the chunk.

@@ -8,6 +8,7 @@
     <exclude-pattern>src/Regex/Unicode16Tables.php</exclude-pattern>
     <exclude-pattern>src/Regex/FoldTable.php</exclude-pattern>
     <exclude-pattern>src/BuiltIn/data/*</exclude-pattern>
+    <exclude-pattern>tests/Popular/*</exclude-pattern>
 
     <arg name="colors"/>
     <arg value="sp"/>

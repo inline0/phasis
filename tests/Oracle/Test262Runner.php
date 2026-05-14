@@ -120,50 +120,17 @@ class Test262Runner
         'staging/sm/Temporal/PlainMonthDay/from-chinese-leap-month-uncommon.js'
             => 'Chinese-calendar uncommon-leap-month arithmetic not implemented',
         // ---------------------------------------------------------------
-        // SpiderMonkey JS-loop stress fixtures. These were written to
-        // exercise SpiderMonkey's JIT under contrived high-iteration
-        // loops (hundreds of thousands to millions of inner iterations).
-        // A tree-walking interpreter pays one full call-dispatch per
-        // iteration, so per-test wall time runs 30s-240s locally and
-        // 100s-700s on CI's slower runner. The spec semantics each
-        // fixture covers are also exercised by the smaller adjacent
-        // suites we pass (built-ins/Date/*, built-ins/Array/prototype/
-        // toSpliced/*, language/expressions/coalesce/*, built-ins/
-        // TypedArray/prototype/set/*, built-ins/decodeURI/* A2.1..A2.4,
-        // intl402/DateTimeFormat/*, etc.), so blocking the stress
-        // variants doesn't reduce real coverage. The way out is a
-        // bytecode JIT for the tree-walker; until that exists these
-        // fixtures stay blocked.
-        'built-ins/decodeURI/S15.1.3.1_A2.5_T1.js'
-            => 'Sputnik 1M-iter decodeURI sweep; needs bytecode JIT',
-        'built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js'
-            => 'Sputnik 1M-iter decodeURIComponent sweep; needs bytecode JIT',
-        'staging/sm/Array/toSpliced-dense.js'
-            => 'SM 14k-iter exhaustive toSpliced sweep; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-1-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-2-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-3-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-4-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-5-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-6-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-7-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Date/dst-offset-caching-8-of-8.js'
-            => 'SM O(n^4) DST cache stress; needs bytecode JIT',
-        'staging/sm/Temporal/Calendar/compare-to-datetimeformat.js'
-            => 'SM 13K-iter Temporal/Intl stress; needs bytecode JIT',
-        'staging/sm/TypedArray/element-setting-converts-using-ToNumber.js'
-            => 'SM 700K-iter ToNumber round-trip stress; needs bytecode JIT',
-        'staging/sm/TypedArray/sort_large_countingsort.js'
-            => 'SM 262k-element typed-array sort stress; needs bytecode JIT',
-        'staging/sm/expressions/nullish-coalescing.js'
-            => 'SM 1e5-iter assert-loop stress; needs bytecode JIT',
+        // Note: SpiderMonkey JS-loop stress fixtures (decodeURI/A2.5_T1,
+        // decodeURIComponent/A2.5_T1, Array/toSpliced-dense,
+        // Date/dst-offset-caching-*, Temporal/Calendar/compare-to-
+        // datetimeformat, TypedArray/element-setting-converts-using-
+        // ToNumber, TypedArray/sort_large_countingsort, and
+        // expressions/nullish-coalescing) were previously blocklisted
+        // pending a bytecode JIT. The bytecode VM (src/Bytecode/) now
+        // clears them within the per-test budget when each test runs as
+        // an isolated chunk (see test262_isolated_tests in
+        // config/support.php and the isolated-test budget bump in
+        // run()). They contribute to compliance as normal passes.
         // ---------------------------------------------------------------
         // (from-chinese.js, addition-across-lunisolar-leap-months-chinese.js,
         // and non-iso-calendars-chinese.js are no longer blocklisted: phasis
@@ -223,6 +190,20 @@ class Test262Runner
         // partial-set expansion and miss some required matches.
     ];
 
+    /**
+     * Tests promoted to single-file chunks via test262_isolated_tests
+     * in config/support.php run with a wider per-test budget than the
+     * 30 s default — they were placed in isolation precisely because
+     * they approach or exceed it. Lookup is keyed by the full
+     * suite-relative path (`test262/test/...`) and built once at
+     * setIsolatedTests() time. Empty by default so a runner constructed
+     * without the config (unit tests, ad-hoc invocations) behaves
+     * exactly as before.
+     *
+     * @var array<string, true>
+     */
+    private array $isolatedSet = [];
+
     public function __construct(string $suiteDir)
     {
         $this->suiteDir = rtrim($suiteDir, '/');
@@ -233,6 +214,24 @@ class Test262Runner
     public function setSkipFeatures(array $features): void
     {
         $this->skipFeatures = $features;
+    }
+
+    /**
+     * Register the list of tests promoted to their own single-file
+     * chunk via config/support.php's test262_isolated_tests. Each
+     * entry is a suite-relative path (e.g. "staging/sm/Date/dst-
+     * offset-caching-1-of-8.js"). Tests in this set are granted a
+     * larger per-test wall budget in run().
+     *
+     * @param list<string> $relativePaths
+     */
+    public function setIsolatedTests(array $relativePaths): void
+    {
+        $set = [];
+        foreach ($relativePaths as $rel) {
+            $set['test262/test/' . $rel] = true;
+        }
+        $this->isolatedSet = $set;
     }
 
     public function run(string $testPath): TestResult
@@ -391,15 +390,22 @@ class Test262Runner
         // test262 tests may iterate over large Unicode ranges. Raise the loop limit
         // well above the default 100K so these tests can complete.
         $engine->setLimit('maxLoopIterations', 2_000_000);
-        // Hard time limit per test: env override, default 30s, with
-        // a 120s bump for SM DST cache stress tests (O(n^4) probe) and
-        // for the Sputnik decodeURI / decodeURIComponent UTF-8 sweep
-        // (A2.5_T1), which iterates ~983K four-byte percent-encoded
-        // sequences through the global URI built-ins. Both are
-        // promoted to their own chunk via test262_isolated_tests
-        // (config/support.php), so widening the per-test budget here
-        // does not steal time from neighbour tests.
-        $timeLimit = (int) (getenv('PHPJS_TEST_TIME_LIMIT') ?: 30);
+        // Hard time limit per test: env override, default 30s. Tests
+        // promoted to their own single-file chunk via test262_isolated_tests
+        // get a 120s budget instead — they were isolated precisely
+        // because they approach or exceed 30s (SM DST cache stress with
+        // its O(n^4) probe, the Sputnik decodeURI/decodeURIComponent
+        // UTF-8 sweep at ~983K four-byte percent-encoded sequences, the
+        // SM TypedArray sort/ToNumber stress, etc.). Because each
+        // isolated test runs alone in its chunk, widening the per-test
+        // budget here does not steal time from neighbour tests.
+        $envOverride = getenv('PHPJS_TEST_TIME_LIMIT');
+        if ($envOverride !== false && $envOverride !== '') {
+            $timeLimit = (int) $envOverride;
+        } else {
+            $relForLookup = $this->relativeForIsolatedLookup($testPath);
+            $timeLimit = isset($this->isolatedSet[$relForLookup]) ? 120 : 30;
+        }
         set_time_limit($timeLimit);
 
         // Set the module path so that import() can resolve relative specifiers.
@@ -700,6 +706,21 @@ try {
     exit(1);
 }
 PHP;
+    }
+
+    /**
+     * Normalise an absolute test path to the suite-relative key used
+     * by setIsolatedTests() (`test262/test/...`). Used so the isolated
+     * lookup works regardless of where the runner is invoked from.
+     */
+    private function relativeForIsolatedLookup(string $testPath): string
+    {
+        $marker = '/test262/test/';
+        $pos = strrpos($testPath, $marker);
+        if ($pos === false) {
+            return $testPath;
+        }
+        return 'test262/test/' . substr($testPath, $pos + strlen($marker));
     }
 
     private function boolStr(bool $v): string

@@ -32,6 +32,7 @@ if (!is_dir($suiteDir . '/test')) {
 $runner = new Test262Runner($suiteDir);
 
 $runner->setSkipFeatures($supportConfig['test262_skipped_features']);
+$runner->setIsolatedTests((array) ($supportConfig['test262_isolated_tests'] ?? []));
 
 // Parse CLI args
 $category = null;
