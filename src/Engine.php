@@ -258,6 +258,11 @@ class Engine
         \Phasis\BuiltIn\FormDataConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\HeadersConstructor::install($this->globalEnv);
 
+        // Fetch Pack — round 2: AbortController (needs EventTarget) +
+        // full WHATWG Streams (needs EventTarget for signal integration).
+        \Phasis\BuiltIn\AbortControllerConstructor::install($this->globalEnv);
+        \Phasis\BuiltIn\StreamsConstructor::install($this->globalEnv);
+
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
         // When called as function, converts value to BigInt.
