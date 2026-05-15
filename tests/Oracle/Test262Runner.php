@@ -380,7 +380,7 @@ class Test262Runner
         bool $isAsync = false,
     ): TestResult {
         // Run in-process for speed (~100x faster than subprocess per test)
-        $engine = new Engine();
+        $engine = new Engine(eager: true);
         // test262 tests may iterate over large Unicode ranges. Raise the loop limit
         // well above the default 100K so these tests can complete.
         $engine->setLimit('maxLoopIterations', 2_000_000);
@@ -737,7 +737,7 @@ PHP;
         ?array $negative,
         bool $isRaw,
     ): TestResult {
-        $engine = new Engine();
+        $engine = new Engine(eager: true);
 
         try {
             // Load harness files
@@ -970,7 +970,7 @@ PHP;
         // breaking cross-realm identity tests.
         $outerCallback = \Phasis\Value\JsFunction::getInterpreterCallback();
         $outerInstance = \Phasis\Value\JsFunction::getInterpreterInstance();
-        $childEngine = new Engine();
+        $childEngine = new Engine(eager: true);
         $childEngine->setLimit('maxLoopIterations', 2_000_000);
         $this->install262HostObject($childEngine);
         try {

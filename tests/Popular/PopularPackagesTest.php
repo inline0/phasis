@@ -63,7 +63,7 @@ class PopularPackagesTest extends TestCase
         $oracle = (string) file_get_contents($dir . '/oracle.txt');
 
         $captured = '';
-        $engine = new Engine();
+        $engine = new Engine(eager: true);
         $engine->setGlobal('__phasisCapture', function (string $line) use (&$captured): void {
             $captured .= $line . "\n";
         });

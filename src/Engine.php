@@ -8,9 +8,11 @@ use Phasis\BuiltIn\ConsoleObject;
 use Phasis\BuiltIn\GlobalObject;
 use Phasis\Interop\PhpToJs;
 use Phasis\Parser\Parser;
+use Phasis\Object\PropertyDescriptor;
 use Phasis\Runtime\CallStack;
 use Phasis\Runtime\Environment;
 use Phasis\Runtime\Interpreter;
+use Phasis\Runtime\LazyBuiltinRegistry;
 use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsObject;
@@ -98,8 +100,31 @@ class Engine
      */
     private mixed $cookieJar = null;
 
-    public function __construct()
+    /**
+     * When false (default), non-core built-ins (Map, Set, TypedArray,
+     * Atomics, Proxy, Reflect, console, Intl, WeakMap/Set/Ref,
+     * FinalizationRegistry, DisposableStack, ShadowRealm, Temporal,
+     * the Web Platform Pack, and the Fetch Pack) are registered as
+     * placeholder accessors on the global object and only materialize
+     * on first read. Core intrinsics the language itself depends on
+     * (Object/Function/Array/Promise/Symbol/Error/Number/String/RegExp/
+     * Iterator/BigInt and their prototypes) are installed eagerly even
+     * in lazy mode.
+     *
+     * When true, every built-in is installed eagerly at construction —
+     * the pre-lazy behavior. The conformance harness (test262, WPT,
+     * popular-packages, oracle regression) sets this so its tests see
+     * the full surface from the first instruction.
+     */
+    private bool $eager;
+
+    /** Tracks names whose accessor placeholders are still in place. */
+    private LazyBuiltinRegistry $lazyRegistry;
+
+    public function __construct(bool $eager = false)
     {
+        $this->eager = $eager;
+        $this->lazyRegistry = new LazyBuiltinRegistry();
         // Clear any cached intrinsic prototypes from prior Engine instances
         // so each realm gets its own wired object graph.
         self::resetStaticIntrinsics();
@@ -195,6 +220,84 @@ class Engine
             'globalThis',
             \Phasis\Object\PropertyDescriptor::data($globalObj, true, false, true),
         );
+
+        // In lazy mode, install accessor placeholders on the global
+        // object for every registered lazy module. Reading any of those
+        // names — `Map`, `fetch`, `Temporal`, … — fires the accessor,
+        // which runs the install factory and replaces the accessor with
+        // the real data descriptor. Subsequent reads bypass the
+        // accessor entirely.
+        if (!$this->eager) {
+            $this->installLazyAccessors($globalObj);
+        }
+    }
+
+    /**
+     * Define an accessor descriptor on the global object for each
+     * lazy-registered name. The accessor's getter realizes the owning
+     * module, after which the binding lives on the env + global object
+     * directly and the placeholder is gone.
+     */
+    private function installLazyAccessors(JsObject $globalObj): void
+    {
+        $registry = $this->lazyRegistry;
+        $env = $this->globalEnv;
+        foreach ($registry->names() as $name) {
+            // Skip names already bound — happens when eager-core install
+            // re-used a name a lazy module also claims, or when an
+            // embedder pre-empted with setGlobal().
+            if ($globalObj->hasOwnProperty($name)) {
+                continue;
+            }
+            $getter = JsFunction::fromCallable(
+                'get ' . $name,
+                static function (
+                    JsValue $this_,
+                    array $args,
+                ) use ($name, $registry, $env, $globalObj): JsValue {
+                    unset($this_, $args);
+                    $registry->realize($name);
+                    // Pull from the env's own bindings rather than
+                    // env->get(), which would walk the linked object
+                    // and re-enter this accessor when an install used
+                    // defineDeletable (which doesn't sync to the
+                    // linked global object).
+                    $value = $env->getAtDepth($name, 0) ?? JsUndefined::instance();
+                    // Make sure the accessor is fully gone from the
+                    // global object after install. defineVar replaces
+                    // it automatically; defineDeletable does not, so
+                    // belt-and-suspenders here.
+                    $current = $globalObj->getOwnPropertyDescriptor($name);
+                    if ($current === null || !$current->isDataDescriptor()) {
+                        $globalObj->defineOwnProperty(
+                            $name,
+                            PropertyDescriptor::data($value, true, false, true),
+                        );
+                    }
+                    return $value;
+                },
+            );
+            $globalObj->defineOwnProperty(
+                $name,
+                PropertyDescriptor::accessor(
+                    get: $getter,
+                    enumerable: false,
+                    configurable: true,
+                ),
+            );
+        }
+    }
+
+    /** Internal: the registry of lazy-installable modules for this realm. */
+    public function getLazyBuiltinRegistry(): LazyBuiltinRegistry
+    {
+        return $this->lazyRegistry;
+    }
+
+    /** Internal: whether this engine eagerly installs every built-in. */
+    public function isEager(): bool
+    {
+        return $this->eager;
     }
 
     private function installBuiltins(): void
@@ -251,61 +354,78 @@ class Engine
                 }
             }
         }
+        // Eager core — every built-in in this block is load-bearing for
+        // the language itself (errors thrown by the runtime, primitive
+        // wrappers, the for-of iterator protocol, async/await's Promise,
+        // Symbol.iterator and friends). Lazifying any of these creates
+        // bootstrap cycles or breaks code that never names them.
         \Phasis\BuiltIn\ErrorConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\NumberConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\ArrayConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\StringPrototype::install($this->globalEnv);
-        \Phasis\BuiltIn\MathObject::install($this->globalEnv);
-        \Phasis\BuiltIn\JsonObject::install($this->globalEnv);
         \Phasis\BuiltIn\SymbolConstructor::install($this->globalEnv);
         \Phasis\BuiltIn\IteratorConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\MapConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\SetConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\TypedArrayConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\AtomicsObject::install($this->globalEnv);
         \Phasis\BuiltIn\PromiseConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\ProxyConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\ReflectObject::install($this->globalEnv);
-        $this->globalEnv->defineVar('console', $this->console->create());
 
-        \Phasis\BuiltIn\IntlObject::install($this->globalEnv);
+        // Everything below is the "lazy surface": in lazy mode each
+        // module gets a placeholder accessor on the global object that
+        // realizes the install on first read. In eager mode (test262 /
+        // WPT / popular-packages / oracle harnesses, or any embedder
+        // that passed `eager: true`) we install everything inline so
+        // the visible surface and descriptor shapes match the legacy
+        // behavior exactly.
+        if ($this->eager) {
+            \Phasis\BuiltIn\MathObject::install($this->globalEnv);
+            \Phasis\BuiltIn\JsonObject::install($this->globalEnv);
+            \Phasis\BuiltIn\MapConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\SetConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\TypedArrayConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\AtomicsObject::install($this->globalEnv);
+            \Phasis\BuiltIn\ProxyConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\ReflectObject::install($this->globalEnv);
+            $this->globalEnv->defineVar('console', $this->console->create());
 
-        \Phasis\BuiltIn\WeakMapConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\WeakSetConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\WeakRefConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\FinalizationRegistryConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\DisposableStackConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\ShadowRealmConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\TemporalObject::install($this->globalEnv);
+            \Phasis\BuiltIn\IntlObject::install($this->globalEnv);
 
-        // Web Platform Pack (WHATWG / W3C, not TC39).
-        \Phasis\BuiltIn\DomExceptionConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\Base64Functions::install($this->globalEnv);
-        \Phasis\BuiltIn\PerformanceObject::install($this->globalEnv);
-        \Phasis\BuiltIn\TextEncoderConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\TextDecoderConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\UrlConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\StructuredCloneFunction::install($this->globalEnv);
+            \Phasis\BuiltIn\WeakMapConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\WeakSetConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\WeakRefConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\FinalizationRegistryConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\DisposableStackConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\ShadowRealmConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\TemporalObject::install($this->globalEnv);
 
-        // Fetch Pack — round 1 foundations (independent value types).
-        \Phasis\BuiltIn\EventTargetConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\BlobConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\FormDataConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\HeadersConstructor::install($this->globalEnv);
+            // Web Platform Pack (WHATWG / W3C, not TC39).
+            \Phasis\BuiltIn\DomExceptionConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\Base64Functions::install($this->globalEnv);
+            \Phasis\BuiltIn\PerformanceObject::install($this->globalEnv);
+            \Phasis\BuiltIn\TextEncoderConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\TextDecoderConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\UrlConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\StructuredCloneFunction::install($this->globalEnv);
 
-        // Fetch Pack — round 2: AbortController (needs EventTarget) +
-        // full WHATWG Streams (needs EventTarget for signal integration).
-        \Phasis\BuiltIn\AbortControllerConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\StreamsConstructor::install($this->globalEnv);
+            // Fetch Pack — round 1 foundations (independent value types).
+            \Phasis\BuiltIn\EventTargetConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\BlobConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\FormDataConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\HeadersConstructor::install($this->globalEnv);
 
-        // Fetch Pack — round 3: Request + Response value types (need
-        // Headers/Blob/FormData/Streams/AbortSignal for body extract).
-        \Phasis\BuiltIn\RequestConstructor::install($this->globalEnv);
-        \Phasis\BuiltIn\ResponseConstructor::install($this->globalEnv);
+            // Fetch Pack — round 2: AbortController (needs EventTarget) +
+            // full WHATWG Streams (needs EventTarget for signal integration).
+            \Phasis\BuiltIn\AbortControllerConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\StreamsConstructor::install($this->globalEnv);
 
-        // Fetch Pack — round 4: the actual fetch() global + navigator.
-        \Phasis\BuiltIn\NavigatorObject::install($this->globalEnv);
-        \Phasis\BuiltIn\FetchFunction::install($this->globalEnv);
+            // Fetch Pack — round 3: Request + Response value types (need
+            // Headers/Blob/FormData/Streams/AbortSignal for body extract).
+            \Phasis\BuiltIn\RequestConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\ResponseConstructor::install($this->globalEnv);
+
+            // Fetch Pack — round 4: the actual fetch() global + navigator.
+            \Phasis\BuiltIn\NavigatorObject::install($this->globalEnv);
+            \Phasis\BuiltIn\FetchFunction::install($this->globalEnv);
+        } else {
+            $this->registerLazyBuiltins();
+        }
 
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
@@ -792,7 +912,16 @@ class Engine
 
         $this->globalEnv->defineVar('BigInt', $bigIntFn);
 
-        \Phasis\BuiltIn\DateConstructor::install($this->globalEnv);
+        if ($this->eager) {
+            \Phasis\BuiltIn\DateConstructor::install($this->globalEnv);
+        } else {
+            $env = $this->globalEnv;
+            $this->lazyRegistry->register(
+                ['Date'],
+                [],
+                static fn () => \Phasis\BuiltIn\DateConstructor::install($env),
+            );
+        }
 
         $interp = $this->interpreter;
         $globalEnv = $this->globalEnv;
@@ -963,6 +1092,179 @@ class Engine
         // %AsyncFunction% intrinsic: the constructor for async functions.
         // Not exposed as a global, but accessible via (async function(){}).constructor.
         $this->installAsyncFunctionIntrinsic();
+    }
+
+    /**
+     * Lazy-mode counterpart of `installBuiltins`'s heavy block: instead
+     * of running each install up front, record (names → factory + deps)
+     * in the lazy registry. The factories run from inside the accessor
+     * placeholder on first read of any of the module's names. Deps run
+     * first, mirroring the install order the eager branch uses.
+     */
+    private function registerLazyBuiltins(): void
+    {
+        $env = $this->globalEnv;
+        $reg = $this->lazyRegistry;
+        $console = $this->console;
+
+        // --- ECMAScript built-ins that aren't part of the eager core ---
+        $reg->register(['Math'], [], static fn () => \Phasis\BuiltIn\MathObject::install($env));
+        $reg->register(['JSON'], [], static fn () => \Phasis\BuiltIn\JsonObject::install($env));
+        $reg->register(['Map'], [], static fn () => \Phasis\BuiltIn\MapConstructor::install($env));
+        $reg->register(['Set'], [], static fn () => \Phasis\BuiltIn\SetConstructor::install($env));
+        $reg->register(
+            [
+                'Int8Array', 'Uint8Array', 'Uint8ClampedArray',
+                'Int16Array', 'Uint16Array',
+                'Int32Array', 'Uint32Array',
+                'Float16Array', 'Float32Array', 'Float64Array',
+                'BigInt64Array', 'BigUint64Array',
+                'ArrayBuffer', 'SharedArrayBuffer', 'DataView',
+            ],
+            [],
+            static fn () => \Phasis\BuiltIn\TypedArrayConstructor::install($env),
+        );
+        $reg->register(
+            ['Atomics'],
+            ['Int32Array'],
+            static fn () => \Phasis\BuiltIn\AtomicsObject::install($env),
+        );
+        $reg->register(['Proxy'], [], static fn () => \Phasis\BuiltIn\ProxyConstructor::install($env));
+        $reg->register(['Reflect'], [], static fn () => \Phasis\BuiltIn\ReflectObject::install($env));
+        $reg->register(
+            ['console'],
+            [],
+            static fn () => $env->defineVar('console', $console->create()),
+        );
+        $reg->register(['Intl'], [], static fn () => \Phasis\BuiltIn\IntlObject::install($env));
+        $reg->register(['WeakMap'], [], static fn () => \Phasis\BuiltIn\WeakMapConstructor::install($env));
+        $reg->register(['WeakSet'], [], static fn () => \Phasis\BuiltIn\WeakSetConstructor::install($env));
+        $reg->register(['WeakRef'], [], static fn () => \Phasis\BuiltIn\WeakRefConstructor::install($env));
+        $reg->register(
+            ['FinalizationRegistry'],
+            [],
+            static fn () => \Phasis\BuiltIn\FinalizationRegistryConstructor::install($env),
+        );
+        $reg->register(
+            ['DisposableStack', 'AsyncDisposableStack', 'SuppressedError'],
+            [],
+            static fn () => \Phasis\BuiltIn\DisposableStackConstructor::install($env),
+        );
+        $reg->register(
+            ['ShadowRealm'],
+            [],
+            static fn () => \Phasis\BuiltIn\ShadowRealmConstructor::install($env),
+        );
+        $reg->register(['Temporal'], [], static fn () => \Phasis\BuiltIn\TemporalObject::install($env));
+
+        // --- Web Platform Pack ---
+        $reg->register(
+            ['DOMException'],
+            [],
+            static fn () => \Phasis\BuiltIn\DomExceptionConstructor::install($env),
+        );
+        $reg->register(['atob', 'btoa'], [], static fn () => \Phasis\BuiltIn\Base64Functions::install($env));
+        $reg->register(
+            ['performance'],
+            [],
+            static fn () => \Phasis\BuiltIn\PerformanceObject::install($env),
+        );
+        $reg->register(
+            ['TextEncoder'],
+            [],
+            static fn () => \Phasis\BuiltIn\TextEncoderConstructor::install($env),
+        );
+        $reg->register(
+            ['TextDecoder'],
+            [],
+            static fn () => \Phasis\BuiltIn\TextDecoderConstructor::install($env),
+        );
+        $reg->register(
+            ['URL', 'URLSearchParams'],
+            [],
+            static fn () => \Phasis\BuiltIn\UrlConstructor::install($env),
+        );
+        $reg->register(
+            ['structuredClone'],
+            // ArrayBuffer because cloning AB/TypedArray copies into a
+            // fresh JsArrayBuffer whose prototype comes from the
+            // TypedArray module's static cache.
+            ['DOMException', 'ArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\StructuredCloneFunction::install($env),
+        );
+
+        // --- Fetch Pack ---
+        $reg->register(
+            ['EventTarget', 'Event', 'CustomEvent'],
+            [],
+            static fn () => \Phasis\BuiltIn\EventTargetConstructor::install($env),
+        );
+        $reg->register(
+            ['Blob', 'File'],
+            // Blob.arrayBuffer() / .bytes() / .stream() create
+            // JsArrayBuffer + Uint8Array + ReadableStream directly,
+            // so realize those modules' prototype caches first.
+            ['ArrayBuffer', 'ReadableStream'],
+            static fn () => \Phasis\BuiltIn\BlobConstructor::install($env),
+        );
+        $reg->register(
+            ['FormData'],
+            [],
+            static fn () => \Phasis\BuiltIn\FormDataConstructor::install($env),
+        );
+        $reg->register(
+            ['Headers'],
+            [],
+            static fn () => \Phasis\BuiltIn\HeadersConstructor::install($env),
+        );
+        $reg->register(
+            ['AbortController', 'AbortSignal'],
+            ['EventTarget'],
+            static fn () => \Phasis\BuiltIn\AbortControllerConstructor::install($env),
+        );
+        $reg->register(
+            [
+                'ReadableStream',
+                'ReadableStreamDefaultController',
+                'ReadableStreamDefaultReader',
+                'ReadableByteStreamController',
+                'ReadableStreamBYOBReader',
+                'ReadableStreamBYOBRequest',
+                'WritableStream',
+                'WritableStreamDefaultController',
+                'WritableStreamDefaultWriter',
+                'TransformStream',
+                'TransformStreamDefaultController',
+                'ByteLengthQueuingStrategy',
+                'CountQueuingStrategy',
+            ],
+            // ArrayBuffer because ByteStream allocates JsArrayBuffer
+            // and Uint8Array views directly during read/pipe paths.
+            ['EventTarget', 'ArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\StreamsConstructor::install($env),
+        );
+        $reg->register(
+            ['Request'],
+            // ArrayBuffer because BodyMixin allocates one when the
+            // body bytes are consumed via .arrayBuffer().
+            ['Headers', 'Blob', 'FormData', 'AbortController', 'ReadableStream', 'ArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\RequestConstructor::install($env),
+        );
+        $reg->register(
+            ['Response'],
+            ['Headers', 'Blob', 'FormData', 'ReadableStream', 'ArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\ResponseConstructor::install($env),
+        );
+        $reg->register(
+            ['navigator'],
+            [],
+            static fn () => \Phasis\BuiltIn\NavigatorObject::install($env),
+        );
+        $reg->register(
+            ['fetch'],
+            ['Request', 'Response', 'URL', 'Headers', 'AbortController', 'ReadableStream', 'Blob'],
+            static fn () => \Phasis\BuiltIn\FetchFunction::install($env),
+        );
     }
 
     /**

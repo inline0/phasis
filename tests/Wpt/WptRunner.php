@@ -58,7 +58,7 @@ final class WptRunner
 
         $this->results = [];
 
-        $engine = new Engine();
+        $engine = new Engine(eager: true);
         $engine->setGlobal('__phasisWptReport', function (
             string $status,
             string $name,

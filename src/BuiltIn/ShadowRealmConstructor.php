@@ -60,7 +60,7 @@ class ShadowRealmConstructor
                 if ($outerRealm === null) {
                     $outerRealm = Engine::getCurrentRealm();
                 }
-                $engine = new Engine();
+                $engine = new Engine(eager: $outerRealm?->isEager() ?? false);
                 $engine->setLimit('maxLoopIterations', 2_000_000);
                 if ($outerInterp !== null) {
                     Engine::setCurrentInterpreter($outerInterp);
