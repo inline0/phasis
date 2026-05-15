@@ -1,6 +1,7 @@
 import { defineConfig } from "onedocs/config";
 import {
   Box,
+  Boxes,
   CheckCircle2,
   Cloud,
   Cpu,
@@ -96,6 +97,12 @@ export default defineConfig({
         description:
           "Every change verified against Node.js (V8). 73-shard CI matrix on every push.",
         icon: <Cpu className={iconClass} />,
+      },
+      {
+        title: "Real Libraries",
+        description:
+          "acorn, mustache.js, lodash, marked — all run byte-equal to Node. CI-gated on every push.",
+        icon: <Boxes className={iconClass} />,
       },
     ],
   },

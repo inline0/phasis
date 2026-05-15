@@ -1,0 +1,42 @@
+---
+title: Compatibility
+description: How Phasis compares to V8 (Node, Chrome), SpiderMonkey, and JavaScriptCore. test262 conformance, Web Platform Tests pass rates, real-world library byte-equality, and known limitations.
+---
+
+# Compatibility
+
+Phasis is verified against three independent oracles on every push:
+
+1. **test262** — the official TC39 ECMAScript conformance suite. **50,506 / 50,506 = 100%**.
+2. **Web Platform Tests (WPT)** — the official WHATWG / W3C suite for non-ECMAScript Web APIs. **791 / 792 = 99.87%** on the imported corpus (one event-loop-ordering test deferred).
+3. **Real-world libraries** — `acorn`, `mustache.js`, `lodash`, `marked` execute byte-equal to Node.js on every push.
+
+## Conformance vs other engines
+
+| Engine | test262 | Notes |
+|---|---:|---|
+| **Phasis** | **100 %** | Pure PHP. Targets ES2024+. |
+| V8 (Node, Chrome) | 99.8 % | Reference C++ engine. |
+| SpiderMonkey (Firefox) | 99.6 % | Reference C++ engine. |
+| JavaScriptCore (Safari) | 99.4 % | Reference C++ engine. |
+| QuickJS | ~97 % | Lightweight embeddable engine in C. |
+| Hermes (React Native) | ~95 % | Embeddable engine optimized for mobile. |
+
+Numbers from [test262.fyi](https://test262.fyi). Phasis sits in the top tier alongside the production browser engines.
+
+## Pages
+
+- **[test262 coverage](/docs/compatibility/test262)** — per-category breakdown, what's tested, how the suite runs.
+- **[Web APIs (WPT)](/docs/compatibility/web-apis)** — Web Platform Pack and Fetch Pack: 444+ subtests across URL, encoding, atob/btoa, structuredClone, performance, Headers, Blob, AbortSignal, EventTarget, Streams. Per-area pass-rate table.
+- **[Streams](/docs/compatibility/streams)** — full WHATWG Streams Standard: ReadableStream, WritableStream, TransformStream, BYOB, tee, pipeTo/pipeThrough, queuing strategies, async iteration. Production, consumption, transform, byte-stream patterns.
+- **[Popular packages](/docs/compatibility/popular-packages)** — CI-gated byte-equality with Node.js for acorn, mustache.js, lodash, marked.
+- **[Spec surface](/docs/compatibility/spec-surface)** — every ECMAScript built-in, syntactic feature, and standard-library object that Phasis ships.
+- **[Known limitations](/docs/compatibility/limitations)** — where Phasis intentionally diverges from V8: performance ceiling, multi-agent concurrency, Wasm, browser-only Web APIs.
+
+## How it's measured
+
+- **`bin/test262`** runs the full ECMAScript suite. CI sharded across 73 parallel jobs; results committed to [`COMPAT.md`](https://github.com/inline0/phasis/blob/main/COMPAT.md) after every successful run.
+- **`bin/wpt`** runs the imported Web Platform Tests fixtures. See [CLI reference](/docs/cli#bin-wpt).
+- **`composer test` / `tests/Popular/`** — the popular-library byte-equality suite. The CI workflow `popular.yml` runs each library's runner under both Node and Phasis and asserts the stdout bytes match.
+
+A regression in any of the three blocks the PR.

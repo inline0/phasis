@@ -1,0 +1,77 @@
+---
+title: Popular packages
+description: Phasis runs real-world JS libraries — acorn, mustache.js, lodash, marked — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+---
+
+# Popular packages
+
+Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
+
+Phasis verifies four widely-used libraries byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+
+## Coverage
+
+| Library | Version | Surface exercised | CI gate |
+|---|---|---|---|
+| **[acorn](https://github.com/acornjs/acorn)** | 8.14.0 | Modern-ES parser: classes with private fields, arrow + async generator + yield-await, destructuring with default/rest, tagged template (`String.raw`), import/export, ES2024 syntax. 126-line AST summary emitted via deterministic walker. | byte-equal |
+| **mustache.js** | 4.2.0 | Template renderer with sections, inverted sections, partials, dotted lookup, lambdas, HTML escaping vs raw `{{{}}}`. Seven templates render to a 25-line concatenated string. | byte-equal |
+| **lodash** | 4.17.21 | Full utility surface: array methods (`map`, `filter`, `reduce`, `flat`, `flatten`, `chunk`, `uniq`, `zip`, `union`, `intersection`), collection (`sortBy`, `orderBy`, `groupBy`, `keyBy`), object (`pick`, `omit`, `get`, `set`, `merge`, `defaults`, `invert`), lang (`isEqual`, `cloneDeep`, `isMatch`), string transforms, math reducers, function helpers (`memoize`, `once`), `_.chain`. ~60 invocations. | byte-equal |
+| **marked** | 13.0.3 | Markdown parser. Headings, inline emphasis, lists (ordered + unordered + nested), code blocks (fenced + indented), block-quotes, tables, HTML passthrough, combined readme. | byte-equal |
+
+Total: **4 libraries · 384 KB of vendored upstream JS · ~250 individual library calls** all reproduce Node's exact output.
+
+## How it works
+
+Each scenario is a `tests/Popular/<lib>/` directory with three files:
+
+```text
+tests/Popular/lodash/
+├── lodash.js     ← vendored upstream library (untouched, UMD bundle)
+├── runner.js     ← Phasis-side script that exercises the library
+└── oracle.txt    ← Node.js output of running runner.js (committed)
+```
+
+`tests/Popular/PopularPackagesTest.php` is a PHPUnit data-provider test that:
+
+1. Loads `lodash.js` + `runner.js` into a fresh `new Phasis\Engine()`.
+2. Captures `console.log` output into a buffer.
+3. Asserts the captured buffer is byte-equal to `oracle.txt`.
+
+Regenerate an oracle with:
+
+```bash
+node tests/Popular/gen-oracle.js tests/Popular/<lib>
+```
+
+(Used when you bump the vendored library — re-runs the runner under real Node and overwrites `oracle.txt`.)
+
+## CI gate
+
+Workflow: [`.github/workflows/popular.yml`](https://github.com/inline0/phasis/blob/main/.github/workflows/popular.yml).
+
+Runs on every push to `main` and on every PR. Two jobs:
+
+1. **Phasis side** — runs the PHPUnit `popular` testsuite, which executes each library through Phasis and diffs against the committed oracle. Fails if a single byte differs.
+2. **Node re-verify** — runs `node tests/Popular/gen-oracle.js …` against each library and asserts the freshly regenerated oracle matches what's checked in. Detects "vendored library was bumped without updating the oracle" drift.
+
+Both jobs must pass before the PR merges. A test262 win that breaks lodash isn't acceptable; a lodash win that breaks test262 isn't either.
+
+## Why these four
+
+- **acorn** — parsing is the most fragile surface in any JS engine. It exercises every syntactic corner case modern JS adds. If Phasis can parse arbitrary modern code with acorn, the runtime is sound.
+- **mustache.js** — templating is one of the embedding use cases Phasis explicitly targets (the README's first concrete example is "templating engines"). Mustache exercises iteration, scope resolution, and string transforms in the order real templates do.
+- **lodash** — the most-used JS utility library on the planet. Its 300+ functions transitively touch every standard-library method. If lodash works, generic data-transformation JS works.
+- **marked** — markdown rendering. Practical and exercises regex (lots of it) plus string manipulation with cross-line state. Surfaces regex-engine drift between PCRE2 (Phasis' fallback) and V8's Irregexp.
+
+## Adding more
+
+Drop a new directory under `tests/Popular/<name>/` with the three-file shape, then:
+
+```bash
+node tests/Popular/gen-oracle.js tests/Popular/<name>   # one-time, generates oracle.txt
+git add tests/Popular/<name>
+```
+
+The PHPUnit suite auto-discovers it on the next run. CI picks it up on the next push.
+
+Strong candidates worth adding: `chevrotain` (parser combinator, exercises closures + regex), `nanoid` (crypto/randomness boundary), `date-fns` (Date/timezone surface), `zod` (schema/error formatting), `handlebars` (template compile + cache).

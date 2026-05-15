@@ -137,6 +137,84 @@ public function repl(): void
 
 Drops into the interactive REPL on stdin/stdout. Used by `bin/phasis --repl`.
 
+## Fetch hooks
+
+Phasis ships `fetch()` enabled by default with PHP's `ext-curl` as the underlying transport. Three hooks let an embedder swap the transport, gate requests, or enable cookie storage. All three accept either a PHP callable or a method-on-object; see [Web APIs](/docs/compatibility/web-apis) for the value-shape contract.
+
+### setFetchTransport
+
+```php
+public function setFetchTransport(callable $transport): void
+```
+
+Replace the default CurlTransport. The callable receives a request descriptor and an optional `AbortSignal` JsObject; returns a response descriptor.
+
+```php
+// Use Guzzle as the transport instead of curl
+$client = new GuzzleHttp\Client();
+$engine->setFetchTransport(function (array $req, $signal) use ($client) {
+    $r = $client->request($req['method'], $req['url'], [
+        'headers' => $req['headers'],
+        'body' => $req['body'],
+        'http_errors' => false,
+    ]);
+    return [
+        'status' => $r->getStatusCode(),
+        'statusText' => $r->getReasonPhrase(),
+        'headers' => array_map(
+            fn ($name, $values) => array_map(fn ($v) => [$name, $v], $values),
+            array_keys($r->getHeaders()),
+            $r->getHeaders(),
+        ),
+        'body' => (string) $r->getBody(),
+    ];
+});
+```
+
+A common embedding pattern: install a mock transport in tests, the real curl transport in production.
+
+### setFetchPolicy
+
+```php
+public function setFetchPolicy(callable $hook): void
+```
+
+Pre-flight policy hook. Receives the `Request` JsObject; can throw to deny, return a modified `Request` to rewrite, or return `null`/no value to allow.
+
+```php
+// Block non-HTTPS and inject auth on a specific host
+$engine->setFetchPolicy(function ($req) {
+    $url = $req->get('url')->value;
+    if (str_starts_with($url, 'http://')) {
+        throw new \RuntimeException('HTTPS only');
+    }
+    if (str_contains($url, 'api.example.com')) {
+        $req->get('headers')->call('set', 'Authorization', 'Bearer ...');
+    }
+    return null;
+});
+```
+
+### setCookieJar
+
+```php
+public function setCookieJar(mixed $jar): void
+```
+
+Opt-in cookie store. Accepts any object exposing `get(string $url): string` and `set(string $url, string $header): void` — PHP-side or JS-side.
+
+```php
+class SimpleJar
+{
+    private array $cookies = [];
+    public function get(string $url): string { return implode('; ', $this->cookies); }
+    public function set(string $url, string $header): void { $this->cookies[] = $header; }
+}
+$engine->setCookieJar(new SimpleJar());
+```
+
+Without `setCookieJar()`, `fetch` ignores both inbound `Set-Cookie` and outbound `Cookie` headers — the default is **no cookies**.
+
 ## Exceptions
 
 | Class | When |

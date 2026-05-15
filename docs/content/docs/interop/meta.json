@@ -1,4 +1,4 @@
 {
   "title": "Interop",
-  "pages": ["values", "host-functions", "shared-objects"]
+  "pages": ["values", "host-functions", "shared-objects", "fetch-transport", "cookie-jar", "abort-patterns"]
 }

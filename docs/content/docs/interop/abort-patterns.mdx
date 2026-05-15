@@ -1,0 +1,111 @@
+---
+title: AbortController patterns
+description: Cancelling work in Phasis — timeout, race, propagation, AbortSignal.any/timeout, and how a PHP fetch transport polls a signal mid-transfer to honor cancellation.
+---
+
+# AbortController patterns
+
+`AbortController` and `AbortSignal` are full WHATWG implementations in Phasis. The standard composition helpers (`AbortSignal.any`, `AbortSignal.timeout`) ship too. This page covers the patterns you actually reach for and how cancellation propagates across the PHP boundary.
+
+## Cancelling a fetch
+
+```js
+const ctrl = new AbortController();
+const p = fetch(url, { signal: ctrl.signal });
+ctrl.abort();                     // p rejects with AbortError DOMException
+```
+
+The reason is `AbortError` by default, but you can supply your own:
+
+```js
+ctrl.abort(new Error('user cancelled'));
+```
+
+`fetch` rejects with whatever you passed.
+
+## Timeout
+
+```js
+const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+```
+
+`AbortSignal.timeout(ms)` returns a signal that aborts itself after `ms`. Note Phasis has no host event loop yet, so the timeout is **lazy** — it triggers the next time something reads `signal.aborted` or the fetch transport polls. For fetch transports that poll the signal during transfer (the default `CurlTransport` does, via `CURLOPT_PROGRESSFUNCTION`), this means the request *will* be aborted close to the deadline.
+
+For pure-JS code that just sleeps in a Promise loop with no polling, the timeout will never fire — there's no scheduler to wake.
+
+## Race: first cancellation wins
+
+```js
+const user = new AbortController();
+const signal = AbortSignal.any([user.signal, AbortSignal.timeout(10_000)]);
+const res = await fetch(url, { signal });
+// res rejects if EITHER the user clicks cancel OR 10s elapses
+```
+
+## Propagation through layers
+
+Wrap your own async work with a signal-aware loop:
+
+```js
+async function fetchPaged(url, signal) {
+  const out = [];
+  for (let page = 1; ; page++) {
+    if (signal.aborted) throw signal.reason;
+    const r = await fetch(`${url}?page=${page}`, { signal });
+    const data = await r.json();
+    if (data.length === 0) break;
+    out.push(...data);
+  }
+  return out;
+}
+```
+
+The fetch inherits the signal directly; the manual `if (signal.aborted)` covers gaps between requests where the page-loop would otherwise keep running.
+
+## Listening for the abort event
+
+```js
+ctrl.signal.addEventListener('abort', () => {
+  releaseDatabaseLock();
+  cancelDownstreamWork();
+});
+```
+
+`signal.reason` is set before listeners fire.
+
+## Signal in a custom fetch transport
+
+If you swap the transport via `setFetchTransport()`, the signal is passed to your callable as a `JsObject`. Honor it by polling:
+
+```php
+$engine->setFetchTransport(function (array $req, $signal) {
+    $ch = curl_init($req['url']);
+    // ...
+    if ($signal !== null) {
+        curl_setopt($ch, CURLOPT_PROGRESSFUNCTION,
+            fn () => $signal->get('aborted')->value ? 1 : 0);
+        curl_setopt($ch, CURLOPT_NOPROGRESS, false);
+    }
+    $body = curl_exec($ch);
+    if (curl_errno($ch) === CURLE_ABORTED_BY_CALLBACK) {
+        throw new \Phasis\BuiltIn\Fetch\TransportException(
+            'aborted', 'aborted',
+        );
+    }
+    // ...
+});
+```
+
+Throwing `TransportException` with `kind: 'aborted'` makes the JS-side `fetch` reject with `AbortError DOMException` — same as if the spec abort-loop had run.
+
+For backends with native cancellation (Guzzle's `on_progress`, Symfony's `ResponseInterface::cancel`), wire the same poll-and-throw shape.
+
+## Patterns that won't work yet
+
+- **`signal.addEventListener('abort', () => fetch(cleanupUrl))`** — listener firing is synchronous; the cleanup fetch starts but won't complete inside the abort dispatch. Schedule it via the surrounding `await`.
+- **`setTimeout(() => ctrl.abort(), 100)`** — `setTimeout` isn't shipped yet. Use `AbortSignal.timeout(100)` instead.
+
+## See also
+
+- [Fetch transport](/docs/interop/fetch-transport) — full request/response/signal interface for custom transports.
+- [Web APIs (WPT)](/docs/compatibility/web-apis) — AbortController/AbortSignal WPT pass rate.
