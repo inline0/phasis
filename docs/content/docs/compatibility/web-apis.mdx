@@ -127,6 +127,25 @@ for await (const v of doubled) console.log(v);  // 2, 4, 6
 
 Full Streams spec: `ReadableStream`, `WritableStream`, `TransformStream`, `ReadableStreamDefaultController`, `ReadableByteStreamController`, `ReadableStreamDefaultReader`, `ReadableStreamBYOBReader`, `ReadableStreamBYOBRequest`, `WritableStreamDefaultController`, `WritableStreamDefaultWriter`, `TransformStreamDefaultController`, `ByteLengthQueuingStrategy`, `CountQueuingStrategy`, plus `pipeTo` / `pipeThrough` / `tee`.
 
+## Event loop
+
+`setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, and `queueMicrotask` are on the global object. Microtasks (Promise handlers, `queueMicrotask`) drain to completion between every macrotask; timers fire in deadline order via a per-realm queue.
+
+```js
+console.log('sync');
+queueMicrotask(() => console.log('microtask'));
+setTimeout(() => console.log('timer'), 0);
+// → sync, microtask, timer
+
+const id = setInterval(() => console.log('tick'), 1000);
+// ...later
+clearInterval(id);
+
+await new Promise(r => setTimeout(r, 50));   // common "delay" pattern works
+```
+
+Driven by Phasis's `Engine::runEventLoop()`, which `eval()` and `evalAsModule()` call automatically after the synchronous code finishes. The loop is **virtual-time** by default — `setTimeout(cb, 5000)` does not sleep PHP; the loop advances its clock to the deadline so the program completes promptly. Real-time embedders drive `tickEventLoop()` themselves. See [API: Event loop](/docs/api#event-loop) for the host-side surface.
+
 ## What's *not* shipped
 
 These browser-only or runtime-model APIs are deliberately out of scope — see [Known limitations](/docs/compatibility/limitations) for the full discussion:
@@ -135,7 +154,6 @@ These browser-only or runtime-model APIs are deliberately out of scope — see [
 - `localStorage`, `sessionStorage`, `IndexedDB`
 - `WebSocket`
 - `Worker`, `SharedWorker`, `MessageChannel`
-- `setTimeout`, `setInterval`, `queueMicrotask` (no event loop yet)
 - `crypto.subtle`, `crypto.getRandomValues`
 - `XMLHttpRequest` (superseded by `fetch`)
 - Service Workers, Push API, Notifications, BroadcastChannel

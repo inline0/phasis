@@ -140,6 +140,30 @@ public function repl(): void
 
 Drops into the interactive REPL on stdin/stdout. Used by `bin/phasis --repl`.
 
+## Event loop
+
+The engine ships a JavaScript event loop with `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, and `queueMicrotask` on the global object. Microtasks (Promise handlers, `queueMicrotask`) drain between every macrotask; timers fire in deadline order via a per-realm task queue.
+
+```php
+public function runEventLoop(): void
+public function tickEventLoop(): bool
+public function pendingTaskCount(): int
+public function getEventLoop(): \Phasis\Runtime\EventLoop
+```
+
+`eval()` and `evalAsModule()` call `runEventLoop()` automatically after the synchronous code completes. So a script that schedules `setTimeout(cb, 5000)` at top level runs `cb` before `eval()` returns — the loop uses **virtual time**, jumping its clock to the next pending deadline rather than sleeping PHP. Matches `node script.js` semantics.
+
+For real-time embedding (long-lived servers, UI integration, scheduling against a real clock), `tickEventLoop()` runs one iteration (drain microtasks, fire any due timers) and returns. `pendingTaskCount()` reports outstanding timers; an embedder can drive its own pump:
+
+```php
+while ($engine->pendingTaskCount() > 0) {
+    $engine->tickEventLoop();
+    usleep(1000);
+}
+```
+
+A runaway `setInterval` is bounded: `runEventLoop()` caps at 100,000 cycles and throws a `RuntimeException` — the JS code's fault surfaces as a clear PHP error rather than a hang. Uncaught errors in a timer callback are emitted via `error_log()` and the loop keeps draining; one bad timer doesn't kill the program.
+
 ## Fetch hooks
 
 Phasis ships `fetch()` enabled by default with PHP's `ext-curl` as the underlying transport. Three hooks let an embedder swap the transport, gate requests, or enable cookie storage. All three accept either a PHP callable or a method-on-object; see [Web APIs](/docs/compatibility/web-apis) for the value-shape contract.
