@@ -66,11 +66,28 @@ class JsPromise extends JsObject
      * FIFO order relative to when their promises were resolved, matching
      * JavaScript's microtask semantics.
      *
+     * AsyncContext propagation: the active AsyncContext storage is
+     * snapshotted at schedule time and restored around the callback
+     * invocation, so context values flow naturally across the
+     * Promise.then / queueMicrotask boundary (TC39 Stage 3
+     * AsyncContext proposal).
+     *
      * @param \Closure(): void $cb
      */
     public static function scheduleCallback(\Closure $cb): void
     {
-        self::$microtaskQueue[] = $cb;
+        $storage = \Phasis\Runtime\AsyncContextStorage::active();
+        $captured = $storage->snapshot();
+        self::$microtaskQueue[] = static function () use ($cb, $captured): void {
+            $storage = \Phasis\Runtime\AsyncContextStorage::active();
+            $previous = $storage->snapshot();
+            $storage->restore($captured);
+            try {
+                $cb();
+            } finally {
+                $storage->restore($previous);
+            }
+        };
     }
 
     /**

@@ -514,6 +514,9 @@ class Engine
             // setWebSocketTransport(); throws on `new WebSocket(...)`
             // if no transport is installed.
             \Phasis\BuiltIn\WebSocketConstructor::install($this->globalEnv);
+
+            // AsyncContext (TC39 Stage 3) — Variable + Snapshot.
+            \Phasis\BuiltIn\AsyncContextConstructor::install($this->globalEnv);
         } else {
             $this->registerLazyBuiltins();
         }
@@ -1392,6 +1395,13 @@ class Engine
             ['ArrayBuffer'],
             static fn () => \Phasis\BuiltIn\WebSocketConstructor::install($env),
         );
+
+        // --- AsyncContext (TC39 Stage 3) ---
+        $reg->register(
+            ['AsyncContext'],
+            [],
+            static fn () => \Phasis\BuiltIn\AsyncContextConstructor::install($env),
+        );
     }
 
     /**
@@ -1857,6 +1867,7 @@ class Engine
         // ownership crisp.
         $this->eventLoop->detach();
         \Phasis\Value\JsPromise::clearMicrotasks();
+        \Phasis\Runtime\AsyncContextStorage::reset();
         self::resetStaticIntrinsics();
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();

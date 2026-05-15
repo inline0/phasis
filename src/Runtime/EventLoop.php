@@ -83,6 +83,7 @@ final class EventLoop
             callback: $cb,
             repeating: false,
             intervalMs: 0.0,
+            contextSnapshot: AsyncContextStorage::active()->snapshot(),
         );
         return $id;
     }
@@ -103,6 +104,7 @@ final class EventLoop
             callback: $cb,
             repeating: true,
             intervalMs: $interval,
+            contextSnapshot: AsyncContextStorage::active()->snapshot(),
         );
         return $id;
     }
@@ -275,6 +277,15 @@ final class EventLoop
 
     private function invoke(EventLoopTask $task): void
     {
+        // AsyncContext propagation: restore the storage snapshot
+        // captured at setTimeout/setInterval time, run the callback,
+        // and restore whatever was active before. setInterval re-arms
+        // with the SAME snapshot — every firing sees the context that
+        // was active when the interval was first scheduled, matching
+        // the spec.
+        $storage = AsyncContextStorage::active();
+        $previous = $storage->snapshot();
+        $storage->restore($task->contextSnapshot);
         try {
             $this->engine->getInterpreter()->callFunction(
                 $task->callback,
@@ -289,6 +300,8 @@ final class EventLoop
             // can see it, then keep the loop running so a single
             // throwing timer doesn't kill the program.
             error_log("Phasis: uncaught in setTimeout/setInterval: " . $e->getMessage());
+        } finally {
+            $storage->restore($previous);
         }
     }
 
