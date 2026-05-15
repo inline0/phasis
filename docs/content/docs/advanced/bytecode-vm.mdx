@@ -47,6 +47,22 @@ Some functions compile to PHP closures; others fall through to an even simpler b
 
 The VM exists for functions that aren't worth compiling to a PHP closure but are still hot enough to benefit from skipping AST traversal. Method calls on built-in objects (Array.prototype.map, String.prototype.split, …) go through fast paths in the VM that bypass the generic `callFunction` trampoline.
 
+## Custom callstack
+
+`Op::CALL`, `Op::CALL_METHOD`, and `Op::NEW_CALL` use an inline-call path that keeps the entire JS callstack inside `VM::execute` — no new PHP frame per JS call. On entry, the caller's state (pc, code stream, operand stack, locals, env, `this`, strict-mode flag) is pushed onto a per-VM `savedFrames` pool of `SavedFrame` instances and the dispatch loop rewires its locals to the callee. `Op::RET` pops the saved frame and restores. Exceptions unwind across saved frames before falling back to the tree-walker.
+
+Eligibility is memoised on `JsFunction`: `vmInlineCallCache` for regular calls (BC-compiled body, not `bind()`-bound, not native), `vmInlineConstructCache` for `new`-expressions (additionally `isConstructable`, not derived, no instance-field or private-method initializers). Anything else still flows through the canonical `callFunction` / `vmNewExpression` trampoline.
+
+The architectural side-benefit: the PHP-stack ceiling no longer caps JS recursion depth. `CallStack::maxDepth` is the only limit now (65,536, well above V8 / SpiderMonkey practical stack-overflow thresholds).
+
+## Inline caches
+
+`Op::LOAD_MEMBER` carries a per-PC inline cache keyed on prototype identity, used for the prototype-method-on-instance pattern (`c.sum(...)`, `arr.push(...)`, every class-method dispatch). Hit condition: the receiver has no own slot for the name, the cached prototype reference is identical to the receiver's `getPrototype()`, and the prototype's `PropertyMap::$version` still matches the captured version.
+
+Cache invalidation rides on `PropertyMap::$version`. Structural mutations (set / delete) bump it unconditionally. Data-slot value overwrites bump only when `PropertyMap::$isUsedAsProto` is true — a write-barrier flag flipped on the first time the object is observed as another object's `[[Prototype]]`. Instance objects that never serve as prototypes pay nothing for the IC infrastructure on every `obj.x = v`.
+
+Getter accessors are never cached (they must re-run on every read).
+
 ## Built-in fast paths
 
 The largest perf wins came from teaching the VM about specific built-ins:
@@ -62,9 +78,9 @@ Each fast path is gated by a "shape check" — if the receiver doesn't match the
 
 ## What this doesn't do
 
-The bytecode VM is **not a JIT** in the V8 sense. It doesn't generate native machine code, doesn't have a type-feedback profiler, and doesn't do inlining across function boundaries. Each call still pays a `function_call` cost at the PHP level.
+The bytecode VM is **not a JIT** in the V8 sense. It doesn't generate native machine code per-function and doesn't speculate based on observed types beyond the IC's monomorphic prototype-identity check. Function-boundary inlining is approximated by the custom callstack (no extra PHP frame per JS call) rather than by lowering the callee's body into the caller's bytecode.
 
-Closing the remaining 100× gap with V8 would require a proper PHP-bytecode JIT — generating opcache-friendly PHP that the host's tracing JIT (PHP 8.5+) can compile to native. That's on the long-term roadmap.
+Closing the remaining gap with V8 would require a proper PHP-bytecode JIT — generating opcache-friendly PHP that the host's tracing JIT (PHP 8.5+) can compile to native. That's on the long-term roadmap.
 
 ## Debugging
 
@@ -78,7 +94,7 @@ Emits one line per function as it transitions between tree-walker, compiled clos
 
 ## Bench
 
-`bench/microbench.js` runs a dozen tiny benchmarks (loop-arith, loop-fib, fn-recurse, obj-create, obj-prop, arr-push, arr-map, str-concat, str-split-join, json-roundtrip, closure, destructure). Median wall time:
+`bench/microbench.js` runs a dozen tiny benchmarks (loop-arith, loop-fib, fn-recurse, fn-deep-recurse, obj-create, obj-prop, proto-method, arr-push, arr-map, str-concat, str-split-join, json-roundtrip, closure, destructure). Median wall time:
 
 ```bash
 php bench/run.php

@@ -33,7 +33,7 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - Direct PHP↔JS interop — share objects without serialization, bind PHP callables as JS functions
 - Resource limits for call depth, loop iterations, string length, output size, and wall-clock execution
 - **100 % of the official test262 suite passes** (50,506 / 50,506) — ECMAScript conformance
-- **100 % of imported Web Platform Tests pass** (444 / 444) across fetch, headers, blob, abort, streams, encoding, URL
+- **100 % of imported Web Platform Tests pass** (815 / 815) across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob
 
 ## Quick Start
 
