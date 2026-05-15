@@ -332,7 +332,19 @@ class Interpreter
     /**
      * Reverse of `setupInlineVmCall`. Mirrors `teardownExecuteFunction`.
      *
-     * @param array{0: \Phasis\Value\JsValue, 1: bool, 2: bool, 3: ?string, 4: bool, 5: bool, 6: bool, 7: ?\Phasis\Object\PropertyDescriptor, 8: ?\Phasis\Object\PropertyDescriptor, 9: ?\Phasis\Value\JsValue, 10: ?\Phasis\Value\JsValue} $restore
+     * @param array{
+     *     0: \Phasis\Value\JsValue,
+     *     1: bool,
+     *     2: bool,
+     *     3: ?string,
+     *     4: bool,
+     *     5: bool,
+     *     6: bool,
+     *     7: ?\Phasis\Object\PropertyDescriptor,
+     *     8: ?\Phasis\Object\PropertyDescriptor,
+     *     9: ?\Phasis\Value\JsValue,
+     *     10: ?\Phasis\Value\JsValue
+     * } $restore
      */
     public function teardownInlineVmCall(\Phasis\Value\JsFunction $fn, array $restore): void
     {
@@ -355,10 +367,12 @@ class Interpreter
         array_pop($this->callerStack);
         if ($setCallerProp) {
             if ($autoUpdateCaller) {
-                if (!$fn->tryUpdateDataValue(
-                    "caller",
-                    $savedCallerValue ?? \Phasis\Value\JsNull::instance(),
-                )) {
+                if (
+                    !$fn->tryUpdateDataValue(
+                        "caller",
+                        $savedCallerValue ?? \Phasis\Value\JsNull::instance(),
+                    )
+                ) {
                     $fn->defineOwnProperty(
                         "caller",
                         $savedCaller ?? \Phasis\Object\PropertyDescriptor::data(
@@ -371,10 +385,12 @@ class Interpreter
                 }
             }
             if ($autoUpdateArguments) {
-                if (!$fn->tryUpdateDataValue(
-                    "arguments",
-                    $savedArgumentsValue ?? \Phasis\Value\JsNull::instance(),
-                )) {
+                if (
+                    !$fn->tryUpdateDataValue(
+                        "arguments",
+                        $savedArgumentsValue ?? \Phasis\Value\JsNull::instance(),
+                    )
+                ) {
                     $fn->defineOwnProperty(
                         "arguments",
                         $savedArguments ?? \Phasis\Object\PropertyDescriptor::data(

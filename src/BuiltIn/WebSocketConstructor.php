@@ -124,7 +124,8 @@ final class WebSocketConstructor
                     return $this_;
                 }
 
-                if (!is_array($handle)
+                if (
+                    !is_array($handle)
                     || !isset($handle['send'], $handle['close'])
                     || !is_callable($handle['send'])
                     || !is_callable($handle['close'])

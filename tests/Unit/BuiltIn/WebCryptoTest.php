@@ -263,7 +263,7 @@ JS);
     // RSA
     // ---------------------------------------------------------------
 
-    public function testRsassaPkcs1V1_5SignVerify(): void
+    public function testRsassaPkcs1V15SignVerify(): void
     {
         if (!extension_loaded('openssl')) {
             $this->markTestSkipped('RSA requires ext-openssl');
