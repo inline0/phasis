@@ -131,14 +131,18 @@ Phasis targets the current ECMAScript specification (ES2024+) and tracks TC39 pr
 
 ## Web Platform APIs (WHATWG / W3C, not TC39)
 
-Beyond pure ECMAScript, Phasis ships two layered packs of Web APIs that real-world JS libraries pre-check for. See [Web APIs](/docs/compatibility/web-apis) for the full surface and per-area conformance.
+Beyond pure ECMAScript, Phasis ships several layered packs of Web APIs that real-world JS libraries pre-check for. See [Web APIs](/docs/compatibility/web-apis) for the full surface and per-area conformance.
 
 | Pack | Globals | WPT |
 |---|---|---|
 | **Web Platform** | `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException` | 100 % |
 | **Fetch** | `fetch`, `Request`, `Response`, `Headers`, `Body` mixin, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `navigator` | 100 % |
+| **Crypto** | `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA P-256/384/521, ECDH, HKDF, PBKDF2) | n/a (unit-tested) |
+| **WebSocket** | `WebSocket` (constructor + RFC 6455 frame codec, replaceable transport via `setWebSocketTransport`) | n/a (unit-tested) |
+| **XHR** | `XMLHttpRequest` (layered over the fetch transport, so policy hooks apply) | n/a (unit-tested) |
+| **Event loop** | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, `AsyncContext` (Stage 3) | n/a (oracle-tested) |
 
-444 / 444 imported Web Platform Tests subtests pass.
+815 / 815 imported Web Platform Tests subtests pass across 56 fixtures.
 
 ## What's not yet implemented
 

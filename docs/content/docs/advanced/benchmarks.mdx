@@ -15,29 +15,32 @@ Phasis is ~100× slower than V8 on dispatch-bound JavaScript. This isn't an apol
 php bench/run.php
 ```
 
-Current numbers (PHP 8.5, tracing JIT enabled, after the May 2026 custom-callstack + inline-cache work):
+Current numbers (PHP 8.5, tracing JIT enabled, after the May 2026 custom-callstack + inline-cache + frame-snapshot-generator work):
 
 | Test | Median |
 |---|---:|
 | `loop-arith` | 4 ms |
-| `loop-fib` | 3 ms |
-| `fn-recurse` | 21 ms |
+| `loop-fib` | 2 ms |
+| `fn-recurse` | 16 ms |
 | `fn-deep-recurse` | 5 ms |
-| `obj-create` | 12 ms |
-| `obj-prop` | 19 ms |
-| `proto-method` | 458 ms |
+| `obj-create` | 11 ms |
+| `obj-prop` | 16 ms |
+| `proto-method` | 409 ms |
+| `gen-iterate` | 78 ms |
 | `arr-push` | 96 ms |
-| `arr-map` | 16 ms |
-| `str-concat` | 1 ms |
-| `str-split-join` | 32 ms |
-| `json-roundtrip` | 81 ms |
-| `closure` | 24 ms |
-| `destructure` | 2 ms |
-| **Total** | **~915 ms** |
+| `arr-map` | 13 ms |
+| `str-concat` | 2 ms |
+| `str-split-join` | 28 ms |
+| `json-roundtrip` | 68 ms |
+| `closure` | 18 ms |
+| `destructure` | 1 ms |
+| **Total** | **~893 ms** |
 
-The `proto-method` test is the heaviest line because it benchmarks the exact pattern (class method called on an instance, 100k iterations) that the inline cache optimises — without the IC it would clock in around 700 ms; with the IC it lands at 458 ms. The remaining cost is call dispatch, not lookup.
+`proto-method` is the heaviest line because it benchmarks the exact pattern the inline cache optimises (class method called on an instance, 100 k iterations). Without the IC it would clock in around 700 ms; with the IC it lands near 400 ms. The remaining cost is call dispatch, not lookup.
 
-`fn-deep-recurse` is a 2,000-deep non-tail-recursive call. On main before the custom callstack work this threw "Maximum call stack size exceeded" before reaching n=0; the inline-call path keeps the entire chain inside a single PHP frame.
+`gen-iterate` (10 k `yield` resumes through `for…of`) measures the frame-snapshot generator path. On main before the snapshot work this routed through PHP Fiber suspension — one context switch per yield. The snapshot path captures the frame state into a heap object and re-enters `VM::execute` at the saved pc.
+
+`fn-deep-recurse` is a 2 000-deep non-tail-recursive call. On main before the custom callstack work this threw "Maximum call stack size exceeded" before reaching n=0; the inline-call path keeps the entire chain inside a single PHP frame, up to the engine's 4 096-frame ceiling.
 
 For comparison, the same suite runs in single-digit ms on V8. The dominant remaining cost is per-opcode PHP dispatch in the bytecode VM's `switch`, not any specific operation. The full numbers are committed in `BENCH.md` after each `bench` workflow run.
 
@@ -99,16 +102,18 @@ Output goes to `php://stderr` as one line per call: `<node-type> <fn-name> <elap
 
 ## Roadmap
 
-The bytecode VM closed roughly a third of the historical gap with V8 by avoiding AST traversal for common shapes. The May 2026 perf wave added two more layers:
+The bytecode VM closed roughly a third of the historical gap with V8 by avoiding AST traversal for common shapes. The May 2026 perf wave added three more layers:
 
 - **Custom callstack** — every JS call (`CALL`, `CALL_METHOD`, `NEW_CALL`) keeps state inside `VM::execute` and saves the caller's frame onto a pool, removing the per-call PHP frame. See [Bytecode VM § Custom callstack](/docs/advanced/bytecode-vm).
 - **Inline caches** — per-PC monomorphic cache at `LOAD_MEMBER` for prototype-method-on-instance reads, gated by a `PropertyMap::$version` counter with a write-barrier on prototype objects. See [Bytecode VM § Inline caches](/docs/advanced/bytecode-vm).
+- **Frame-snapshot generators** — simple generator bodies (no `yield*`, no try-with-yield, no async) compile to bytecode with a new `Op::YIELD`; suspension captures the frame state into a heap object instead of crossing PHP Fiber. See [Bytecode VM § Frame-snapshot generators](/docs/advanced/bytecode-vm).
 
 Still tractable, not yet done:
 
 - **Polymorphic inline caches** — let a single call site hold 2-4 cached shapes before falling back to slow dispatch. Helps code that processes heterogeneous receivers.
-- **Generator / async inline calls** — the custom-callstack inline path currently excludes generator and async functions (they keep using PHP Fiber suspension). A frame-snapshot suspension scheme would bring them onto the same fast path.
+- **`yield*` and try-with-yield on the snapshot path** — today these shapes keep using the Fiber-backed `executeGeneratorBody`. Each needs explicit state-machine handling (delegate-iterator forwarding, handler stack preserved across suspend) before they're snapshot-safe.
+- **Async generators / `await` on snapshots** — the spec composes generator suspension with the microtask queue. Once the bytecode body supports both `yield` and `await`, async generators become snapshot-friendly too.
 - **Type feedback** — record observed types per call site and specialise the compiled closure.
 - **PHP-bytecode emission** — emit opcodes that opcache + tracing JIT can lower to native machine code.
 
-The first two are weeks-long; the last requires deep PHP-internals work. None are necessary for the embedding workloads Phasis targets.
+The first three are weeks-long; the last requires deep PHP-internals work. None are necessary for the embedding workloads Phasis targets.

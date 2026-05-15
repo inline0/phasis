@@ -105,12 +105,10 @@ The PHP object is referenced — not copied — so mutations from JS land back i
 
 ```php
 $engine = new Engine();
-$engine->setLimit('maxCallDepth', 100);
 $engine->setLimit('maxLoopIterations', 100_000);
-$engine->setLimit('maxStringLength', 10 * 1024 * 1024);
 ```
 
-Each limit throws an `InternalError` when exceeded, which propagates to the PHP caller as a `RuntimeError` you can catch.
+The loop-iteration limit is the only runtime-tunable cap. Hitting it throws an `InternalError` which propagates to the PHP caller as a `RuntimeError` you can catch. The bytecode VM has its own 4 096-frame call-stack ceiling and an 8 192-frame transpiled-closure ceiling baked in — both throw "Maximum call stack size exceeded" when crossed. See [API: setLimit](/docs/api#setlimit) for the full surface.
 
 ## REPL
 

@@ -148,12 +148,14 @@ Machine-readable pass/fail summary for CI pipelines or scripted analysis.
 
 Exit codes match what most JS runtimes use, so existing scripts can swap `node` for `phasis` without changing error handling.
 
-## Resource limits via environment
+## Resource limits
 
-```bash
-PHASIS_MAX_CALL_DEPTH=200 ./vendor/bin/phasis script.js
-PHASIS_MAX_LOOP_ITERATIONS=1000000 ./vendor/bin/phasis script.js
-PHASIS_MAX_EXECUTION_TIME=120 ./vendor/bin/phasis script.js
+`bin/phasis` runs with the engine defaults: the bytecode VM's call-stack ceiling (4 096 JS frames) and the JsToPhp transpiled-closure ceiling (8 192 PHP frames) are baked in. To set a per-script loop budget, use the embedded API:
+
+```php
+$engine = new Phasis\Engine();
+$engine->setLimit('maxLoopIterations', 1_000_000);
+$engine->execFile('script.js');
 ```
 
-When the CLI starts an `Engine`, it reads these env vars and applies them via `setLimit()`. See [API reference](/docs/api) for the programmatic equivalents.
+See [API reference](/docs/api#setlimit) for the full surface.

@@ -9,7 +9,7 @@ Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScrip
 
 - **Embeddable** — drop a JS runtime into any PHP app, framework, or CLI tool via the `Phasis\Engine` class.
 - **Spec-compliant** — 100 % of the official test262 suite passes (50,506 / 50,506).
-- **Web APIs** — full **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException) and **Fetch Pack** (fetch, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget, full WHATWG Streams, navigator). 100 % of imported Web Platform Tests pass.
+- **Web APIs** — full **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException), full **Fetch Pack** (fetch, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget, full WHATWG Streams, navigator), plus `crypto` + `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, and a real event loop. 815 / 815 imported Web Platform Tests pass.
 - **Modern surface** — arrow functions, classes, async/await, Promises, generators, Symbol, BigInt, Proxy, Reflect, Temporal, Intl, TypedArrays, full module support.
 - **Direct PHP↔JS interop** — share PHP objects with JS without serialization. Bind PHP closures as JS functions and mutate PHP arrays from JS in place.
 
@@ -24,6 +24,8 @@ Phasis closes that gap. Your PHP code can lex, parse, and execute JavaScript usi
 - Implements the full ECMAScript standard library: `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, generators, async iterators, modules.
 - Ships the **Web Platform** APIs that real-world JS libraries pre-check for: `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`. See [Web APIs](/docs/compatibility/web-apis) for the full surface.
 - Ships **`fetch`** with the full Fetch family — `Request`, `Response`, `Headers`, body consumers, `AbortController`/`AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`/`Event`, and full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, BYOB, queuing strategies). Real HTTP works out of the box via PHP's `ext-curl`.
+- Ships **`crypto`** + full `SubtleCrypto` (SHA family, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2), **`WebSocket`** (RFC 6455 + swappable transport), and **`XMLHttpRequest`** (layered over the same fetch transport).
+- Ships a real **event loop**: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, plus Stage-3 `AsyncContext` for value propagation across async boundaries.
 - Supports modern syntax — destructuring, spread/rest, computed properties, optional chaining, nullish coalescing, template literals, tagged templates, classes (with private fields, static blocks, decorators), top-level await.
 - Bridges PHP and JS values losslessly. Pass a PHP object into JS and mutations are visible to PHP. Pass a PHP callable and JS sees it as a function.
 - Sandboxes execution. Resource limits cover call depth, loop iterations, string length, console output, and wall-clock time. The host controls the runtime, including the `fetch` transport and policy hooks.
