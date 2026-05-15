@@ -286,6 +286,7 @@ class JsObject implements JsValue
         if ($receiver === $this) {
             if (isset($this->properties->dataSlots[$name])) {
                 $this->properties->dataSlots[$name] = $value;
+                $this->properties->version++;
                 return true;
             }
             $ownDesc = $this->properties->descriptors[$name] ?? null;
@@ -1175,6 +1176,7 @@ class JsObject implements JsValue
     {
         if (isset($this->properties->dataSlots[$name])) {
             $this->properties->dataSlots[$name] = $value;
+            $this->properties->version++;
             return true;
         }
         $desc = $this->properties->descriptors[$name] ?? null;
@@ -1185,6 +1187,7 @@ class JsObject implements JsValue
             && $desc->writable !== false
         ) {
             $desc->value = $value;
+            $this->properties->version++;
             return true;
         }
         return false;
@@ -1209,6 +1212,7 @@ class JsObject implements JsValue
         if (isset($this->properties->dataSlots[$name])) {
             // Existing fast slot: in-place value swap.
             $this->properties->dataSlots[$name] = $value;
+            $this->properties->version++;
             return true;
         }
         if (isset($this->properties->descriptors[$name])) {

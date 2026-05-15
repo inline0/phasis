@@ -34,6 +34,30 @@ final class CompiledFunction
     public array $loadNameIc = [];
 
     /**
+     * Inline cache for LOAD_MEMBER, indexed by PC. Stores the
+     * receiver's prototype reference at first dispatch alongside the
+     * resolved member value and the prototype PropertyMap's version
+     * at capture time.
+     *
+     * Hit condition: the current receiver has no own slot for $name
+     * (already verified by the LOAD_MEMBER fast-path miss that led
+     * here), the cached proto reference is identical to the
+     * receiver's current `getPrototype()`, and the proto's
+     * PropertyMap::$version still matches the captured version.
+     *
+     * Soundness: PropertyMap bumps `version` on every set / delete /
+     * data-slot mutation, so any change to the cached value (or its
+     * surrounding layout) forces an IC miss on the next read.
+     *
+     * Optimises the prototype-method-on-instance pattern (class
+     * methods, `Array.prototype.push`-style hot calls) where the
+     * existing `$obj->properties->dataSlots` fast path can't fire.
+     *
+     * @var array<int, array{0: \Phasis\Value\JsObject, 1: JsValue, 2: int}>
+     */
+    public array $loadMemberIc = [];
+
+    /**
      * Exception-handler table for this function's bytecode. Each entry
      * defines a [tryStart, tryEnd) PC range, a catchPc to jump to on
      * throw, an exception slot for the catch parameter, and the

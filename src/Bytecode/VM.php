@@ -1826,9 +1826,73 @@ final class VM
                                 && isset($obj->properties->dataSlots[$name])
                             ) {
                                 $stack[$sp++] = $obj->properties->dataSlots[$name];
-                            } else {
-                                $stack[$sp++] = $this->lookupMember($obj, $name);
+                                $pc += 2;
+                                break;
                             }
+                            // Prototype inline cache: when the receiver has no
+                            // own data slot for $name AND no own descriptor,
+                            // try the per-PC cache. The cache stores the
+                            // receiver's prototype reference plus the
+                            // resolved value and the proto's PropertyMap
+                            // version at capture. A hit returns the cached
+                            // value without walking the prototype chain.
+                            if (
+                                $obj instanceof JsObject
+                                && !isset($obj->properties->descriptors[$name])
+                            ) {
+                                $ic = $cf->loadMemberIc[$pc] ?? null;
+                                if ($ic !== null) {
+                                    $cachedProto = $ic[0];
+                                    if (
+                                        $cachedProto === $obj->getPrototype()
+                                        && $cachedProto->properties->version === $ic[2]
+                                    ) {
+                                        $stack[$sp++] = $ic[1];
+                                        $pc += 2;
+                                        break;
+                                    }
+                                }
+                                $resolved = $this->lookupMember($obj, $name);
+                                // Only cache when the resolved value lives
+                                // on a prototype as a data property — be it
+                                // a fast dataSlot or a writable data
+                                // descriptor (class methods land here:
+                                // they're stored as non-enumerable
+                                // descriptors with $get === null).
+                                // Getter accessors must re-run on every
+                                // read, so they're not cacheable.
+                                $proto = $obj->getPrototype();
+                                if ($proto !== null) {
+                                    $cacheable = false;
+                                    if (
+                                        isset($proto->properties->dataSlots[$name])
+                                        && $proto->properties->dataSlots[$name] === $resolved
+                                    ) {
+                                        $cacheable = true;
+                                    } else {
+                                        $protoDesc = $proto->properties->descriptors[$name] ?? null;
+                                        if (
+                                            $protoDesc !== null
+                                            && $protoDesc->get === null
+                                            && $protoDesc->set === null
+                                            && $protoDesc->value === $resolved
+                                        ) {
+                                            $cacheable = true;
+                                        }
+                                    }
+                                    if ($cacheable) {
+                                        $cf->loadMemberIc[$pc] = [
+                                            $proto,
+                                            $resolved,
+                                            $proto->properties->version,
+                                        ];
+                                    }
+                                }
+                                $stack[$sp++] = $resolved;
+                                $pc += 2;
+                                break;
+                            }
+                            $stack[$sp++] = $this->lookupMember($obj, $name);
                             $pc += 2;
                             break;
                         case Op::LOAD_COMPUTED:
@@ -1853,6 +1917,7 @@ final class VM
                                 && isset($obj->properties->dataSlots[$name])
                             ) {
                                 $obj->properties->dataSlots[$name] = $val;
+                                $obj->properties->version++;
                             } else {
                                 $this->writeMember($obj, $name, $val);
                             }

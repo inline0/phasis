@@ -44,6 +44,20 @@ class PropertyMap
      */
     public array $order = [];
 
+    /**
+     * Mutation generation counter. Bumped on every set / delete that
+     * touches structure OR data-slot values. The VM's LOAD_MEMBER
+     * inline cache stores this counter alongside its cached value;
+     * on read the cache trusts itself iff the version still matches.
+     *
+     * Note: overwrites of an existing data slot also bump the
+     * version. This is a write-time cost (one int increment) that
+     * buys read-time freedom from re-verifying the slot value on
+     * every IC hit. Class prototypes — the common IC target — are
+     * populated once at class creation and never overwritten.
+     */
+    public int $version = 0;
+
     public function get(string $key): ?PropertyDescriptor
     {
         if (isset($this->dataSlots[$key])) {
@@ -64,6 +78,7 @@ class PropertyMap
 
     public function set(string $key, PropertyDescriptor $desc): void
     {
+        $this->version++;
         if (
             $desc->get === null
             && $desc->set === null
@@ -87,6 +102,7 @@ class PropertyMap
 
     public function setDataSlot(string $key, JsValue $value): void
     {
+        $this->version++;
         $isNew = !isset($this->order[$key]);
         $this->dataSlots[$key] = $value;
         $this->order[$key] = true;
@@ -107,6 +123,7 @@ class PropertyMap
         unset($this->descriptors[$key]);
         unset($this->order[$key]);
         if ($existed) {
+            $this->version++;
             self::touchIntegerIndex($key);
         }
         return true;

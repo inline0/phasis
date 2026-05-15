@@ -35,6 +35,26 @@ const tests = {
     for (let i = 0; i < 100000; i++) { o.x = i; s += o.x; }
     return s;
   },
+  // Prototype-method call: hits the path that current dataSlots
+  // fast-load can't optimize (the method is on the prototype, not
+  // own), so every iteration walks the proto chain through
+  // lookupMember -> JsObject::get. The inline-cache work makes
+  // this fast by remembering the prototype slot per call site.
+  // Class is hoisted via the constructor object so the hot loop
+  // sits in a VM-compiled arrow body (declaring `class` inline
+  // bails out of bytecode compilation today).
+  "proto-method": (() => {
+    class C {
+      constructor(v) { this.v = v; }
+      sum(x) { return this.v + x; }
+    }
+    return () => {
+      const c = new C(1);
+      let s = 0;
+      for (let i = 0; i < 100000; i++) s = c.sum(s);
+      return s;
+    };
+  })(),
   "arr-push": () => {
     const a = [];
     for (let i = 0; i < 50000; i++) a.push(i);
