@@ -43,14 +43,14 @@ Phasis sits ahead of every production JavaScript engine on raw conformance — i
 
 Every category, sub-category, and individual test in the upstream suite at the pinned revision passes.
 
-## How the last fixtures landed
+## Notable edge cases
 
-The final push to 100 % closed two distinct gaps:
+A few fixture areas require deliberate engine work to pass:
 
-1. **SM stress fixtures** — the dst-offset-caching shards, the Sputnik decodeURI / decodeURIComponent UTF-8 sweep, and the SM typed-array / nullish-coalescing assert loops were previously blocklisted pending a bytecode JIT. They now pass under the bytecode VM with a per-test budget bump for tests promoted to single-file chunks via `test262_isolated_tests` in `config/support.php`.
-2. **Chinese-calendar uncommon-leap-month** — the SM `from-chinese-leap-month-uncommon.js` fixture asserts that `Temporal.PlainMonthDay.from({calendar:"chinese", monthCode:"M09L"..."M12L", day:30})` succeeds. Those values resolve to ISO reference years as far back as -6482, outside the range our ICU-derived calendar table covered. A pure-PHP Reingold-Dershowitz extension to the chinese / dangi tables (Calendrical Calculations §19; Meeus algorithms for solar / lunar longitude and new-moon estimation) now covers extended-year -7500 through 3500. No ICU dependency at codegen or runtime.
+- **SpiderMonkey stress fixtures** — the `dst-offset-caching` shards, the Sputnik `decodeURI` / `decodeURIComponent` UTF-8 sweep, and the typed-array / nullish-coalescing assert loops run with a per-test budget bump via `test262_isolated_tests` in `config/support.php`. The bytecode VM handles the iteration counts each fixture exercises; the budget bump lets each one run to completion under PHP's tracing JIT.
+- **Chinese-calendar uncommon-leap-month** — the `from-chinese-leap-month-uncommon.js` fixture asserts `Temporal.PlainMonthDay.from({calendar:"chinese", monthCode:"M09L"..."M12L", day:30})` succeeds; the resolved ISO reference years stretch back to -6482. Phasis's chinese / dangi calendar tables use a pure-PHP Reingold-Dershowitz extension (Calendrical Calculations §19; Meeus algorithms for solar / lunar longitude and new-moon estimation) covering extended-year -7500 through 3500 with no ICU dependency at codegen or runtime.
 
-`HOST_GAP_BLOCKLIST` and `CROSS_REALM_BLOCKLIST` in `tests/Oracle/Test262Runner.php` are now both empty.
+`HOST_GAP_BLOCKLIST` and `CROSS_REALM_BLOCKLIST` in `tests/Oracle/Test262Runner.php` are both empty.
 
 ## How we run it
 

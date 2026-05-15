@@ -15,7 +15,7 @@ Phasis is ~100× slower than V8 on dispatch-bound JavaScript. This isn't an apol
 php bench/run.php
 ```
 
-Current numbers (PHP 8.5, tracing JIT enabled, after the May 2026 perf wave — custom-callstack, inline-cache, frame-snapshot-generator, JsToPhp method-call lowering, JSON.stringify cache):
+Current numbers (PHP 8.5, tracing JIT enabled):
 
 | Test | Median |
 |---|---:|
@@ -36,13 +36,13 @@ Current numbers (PHP 8.5, tracing JIT enabled, after the May 2026 perf wave — 
 | `destructure` | 2 ms |
 | **Total** | **~873 ms** |
 
-`proto-method` is still the heaviest line because it benchmarks the exact pattern most engine optimisations target (class method called on an instance, 100 k iterations). The IC handles the prototype lookup; JsToPhp now lowers the whole outer loop (`for (...) c.sum(s)` with `new C()` and `this.member` reads in the method body) to native PHP. The remaining cost is per-iteration call dispatch into the method body.
+`proto-method` is the heaviest line because it benchmarks the exact pattern most engine optimisations target (class method called on an instance, 100 k iterations). The IC handles the prototype lookup and JsToPhp lowers the outer loop (`for (...) c.sum(s)` with `new C()` and `this.member` reads in the method body) to native PHP. The remaining cost is per-iteration call dispatch into the method body.
 
-CI bench numbers are notoriously variance-prone (~20% runner-to-runner). Treat the table as "rough magnitude" — re-run on the same workflow if you need to compare changes precisely.
+CI bench numbers are variance-prone (~20% runner-to-runner). Treat the table as "rough magnitude" — re-run on the same workflow if you need to compare changes precisely.
 
-`gen-iterate` (10 k `yield` resumes through `for…of`) measures the frame-snapshot generator path. On main before the snapshot work this routed through PHP Fiber suspension — one context switch per yield. The snapshot path captures the frame state into a heap object and re-enters `VM::execute` at the saved pc.
+`gen-iterate` (10 k `yield` resumes through `for…of`) measures the frame-snapshot generator path: suspension captures the frame state into a heap object and `gen.next()` re-enters `VM::execute` at the saved pc, no PHP Fiber crossing.
 
-`fn-deep-recurse` is a 2 000-deep non-tail-recursive call. On main before the custom callstack work this threw "Maximum call stack size exceeded" before reaching n=0; the inline-call path keeps the entire chain inside a single PHP frame, up to the engine's 4 096-frame ceiling.
+`fn-deep-recurse` is a 2 000-deep non-tail-recursive call. The custom-callstack inline path keeps the entire chain inside a single PHP frame, bounded by `CallStack::maxDepth` (4 096) rather than the PHP process stack.
 
 `json-roundtrip` benchmarks the deep-clone idiom `JSON.parse(JSON.stringify(o))` 5 000× on a small nested object. `JSON.stringify` caches its output on the input `JsObject` keyed on every visited `PropertyMap::$mutationVersion`; the hot-loop iteration walks the version-pinning list (cheap) and returns the cached string instead of re-encoding. Cache invalidation is transitive — mutating any nested object or array bumps a version that's pinned in the cache and forces a re-walk on the next call.
 
@@ -100,20 +100,12 @@ For PHP-level profiling (when you suspect the bottleneck is in the runtime itsel
 
 ## Roadmap
 
-The bytecode VM closed roughly a third of the historical gap with V8 by avoiding AST traversal for common shapes. The May 2026 perf wave added five more layers:
+What would close more of the V8 gap, in rough order of tractability:
 
-- **Custom callstack** — every JS call (`CALL`, `CALL_METHOD`, `NEW_CALL`) keeps state inside `VM::execute` and saves the caller's frame onto a pool, removing the per-call PHP frame. See [Bytecode VM § Custom callstack](/docs/advanced/bytecode-vm).
-- **Inline caches** — per-PC monomorphic cache at `LOAD_MEMBER` for prototype-method-on-instance reads, gated by a `PropertyMap::$version` counter with a write-barrier on prototype objects. See [Bytecode VM § Inline caches](/docs/advanced/bytecode-vm).
-- **Frame-snapshot generators** — simple generator bodies (no `yield*`, no try-with-yield, no async) compile to bytecode with a new `Op::YIELD`; suspension captures the frame state into a heap object instead of crossing PHP Fiber. See [Bytecode VM § Frame-snapshot generators](/docs/advanced/bytecode-vm).
-- **JsToPhp method-call lowering** — `new Ctor(args)`, `obj.method(args)`, and `this.member` reads now lower to native PHP. The canonical class-method loop body (build instance, call method N times) runs entirely outside the VM dispatch switch when the body is JsToPhp-eligible.
-- **JSON.stringify cache** — top-level results cached on the input `JsObject` with transitive `PropertyMap::$mutationVersion` invalidation across every visited nested object/array. Hot `JSON.parse(JSON.stringify(o))` deep-clone patterns get a roughly 2× speedup on the stringify half (json-roundtrip 91 → 52 ms on CI).
+- **Polymorphic inline caches** — let a single `LOAD_MEMBER` call site hold 2-4 cached shapes before falling back to slow dispatch. Helps code that processes heterogeneous receivers.
+- **`yield*` and try-with-yield on the frame-snapshot generator path** — these shapes currently route to the Fiber-backed `executeGeneratorBody`. Each needs explicit state-machine handling (delegate-iterator forwarding, handler stack preserved across suspend) before they're snapshot-safe.
+- **Async generators and `await` on snapshots** — the spec composes generator suspension with the microtask queue. Once the bytecode body supports both `yield` and `await`, async generators become snapshot-friendly too.
+- **Parameter type inference in JsToPhp** — function parameters default to numeric type, so `function (obj) { obj.method() }` bails the compiler. Inferring object-typed parameters from how they're used in the body would unlock method calls on function arguments without requiring the receiver to be locally constructed via `new`.
+- **PHP-bytecode emission** — emit opcodes that opcache + tracing JIT can lower to native machine code. Deepest item; the others can be done within the existing architecture.
 
-Still tractable, not yet done:
-
-- **Polymorphic inline caches** — let a single call site hold 2-4 cached shapes before falling back to slow dispatch. Helps code that processes heterogeneous receivers.
-- **`yield*` and try-with-yield on the snapshot path** — today these shapes keep using the Fiber-backed `executeGeneratorBody`. Each needs explicit state-machine handling (delegate-iterator forwarding, handler stack preserved across suspend) before they're snapshot-safe.
-- **Async generators / `await` on snapshots** — the spec composes generator suspension with the microtask queue. Once the bytecode body supports both `yield` and `await`, async generators become snapshot-friendly too.
-- **Parameter type inference** — JsToPhp parameters default to numeric type, so `function (obj) { obj.method() }` bails. Inferring object-typed parameters from how they're used in the body would unlock method calls on function arguments without requiring the receiver to be locally constructed via `new`.
-- **PHP-bytecode emission** — emit opcodes that opcache + tracing JIT can lower to native machine code.
-
-The first four are weeks-long; the last requires deep PHP-internals work. None are necessary for the embedding workloads Phasis targets.
+None of these are necessary for the embedding workloads Phasis targets.
