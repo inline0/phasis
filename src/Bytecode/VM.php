@@ -674,7 +674,7 @@ final class VM
      */
     public function execute(
         CompiledFunction $cf,
-        Frame $frame,
+        ?Frame $frame,
         ?GeneratorSnapshot $resumeFrom = null,
         ?JsValue $resumeValue = null,
         bool $resumeThrow = false,
@@ -691,6 +691,7 @@ final class VM
             $thisValue = $resumeFrom->thisValue;
             $strict = $resumeFrom->strict;
         } else {
+            assert($frame !== null, 'Frame is required when not resuming from a snapshot');
             $stack = $frame->stack;
             $sp = $frame->sp;
             $locals = $frame->locals;
@@ -2111,10 +2112,29 @@ final class VM
                             // Resume pc is pc+1: the byte after
                             // YIELD, where the dispatch will push
                             // the resume value and continue.
+                            //
+                            // Reuse incoming $resumeFrom in place
+                            // instead of allocating a fresh
+                            // GeneratorSnapshot: its fields are no
+                            // longer needed since execute() copied
+                            // them into PHP locals at entry, and
+                            // the JsGenerator driver replaces its
+                            // own snapshot reference with whatever
+                            // YieldResult carries. One allocation
+                            // saved per yield in steady state.
                             $yieldedValue = $stack[--$sp];
-                            return new YieldResult(
-                                $yieldedValue,
-                                new GeneratorSnapshot(
+                            if ($resumeFrom !== null) {
+                                $resumeFrom->cf = $cf;
+                                $resumeFrom->pc = $pc + 1;
+                                $resumeFrom->stack = $stack;
+                                $resumeFrom->sp = $sp;
+                                $resumeFrom->locals = $locals;
+                                $resumeFrom->env = $env;
+                                $resumeFrom->thisValue = $thisValue;
+                                $resumeFrom->strict = $strict;
+                                $snap = $resumeFrom;
+                            } else {
+                                $snap = new GeneratorSnapshot(
                                     $cf,
                                     $pc + 1,
                                     $stack,
@@ -2123,8 +2143,9 @@ final class VM
                                     $env,
                                     $thisValue,
                                     $strict,
-                                ),
-                            );
+                                );
+                            }
+                            return new YieldResult($yieldedValue, $snap);
 
                         default:
                             throw new InternalError('VM: unknown opcode ' . $op);

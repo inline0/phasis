@@ -5288,26 +5288,19 @@ trait ExpressionEvaluation
             $snapshot->done = true;
             return $value ?? JsUndefined::instance();
         }
-        $placeholder = new \Phasis\Bytecode\Frame(
-            env: $snapshot->env,
-            thisValue: $snapshot->thisValue,
-            slotCount: $snapshot->cf->slotCount,
-            undefined: JsUndefined::instance(),
-        );
         $resumeThrow = $mode === 'throw';
-        try {
-            $result = $this->vm->execute(
-                $snapshot->cf,
-                $placeholder,
-                $snapshot,
-                $value,
-                $resumeThrow,
-            );
-        } finally {
-            // No frame-pool depth bookkeeping: snapshot generators
-            // don't share the per-call Frame pool (they own their
-            // locals across resumes).
-        }
+        // No Frame allocation needed: execute() reads all state from
+        // the snapshot when $resumeFrom is non-null. The Frame
+        // argument is checked-non-null only on the fresh-call entry
+        // path. One array_fill() + JsObject allocation skipped per
+        // resume.
+        $result = $this->vm->execute(
+            $snapshot->cf,
+            null,
+            $snapshot,
+            $value,
+            $resumeThrow,
+        );
         if (!$result instanceof \Phasis\Bytecode\YieldResult) {
             // Generator returned (RET at outer frame). Mark the
             // snapshot done so subsequent calls short-circuit.
