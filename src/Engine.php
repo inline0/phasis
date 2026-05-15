@@ -490,6 +490,10 @@ class Engine
             // `crypto.subtle.{digest, sign, verify, encrypt, decrypt,
             // generateKey, importKey, exportKey}`.
             \Phasis\BuiltIn\CryptoObject::install($this->globalEnv);
+
+            // XMLHttpRequest — legacy HTTP client, layered on the same
+            // pluggable transport that `fetch()` uses.
+            \Phasis\BuiltIn\XMLHttpRequestConstructor::install($this->globalEnv);
         } else {
             $this->registerLazyBuiltins();
         }
@@ -1351,6 +1355,14 @@ class Engine
             // module's static cache.
             ['ArrayBuffer'],
             static fn () => \Phasis\BuiltIn\CryptoObject::install($env),
+        );
+
+        // --- XMLHttpRequest ---
+        $reg->register(
+            ['XMLHttpRequest'],
+            // Uses the realm's fetch transport on send().
+            [],
+            static fn () => \Phasis\BuiltIn\XMLHttpRequestConstructor::install($env),
         );
     }
 
