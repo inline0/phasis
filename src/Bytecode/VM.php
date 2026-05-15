@@ -442,6 +442,7 @@ final class VM
                         try {
                             $mapped = $compiled(
                                 [$val, $idx, $receiver],
+                                JsUndefined::instance(),
                                 $callback->closure,
                                 $this->interp,
                                 $callback->phpCompiledNodes,
@@ -515,6 +516,7 @@ final class VM
                         try {
                             $acc = $compiled(
                                 [$acc, $val, $idx, $receiver],
+                                JsUndefined::instance(),
                                 $callback->closure,
                                 $this->interp,
                                 $callback->phpCompiledNodes,
@@ -560,6 +562,7 @@ final class VM
                         try {
                             $compiled(
                                 [$val, $idx, $receiver],
+                                JsUndefined::instance(),
                                 $callback->getClosure(),
                                 $this->interp,
                                 $callback->phpCompiledNodes,
@@ -606,6 +609,7 @@ final class VM
                         try {
                             $keep = $compiled(
                                 [$val, $idx, $receiver],
+                                JsUndefined::instance(),
                                 $callback->getClosure(),
                                 $this->interp,
                                 $callback->phpCompiledNodes,
