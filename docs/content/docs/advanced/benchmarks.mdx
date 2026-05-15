@@ -15,28 +15,30 @@ Phasis is ~100× slower than V8 on dispatch-bound JavaScript. This isn't an apol
 php bench/run.php
 ```
 
-Current numbers (PHP 8.5, tracing JIT enabled, after the May 2026 custom-callstack + inline-cache + frame-snapshot-generator work):
+Current numbers (PHP 8.5, tracing JIT enabled, after the May 2026 custom-callstack + inline-cache + frame-snapshot-generator + JsToPhp method-call lowering work):
 
 | Test | Median |
 |---|---:|
 | `loop-arith` | 4 ms |
-| `loop-fib` | 2 ms |
-| `fn-recurse` | 16 ms |
-| `fn-deep-recurse` | 5 ms |
-| `obj-create` | 11 ms |
-| `obj-prop` | 16 ms |
-| `proto-method` | 409 ms |
-| `gen-iterate` | 78 ms |
-| `arr-push` | 96 ms |
-| `arr-map` | 13 ms |
+| `loop-fib` | 3 ms |
+| `fn-recurse` | 21 ms |
+| `fn-deep-recurse` | 6 ms |
+| `obj-create` | 13 ms |
+| `obj-prop` | 20 ms |
+| `proto-method` | 390 ms |
+| `gen-iterate` | 97 ms |
+| `arr-push` | 103 ms |
+| `arr-map` | 16 ms |
 | `str-concat` | 2 ms |
-| `str-split-join` | 28 ms |
-| `json-roundtrip` | 68 ms |
-| `closure` | 18 ms |
+| `str-split-join` | 32 ms |
+| `json-roundtrip` | 91 ms |
+| `closure` | 24 ms |
 | `destructure` | 1 ms |
-| **Total** | **~893 ms** |
+| **Total** | **~988 ms** |
 
-`proto-method` is the heaviest line because it benchmarks the exact pattern the inline cache optimises (class method called on an instance, 100 k iterations). Without the IC it would clock in around 700 ms; with the IC it lands near 400 ms. The remaining cost is call dispatch, not lookup.
+`proto-method` is the heaviest line because it benchmarks the exact pattern most engine optimisations target (class method called on an instance, 100 k iterations). The IC handles the prototype lookup; JsToPhp now lowers the whole outer loop (`for (...) c.sum(s)` with `new C()` and `this.member` reads in the method body) to native PHP. The remaining cost is per-iteration call dispatch into the method body.
+
+CI bench numbers are notoriously variance-prone (~20% runner-to-runner). Treat the table as "rough magnitude" — re-run on the same workflow if you need to compare changes precisely.
 
 `gen-iterate` (10 k `yield` resumes through `for…of`) measures the frame-snapshot generator path. On main before the snapshot work this routed through PHP Fiber suspension — one context switch per yield. The snapshot path captures the frame state into a heap object and re-enters `VM::execute` at the saved pc.
 
@@ -92,28 +94,23 @@ docker run --rm -v "$PWD:/app" -w /app php:8.5-cli \
 
 ## Profiling
 
-Phasis ships a built-in profile mode that emits per-AST-node timing:
-
-```bash
-PHASIS_PROFILE=1 ./vendor/bin/phasis script.js > /dev/null
-```
-
-Output goes to `php://stderr` as one line per call: `<node-type> <fn-name> <elapsed-µs>`. Pipe it to your favourite analysis tool. For PHP-level profiling (when you suspect the bottleneck is in the runtime itself, not in JS dispatch), Xdebug's profiler works against Phasis exactly like any other PHP code.
+For PHP-level profiling (when you suspect the bottleneck is in the runtime itself, not in JS dispatch), Xdebug's profiler works against Phasis exactly like any other PHP code. Run a benchmark script under `xdebug.mode=profile,gc_stats` and inspect the cachegrind output to see which `Phasis\` classes dominate. For VM-side hot-path identification, the `bench/` harness's per-test wall time isolates each opcode pattern under a controlled load.
 
 ## Roadmap
 
-The bytecode VM closed roughly a third of the historical gap with V8 by avoiding AST traversal for common shapes. The May 2026 perf wave added three more layers:
+The bytecode VM closed roughly a third of the historical gap with V8 by avoiding AST traversal for common shapes. The May 2026 perf wave added four more layers:
 
 - **Custom callstack** — every JS call (`CALL`, `CALL_METHOD`, `NEW_CALL`) keeps state inside `VM::execute` and saves the caller's frame onto a pool, removing the per-call PHP frame. See [Bytecode VM § Custom callstack](/docs/advanced/bytecode-vm).
 - **Inline caches** — per-PC monomorphic cache at `LOAD_MEMBER` for prototype-method-on-instance reads, gated by a `PropertyMap::$version` counter with a write-barrier on prototype objects. See [Bytecode VM § Inline caches](/docs/advanced/bytecode-vm).
 - **Frame-snapshot generators** — simple generator bodies (no `yield*`, no try-with-yield, no async) compile to bytecode with a new `Op::YIELD`; suspension captures the frame state into a heap object instead of crossing PHP Fiber. See [Bytecode VM § Frame-snapshot generators](/docs/advanced/bytecode-vm).
+- **JsToPhp method-call lowering** — `new Ctor(args)`, `obj.method(args)`, and `this.member` reads now lower to native PHP. The canonical class-method loop body (build instance, call method N times) runs entirely outside the VM dispatch switch when the body is JsToPhp-eligible.
 
 Still tractable, not yet done:
 
 - **Polymorphic inline caches** — let a single call site hold 2-4 cached shapes before falling back to slow dispatch. Helps code that processes heterogeneous receivers.
 - **`yield*` and try-with-yield on the snapshot path** — today these shapes keep using the Fiber-backed `executeGeneratorBody`. Each needs explicit state-machine handling (delegate-iterator forwarding, handler stack preserved across suspend) before they're snapshot-safe.
 - **Async generators / `await` on snapshots** — the spec composes generator suspension with the microtask queue. Once the bytecode body supports both `yield` and `await`, async generators become snapshot-friendly too.
-- **Type feedback** — record observed types per call site and specialise the compiled closure.
+- **Parameter type inference** — JsToPhp parameters default to numeric type, so `function (obj) { obj.method() }` bails. Inferring object-typed parameters from how they're used in the body would unlock method calls on function arguments without requiring the receiver to be locally constructed via `new`.
 - **PHP-bytecode emission** — emit opcodes that opcache + tracing JIT can lower to native machine code.
 
-The first three are weeks-long; the last requires deep PHP-internals work. None are necessary for the embedding workloads Phasis targets.
+The first four are weeks-long; the last requires deep PHP-internals work. None are necessary for the embedding workloads Phasis targets.
