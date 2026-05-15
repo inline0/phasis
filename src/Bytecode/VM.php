@@ -1340,26 +1340,24 @@ final class VM
                                     // callFunction so the call still completes.
                                 }
                             }
-                            // Stage 1 custom callstack: when the
-                            // callee is strict-or-arrow (setCallerPropCache
-                            // === false → no Annex B caller/arguments
-                            // magic) AND not a bound function AND
-                            // already eligible for the VM direct
-                            // dispatch fast path, inline the call into
-                            // the VM's own dispatch loop. Saves PHP-
-                            // stack growth and the per-call PHP method
-                            // dispatch.
+                            // Stage 2 custom callstack: any eligible
+                            // BC-compiled callee that isn't a bound
+                            // function. setupInlineVmCall handles the
+                            // Annex B caller/arguments magic + sloppy
+                            // this-binding adjustment uniformly across
+                            // strict / arrow / sloppy callees.
                             if (
                                 $eligible
-                                && $callee->setCallerPropCache === false
                                 && $callee->getBoundTarget() === null
                             ) {
                                 $newCf = $callee->compiled;
-                                // Setup interpreter-side state (call
-                                // stack push, strict mode swap, module
-                                // path swap). The returned blob is what
-                                // RET / exception unwind feeds back.
-                                $restore = $this->interp->setupInlineVmCall($callee);
+                                // Setup interpreter-side state. Returns
+                                // the (possibly adjusted) thisValue
+                                // plus the full restore blob the VM
+                                // hands back on RET / on exception
+                                // unwind.
+                                $restore = $this->interp->setupInlineVmCall($callee, $undef);
+                                $newThis = $restore[0];
                                 // Allocate a Frame from the pool the
                                 // same way `tryRunOnVm` would for a
                                 // canSkipEnvAlloc callee.
@@ -1367,7 +1365,7 @@ final class VM
                                 $paramCount = count($paramSlots);
                                 $newFrame = $this->interp->borrowInlineVmFrame(
                                     $callee->closure,
-                                    $undef,
+                                    $newThis,
                                     $newCf->slotCount,
                                     $paramCount,
                                     $undef,
@@ -1382,13 +1380,17 @@ final class VM
                                     $newFrame->locals[$paramSlots[$i]] =
                                         $i < $argCount ? $args[$i] : $undef;
                                 }
-                                // Save caller's state.
+                                // Save caller's state — index 14 now
+                                // carries the callee reference so the
+                                // teardown can undo caller/arguments
+                                // magic on the same JsFunction.
                                 $savedFrames[] = [
                                     $cf, $code, $consts, $names, $nestedFns,
                                     $stack, $sp, $locals, $env, $thisValue,
                                     $strict, $hasHandlers,
                                     $pc + 2,
                                     $restore,
+                                    $callee,
                                 ];
                                 // Switch to callee's state.
                                 $cf = $newCf;
@@ -1757,7 +1759,7 @@ final class VM
                                 // the return value onto the caller's
                                 // operand stack, continue dispatch.
                                 $saved = array_pop($savedFrames);
-                                $this->interp->teardownInlineVmCall($saved[13]);
+                                $this->interp->teardownInlineVmCall($saved[14], $saved[13]);
                                 $this->interp->releaseInlineVmFrame();
                                 $cf = $saved[0];
                                 $code = $saved[1];
@@ -1813,7 +1815,7 @@ final class VM
                         throw $e;
                     }
                     $saved = array_pop($savedFrames);
-                    $this->interp->teardownInlineVmCall($saved[13]);
+                    $this->interp->teardownInlineVmCall($saved[14], $saved[13]);
                     $this->interp->releaseInlineVmFrame();
                     $cf = $saved[0];
                     $code = $saved[1];

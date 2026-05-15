@@ -180,24 +180,112 @@ class Interpreter
 
     /**
      * Per-call interpreter-state setup for the VM's inline-call path
-     * (Stage 1 custom callstack). Mirrors the subset of
-     * `executeVmFunctionDirect` that this path needs, returning the
-     * data the VM must hand back to `teardownInlineVmCall` on RET.
+     * (custom callstack). Mirrors `executeVmFunctionDirect`'s setup
+     * for any callee shape the VM elects to inline: handles the
+     * Annex B caller/arguments magic for sloppy non-arrow callees,
+     * the strictMode swap, the module-path swap, and the sloppy
+     * this-binding adjustment.
      *
-     * Stage 1 precondition (caller checks): callee is strict + non-
-     * arrow OR arrow + non-async-non-generator + non-native + non-
-     * class-ctor + canSkipEnvAlloc + setCallerPropCache=false. That
-     * subset means the Annex B caller/arguments magic and the sloppy
-     * this-binding adjustment are both unnecessary.
+     * Caller (the VM) checks the structural eligibility (BC-compiled,
+     * canSkipEnvAlloc, not class ctor / derived ctor / homeObject /
+     * native / async / generator / bound). This helper handles every
+     * remaining shape uniformly.
      *
-     * @return array{0: bool, 1: bool, 2: ?string}
+     * Returns the bag the VM must keep alongside the saved-frame
+     * entry and hand back to `teardownInlineVmCall` on RET / on
+     * exception unwind through the frame. The bag's `0` slot is the
+     * (possibly adjusted) `thisValue` the VM should use as the
+     * callee's `this` binding.
+     *
+     * @return array{
+     *     0: \Phasis\Value\JsValue,
+     *     1: bool,
+     *     2: bool,
+     *     3: ?string,
+     *     4: bool,
+     *     5: bool,
+     *     6: bool,
+     *     7: ?\Phasis\Object\PropertyDescriptor,
+     *     8: ?\Phasis\Object\PropertyDescriptor,
+     *     9: ?\Phasis\Value\JsValue,
+     *     10: ?\Phasis\Value\JsValue,
+     * }
      */
-    public function setupInlineVmCall(\Phasis\Value\JsFunction $fn): array
-    {
+    public function setupInlineVmCall(
+        \Phasis\Value\JsFunction $fn,
+        \Phasis\Value\JsValue $thisValue,
+    ): array {
         $this->callStack->push($fn->name, 0);
+
+        $callerFn = !empty($this->callerStack)
+            ? $this->callerStack[count($this->callerStack) - 1]
+            : null;
         $this->callerStack[] = $fn;
 
+        if ($fn->setCallerPropCache === null) {
+            $body = $fn->getBody();
+            $hasBodyStrict = $body instanceof \Phasis\Ast\Statement\BlockStatement
+                && $this->hasUseStrictDirective($body->body);
+            $fn->setCallerPropCache = !$fn->isStrict()
+                && !$hasBodyStrict
+                && !$fn->isArrow()
+                && !$fn->isNative()
+                && !$fn->isAsync()
+                && !$fn->isGenerator()
+                && !$fn->isClassConstructor()
+                && $fn->isConstructable();
+        }
+        $setCallerProp = $fn->setCallerPropCache;
+        $savedCaller = null;
+        $savedArguments = null;
+        $savedCallerValue = null;
+        $savedArgumentsValue = null;
+        $autoUpdateCaller = false;
+        $autoUpdateArguments = false;
+        if ($setCallerProp) {
+            $savedCaller = $fn->getOwnPropertyDescriptor("caller");
+            $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
+            $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
+            $autoUpdateArguments = self::isEngineDefaultArguments($savedArguments);
+            if ($autoUpdateCaller) {
+                $savedCallerValue = $savedCaller->value ?? \Phasis\Value\JsNull::instance();
+            }
+            if ($autoUpdateArguments) {
+                $savedArgumentsValue = $savedArguments->value ?? \Phasis\Value\JsNull::instance();
+            }
+            $callerIsStrictMode = $this->strictMode
+                || ($callerFn instanceof \Phasis\Value\JsFunction && $callerFn->isStrict());
+            $callerVal = ($callerIsStrictMode || !$callerFn instanceof \Phasis\Value\JsFunction)
+                ? \Phasis\Value\JsNull::instance()
+                : $callerFn;
+            if ($autoUpdateCaller && !$fn->tryUpdateDataValue("caller", $callerVal)) {
+                $fn->defineOwnProperty("caller", \Phasis\Object\PropertyDescriptor::data(
+                    $callerVal,
+                    true,
+                    false,
+                    true,
+                ));
+            }
+            if (
+                $autoUpdateArguments
+                && !$fn->tryUpdateDataValue("arguments", \Phasis\Value\JsNull::instance())
+            ) {
+                $fn->defineOwnProperty("arguments", \Phasis\Object\PropertyDescriptor::data(
+                    \Phasis\Value\JsNull::instance(),
+                    true,
+                    false,
+                    true,
+                ));
+            }
+        }
+
         $previousStrictMode = $this->strictMode;
+        $previousModulePath = $this->currentModulePath;
+        $switchModulePath = $fn->definingModulePath !== null
+            && $fn->definingModulePath !== $this->currentModulePath;
+        if ($switchModulePath) {
+            $this->currentModulePath = $fn->definingModulePath;
+        }
         if ($fn->effectiveStrictCache === null) {
             $body = $fn->getBody();
             $fn->effectiveStrictCache = $fn->isStrict()
@@ -206,35 +294,100 @@ class Interpreter
         }
         $this->strictMode = $fn->effectiveStrictCache;
 
-        $previousModulePath = $this->currentModulePath;
-        $switchModulePath = false;
-        if (
-            $fn->definingModulePath !== null
-            && $fn->definingModulePath !== $this->currentModulePath
-        ) {
-            $this->currentModulePath = $fn->definingModulePath;
-            $switchModulePath = true;
+        if (!$this->strictMode && !$fn->isArrow) {
+            if (
+                $thisValue instanceof \Phasis\Value\JsUndefined
+                || $thisValue instanceof \Phasis\Value\JsNull
+            ) {
+                $thisValue = $this->getGlobalObject();
+            } elseif (
+                !$thisValue instanceof \Phasis\Value\JsObject
+                && (
+                    $thisValue instanceof \Phasis\Value\JsNumber
+                    || $thisValue instanceof \Phasis\Value\JsString
+                    || $thisValue instanceof \Phasis\Value\JsBoolean
+                    || $thisValue instanceof \Phasis\Value\JsSymbol
+                    || $thisValue instanceof \Phasis\Value\JsBigInt
+                )
+            ) {
+                $thisValue = \Phasis\Spec\TypeConversion::toObject($thisValue);
+            }
         }
 
-        return [$previousStrictMode, $switchModulePath, $previousModulePath];
+        return [
+            $thisValue,
+            $previousStrictMode,
+            $switchModulePath,
+            $previousModulePath,
+            $setCallerProp,
+            $autoUpdateCaller,
+            $autoUpdateArguments,
+            $savedCaller,
+            $savedArguments,
+            $savedCallerValue,
+            $savedArgumentsValue,
+        ];
     }
 
     /**
-     * Reverse of `setupInlineVmCall`. Restores strictMode + module
-     * path, pops the call + caller stacks. Frame-pool release is
-     * driven separately by `releaseInlineVmFrame()` so the VM can
-     * call it as part of its per-RET teardown sequence.
+     * Reverse of `setupInlineVmCall`. Mirrors `teardownExecuteFunction`.
      *
-     * @param array{0: bool, 1: bool, 2: ?string} $restore
+     * @param array{0: \Phasis\Value\JsValue, 1: bool, 2: bool, 3: ?string, 4: bool, 5: bool, 6: bool, 7: ?\Phasis\Object\PropertyDescriptor, 8: ?\Phasis\Object\PropertyDescriptor, 9: ?\Phasis\Value\JsValue, 10: ?\Phasis\Value\JsValue} $restore
      */
-    public function teardownInlineVmCall(array $restore): void
+    public function teardownInlineVmCall(\Phasis\Value\JsFunction $fn, array $restore): void
     {
-        [$previousStrictMode, $switchModulePath, $previousModulePath] = $restore;
+        [
+            $_thisValue,
+            $previousStrictMode,
+            $switchModulePath,
+            $previousModulePath,
+            $setCallerProp,
+            $autoUpdateCaller,
+            $autoUpdateArguments,
+            $savedCaller,
+            $savedArguments,
+            $savedCallerValue,
+            $savedArgumentsValue,
+        ] = $restore;
         if ($switchModulePath) {
             $this->currentModulePath = $previousModulePath;
         }
-        $this->strictMode = $previousStrictMode;
         array_pop($this->callerStack);
+        if ($setCallerProp) {
+            if ($autoUpdateCaller) {
+                if (!$fn->tryUpdateDataValue(
+                    "caller",
+                    $savedCallerValue ?? \Phasis\Value\JsNull::instance(),
+                )) {
+                    $fn->defineOwnProperty(
+                        "caller",
+                        $savedCaller ?? \Phasis\Object\PropertyDescriptor::data(
+                            \Phasis\Value\JsNull::instance(),
+                            true,
+                            false,
+                            true,
+                        ),
+                    );
+                }
+            }
+            if ($autoUpdateArguments) {
+                if (!$fn->tryUpdateDataValue(
+                    "arguments",
+                    $savedArgumentsValue ?? \Phasis\Value\JsNull::instance(),
+                )) {
+                    $fn->defineOwnProperty(
+                        "arguments",
+                        $savedArguments ?? \Phasis\Object\PropertyDescriptor::data(
+                            \Phasis\Value\JsNull::instance(),
+                            true,
+                            false,
+                            true,
+                        ),
+                    );
+                }
+            }
+        }
+        $this->strictMode = $previousStrictMode;
         $this->callStack->pop();
     }
 
