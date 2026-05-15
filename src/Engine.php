@@ -11,6 +11,7 @@ use Phasis\Parser\Parser;
 use Phasis\Object\PropertyDescriptor;
 use Phasis\Runtime\CallStack;
 use Phasis\Runtime\Environment;
+use Phasis\Runtime\EventLoop;
 use Phasis\Runtime\Interpreter;
 use Phasis\Runtime\LazyBuiltinRegistry;
 use Phasis\Spec\TypeConversion;
@@ -121,6 +122,15 @@ class Engine
     /** Tracks names whose accessor placeholders are still in place. */
     private LazyBuiltinRegistry $lazyRegistry;
 
+    /**
+     * Per-realm macrotask queue — drives setTimeout / setInterval /
+     * clearTimeout / clearInterval. Microtasks remain on
+     * `JsPromise::$microtaskQueue`; the loop hooks into the
+     * post-drain callback so each microtask burst is followed by a
+     * due-timer pass.
+     */
+    private EventLoop $eventLoop;
+
     public function __construct(bool $eager = false)
     {
         $this->eager = $eager;
@@ -230,6 +240,13 @@ class Engine
         if (!$this->eager) {
             $this->installLazyAccessors($globalObj);
         }
+
+        // Event loop must be constructed AFTER the post-drain hook
+        // surface on JsPromise is clean (Engine never calls
+        // `setPostDrainHook` before this point). Constructing the
+        // loop also installs the hook — every microtask drain from
+        // now on rolls into a timer-fire pass.
+        $this->eventLoop = new EventLoop($this);
     }
 
     /**
@@ -292,6 +309,46 @@ class Engine
     public function getLazyBuiltinRegistry(): LazyBuiltinRegistry
     {
         return $this->lazyRegistry;
+    }
+
+    /**
+     * The realm's event loop — drives timers and macrotasks. The
+     * microtask queue continues to live on `JsPromise` and is shared
+     * across all engines in the process; this loop is per-realm.
+     */
+    public function getEventLoop(): EventLoop
+    {
+        return $this->eventLoop;
+    }
+
+    /**
+     * Drain microtasks plus every pending macrotask until both queues
+     * are empty. Virtual-clock semantics — `setTimeout(cb, 5000)` does
+     * NOT sleep PHP; the loop advances its clock to the deadline so
+     * the program completes promptly. The right entry point for test
+     * runners and for "run my JS to completion" use cases.
+     */
+    public function runEventLoop(): void
+    {
+        $this->eventLoop->runUntilEmpty();
+    }
+
+    /**
+     * Pump one event-loop iteration: drain microtasks and fire any
+     * timers whose wall-clock deadline has already passed. Returns
+     * true if work was done. Embedders driving the loop themselves
+     * (real-time scheduling, GUI integration, long-lived server)
+     * call this in their own pump.
+     */
+    public function tickEventLoop(): bool
+    {
+        return $this->eventLoop->tick();
+    }
+
+    /** Number of pending macrotasks (timers). */
+    public function pendingTaskCount(): int
+    {
+        return $this->eventLoop->pendingTaskCount();
     }
 
     /** Internal: whether this engine eagerly installs every built-in. */
@@ -423,6 +480,11 @@ class Engine
             // Fetch Pack — round 4: the actual fetch() global + navigator.
             \Phasis\BuiltIn\NavigatorObject::install($this->globalEnv);
             \Phasis\BuiltIn\FetchFunction::install($this->globalEnv);
+
+            // WindowOrWorkerGlobalScope timers + queueMicrotask. Not
+            // strictly part of the Fetch Pack but the natural sibling
+            // for event-loop-aware Web APIs.
+            \Phasis\BuiltIn\TimerFunctions::install($this->globalEnv);
         } else {
             $this->registerLazyBuiltins();
         }
@@ -1265,6 +1327,16 @@ class Engine
             ['Request', 'Response', 'URL', 'Headers', 'AbortController', 'ReadableStream', 'Blob'],
             static fn () => \Phasis\BuiltIn\FetchFunction::install($env),
         );
+
+        // --- Event loop: timers + queueMicrotask ---
+        // No deps — TimerFunctions reaches into the realm's
+        // EventLoop, which the Engine constructor builds before
+        // these accessors can fire.
+        $reg->register(
+            ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'queueMicrotask'],
+            [],
+            static fn () => \Phasis\BuiltIn\TimerFunctions::install($env),
+        );
     }
 
     /**
@@ -1510,8 +1582,14 @@ class Engine
         self::$currentInterpreter = $this->interpreter;
         try {
             $result = $this->interpreter->execute($program);
-            // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
-            \Phasis\Value\JsPromise::drainMicrotasks();
+            // Drain the full event loop: microtasks first, then any
+            // due timers, then advance the virtual clock to fire
+            // pending timers — same shape as `node script.js` running
+            // a script to completion. Programs that schedule a
+            // `setTimeout(cb, 100)` get the callback to fire before
+            // eval returns; programs with leaked setIntervals trip
+            // the runUntilEmpty iteration cap.
+            $this->eventLoop->runUntilEmpty();
             return $this->toPhp($result);
         } finally {
             self::$currentInterpreter = $previousInterpreter;
@@ -1536,8 +1614,8 @@ class Engine
         $modulePath = $path ?? $this->interpreter->getCurrentModulePath() ?? '/virtual-module.mjs';
         $loader = $this->interpreter->getModuleLoader();
         $loader->evaluateModule($modulePath, $source);
-        // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
-        \Phasis\Value\JsPromise::drainMicrotasks();
+        // Drain the full event loop, matching eval() semantics.
+        $this->eventLoop->runUntilEmpty();
         // Module namespace objects can be self-referential (export * from self),
         // so converting to PHP would cause infinite recursion. Return null instead.
         // Callers that need the namespace should use the ModuleLoader directly.
@@ -1690,6 +1768,11 @@ class Engine
 
     public function reset(): void
     {
+        // Detach the old event loop's post-drain hook before clearing
+        // the microtask queue. clearMicrotasks() also nulls the hook
+        // but doing it explicitly via the loop keeps the contract
+        // ownership crisp.
+        $this->eventLoop->detach();
         \Phasis\Value\JsPromise::clearMicrotasks();
         self::resetStaticIntrinsics();
         $this->globalEnv = new Environment();
@@ -1698,8 +1781,10 @@ class Engine
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
         $this->interpreter->setRealm($this);
         self::$currentInterpreter = $this->interpreter;
+        $this->lazyRegistry = new LazyBuiltinRegistry();
 
         $this->installBuiltins();
+        $this->eventLoop = new EventLoop($this);
     }
 
     /**
