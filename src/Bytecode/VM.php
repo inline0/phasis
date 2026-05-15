@@ -1643,6 +1643,70 @@ final class VM
                                     break;
                                 }
                             }
+                            // Stage 4 custom callstack: extend the
+                            // inline-call path to method calls too.
+                            // Same eligibility predicate Op::CALL
+                            // uses; receiver becomes the new this
+                            // binding (subject to sloppy-mode
+                            // adjustment inside setupInlineVmCall).
+                            $methodEligible = $method->vmDirectDispatchCache;
+                            if ($methodEligible === null) {
+                                $methodEligible = $method->compiled !== null
+                                    && $method->compiled->canSkipEnvAlloc
+                                    && !$method->isClassConstructor()
+                                    && !$method->isDerivedConstructor()
+                                    && $method->getHomeObject() === null
+                                    && $method->getNativeCallable() === null
+                                    && !$method->isAsync()
+                                    && !$method->isGenerator();
+                                if ($methodEligible) {
+                                    $method->vmDirectDispatchCache = true;
+                                }
+                            }
+                            if (
+                                $methodEligible
+                                && $method->getBoundTarget() === null
+                            ) {
+                                $newCf = $method->compiled;
+                                $restore = $this->interp->setupInlineVmCall($method, $receiver);
+                                $newThis = $restore[0];
+                                $paramSlots = $newCf->paramSlots;
+                                $paramCount = count($paramSlots);
+                                $newFrame = $this->interp->borrowInlineVmFrame(
+                                    $method->closure,
+                                    $newThis,
+                                    $newCf->slotCount,
+                                    $paramCount,
+                                    $undef,
+                                );
+                                $argCount = count($args);
+                                for ($i = 0; $i < $paramCount; $i++) {
+                                    $newFrame->locals[$paramSlots[$i]] =
+                                        $i < $argCount ? $args[$i] : $undef;
+                                }
+                                $savedFrames[] = [
+                                    $cf, $code, $consts, $names, $nestedFns,
+                                    $stack, $sp, $locals, $env, $thisValue,
+                                    $strict, $hasHandlers,
+                                    $pc + 2,
+                                    $restore,
+                                    $method,
+                                ];
+                                $cf = $newCf;
+                                $code = $newCf->code;
+                                $consts = $newCf->consts;
+                                $names = $newCf->names;
+                                $nestedFns = $newCf->nestedFns;
+                                $hasHandlers = $newCf->handlers !== [];
+                                $stack = $newFrame->stack;
+                                $sp = $newFrame->sp;
+                                $locals = $newFrame->locals;
+                                $env = $newFrame->env;
+                                $thisValue = $newFrame->thisValue;
+                                $strict = $this->interp->isStrictMode();
+                                $pc = 0;
+                                break;
+                            }
                             $stack[$sp++] = $this->interp->callFunction(
                                 $method,
                                 $receiver,
