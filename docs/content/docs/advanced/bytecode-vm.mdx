@@ -41,7 +41,7 @@ This is where spec correctness matters most. The tree-walker has to be able to r
 1. **Pure prefixes** — the compiler scans for side effects before any speculation. If the function does I/O (console.log, host functions) before the speculation point, the fast path doesn't elide it; it commits and continues.
 2. **Compile-time refusal** — for shapes that would require rolling back observable side effects (a non-numeric `let r = fn()` where `fn()` mutates state), the compiler refuses to compile at all. The function stays on the tree-walker.
 
-The double-call bug fixed in commit `cd2b265` was exactly this: a non-numeric assignment would execute `fn()` on the fast path, throw `Bailout`, then re-execute on the tree-walker — running `fn()` twice with two sets of side effects. The fix routes those shapes to compile-time refusal.
+The motivating case: a non-numeric assignment executes `fn()` on the fast path, throws `Bailout`, then re-executes on the tree-walker — running `fn()` twice with two sets of side effects. Compile-time refusal keeps `fn()` from running on the fast path at all, so the tree-walker observes the only call.
 
 ## VM dispatch (the second layer)
 
