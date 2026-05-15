@@ -45,39 +45,63 @@ trait JsToPhpEligibility
      */
     /**
      * True when $body (a function body) contains a let / const
-     * declaration that's preceded by a non-declaration statement
-     * either at the function body's top level OR in any nested
-     * block. JsToPhp models all locals as function-scoped PHP
-     * variables predeclared with default values in the prologue;
-     * that breaks the spec Temporal Dead Zone, where reading the
-     * binding before its let/const init must throw ReferenceError.
-     * Bailing compile keeps the tree-walker (which honours TDZ)
-     * authoritative for these patterns.
+     * declaration whose Temporal Dead Zone the JsToPhp emit can't
+     * model safely. JsToPhp gives every declared local a
+     * function-scoped PHP slot pre-initialised in the prologue;
+     * that breaks TDZ semantics whenever the source reads the
+     * binding before its `let` / `const`.
      *
-     * Hot patterns like `for (...) { const {a,b} = ...; ... }` keep
-     * the const as the first statement inside the block and don't
-     * trip the check, so JsToPhp stays on the fast path.
+     * Two distinct TDZ shapes are flagged:
+     *   (a) A `let` / `const` declarator's init reads the binding
+     *       being declared (`const x = x + 1`).
+     *   (b) Inside the same lexical block (or the function body),
+     *       any statement preceding the declaration reads the
+     *       declared name. If no preceding statement reads it, the
+     *       transpiler can treat the binding as function-scoped:
+     *       the slot's prologue default is overwritten by the
+     *       declarator's init before any read fires, matching spec
+     *       observable behaviour. This widens acceptance to shapes
+     *       like `if (cond) { s = n; const v = s * 2; ... }` that
+     *       previously bailed on the strict "non-decl precedes
+     *       let" heuristic.
+     *
+     * Hot patterns like `for (...) { const {a,b} = ...; ... }` and
+     * `for (let i = 0; ...; i++) { stmt; const k = ...; ... }`
+     * both stay on the fast path; only genuinely TDZ-sensitive
+     * code (reading the binding before its `let`/`const` decl)
+     * falls back to the tree-walker.
      */
     private static function bodyHasNestedLexical(Node $body): bool
     {
         if (!$body instanceof BlockStatement) {
             return false;
         }
-        // Top-level let/const after a non-decl statement is also a
-        // TDZ shape; treat the function body as if it were a nested
-        // block (innerDepth = 1). A let/const followed by reads is
-        // safe — only a non-decl PRECEDING the let/const matters.
-        // Also bail if any let/const declarator's init expression
-        // reads the binding it's about to declare (`const x = x + 1`),
-        // which is a TDZ violation per spec.
-        $sawNonDecl = false;
-        foreach ($body->body as $stmt) {
+        return self::blockHasUnsafeLexical($body->body);
+    }
+
+    /**
+     * Walk a sequence of statements that share a lexical block scope
+     * and decide whether any let / const inside (or transitively
+     * inside, when recursing into non-block-introducing children)
+     * is TDZ-risky. Returns true if compilation should bail.
+     *
+     * @param Node[] $statements
+     */
+    private static function blockHasUnsafeLexical(array $statements): bool
+    {
+        $prefix = [];
+        foreach ($statements as $stmt) {
             if (
                 $stmt instanceof VariableDeclaration
                 && ($stmt->kind === 'let' || $stmt->kind === 'const')
             ) {
-                if ($sawNonDecl) {
-                    return true;
+                $declNames = self::collectDeclNames($stmt);
+                if ($declNames !== []) {
+                    foreach ($prefix as $prior) {
+                        if (self::readsAnyName($prior, $declNames)) {
+                            return true;
+                        }
+                    }
                 }
                 foreach ($stmt->declarations as $decl) {
                     if (
@@ -89,14 +113,111 @@ trait JsToPhpEligibility
                     }
                 }
             }
-            if (
-                !($stmt instanceof VariableDeclaration)
-                && !($stmt instanceof FunctionDeclaration)
-            ) {
-                $sawNonDecl = true;
-            }
-            if (self::stmtHasNestedLexical($stmt, 1)) {
+            if (self::stmtHasNestedLexical($stmt)) {
                 return true;
+            }
+            $prefix[] = $stmt;
+        }
+        return false;
+    }
+
+    /**
+     * Collect the binding names introduced by a single let / const
+     * VariableDeclaration. Handles plain identifiers and the simple
+     * destructuring shapes that JsToPhp's emit pipeline accepts.
+     *
+     * @return list<string>
+     */
+    private static function collectDeclNames(VariableDeclaration $node): array
+    {
+        $names = [];
+        foreach ($node->declarations as $decl) {
+            $id = $decl->id;
+            if ($id instanceof Identifier) {
+                $names[] = $id->name;
+                continue;
+            }
+            if ($id instanceof \Phasis\Ast\Pattern\ObjectPattern) {
+                foreach ($id->properties as $prop) {
+                    if (
+                        $prop instanceof \Phasis\Ast\Pattern\AssignmentProperty
+                        && $prop->value instanceof Identifier
+                    ) {
+                        $names[] = $prop->value->name;
+                    }
+                }
+                continue;
+            }
+            if ($id instanceof \Phasis\Ast\Pattern\ArrayPattern) {
+                foreach ($id->elements as $el) {
+                    if ($el instanceof Identifier) {
+                        $names[] = $el->name;
+                    }
+                }
+                continue;
+            }
+        }
+        return $names;
+    }
+
+    /**
+     * True when $node (typically a statement or sub-expression in
+     * source order BEFORE a let/const declaration) contains an
+     * Identifier read of any name in $names. Skips:
+     *   - The .property side of non-computed MemberExpression
+     *     (`obj.x` doesn't read a binding `x`).
+     *   - The .key side of non-computed object-literal Property.
+     *   - Nested function / arrow bodies (their scope is separate;
+     *     a closure capturing the outer name lexically would still
+     *     fail at the call site, but the call has to happen AFTER
+     *     the declaration in source order — and TDZ is dynamic, not
+     *     lexical, so a closure captured before the decl that's
+     *     called after the decl is spec-legal). For the simple
+     *     code we accept, checkNestedCaptures already enforces
+     *     no-outer-capture nested fns, making this exclusion safe.
+     *
+     * @param list<string> $names
+     */
+    private static function readsAnyName(Node $node, array $names): bool
+    {
+        if ($node instanceof Identifier) {
+            return in_array($node->name, $names, true);
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        if ($node instanceof \Phasis\Ast\Expression\MemberExpression) {
+            if (self::readsAnyName($node->object, $names)) {
+                return true;
+            }
+            if ($node->computed && self::readsAnyName($node->property, $names)) {
+                return true;
+            }
+            return false;
+        }
+        if ($node instanceof \Phasis\Ast\Expression\Property) {
+            if ($node->computed && self::readsAnyName($node->key, $names)) {
+                return true;
+            }
+            return self::readsAnyName($node->value, $names);
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if (self::readsAnyName($value, $names)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::readsAnyName($item, $names)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -163,64 +284,35 @@ trait JsToPhpEligibility
         return false;
     }
 
-    private static function stmtHasNestedLexical(Node $node, int $blockDepth): bool
+    /**
+     * Recurse into $node looking for nested BlockStatement scopes;
+     * each one is analysed independently by blockHasUnsafeLexical
+     * so a TDZ-risky let / const anywhere in the body bails. Doesn't
+     * descend into nested function bodies — those introduce their
+     * own scopes and their own JsToPhp compile attempt.
+     */
+    private static function stmtHasNestedLexical(Node $node): bool
     {
         if ($node instanceof BlockStatement) {
-            // Entering this block bumps blockDepth for its inner
-            // statements. Flag a let / const as TDZ-risky when
-            // either (a) it's preceded by a non-declaration statement
-            // in the same block, or (b) its init expression reads
-            // the binding being declared (`const x = x + 1`).
-            $innerDepth = $blockDepth + 1;
-            $sawNonDecl = false;
-            foreach ($node->body as $inner) {
-                if (
-                    $inner instanceof VariableDeclaration
-                    && ($inner->kind === 'let' || $inner->kind === 'const')
-                ) {
-                    if ($innerDepth > 0 && $sawNonDecl) {
-                        return true;
-                    }
-                    foreach ($inner->declarations as $decl) {
-                        if (
-                            $decl->id instanceof Identifier
-                            && $decl->init !== null
-                            && self::initReadsName($decl->init, $decl->id->name)
-                        ) {
-                            return true;
-                        }
-                    }
-                }
-                if (
-                    !($inner instanceof VariableDeclaration)
-                    && !($inner instanceof FunctionDeclaration)
-                ) {
-                    $sawNonDecl = true;
-                }
-                if (self::stmtHasNestedLexical($inner, $innerDepth)) {
-                    return true;
-                }
-            }
-            return false;
+            return self::blockHasUnsafeLexical($node->body);
         }
         if (
             $node instanceof FunctionDeclaration
             || $node instanceof \Phasis\Ast\Expression\FunctionExpression
             || $node instanceof \Phasis\Ast\Expression\ArrowFunction
         ) {
-            // Nested function: its body has its own scope.
             return false;
         }
         foreach ((array) $node as $value) {
             if ($value instanceof Node) {
-                if (self::stmtHasNestedLexical($value, $blockDepth)) {
+                if (self::stmtHasNestedLexical($value)) {
                     return true;
                 }
                 continue;
             }
             if (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof Node && self::stmtHasNestedLexical($item, $blockDepth)) {
+                    if ($item instanceof Node && self::stmtHasNestedLexical($item)) {
                         return true;
                     }
                 }
