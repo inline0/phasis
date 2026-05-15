@@ -147,7 +147,41 @@ trait CompilerExpression
             $this->emit(Op::MAKE_CLASS, $idx);
             return;
         }
+        if ($node instanceof \Phasis\Ast\Expression\YieldExpression) {
+            $this->compileYieldExpression($node);
+            return;
+        }
         throw new CompilerBailout('unsupported expression: ' . $node->type());
+    }
+
+    /**
+     * Emit `Op::YIELD` for a non-delegate `yield <expr>` or bare
+     * `yield`. The argument (or undefined) is pushed first, then
+     * YIELD pops it and returns the snapshot. On resume the
+     * dispatch loop pushes the resume value onto the stack, so
+     * the yield expression's result lives at top-of-stack for the
+     * next opcode to consume.
+     *
+     * Only reachable when the enclosing function is a generator
+     * that passed `generatorBodyIsSnapshotSafe()`; otherwise the
+     * compiler bailed at `scanBailout`.
+     */
+    private function compileYieldExpression(\Phasis\Ast\Expression\YieldExpression $node): void
+    {
+        if (!$this->inGenerator) {
+            throw new CompilerBailout('yield outside generator');
+        }
+        if ($node->delegate) {
+            // generatorBodyIsSnapshotSafe should already have
+            // bailed; defensive guard for direct calls.
+            throw new CompilerBailout('yield* delegation');
+        }
+        if ($node->argument !== null) {
+            $this->compileExpression($node->argument);
+        } else {
+            $this->emit(Op::LOAD_UNDEF);
+        }
+        $this->emit(Op::YIELD);
     }
 
     private function compileObjectLiteral(ObjectExpression $node): void

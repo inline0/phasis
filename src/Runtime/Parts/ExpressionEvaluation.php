@@ -5202,6 +5202,23 @@ trait ExpressionEvaluation
                 $thisValue = TypeConversion::toObject($thisValue);
             }
         }
+        // Snapshot fast path: if the body is snapshot-safe (no
+        // yield*, no try-with-yield, no await), the compiler will
+        // have lowered it to bytecode with Op::YIELD. We can skip
+        // the Fiber + env-bound param dance and hand the JsGenerator
+        // an initial snapshot at pc=0 with params pre-loaded into
+        // local slots. Falls through to the Fiber path on any
+        // compile bailout.
+        $snapshot = $this->tryBuildInitialGeneratorSnapshot(
+            $fn,
+            $thisValue,
+            $args,
+            $fnEnv,
+            $fnStrict,
+        );
+        if ($snapshot !== null) {
+            return JsGenerator::fromSnapshot($fn, $thisValue, $snapshot, $this);
+        }
         $fnEnv->defineVar('this', $thisValue);
         // Bind [[HomeObject]] so super property access inside generator
         // methods resolves against the method's home object's prototype.
@@ -5238,6 +5255,147 @@ trait ExpressionEvaluation
         };
 
         return new JsGenerator($fn, $thisValue, $args, $executor);
+    }
+
+    /**
+     * Drive a snapshot-mode JsGenerator one step: resume `VM::execute`
+     * from the saved frame state and return the result of the next
+     * suspend (yield) or completion (return).
+     *
+     * `$mode` controls how the resume value re-enters the body:
+     *   - 'next':   value becomes the result of the yield expression
+     *               that suspended the body
+     *   - 'return': close the generator, returning $value
+     *   - 'throw':  raise $value as an exception at the saved pc
+     *
+     * The Frame argument is a placeholder — execute() reads state
+     * from $snapshot when $snapshot is non-null, but the signature
+     * still requires a Frame.
+     */
+    public function resumeVmGenerator(
+        \Phasis\Bytecode\GeneratorSnapshot $snapshot,
+        ?JsValue $value,
+        string $mode,
+    ): \Phasis\Bytecode\YieldResult|JsValue {
+        if ($this->vm === null) {
+            $this->vm = new \Phasis\Bytecode\VM($this);
+        }
+        // 'return' mode for snapshot-mode generators: no try/finally
+        // around any yield (the safety scan rejected those), so
+        // closing without resuming is correct. The caller marks the
+        // generator done and uses $value as the return value.
+        if ($mode === 'return') {
+            $snapshot->done = true;
+            return $value ?? JsUndefined::instance();
+        }
+        $placeholder = new \Phasis\Bytecode\Frame(
+            env: $snapshot->env,
+            thisValue: $snapshot->thisValue,
+            slotCount: $snapshot->cf->slotCount,
+            undefined: JsUndefined::instance(),
+        );
+        $resumeThrow = $mode === 'throw';
+        try {
+            $result = $this->vm->execute(
+                $snapshot->cf,
+                $placeholder,
+                $snapshot,
+                $value,
+                $resumeThrow,
+            );
+        } finally {
+            // No frame-pool depth bookkeeping: snapshot generators
+            // don't share the per-call Frame pool (they own their
+            // locals across resumes).
+        }
+        if (!$result instanceof \Phasis\Bytecode\YieldResult) {
+            // Generator returned (RET at outer frame). Mark the
+            // snapshot done so subsequent calls short-circuit.
+            $snapshot->done = true;
+        }
+        return $result;
+    }
+
+    /**
+     * Build an initial GeneratorSnapshot at pc=0 for a generator
+     * whose body the bytecode compiler can lower. Returns null on
+     * any bailout, in which case `createGenerator` falls back to
+     * the Fiber-backed path.
+     *
+     * Snapshot mode skips the env-bound param dance (params go
+     * directly into the compiled function's local slots) and the
+     * arguments / [[HomeObject]] / [[NewTarget]] bindings (the
+     * compiler bails on bodies that reference those, so they
+     * can't be observed at runtime).
+     *
+     * @param list<JsValue> $args
+     */
+    private function tryBuildInitialGeneratorSnapshot(
+        JsFunction $fn,
+        JsValue $thisValue,
+        array $args,
+        \Phasis\Runtime\Environment $fnEnv,
+        bool $fnStrict,
+    ): ?\Phasis\Bytecode\GeneratorSnapshot {
+        if ($fn->compileFailed) {
+            return null;
+        }
+        // Compiler bailouts the runtime can't recover from also live
+        // here: with-scope, async generators, derived constructors,
+        // etc. createGenerator wouldn't have been called for the
+        // latter two, but the with-scope check mirrors tryRunOnVm.
+        if ($fn->getClosure()->isUnderWithScope()) {
+            $fn->compileFailed = true;
+            return null;
+        }
+        if ($fn->compiled === null) {
+            try {
+                $compiler = new \Phasis\Bytecode\Compiler();
+                $fn->compiled = $compiler->compile($fn);
+            } catch (\Phasis\Bytecode\CompilerBailout) {
+                $fn->compileFailed = true;
+                return null;
+            } catch (\Throwable) {
+                $fn->compileFailed = true;
+                return null;
+            }
+        }
+        $cf = $fn->compiled;
+        $undef = JsUndefined::instance();
+        $paramSlots = $cf->paramSlots;
+        $paramCount = count($paramSlots);
+        $locals = array_fill(0, max(1, $cf->slotCount), $undef);
+        $argCount = count($args);
+        for ($i = 0; $i < $paramCount; $i++) {
+            $locals[$paramSlots[$i]] = $i < $argCount ? $args[$i] : $undef;
+        }
+        // The VM's LOAD_THIS opcode reads `this` via the env chain
+        // (so derived-constructor TDZ + arrow lexical-this match the
+        // tree-walker). Generator bodies that compile cleanly enough
+        // to take this path can't reference new.target/arguments/eval
+        // (compiler bails on those), but they CAN use `this` — bind
+        // it in the env to ensure LOAD_THIS lands on the right value
+        // and doesn't walk up to the global object's `this`.
+        if ($cf->needsThis) {
+            $fnEnv->defineVar('this', $thisValue);
+        }
+        // [[HomeObject]] for super references inside the generator
+        // method's body. Mirrors the regular VM-compiled function
+        // setup at line 4378.
+        $homeObject = $fn->getHomeObject();
+        if ($homeObject !== null) {
+            $fnEnv->defineVar('[[HomeObject]]', $homeObject);
+        }
+        return new \Phasis\Bytecode\GeneratorSnapshot(
+            cf: $cf,
+            pc: 0,
+            stack: [],
+            sp: 0,
+            locals: $locals,
+            env: $fnEnv,
+            thisValue: $thisValue,
+            strict: $fnStrict,
+        );
     }
 
     /**

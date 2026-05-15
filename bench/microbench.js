@@ -35,6 +35,22 @@ const tests = {
     for (let i = 0; i < 100000; i++) { o.x = i; s += o.x; }
     return s;
   },
+  // Generator iteration: counts to 10k via a simple snapshot-safe
+  // generator (no yield*, no try/finally, no async). On main this
+  // runs through PHP Fiber suspension — one Fiber resume per yield.
+  // On the frame-snapshot branch the body is BC-compiled and Op::YIELD
+  // captures a heap GeneratorSnapshot, so each next() is a normal
+  // VM::execute call with no Fiber crossing.
+  "gen-iterate": (() => {
+    function* counter(n) {
+      for (let i = 0; i < n; i++) yield i;
+    }
+    return () => {
+      let s = 0;
+      for (const v of counter(10000)) s += v;
+      return s;
+    };
+  })(),
   // Prototype-method call: hits the path that current dataSlots
   // fast-load can't optimize (the method is on the prototype, not
   // own), so every iteration walks the proto chain through

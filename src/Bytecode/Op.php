@@ -122,6 +122,11 @@ final class Op
                                        // compiling LOAD_MEMBER ahead of the args.
     public const NEW_CALL = 82;      // I — argc; constructor at stack[-argc-1]
     public const RET = 83;           // pop value, return from VM
+    public const YIELD = 84;         // generator suspension; pop yielded value,
+                                       // capture frame state into a GeneratorSnapshot,
+                                       // return YieldResult to VM caller. Resume
+                                       // re-enters at pc+1 with the resumed value
+                                       // pushed onto the operand stack.
 
     // ---- Object / array literals & member access ----------------------
     public const NEW_OBJECT = 90;    // push new {} (with %ObjectPrototype%)
@@ -190,6 +195,7 @@ final class Op
             case self::USHR:
             case self::BNOT:
             case self::RET:
+            case self::YIELD:
             case self::NEW_OBJECT:
             case self::SET_COMPUTED:
             case self::LOAD_COMPUTED:

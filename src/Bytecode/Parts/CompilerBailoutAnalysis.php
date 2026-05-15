@@ -71,6 +71,96 @@ trait CompilerBailoutAnalysis
     }
 
     /**
+     * Decide whether a generator body can be lowered to the
+     * bytecode VM's frame-snapshot path (Op::YIELD + suspension via
+     * GeneratorSnapshot) instead of the Fiber-backed tree-walker.
+     *
+     * The path supports:
+     *   - non-delegate `yield <expr>` and bare `yield`
+     *   - generator bodies free of `yield*` delegation
+     *   - generator bodies where every yield is OUTSIDE any
+     *     try/catch/finally (try-with-yield needs handler state
+     *     preserved across the suspend, which we don't capture yet)
+     *   - no `await` (would be an async generator)
+     *
+     * Nested non-generator function bodies are skipped — their
+     * yields aren't the outer generator's yields and don't affect
+     * the safety property.
+     *
+     * Returns true when the body is safe to compile.
+     */
+    private function generatorBodyIsSnapshotSafe(mixed $body): bool
+    {
+        try {
+            $this->scanGeneratorBodyForUnsafeShapes($body, false);
+            return true;
+        } catch (CompilerBailout) {
+            return false;
+        }
+    }
+
+    /**
+     * @param Node[]|Node|null $node
+     */
+    private function scanGeneratorBodyForUnsafeShapes(mixed $node, bool $insideTry): void
+    {
+        if ($node === null) {
+            return;
+        }
+        if (is_array($node)) {
+            foreach ($node as $n) {
+                $this->scanGeneratorBodyForUnsafeShapes($n, $insideTry);
+            }
+            return;
+        }
+        if ($node instanceof \Phasis\Ast\Expression\YieldExpression) {
+            if ($node->delegate) {
+                throw new CompilerBailout('generator: yield*');
+            }
+            if ($insideTry) {
+                throw new CompilerBailout('generator: yield inside try');
+            }
+            if ($node->argument !== null) {
+                $this->scanGeneratorBodyForUnsafeShapes($node->argument, $insideTry);
+            }
+            return;
+        }
+        if ($node instanceof \Phasis\Ast\Expression\AwaitExpression) {
+            throw new CompilerBailout('async generator');
+        }
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement) {
+            $this->scanGeneratorBodyForUnsafeShapes($node->block, true);
+            if ($node->handler !== null) {
+                $this->scanGeneratorBodyForUnsafeShapes($node->handler->body, true);
+            }
+            if ($node->finalizer !== null) {
+                $this->scanGeneratorBodyForUnsafeShapes($node->finalizer, true);
+            }
+            return;
+        }
+        if (
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+        ) {
+            // Nested function / class bodies have their own yield
+            // scope. Their internal yields (if any) belong to a
+            // different generator that will be compiled separately
+            // with its own safety scan.
+            return;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node || is_array($value)) {
+                $this->scanGeneratorBodyForUnsafeShapes($value, $insideTry);
+            }
+        }
+    }
+
+    /**
      * Recursive scan for AssignmentExpression nodes whose target is a
      * MemberExpression rooted at `this`, `globalThis`, `window`,
      * `self`, or `global`. These writes go through the global object
@@ -217,11 +307,26 @@ trait CompilerBailoutAnalysis
             }
             return;
         }
-        if (
-            $node instanceof \Phasis\Ast\Expression\YieldExpression
-            || $node instanceof \Phasis\Ast\Expression\AwaitExpression
-        ) {
-            throw new CompilerBailout('yield/await');
+        if ($node instanceof \Phasis\Ast\Expression\AwaitExpression) {
+            throw new CompilerBailout('await outside async');
+        }
+        if ($node instanceof \Phasis\Ast\Expression\YieldExpression) {
+            // Generator bodies whose top-level safety scan already
+            // verified the yield is non-delegate and lives outside a
+            // try/catch/finally get to keep going — the compiler
+            // will lower the yield to Op::YIELD. Everything else
+            // (yield* delegate, yield in a non-generator, yield in
+            // a generator that didn't pass the safety scan) bails.
+            if ($this->inGenerator && !$node->delegate) {
+                // Still descend into the argument so a nested
+                // bailout feature inside `yield <expr>` (e.g.
+                // a `with` statement in <expr>) aborts compile.
+                if ($node->argument !== null) {
+                    $this->scanBailout($node->argument);
+                }
+                return;
+            }
+            throw new CompilerBailout('yield');
         }
         // Arrow functions don't have their own arguments / this /
         // new.target — they capture the enclosing function's bindings

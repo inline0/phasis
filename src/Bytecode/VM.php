@@ -657,25 +657,76 @@ final class VM
         return $arr;
     }
 
-    public function execute(CompiledFunction $cf, Frame $frame): JsValue
-    {
+    /**
+     * Execute a CompiledFunction. For non-generator functions the
+     * return type is JsValue; for generator functions whose body the
+     * compiler lowered to bytecode (snapshot mode, see
+     * `Op::YIELD`), the return type is `YieldResult` when the body
+     * suspends or `JsValue` when it runs to completion.
+     *
+     * The `$resumeFrom` / `$resumeValue` / `$resumeThrow` parameters
+     * are how `JsGenerator` resumes a suspended generator: the
+     * snapshot's frame state replaces the freshly-allocated frame,
+     * `$resumeValue` is pushed onto the operand stack (it becomes
+     * the result of the yield expression that suspended us), and
+     * `$resumeThrow=true` injects the value as a thrown exception
+     * at the saved pc (gen.throw() semantics).
+     */
+    public function execute(
+        CompiledFunction $cf,
+        Frame $frame,
+        ?GeneratorSnapshot $resumeFrom = null,
+        ?JsValue $resumeValue = null,
+        bool $resumeThrow = false,
+    ): JsValue|YieldResult {
         $code = $cf->code;
         $consts = $cf->consts;
         $names = $cf->names;
         $nestedFns = $cf->nestedFns;
-        $stack = $frame->stack;
-        $sp = $frame->sp;
-        $locals = $frame->locals;
-        $env = $frame->env;
-        $thisValue = $frame->thisValue;
-        $strict = $this->interp->isStrictMode();
+        if ($resumeFrom !== null) {
+            $stack = $resumeFrom->stack;
+            $sp = $resumeFrom->sp;
+            $locals = $resumeFrom->locals;
+            $env = $resumeFrom->env;
+            $thisValue = $resumeFrom->thisValue;
+            $strict = $resumeFrom->strict;
+        } else {
+            $stack = $frame->stack;
+            $sp = $frame->sp;
+            $locals = $frame->locals;
+            $env = $frame->env;
+            $thisValue = $frame->thisValue;
+            $strict = $this->interp->isStrictMode();
+        }
         $undef = JsUndefined::instance();
         $null = JsNull::instance();
         $true = JsBoolean::of(true);
         $false = JsBoolean::of(false);
 
-        $pc = 0;
+        if ($resumeFrom !== null) {
+            $pc = $resumeFrom->pc;
+        } else {
+            $pc = 0;
+        }
         $hasHandlers = $cf->handlers !== [];
+        // Resume-as-throw: gen.throw() entry. Push the value onto
+        // the stack so a synthetic THROW path can pick it up — but
+        // simplest is to just raise it now and let the dispatch
+        // loop's existing exception handling unwind through any
+        // try/catch in the generator body (or escape).
+        if ($resumeFrom !== null && $resumeThrow && $resumeValue !== null) {
+            // The same catch block below handles this throw —
+            // either matches a handler in cf or unwinds out of
+            // execute() to the JsGenerator driver.
+            $throwAtResume = $resumeValue;
+        } else {
+            $throwAtResume = null;
+            // Non-throw resume: push the resume value (the result
+            // of the yield expression that suspended us).
+            if ($resumeFrom !== null && $resumeValue !== null) {
+                $stack[$sp++] = $resumeValue;
+            }
+        }
 
         // === Custom callstack ====================================
         //
@@ -707,6 +758,15 @@ final class VM
         // dispatch loop without the try frame.
         while (true) {
             try {
+                // gen.throw() entry: synthesise a throw at the
+                // saved resume pc so the dispatch loop's existing
+                // unwind machinery finds the matching handler
+                // (or escapes out of execute() to JsGenerator).
+                if ($throwAtResume !== null) {
+                    $pendingThrow = $throwAtResume;
+                    $throwAtResume = null;
+                    throw new \Phasis\Exceptions\JsThrowable($pendingThrow);
+                }
                 while (true) {
                     $op = $code[$pc];
                     switch ($op) {
@@ -2031,6 +2091,31 @@ final class VM
                                 break;
                             }
                             return $retResult;
+
+                        case Op::YIELD:
+                            // Snapshot generator suspension. `yield`
+                            // can only appear syntactically at the
+                            // generator's own top frame — any nested
+                            // call must RET first — so $savedFrames
+                            // is empty (relative to this execute()
+                            // invocation) and doesn't need saving.
+                            // Resume pc is pc+1: the byte after
+                            // YIELD, where the dispatch will push
+                            // the resume value and continue.
+                            $yieldedValue = $stack[--$sp];
+                            return new YieldResult(
+                                $yieldedValue,
+                                new GeneratorSnapshot(
+                                    $cf,
+                                    $pc + 1,
+                                    $stack,
+                                    $sp,
+                                    $locals,
+                                    $env,
+                                    $thisValue,
+                                    $strict,
+                                ),
+                            );
 
                         default:
                             throw new InternalError('VM: unknown opcode ' . $op);

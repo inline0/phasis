@@ -230,10 +230,34 @@ final class Compiler
      */
     private bool $programIsStrict = false;
 
+    /**
+     * Toggled true while compiling a snapshot-safe generator body.
+     * When set, `scanBailout` permits non-delegate yield expressions
+     * (delegate=false) instead of bailing on them, and
+     * `compileYieldExpression` emits `Op::YIELD`. `generatorBody
+     * IsSnapshotSafe()` is the gate; only bodies that pass it get
+     * this flag, so yield* / try-with-yield / await never reach
+     * the YIELD opcode.
+     */
+    private bool $inGenerator = false;
+
     public function compile(JsFunction $fn): CompiledFunction
     {
-        if ($fn->isGenerator() || $fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
+        if ($fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
             throw new CompilerBailout('non-ordinary function kind');
+        }
+        // Generators get a stricter bailout: only "simple" bodies
+        // (no yield* delegation, no try/catch/finally containing
+        // yield, not an async generator) can be lowered to the
+        // snapshot path. Everything else stays on the Fiber-based
+        // tree-walker. The scan is conservative — false negatives
+        // are fine, false positives would break gen.return() /
+        // gen.throw() reentry semantics.
+        if ($fn->isGenerator()) {
+            if (!$this->generatorBodyIsSnapshotSafe($fn->getBody())) {
+                throw new CompilerBailout('generator: yield* / try-with-yield / async');
+            }
+            $this->inGenerator = true;
         }
         // Strict-mode bodies that have a return-with-call shape need
         // tail-call optimisation per spec. The bytecode VM emits
