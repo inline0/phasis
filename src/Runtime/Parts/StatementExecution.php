@@ -2737,7 +2737,7 @@ trait StatementExecution
         return new TailCallThunk($tag, $thisValue, $args);
     }
 
-    private function evalTailCall(CallExpression $node, Environment $env): ?TailCallThunk
+    private function evalTailCall(CallExpression $node, Environment $env): TailCallThunk|JsValue|null
     {
         // Resolve the callee and its this-binding.
         $callee = null;
@@ -2804,9 +2804,47 @@ trait StatementExecution
                 return null;
             }
         } else {
-            // Anything else (call/new expr, etc.) is side-effecting; bail to
-            // the regular evaluate path so we don't run side effects twice.
-            return null;
+            // CallExpression / NewExpression / SequenceExpression / etc.
+            // The classic `return getF()(n-1)` TCO shape lives here. We
+            // evaluate the callee once and then *finish the call inline*
+            // when the result turns out ineligible for a tail-call thunk
+            // (callable proxy, native, generator, async, non-callable).
+            // Bailing-to-null after a side-effecting evaluate would make
+            // execReturnStatement re-evaluate the whole expression and
+            // run the inner call twice — the precise pitfall that the
+            // MemberExpression branch above guards against with
+            // isSideEffectFreeAst. Here we can't statically prove
+            // side-effect-freedom (it's a call), so we commit to
+            // performing the call ourselves.
+            $callee = $this->evaluate($node->callee, $env);
+            $args = [];
+            foreach ($node->arguments as $arg) {
+                if ($arg instanceof SpreadElement) {
+                    $spread = $this->evaluate($arg->argument, $env);
+                    $this->spreadInto($spread, $args);
+                } else {
+                    $args[] = $this->evaluate($arg, $env);
+                }
+            }
+            // Callable Proxy — forward through its apply trap. Not a tail
+            // call (proxy semantics need their handler dispatched on each
+            // hop), but spec-correctly invoked.
+            if ($callee instanceof \Phasis\Value\JsProxy) {
+                return $callee->apply(JsUndefined::instance(), $args);
+            }
+            if (!$callee instanceof JsFunction) {
+                $desc = $this->formatCalleeForError($node->callee, $callee);
+                throw new TypeError("{$desc} is not a function");
+            }
+            // Native / generator / async: ineligible for TCO; call inline.
+            if (
+                $callee->getNativeCallable() !== null
+                || $callee->isGenerator()
+                || $callee->isAsync()
+            ) {
+                return $this->callFunction($callee, JsUndefined::instance(), $args);
+            }
+            return new TailCallThunk($callee, JsUndefined::instance(), $args);
         }
 
         if (!$callee instanceof JsFunction) {
