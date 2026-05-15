@@ -24,13 +24,18 @@ class CallStack
     private int $depth = 0;
 
     public function __construct(
-        // 1024 matches what Node.js exposes via stack-overflow tests well
-        // enough — deep super() chains in test262 (built up to ~100 levels)
-        // need to clear the engine's bookkeeping plus PHP's own recursion
-        // overhead, and 100 was tripping common patterns. PHP's xdebug or
-        // ini max_execution_time / memory_limit bound runaway recursion
-        // independently.
-        private readonly int $maxDepth = 1024,
+        // The VM's custom-callstack inline path keeps the PHP stack
+        // at a single frame across JS calls (`Op::CALL` / `RET` swap
+        // state inside `VM::execute` instead of recursing into PHP).
+        // So the engine's own CallStack limit is the only ceiling
+        // for inlined recursion. 65536 puts us comfortably above
+        // V8 / SpiderMonkey practical stack-overflow thresholds
+        // (~10–25 k frames) while still bounding pathological
+        // runaway recursion in finite time. Non-inlined calls
+        // remain bounded by PHP's actual recursion depth, which
+        // typically tops out at tens of thousands on default
+        // builds — so the higher value is safe there too.
+        private readonly int $maxDepth = 65536,
     ) {
     }
 

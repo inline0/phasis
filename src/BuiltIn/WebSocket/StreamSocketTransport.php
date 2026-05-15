@@ -164,7 +164,8 @@ final class StreamSocketTransport
         }
 
         $send = static function (string $data, bool $isBinary) use ($state, $emit): void {
-            if ($state->phase === ConnectionState::PHASE_CLOSED
+            if (
+                $state->phase === ConnectionState::PHASE_CLOSED
                 || $state->phase === ConnectionState::PHASE_CLOSING
             ) {
                 return;
@@ -292,7 +293,8 @@ final class StreamSocketTransport
             $emit('open', ['protocol' => $protocol, 'extensions' => '']);
         }
 
-        if ($state->phase === ConnectionState::PHASE_OPEN
+        if (
+            $state->phase === ConnectionState::PHASE_OPEN
             || $state->phase === ConnectionState::PHASE_CLOSING
         ) {
             self::decodeFrames($state, $emit);

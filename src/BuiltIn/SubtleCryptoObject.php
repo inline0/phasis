@@ -379,9 +379,15 @@ final class SubtleCryptoObject
     {
         $bits = $keyLen * 8;
         return match ($algName) {
-            'AES-CBC' => match ($bits) { 128 => 'aes-128-cbc', 192 => 'aes-192-cbc', 256 => 'aes-256-cbc', default => null },
-            'AES-CTR' => match ($bits) { 128 => 'aes-128-ctr', 192 => 'aes-192-ctr', 256 => 'aes-256-ctr', default => null },
-            'AES-GCM' => match ($bits) { 128 => 'aes-128-gcm', 192 => 'aes-192-gcm', 256 => 'aes-256-gcm', default => null },
+            'AES-CBC' => match ($bits) {
+                128 => 'aes-128-cbc', 192 => 'aes-192-cbc', 256 => 'aes-256-cbc', default => null
+            },
+            'AES-CTR' => match ($bits) {
+                128 => 'aes-128-ctr', 192 => 'aes-192-ctr', 256 => 'aes-256-ctr', default => null
+            },
+            'AES-GCM' => match ($bits) {
+                128 => 'aes-128-gcm', 192 => 'aes-192-gcm', 256 => 'aes-256-gcm', default => null
+            },
             default => null,
         };
     }

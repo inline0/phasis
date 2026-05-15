@@ -286,7 +286,12 @@ class Engine
                 static function (
                     JsValue $this_,
                     array $args,
-                ) use ($name, $registry, $env, $globalObj): JsValue {
+                ) use (
+                    $name,
+                    $registry,
+                    $env,
+                    $globalObj
+                ): JsValue {
                     unset($this_, $args);
                     $registry->realize($name);
                     // Pull from the env's own bindings rather than

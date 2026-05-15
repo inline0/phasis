@@ -14,6 +14,16 @@ const tests = {
     function fib(n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
     return fib(22);
   },
+  // Single-line deep recursion. On main this hits the 1024 PHP-
+  // stack ceiling; on the custom-callstack branch the inline-call
+  // path lets it run to completion. Reports time but the more
+  // important signal is whether it crashes — main throws
+  // "Maximum call stack size exceeded" before reaching n=0.
+  "fn-deep-recurse": () => {
+    "use strict";
+    function deep(n) { return n === 0 ? 0 : deep(n - 1) + 1; }
+    return deep(2000);
+  },
   "obj-create": () => {
     let last;
     for (let i = 0; i < 20000; i++) last = { a: i, b: i * 2, c: i + 1 };

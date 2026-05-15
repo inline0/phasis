@@ -357,15 +357,19 @@ final class JsToPhp
             ? 'function (array $rawArgs, $env, $interp, $nestedFns)'
             : 'function ($args, $env, $interp, $nestedFns)';
         // Guard against unbounded recursion. The interpreter's
-        // CallStack enforces a 1024-frame limit, but a JsToPhp
-        // closure dispatching through phpCompiled bypasses
-        // callFunctionInner's push/pop entirely. Without a check
-        // here a self-recursive compiled body (e.g. eval()
-        // recursion stress tests in staging/sm) walks PHP's heap
-        // until it OOMs. Use a static counter local to the closure
-        // so we don't depend on private CallStack APIs.
+        // CallStack enforces its own (much larger) limit, but a
+        // JsToPhp closure dispatching through phpCompiled bypasses
+        // callFunctionInner's push/pop entirely AND grows PHP's
+        // actual interpreter stack on every recursive call. Cap
+        // the recursion depth so a runaway self-recursive body
+        // doesn't blow past PHP's process stack (~10 k frames on
+        // a default build) and crash the worker. 8192 puts us
+        // comfortably above V8/SpiderMonkey practical stack-
+        // overflow thresholds while leaving headroom below
+        // typical PHP defaults. Use a static counter local to the
+        // closure so we don't depend on private CallStack APIs.
         $bodyPrologue = "static \$_jstophp_depth = 0;\n"
-            . "if (\$_jstophp_depth >= 512) { throw new \\Phasis\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
+            . "if (\$_jstophp_depth >= 8192) { throw new \\Phasis\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
             . "\$_jstophp_depth++;\n"
             . "try {\n";
         $bodyEpilogue = "} finally { \$_jstophp_depth--; }\n";

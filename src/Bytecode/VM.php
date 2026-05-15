@@ -677,44 +677,29 @@ final class VM
         $pc = 0;
         $hasHandlers = $cf->handlers !== [];
 
-        // === Custom callstack (Stage 1) ===========================
+        // === Custom callstack ====================================
         //
-        // When `Op::CALL` lands on a Stage-1-eligible BC-compiled
-        // callee (strict / non-arrow / canSkipEnvAlloc / no special
-        // semantics — see the inline guard below for the exact
-        // predicate), the VM SAVES its current frame state onto
-        // `$savedFrames`, swaps in the callee's state, and keeps
-        // dispatching. `Op::RET` pops one saved frame and resumes
-        // the caller. Exceptions walk `$savedFrames` looking for a
-        // handler in any parent frame.
+        // When `Op::CALL` / `Op::CALL_METHOD` lands on an inline-
+        // eligible BC-compiled callee, the VM SAVES the caller's
+        // frame state onto `$savedFrames`, swaps in the callee's
+        // state, and keeps dispatching. `Op::RET` pops one saved
+        // frame and resumes the caller; exceptions walk
+        // `$savedFrames` looking for a handler in any parent frame.
         //
         // This eliminates the recursive PHP `vm->execute` call for
-        // the most common pure-JS-calls-pure-JS shape; PHP's
-        // stack ceiling no longer bounds JS recursion depth on this
-        // path, and PHP's per-call frame overhead is paid once per
-        // top-level entry instead of per JS call.
+        // the most common pure-JS-calls-pure-JS shape; PHP's stack
+        // ceiling no longer bounds JS recursion depth on this path.
         //
-        // Each entry is positionally:
-        //   [0]  cf            CompiledFunction of the caller
-        //   [1]  code          $cf->code (cached)
-        //   [2]  consts
-        //   [3]  names
-        //   [4]  nestedFns
-        //   [5]  stack         caller's operand stack
-        //   [6]  sp            caller's stack pointer
-        //   [7]  locals        caller's local slots
-        //   [8]  env
-        //   [9]  thisValue
-        //   [10] strict        $this->interp->strictMode at save time
-        //   [11] hasHandlers   whether caller's $cf has any handlers
-        //   [12] pc            RETURN ADDRESS (post-CALL pc — typically
-        //                     the saved $pc was CALL's pc + 2)
-        //   [13] restore       opaque blob from setupInlineVmCall, fed
-        //                     back to teardownInlineVmCall on RET / on
-        //                     exception unwind through this frame
+        // The save format is a `SavedFrame` class with individually
+        // typed public fields, pooled per execute() invocation so a
+        // long-running script pays one allocation per max-reached
+        // depth instead of one per call. PHP 8.5's tracing JIT
+        // specializes the field read/write significantly better
+        // than the equivalent mixed-array push/destructure.
         //
-        // @var list<array{0: CompiledFunction, 1: array<int, int>, 2: list<mixed>, 3: list<string>, 4: list<mixed>, 5: list<JsValue>, 6: int, 7: list<JsValue>, 8: \Phasis\Runtime\Environment, 9: JsValue, 10: bool, 11: bool, 12: int, 13: array{0: bool, 1: bool, 2: ?string}}>
+        // @var list<SavedFrame>
         $savedFrames = [];
+        $savedFramesDepth = 0;
 
         // Outer loop wraps the dispatch in try/catch only when this
         // function actually has handlers. The bench-relevant hot path
@@ -1340,56 +1325,61 @@ final class VM
                                     // callFunction so the call still completes.
                                 }
                             }
-                            // Stage 1 custom callstack: when the
-                            // callee is strict-or-arrow (setCallerPropCache
-                            // === false → no Annex B caller/arguments
-                            // magic) AND not a bound function AND
-                            // already eligible for the VM direct
-                            // dispatch fast path, inline the call into
-                            // the VM's own dispatch loop. Saves PHP-
-                            // stack growth and the per-call PHP method
-                            // dispatch.
-                            if (
-                                $eligible
-                                && $callee->setCallerPropCache === false
-                                && $callee->getBoundTarget() === null
-                            ) {
+                            // Custom callstack: any eligible BC-compiled
+                            // callee that isn't a bound function.
+                            // setupInlineVmCall handles the Annex B
+                            // caller/arguments magic + sloppy this-
+                            // binding adjustment uniformly across
+                            // strict / arrow / sloppy callees.
+                            $inlineable = $callee->vmInlineCallCache;
+                            if ($inlineable === null) {
+                                $inlineable = $eligible && $callee->getBoundTarget() === null;
+                                if ($inlineable) {
+                                    $callee->vmInlineCallCache = true;
+                                }
+                            }
+                            if ($inlineable) {
                                 $newCf = $callee->compiled;
-                                // Setup interpreter-side state (call
-                                // stack push, strict mode swap, module
-                                // path swap). The returned blob is what
-                                // RET / exception unwind feeds back.
-                                $restore = $this->interp->setupInlineVmCall($callee);
-                                // Allocate a Frame from the pool the
-                                // same way `tryRunOnVm` would for a
-                                // canSkipEnvAlloc callee.
+                                $restore = $this->interp->setupInlineVmCall($callee, $undef);
                                 $paramSlots = $newCf->paramSlots;
                                 $paramCount = count($paramSlots);
                                 $newFrame = $this->interp->borrowInlineVmFrame(
                                     $callee->closure,
-                                    $undef,
+                                    $restore[0],
                                     $newCf->slotCount,
                                     $paramCount,
                                     $undef,
                                 );
-                                // Wire params: same loop the
-                                // tryRunOnVm path uses. argc may be
-                                // less than paramCount; missing slots
-                                // default to undefined (Frame::reset
-                                // already filled the non-param slots).
                                 $argCount = count($args);
                                 for ($i = 0; $i < $paramCount; $i++) {
                                     $newFrame->locals[$paramSlots[$i]] =
                                         $i < $argCount ? $args[$i] : $undef;
                                 }
-                                // Save caller's state.
-                                $savedFrames[] = [
-                                    $cf, $code, $consts, $names, $nestedFns,
-                                    $stack, $sp, $locals, $env, $thisValue,
-                                    $strict, $hasHandlers,
-                                    $pc + 2,
-                                    $restore,
-                                ];
+                                // Pool a SavedFrame: typed fields the
+                                // JIT can specialize; one alloc per
+                                // max-reached depth.
+                                if ($savedFramesDepth < count($savedFrames)) {
+                                    $sf = $savedFrames[$savedFramesDepth];
+                                } else {
+                                    $sf = new SavedFrame();
+                                    $savedFrames[] = $sf;
+                                }
+                                $sf->cf = $cf;
+                                $sf->code = $code;
+                                $sf->consts = $consts;
+                                $sf->names = $names;
+                                $sf->nestedFns = $nestedFns;
+                                $sf->stack = $stack;
+                                $sf->sp = $sp;
+                                $sf->locals = $locals;
+                                $sf->env = $env;
+                                $sf->thisValue = $thisValue;
+                                $sf->strict = $strict;
+                                $sf->hasHandlers = $hasHandlers;
+                                $sf->returnPc = $pc + 2;
+                                $sf->restore = $restore;
+                                $sf->callee = $callee;
+                                $savedFramesDepth++;
                                 // Switch to callee's state.
                                 $cf = $newCf;
                                 $code = $newCf->code;
@@ -1641,6 +1631,88 @@ final class VM
                                     break;
                                 }
                             }
+                            // Stage 4 custom callstack: extend the
+                            // inline-call path to method calls too.
+                            // Same eligibility predicate Op::CALL
+                            // uses; receiver becomes the new this
+                            // binding (subject to sloppy-mode
+                            // adjustment inside setupInlineVmCall).
+                            $methodEligible = $method->vmDirectDispatchCache;
+                            if ($methodEligible === null) {
+                                $methodEligible = $method->compiled !== null
+                                    && $method->compiled->canSkipEnvAlloc
+                                    && !$method->isClassConstructor()
+                                    && !$method->isDerivedConstructor()
+                                    && $method->getHomeObject() === null
+                                    && $method->getNativeCallable() === null
+                                    && !$method->isAsync()
+                                    && !$method->isGenerator();
+                                if ($methodEligible) {
+                                    $method->vmDirectDispatchCache = true;
+                                }
+                            }
+                            $methodInlineable = $method->vmInlineCallCache;
+                            if ($methodInlineable === null) {
+                                $methodInlineable = $methodEligible
+                                    && $method->getBoundTarget() === null;
+                                if ($methodInlineable) {
+                                    $method->vmInlineCallCache = true;
+                                }
+                            }
+                            if ($methodInlineable) {
+                                $newCf = $method->compiled;
+                                $restore = $this->interp->setupInlineVmCall($method, $receiver);
+                                $paramSlots = $newCf->paramSlots;
+                                $paramCount = count($paramSlots);
+                                $newFrame = $this->interp->borrowInlineVmFrame(
+                                    $method->closure,
+                                    $restore[0],
+                                    $newCf->slotCount,
+                                    $paramCount,
+                                    $undef,
+                                );
+                                $argCount = count($args);
+                                for ($i = 0; $i < $paramCount; $i++) {
+                                    $newFrame->locals[$paramSlots[$i]] =
+                                        $i < $argCount ? $args[$i] : $undef;
+                                }
+                                if ($savedFramesDepth < count($savedFrames)) {
+                                    $sf = $savedFrames[$savedFramesDepth];
+                                } else {
+                                    $sf = new SavedFrame();
+                                    $savedFrames[] = $sf;
+                                }
+                                $sf->cf = $cf;
+                                $sf->code = $code;
+                                $sf->consts = $consts;
+                                $sf->names = $names;
+                                $sf->nestedFns = $nestedFns;
+                                $sf->stack = $stack;
+                                $sf->sp = $sp;
+                                $sf->locals = $locals;
+                                $sf->env = $env;
+                                $sf->thisValue = $thisValue;
+                                $sf->strict = $strict;
+                                $sf->hasHandlers = $hasHandlers;
+                                $sf->returnPc = $pc + 2;
+                                $sf->restore = $restore;
+                                $sf->callee = $method;
+                                $savedFramesDepth++;
+                                $cf = $newCf;
+                                $code = $newCf->code;
+                                $consts = $newCf->consts;
+                                $names = $newCf->names;
+                                $nestedFns = $newCf->nestedFns;
+                                $hasHandlers = $newCf->handlers !== [];
+                                $stack = $newFrame->stack;
+                                $sp = $newFrame->sp;
+                                $locals = $newFrame->locals;
+                                $env = $newFrame->env;
+                                $thisValue = $newFrame->thisValue;
+                                $strict = $this->interp->isStrictMode();
+                                $pc = 0;
+                                break;
+                            }
                             $stack[$sp++] = $this->interp->callFunction(
                                 $method,
                                 $receiver,
@@ -1751,27 +1823,28 @@ final class VM
 
                         case Op::RET:
                             $retResult = $stack[--$sp];
-                            if ($savedFrames !== []) {
+                            if ($savedFramesDepth > 0) {
                                 // Inline-call return: pop one saved
                                 // frame, restore caller state, push
                                 // the return value onto the caller's
                                 // operand stack, continue dispatch.
-                                $saved = array_pop($savedFrames);
-                                $this->interp->teardownInlineVmCall($saved[13]);
+                                $savedFramesDepth--;
+                                $sf = $savedFrames[$savedFramesDepth];
+                                $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
                                 $this->interp->releaseInlineVmFrame();
-                                $cf = $saved[0];
-                                $code = $saved[1];
-                                $consts = $saved[2];
-                                $names = $saved[3];
-                                $nestedFns = $saved[4];
-                                $stack = $saved[5];
-                                $sp = $saved[6];
-                                $locals = $saved[7];
-                                $env = $saved[8];
-                                $thisValue = $saved[9];
-                                $strict = $saved[10];
-                                $hasHandlers = $saved[11];
-                                $pc = $saved[12];
+                                $cf = $sf->cf;
+                                $code = $sf->code;
+                                $consts = $sf->consts;
+                                $names = $sf->names;
+                                $nestedFns = $sf->nestedFns;
+                                $stack = $sf->stack;
+                                $sp = $sf->sp;
+                                $locals = $sf->locals;
+                                $env = $sf->env;
+                                $thisValue = $sf->thisValue;
+                                $strict = $sf->strict;
+                                $hasHandlers = $sf->hasHandlers;
+                                $pc = $sf->returnPc;
                                 $stack[$sp++] = $retResult;
                                 break;
                             }
@@ -1809,25 +1882,26 @@ final class VM
                     // return address; back it up by 2 to the CALL
                     // opcode itself so handler ranges that cover
                     // the call site match.
-                    if ($savedFrames === []) {
+                    if ($savedFramesDepth === 0) {
                         throw $e;
                     }
-                    $saved = array_pop($savedFrames);
-                    $this->interp->teardownInlineVmCall($saved[13]);
+                    $savedFramesDepth--;
+                    $sf = $savedFrames[$savedFramesDepth];
+                    $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
                     $this->interp->releaseInlineVmFrame();
-                    $cf = $saved[0];
-                    $code = $saved[1];
-                    $consts = $saved[2];
-                    $names = $saved[3];
-                    $nestedFns = $saved[4];
-                    $stack = $saved[5];
-                    $sp = $saved[6];
-                    $locals = $saved[7];
-                    $env = $saved[8];
-                    $thisValue = $saved[9];
-                    $strict = $saved[10];
-                    $hasHandlers = $saved[11];
-                    $pc = $saved[12] - 2;
+                    $cf = $sf->cf;
+                    $code = $sf->code;
+                    $consts = $sf->consts;
+                    $names = $sf->names;
+                    $nestedFns = $sf->nestedFns;
+                    $stack = $sf->stack;
+                    $sp = $sf->sp;
+                    $locals = $sf->locals;
+                    $env = $sf->env;
+                    $thisValue = $sf->thisValue;
+                    $strict = $sf->strict;
+                    $hasHandlers = $sf->hasHandlers;
+                    $pc = $sf->returnPc - 2;
                 }
                 // Convert the PHP exception to a JsValue for the catch
                 // parameter. JsThrowable wraps a user-thrown JS value;
