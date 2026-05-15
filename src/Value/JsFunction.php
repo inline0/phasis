@@ -663,6 +663,14 @@ class JsFunction extends JsObject
     public ?bool $vmDirectDispatchCache = null;
 
     /**
+     * Stricter sibling of `$vmDirectDispatchCache`: also requires
+     * the function to NOT be a bind() result. Cached separately so
+     * the VM's inline-call hot path (custom callstack) collapses
+     * to a single bool read instead of `eligible && !bound`.
+     */
+    public ?bool $vmInlineCallCache = null;
+
+    /**
      * Memoised: results of isNonSimpleParameterList and
      * hasParameterExpressions analyses on this function's parameter
      * list. Both are pure functions of $params, which never changes

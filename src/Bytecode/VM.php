@@ -1331,10 +1331,14 @@ final class VM
                             // caller/arguments magic + sloppy this-
                             // binding adjustment uniformly across
                             // strict / arrow / sloppy callees.
-                            if (
-                                $eligible
-                                && $callee->getBoundTarget() === null
-                            ) {
+                            $inlineable = $callee->vmInlineCallCache;
+                            if ($inlineable === null) {
+                                $inlineable = $eligible && $callee->getBoundTarget() === null;
+                                if ($inlineable) {
+                                    $callee->vmInlineCallCache = true;
+                                }
+                            }
+                            if ($inlineable) {
                                 $newCf = $callee->compiled;
                                 $restore = $this->interp->setupInlineVmCall($callee, $undef);
                                 $paramSlots = $newCf->paramSlots;
@@ -1647,10 +1651,15 @@ final class VM
                                     $method->vmDirectDispatchCache = true;
                                 }
                             }
-                            if (
-                                $methodEligible
-                                && $method->getBoundTarget() === null
-                            ) {
+                            $methodInlineable = $method->vmInlineCallCache;
+                            if ($methodInlineable === null) {
+                                $methodInlineable = $methodEligible
+                                    && $method->getBoundTarget() === null;
+                                if ($methodInlineable) {
+                                    $method->vmInlineCallCache = true;
+                                }
+                            }
+                            if ($methodInlineable) {
                                 $newCf = $method->compiled;
                                 $restore = $this->interp->setupInlineVmCall($method, $receiver);
                                 $paramSlots = $newCf->paramSlots;
