@@ -89,7 +89,7 @@ JavaScript values are PHP objects under `src/Value/`. Each one implements the `J
 | `JsBigInt` | arbitrary precision via bcmath |
 | `JsProxy` | all 13 traps, revocable |
 | `JsPromise` | synchronous executor + microtask queue |
-| `JsGenerator` | PHP Fiber-backed |
+| `JsGenerator` | dual-mode: frame-snapshot (bytecode-compiled bodies; see [Bytecode VM § Frame-snapshot generators](/docs/advanced/bytecode-vm)) with PHP Fiber fallback for `yield*`, try-with-yield, and async generators |
 | `JsMap`, `JsSet`, `JsWeakMap`, `JsWeakSet`, `JsWeakRef`, `JsFinalizationRegistry` | collections |
 | `JsArrayBuffer`, `JsSharedArrayBuffer`, `JsDataView`, `JsTypedArray` | binary data |
 
@@ -97,7 +97,7 @@ Number handling is the single largest source of historical bugs: `NaN !== NaN` m
 
 ## Built-in library
 
-`src/BuiltIn/` provides every standard-library object: `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, `console`, plus all the constructors and prototype methods for each.
+`src/BuiltIn/` provides every standard-library object: `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, `console`, plus the Web Platform / Fetch packs (`URL`, `Headers`, `Request`, `Response`, `Blob`, `FormData`, full Streams, `EventTarget`, `AbortController`/`AbortSignal`, `DOMException`, `structuredClone`, `performance`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`), `crypto` + `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, and the event loop (`setTimeout`, `setInterval`, `queueMicrotask`, `AsyncContext`).
 
 Each built-in is a static `install()` method on a class. The `Engine` calls them in dependency order at construction. Each one defines its prototype chain, installs methods as `JsFunction` instances wrapped around PHP closures, and exposes the constructor as a global.
 
@@ -120,6 +120,6 @@ Resource limits (call depth, loop iterations, string length, output size, execut
 
 ## Bytecode VM
 
-For hot functions, the interpreter speculatively compiles to PHP closures (the "bytecode VM" in `src/Bytecode/`). When a function is called many times, `JsToPhp` emits a PHP closure that runs the function body directly without tree-walking. On any unhandled shape (a non-numeric assignment, a `with` statement, a `try/catch` with rebinding) it bails out to the tree-walker.
+Hot functions get lowered two ways. `JsToPhp` (in `src/Bytecode/`) emits a PHP closure for numeric / locals-heavy bodies that PHP's tracing JIT can compile to native. Everything else compiles to flat bytecode consumed by `VM::execute`, with a custom callstack that keeps every JS call inside a single PHP frame and a per-PC inline cache for prototype-method reads. Simple generator bodies compile to bytecode too, with `Op::YIELD` capturing a heap frame snapshot instead of crossing PHP Fiber.
 
-See [Bytecode VM](/docs/advanced/bytecode-vm) for the full mechanism.
+Any shape the compiler doesn't lower (e.g. `with`, `try` with a re-binding catch, `yield*`, async generators) falls back to the tree-walker. See [Bytecode VM](/docs/advanced/bytecode-vm) for the full mechanism.

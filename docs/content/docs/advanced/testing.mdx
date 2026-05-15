@@ -109,7 +109,7 @@ Each shard:
 
 A merge job downloads all 73 artifacts, deduplicates pending-vs-complete chunks across mismatched chunk sizes, regenerates `compat.json` + `COMPAT.md`, and pushes them back to `main` as `[skip ci]` commits.
 
-The full matrix typically completes in 3–4 minutes wall-clock.
+The full matrix typically completes in ~10 minutes wall-clock (longer shards: 30+ minutes).
 
 ## verify-all
 
@@ -118,8 +118,8 @@ For local pre-push checks, `./bin/verify-all` runs the quality gate that CI enfo
 ```
 === PHPStan ===                  level 6, zero errors
 === Code Standards ===           PHPCS, zero warnings
-=== PHPUnit ===                  118 / 118 pass
-=== Oracle Regression ===        12 / 12 scenarios pass
+=== PHPUnit ===                  642 / 642 pass
+=== Oracle Regression ===        scenarios under `scenarios/` pass
 ```
 
 It is **not** sufficient on its own — test262 must also be sampled for any change touching the parser, interpreter, or built-ins. See `CLAUDE.md` for the per-change checklist.

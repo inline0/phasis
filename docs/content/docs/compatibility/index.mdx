@@ -8,7 +8,7 @@ description: How Phasis compares to V8 (Node, Chrome), SpiderMonkey, and JavaScr
 Phasis is verified against three independent oracles on every push:
 
 1. **test262** — the official TC39 ECMAScript conformance suite. **50,506 / 50,506 = 100%**.
-2. **Web Platform Tests (WPT)** — the official WHATWG / W3C suite for non-ECMAScript Web APIs. **791 / 792 = 99.87%** on the imported corpus (one event-loop-ordering test deferred).
+2. **Web Platform Tests (WPT)** — the official WHATWG / W3C suite for non-ECMAScript Web APIs. **815 / 815 = 100%** on the imported corpus (56 fixtures across fetch, headers, streams, blob, abort, encoding, URL, structured-clone, hr-time, atob).
 3. **Real-world libraries** — `acorn`, `mustache.js`, `lodash`, `marked` execute byte-equal to Node.js on every push.
 
 ## Conformance vs other engines
@@ -27,7 +27,7 @@ Numbers from [test262.fyi](https://test262.fyi). Phasis sits in the top tier alo
 ## Pages
 
 - **[test262 coverage](/docs/compatibility/test262)** — per-category breakdown, what's tested, how the suite runs.
-- **[Web APIs (WPT)](/docs/compatibility/web-apis)** — Web Platform Pack and Fetch Pack: 444+ subtests across URL, encoding, atob/btoa, structuredClone, performance, Headers, Blob, AbortSignal, EventTarget, Streams. Per-area pass-rate table.
+- **[Web APIs (WPT)](/docs/compatibility/web-apis)** — Web Platform Pack and Fetch Pack: 815 subtests across URL, encoding, atob/btoa, structuredClone, performance, Headers, Blob, AbortSignal, EventTarget, Streams, plus crypto, WebSocket, and XMLHttpRequest. Per-area pass-rate table.
 - **[Streams](/docs/compatibility/streams)** — full WHATWG Streams Standard: ReadableStream, WritableStream, TransformStream, BYOB, tee, pipeTo/pipeThrough, queuing strategies, async iteration. Production, consumption, transform, byte-stream patterns.
 - **[Popular packages](/docs/compatibility/popular-packages)** — CI-gated byte-equality with Node.js for acorn, mustache.js, lodash, marked.
 - **[Spec surface](/docs/compatibility/spec-surface)** — every ECMAScript built-in, syntactic feature, and standard-library object that Phasis ships.

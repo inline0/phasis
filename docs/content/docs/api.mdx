@@ -109,20 +109,17 @@ echo $engine->call('add', 2, 3);   // 5
 public function setLimit(string $limit, int $value): void
 ```
 
-Resource limits enforced by the engine. Exceeding any of them throws `Phasis\Exceptions\InternalError` from inside JS, which the host can catch as `Phasis\Exceptions\JsThrowable`.
+Runtime-tunable resource limit. Exceeding it throws `Phasis\Exceptions\InternalError` from inside JS, which the host can catch as `Phasis\Exceptions\JsThrowable`.
 
 | Limit | Default | Description |
 |---|---|---|
-| `maxCallDepth` | `100` | maximum function call stack depth |
-| `maxLoopIterations` | `100000` | maximum iterations per `for` / `while` loop |
-| `maxStringLength` | `10485760` (10 MiB) | maximum length of any string value |
-| `maxOutputSize` | `10485760` (10 MiB) | maximum total `console.log` output bytes |
-| `maxExecutionTime` | `60` | maximum wall-clock seconds for any single `eval()` / `execFile()` / `call()` invocation |
+| `maxLoopIterations` | `100000` | maximum iterations per `for` / `while` / `do…while` loop |
 
 ```php
-$engine->setLimit('maxCallDepth', 200);
 $engine->setLimit('maxLoopIterations', 1_000_000);
 ```
+
+Two additional ceilings are baked into the engine and not runtime-tunable: `Phasis\Runtime\CallStack::maxDepth` (4 096 JS frames) and the JsToPhp transpiled-closure depth guard (8 192 PHP frames). Both throw "Maximum call stack size exceeded" when crossed. They sit well above any legitimate JS program — bumping them is a code change, not a config knob.
 
 ## reset
 

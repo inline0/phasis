@@ -30,8 +30,9 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - Complete standard library (`Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`)
 - **Web Platform Pack**: `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`
 - **Fetch Pack**: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`
+- **Crypto**: `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (SHA family, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2)
+- **WebSocket** (RFC 6455 + replaceable transport), **XMLHttpRequest** (layered over fetch), and a real **event loop** (`setTimeout` / `setInterval` / `queueMicrotask`, plus Stage-3 `AsyncContext`)
 - Direct PHP↔JS interop — share objects without serialization, bind PHP callables as JS functions
-- Resource limits for call depth, loop iterations, string length, output size, and wall-clock execution
 - **100 % of the official test262 suite passes** (50,506 / 50,506) — ECMAScript conformance
 - **100 % of imported Web Platform Tests pass** (815 / 815) across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob
 

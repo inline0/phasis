@@ -9,13 +9,11 @@ Phasis aims to behave identically to V8 on every observable spec test. This page
 
 ## Performance ceiling
 
-The engine is a tree-walker with an opportunistic bytecode VM. Each AST node dispatched costs ~1 μs of PHP runtime. For dispatch-bound workloads — tight inner loops calling user-defined JS functions — Phasis is **~100× slower than V8**.
-
-That ceiling shows up most clearly in the 16 SpiderMonkey stress fixtures we currently skip in test262. Those tests deliberately stress 1 M-iteration loops to exercise SpiderMonkey's JIT inlining. A tree-walker can't compress them into reasonable wall time.
+The engine is a tree-walker with an opportunistic bytecode VM. Most hot dispatch happens inside the VM's switch loop — not by walking the AST — but each VM opcode still pays a PHP dispatch tax. Even with the custom callstack (one PHP frame per execute() invocation rather than per JS call), the inline cache for prototype reads, and frame-snapshot generators, Phasis sits roughly **~100× slower than V8** on dispatch-bound workloads.
 
 For embedding workloads — running user-supplied logic on PHP data, content-transformation pipelines, validation rules — the ceiling rarely matters. V8 is 100 ms; Phasis is 10 s; both are well below the request timeout.
 
-A future bytecode JIT (compiling hot JS functions to opcache-friendly PHP closures) could close some of this gap. It's on the roadmap, not yet shipped.
+A future bytecode JIT (lowering hot JS functions to opcache-friendly PHP that the host's tracing JIT can compile to native) could close more of this gap. It's on the roadmap, not yet shipped.
 
 ## Multi-agent concurrency
 
@@ -60,17 +58,13 @@ This matches the bare ECMAScript spec but not Node's behaviour. To use npm packa
 
 ## Browser-only Web APIs we skip
 
-Phasis ships the full **Web Platform Pack** (`URL`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`) and the full **Fetch Pack** (`fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`) — see [Web APIs](/docs/compatibility/web-apis).
+Phasis ships the full **Web Platform Pack** (`URL`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`), the full **Fetch Pack** (`fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`), plus `crypto` (`getRandomValues`, `randomUUID`, full `SubtleCrypto`: digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2), `WebSocket` (constructor + RFC 6455 frame codec, swappable transport), `XMLHttpRequest` (layered over the fetch transport), and a real event loop (`setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, `AsyncContext`). See [Web APIs](/docs/compatibility/web-apis).
 
 What's *not* shipped:
 
 - `window`, `document`, the DOM tree — Phasis isn't a browser.
 - `localStorage`, `sessionStorage`, `IndexedDB` — host-side concerns; the embedder owns persistence.
-- `WebSocket` — separate transport. Possible to add; not yet on the roadmap.
 - `Worker`, `SharedWorker`, `MessageChannel` — needs real OS threads, which PHP doesn't offer.
-- `setTimeout`, `setInterval`, `queueMicrotask` — needs an event loop. Phasis is synchronous-embeddable today; a runtime-model change would be required.
-- `crypto.subtle`, `crypto.getRandomValues` — separate threat model; possible add later.
-- `XMLHttpRequest` — superseded by `fetch`, which we *do* ship.
 - Service Workers, Push API, Notifications, BroadcastChannel — irrelevant outside a browser.
 
 ## Node globals

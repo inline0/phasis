@@ -5,26 +5,38 @@ description: The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding
 
 # Web APIs
 
-Beyond ECMAScript itself, Phasis ships two layered packs of WHATWG / W3C APIs:
+Beyond ECMAScript itself, Phasis ships several layered packs of WHATWG / W3C APIs:
 
 - **Web Platform Pack** — pure value types, no I/O: `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException`.
 - **Fetch Pack** — real HTTP from JavaScript: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `navigator`.
+- **Crypto** — `crypto.getRandomValues`, `crypto.randomUUID`, and full `SubtleCrypto`: digest (SHA-1/256/384/512), HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA (P-256/384/521), ECDH, HKDF, PBKDF2 — plus JWK import/export. Backed by `ext-openssl`.
+- **WebSocket** — constructor, RFC 6455 frame codec, events. Default transport uses `stream_socket_client`; replaceable via `Engine::setWebSocketTransport()` for ReactPHP / Ratchet / mocks in tests.
+- **XMLHttpRequest** — layered over the fetch transport, so the same policy hooks and swappable transport apply.
+- **Event loop** — `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`. Plus `AsyncContext` (Stage 3) propagating values across microtask / timer boundaries.
 
-Both packs are **on by default**. No flag, no setup — `typeof fetch` returns `"function"` on a fresh `new Engine()`.
+All packs are **on by default**. No flag, no setup — `typeof fetch` returns `"function"` on a fresh `new Engine()`.
 
 ## Conformance
 
-| Area | Subtests | Status |
-|---|---:|---|
-| `URL` / `URLSearchParams` | 20 | 100 % |
-| `TextEncoder` / `TextDecoder` | 15 | 100 % |
-| `atob` / `btoa` | 6 | 100 % |
-| `structuredClone` | 11 | 100 % |
-| `performance.now` | 3 | 100 % |
-| `Headers` | 132 | 100 % |
-| `Blob` / `File` | 235 | 100 % |
-| `AbortController` / `AbortSignal` / `Event` | 22 | 100 % |
-| **Total** | **444** | **100 %** |
+WPT fixtures imported into `tests/Wpt/fixtures/` cover the Web Platform Pack and Fetch Pack:
+
+| Fixture area | Fixtures |
+|---|---:|
+| `abort/` (AbortController / AbortSignal) | 4 |
+| `atob/` | 1 |
+| `blob/` (Blob, File slicing, byte semantics) | 8 |
+| `encoding/` (TextEncoder / TextDecoder) | 2 |
+| `events/` (EventTarget, Event, propagation) | 8 |
+| `file/` | 1 |
+| `formdata/` | 9 |
+| `headers/` | 12 |
+| `hr-time/` (`performance.now`) | 1 |
+| `streams/` (Readable / Writable / Transform + BYOB + queuing) | 7 |
+| `structured-clone/` | 1 |
+| `url/` (URL, URLSearchParams) | 2 |
+| **Total** | **56 fixtures · 815 subtests · 100 %** |
+
+`crypto` / `SubtleCrypto`, `WebSocket`, and `XMLHttpRequest` ship in the engine but don't yet have WPT fixtures imported. They're verified against Node.js via [popular-package tests](/docs/compatibility/popular-packages) and the unit-test suite.
 
 Verified by `bin/wpt` against the official [Web Platform Tests](https://github.com/web-platform-tests/wpt). Run yourself:
 
@@ -52,7 +64,7 @@ That works out of the box. The default transport is PHP `ext-curl`. Bodies strea
 
 ```js
 const ctrl = new AbortController();
-setTimeout(() => ctrl.abort(), 5000);  // (setTimeout not yet shipped; abort manually instead)
+setTimeout(() => ctrl.abort(), 5000);
 try {
   const res = await fetch(slowUrl, { signal: ctrl.signal });
 } catch (e) {
@@ -152,16 +164,13 @@ These browser-only or runtime-model APIs are deliberately out of scope — see [
 
 - `window`, `document`, the DOM tree
 - `localStorage`, `sessionStorage`, `IndexedDB`
-- `WebSocket`
 - `Worker`, `SharedWorker`, `MessageChannel`
-- `crypto.subtle`, `crypto.getRandomValues`
-- `XMLHttpRequest` (superseded by `fetch`)
 - Service Workers, Push API, Notifications, BroadcastChannel
 
 Most of these can be polyfilled by the embedder via `$engine->setGlobal()` if needed.
 
 ## Growing the WPT corpus
 
-The local WPT clone at `tests/Wpt/upstream/` is a sparse-checkout of [web-platform-tests/wpt](https://github.com/web-platform-tests/wpt) covering `fetch/`, `streams/`, `FileAPI/`, `xhr/formdata/`, `dom/abort/`, `dom/events/`. 304 fixtures available; 23 currently imported into `tests/Wpt/fixtures/`.
+The local WPT clone at `tests/Wpt/upstream/` is a sparse-checkout of [web-platform-tests/wpt](https://github.com/web-platform-tests/wpt) covering `fetch/`, `streams/`, `FileAPI/`, `xhr/formdata/`, `dom/abort/`, `dom/events/`. 56 fixtures are currently imported into `tests/Wpt/fixtures/` across 12 areas.
 
 To import more: copy any `*.any.js` file from `upstream/<area>/` into `tests/Wpt/fixtures/<category>/`. The runner picks it up on next run. Failures get logged via `bin/wpt --verbose`.
