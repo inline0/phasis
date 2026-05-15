@@ -671,6 +671,19 @@ class JsFunction extends JsObject
     public ?bool $vmInlineCallCache = null;
 
     /**
+     * Memoised eligibility for the inline NEW_CALL path. Mirrors
+     * `$vmInlineCallCache` but for constructor calls: additionally
+     * requires the callee to be constructable, NOT a derived
+     * constructor, and to have no instance-field or private-method
+     * initializers (those paths still flow through the canonical
+     * `vmNewExpression` so we don't have to replicate the
+     * initializer trampoline inside the inline frame). Class ctors
+     * without these complications get the same single-bool fast
+     * path as regular function calls.
+     */
+    public ?bool $vmInlineConstructCache = null;
+
+    /**
      * Memoised: results of isNonSimpleParameterList and
      * hasParameterExpressions analyses on this function's parameter
      * list. Both are pure functions of $params, which never changes

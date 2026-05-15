@@ -1479,6 +1479,99 @@ final class VM
                                     break;
                                 }
                             }
+                            // Inline construct: skip the vmNewExpression
+                            // trampoline for plain class / function
+                            // constructors that have no field or
+                            // private-method initializers. Mirrors the
+                            // CALL inline path with two extras: a
+                            // freshly-allocated `this` and a
+                            // [[NewTarget]] internal property the RET
+                            // path tears down once the body returns.
+                            // Derived constructors and initializer-
+                            // bearing classes still flow through
+                            // vmNewExpression so the AST super() path
+                            // and class-field timing rules stay
+                            // exactly as the tree-walker has them.
+                            if ($callee instanceof JsFunction) {
+                                $newInlineable = $callee->vmInlineConstructCache;
+                                if ($newInlineable === null) {
+                                    $newInlineable = $callee->compiled !== null
+                                        && $callee->compiled->canSkipEnvAlloc
+                                        && $callee->isConstructable()
+                                        && !$callee->isDerivedConstructor()
+                                        && $callee->getBoundTarget() === null
+                                        && $callee->getNativeCallable() === null
+                                        && !$callee->isAsync()
+                                        && !$callee->isGenerator()
+                                        && $callee->getInstanceFieldInitializers() === []
+                                        && $callee->getPrivateMethodEntries() === [];
+                                    if ($newInlineable) {
+                                        $callee->vmInlineConstructCache = true;
+                                    }
+                                }
+                                if ($newInlineable) {
+                                    $proto = $callee->get('prototype');
+                                    $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+                                    $newObj->defineOwnProperty(
+                                        '[[NewTarget]]',
+                                        \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
+                                    );
+                                    $newCf = $callee->compiled;
+                                    $restore = $this->interp->setupInlineVmCall($callee, $newObj);
+                                    $paramSlots = $newCf->paramSlots;
+                                    $paramCount = count($paramSlots);
+                                    $newFrame = $this->interp->borrowInlineVmFrame(
+                                        $callee->closure,
+                                        $restore[0],
+                                        $newCf->slotCount,
+                                        $paramCount,
+                                        $undef,
+                                    );
+                                    $argCount = count($args);
+                                    for ($i = 0; $i < $paramCount; $i++) {
+                                        $newFrame->locals[$paramSlots[$i]] =
+                                            $i < $argCount ? $args[$i] : $undef;
+                                    }
+                                    if ($savedFramesDepth < count($savedFrames)) {
+                                        $sf = $savedFrames[$savedFramesDepth];
+                                    } else {
+                                        $sf = new SavedFrame();
+                                        $savedFrames[] = $sf;
+                                    }
+                                    $sf->cf = $cf;
+                                    $sf->code = $code;
+                                    $sf->consts = $consts;
+                                    $sf->names = $names;
+                                    $sf->nestedFns = $nestedFns;
+                                    $sf->stack = $stack;
+                                    $sf->sp = $sp;
+                                    $sf->locals = $locals;
+                                    $sf->env = $env;
+                                    $sf->thisValue = $thisValue;
+                                    $sf->strict = $strict;
+                                    $sf->hasHandlers = $hasHandlers;
+                                    $sf->returnPc = $pc + 2;
+                                    $sf->restore = $restore;
+                                    $sf->callee = $callee;
+                                    $sf->isConstruct = true;
+                                    $sf->newObject = $newObj;
+                                    $savedFramesDepth++;
+                                    $cf = $newCf;
+                                    $code = $newCf->code;
+                                    $consts = $newCf->consts;
+                                    $names = $newCf->names;
+                                    $nestedFns = $newCf->nestedFns;
+                                    $hasHandlers = $newCf->handlers !== [];
+                                    $stack = $newFrame->stack;
+                                    $sp = $newFrame->sp;
+                                    $locals = $newFrame->locals;
+                                    $env = $newFrame->env;
+                                    $thisValue = $newFrame->thisValue;
+                                    $strict = $this->interp->isStrictMode();
+                                    $pc = 0;
+                                    break;
+                                }
+                            }
                             $stack[$sp++] = $this->interp->vmNewExpression($callee, $args, $env);
                             $pc += 2;
                             break;
@@ -1830,6 +1923,28 @@ final class VM
                                 // operand stack, continue dispatch.
                                 $savedFramesDepth--;
                                 $sf = $savedFrames[$savedFramesDepth];
+                                // Construct substitution: when the
+                                // inlined call was `new`, the value
+                                // pushed onto the caller stack is the
+                                // body's return value if it's an
+                                // object, else the freshly-allocated
+                                // `this`. Mirrors vmNewExpression's
+                                // post-call branch (non-derived path —
+                                // derived ctors are not inlined).
+                                if ($sf->isConstruct) {
+                                    $newObj = $sf->newObject;
+                                    if ($retResult instanceof JsObject) {
+                                        $retResult->forceDelete('[[NewTarget]]');
+                                        $finalResult = $retResult;
+                                    } else {
+                                        $newObj->forceDelete('[[NewTarget]]');
+                                        $finalResult = $newObj;
+                                    }
+                                    $sf->newObject = null;
+                                    $sf->isConstruct = false;
+                                } else {
+                                    $finalResult = $retResult;
+                                }
                                 $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
                                 $this->interp->releaseInlineVmFrame();
                                 $cf = $sf->cf;
@@ -1845,7 +1960,7 @@ final class VM
                                 $strict = $sf->strict;
                                 $hasHandlers = $sf->hasHandlers;
                                 $pc = $sf->returnPc;
-                                $stack[$sp++] = $retResult;
+                                $stack[$sp++] = $finalResult;
                                 break;
                             }
                             return $retResult;
@@ -1887,6 +2002,15 @@ final class VM
                     }
                     $savedFramesDepth--;
                     $sf = $savedFrames[$savedFramesDepth];
+                    // Construct frame unwind: the freshly-allocated
+                    // `this` is being discarded, but we still scrub
+                    // [[NewTarget]] off it so a finalizer or weak ref
+                    // never observes the engine-internal property.
+                    if ($sf->isConstruct && $sf->newObject !== null) {
+                        $sf->newObject->forceDelete('[[NewTarget]]');
+                        $sf->newObject = null;
+                        $sf->isConstruct = false;
+                    }
                     $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
                     $this->interp->releaseInlineVmFrame();
                     $cf = $sf->cf;

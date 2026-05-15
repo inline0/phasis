@@ -6,6 +6,7 @@ namespace Phasis\Bytecode;
 
 use Phasis\Runtime\Environment;
 use Phasis\Value\JsFunction;
+use Phasis\Value\JsObject;
 use Phasis\Value\JsValue;
 
 /**
@@ -76,4 +77,22 @@ final class SavedFrame
     public array $restore;
 
     public JsFunction $callee;
+
+    /**
+     * True if the inlined call was a `new`-expression (NEW_CALL).
+     * On RET the dispatch loop applies the construct substitution
+     * rule (return the object the body explicitly returned, else
+     * fall back to `$newObject`) before pushing the result onto
+     * the caller's operand stack.
+     */
+    public bool $isConstruct = false;
+
+    /**
+     * The fresh JsObject NEW_CALL allocated as `this`. Used both as
+     * the substitution fallback (if the constructor body returns
+     * a non-object) and as the object the dispatch loop needs to
+     * `forceDelete('[[NewTarget]]')` once construction completes
+     * or unwinds.
+     */
+    public ?JsObject $newObject = null;
 }
