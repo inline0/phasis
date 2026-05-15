@@ -122,7 +122,14 @@ class JsObject implements JsValue
     public function __construct(?JsObject $prototype = null)
     {
         $this->properties = new PropertyMap();
-        $this->prototype = $prototype ?? self::$globalPrototype;
+        $resolved = $prototype ?? self::$globalPrototype;
+        $this->prototype = $resolved;
+        if ($resolved !== null) {
+            // Mark the prototype's PropertyMap as observed-as-proto
+            // so its write paths know to bump $version. Instances
+            // not used as anyone's prototype skip the bump entirely.
+            $resolved->properties->isUsedAsProto = true;
+        }
     }
 
     public function isExtensible(): bool
@@ -286,7 +293,9 @@ class JsObject implements JsValue
         if ($receiver === $this) {
             if (isset($this->properties->dataSlots[$name])) {
                 $this->properties->dataSlots[$name] = $value;
-                $this->properties->version++;
+                if ($this->properties->isUsedAsProto) {
+                    $this->properties->version++;
+                }
                 return true;
             }
             $ownDesc = $this->properties->descriptors[$name] ?? null;
@@ -1176,7 +1185,9 @@ class JsObject implements JsValue
     {
         if (isset($this->properties->dataSlots[$name])) {
             $this->properties->dataSlots[$name] = $value;
-            $this->properties->version++;
+            if ($this->properties->isUsedAsProto) {
+                $this->properties->version++;
+            }
             return true;
         }
         $desc = $this->properties->descriptors[$name] ?? null;
@@ -1187,7 +1198,9 @@ class JsObject implements JsValue
             && $desc->writable !== false
         ) {
             $desc->value = $value;
-            $this->properties->version++;
+            if ($this->properties->isUsedAsProto) {
+                $this->properties->version++;
+            }
             return true;
         }
         return false;
@@ -1212,7 +1225,9 @@ class JsObject implements JsValue
         if (isset($this->properties->dataSlots[$name])) {
             // Existing fast slot: in-place value swap.
             $this->properties->dataSlots[$name] = $value;
-            $this->properties->version++;
+            if ($this->properties->isUsedAsProto) {
+                $this->properties->version++;
+            }
             return true;
         }
         if (isset($this->properties->descriptors[$name])) {
@@ -1416,6 +1431,9 @@ class JsObject implements JsValue
 
     public function setPrototype(?JsObject $prototype): void
     {
+        if ($prototype !== null) {
+            $prototype->properties->isUsedAsProto = true;
+        }
         $this->prototype = $prototype;
     }
 

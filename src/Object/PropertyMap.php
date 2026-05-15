@@ -45,18 +45,29 @@ class PropertyMap
     public array $order = [];
 
     /**
-     * Mutation generation counter. Bumped on every set / delete that
-     * touches structure OR data-slot values. The VM's LOAD_MEMBER
-     * inline cache stores this counter alongside its cached value;
-     * on read the cache trusts itself iff the version still matches.
+     * Mutation generation counter. Bumped on structural mutations
+     * unconditionally, and on data-slot value overwrites only when
+     * `$isUsedAsProto` is true. The VM's LOAD_MEMBER inline cache
+     * stores this counter alongside its cached value; on read the
+     * cache trusts itself iff the version still matches.
      *
-     * Note: overwrites of an existing data slot also bump the
-     * version. This is a write-time cost (one int increment) that
-     * buys read-time freedom from re-verifying the slot value on
-     * every IC hit. Class prototypes — the common IC target — are
-     * populated once at class creation and never overwritten.
+     * Conditional value-overwrite bumps are the write-barrier
+     * optimisation: instance objects (not used as prototypes) skip
+     * the increment on every `obj.x = v` reassignment, while
+     * prototype objects bump on every change to a cached slot. The
+     * IC only ever caches lookups whose result lives on a
+     * prototype, so this is sound: instance writes can never
+     * invalidate a cache entry that doesn't reference them.
      */
     public int $version = 0;
+
+    /**
+     * Flipped to true the moment any JsObject is constructed with
+     * `$this` as its `[[Prototype]]`. Direct-write fast paths
+     * consult this flag and skip the version bump on data-slot
+     * overwrites when it's false.
+     */
+    public bool $isUsedAsProto = false;
 
     public function get(string $key): ?PropertyDescriptor
     {
@@ -102,8 +113,10 @@ class PropertyMap
 
     public function setDataSlot(string $key, JsValue $value): void
     {
-        $this->version++;
         $isNew = !isset($this->order[$key]);
+        if ($isNew || $this->isUsedAsProto) {
+            $this->version++;
+        }
         $this->dataSlots[$key] = $value;
         $this->order[$key] = true;
         if ($isNew) {

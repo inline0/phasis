@@ -1917,7 +1917,9 @@ final class VM
                                 && isset($obj->properties->dataSlots[$name])
                             ) {
                                 $obj->properties->dataSlots[$name] = $val;
-                                $obj->properties->version++;
+                                if ($obj->properties->isUsedAsProto) {
+                                    $obj->properties->version++;
+                                }
                             } else {
                                 $this->writeMember($obj, $name, $val);
                             }
