@@ -485,6 +485,11 @@ class Engine
             // strictly part of the Fetch Pack but the natural sibling
             // for event-loop-aware Web APIs.
             \Phasis\BuiltIn\TimerFunctions::install($this->globalEnv);
+
+            // WebCrypto — `crypto.getRandomValues`, `crypto.randomUUID`,
+            // `crypto.subtle.{digest, sign, verify, encrypt, decrypt,
+            // generateKey, importKey, exportKey}`.
+            \Phasis\BuiltIn\CryptoObject::install($this->globalEnv);
         } else {
             $this->registerLazyBuiltins();
         }
@@ -1336,6 +1341,16 @@ class Engine
             ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'queueMicrotask'],
             [],
             static fn () => \Phasis\BuiltIn\TimerFunctions::install($env),
+        );
+
+        // --- WebCrypto ---
+        $reg->register(
+            ['crypto'],
+            // ArrayBuffer because digest / sign / encrypt return fresh
+            // ArrayBuffers whose prototype lives in the TypedArray
+            // module's static cache.
+            ['ArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\CryptoObject::install($env),
         );
     }
 

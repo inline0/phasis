@@ -10,7 +10,8 @@
         "ext-mbstring": "*"
     },
     "suggest": {
-        "ext-intl": "Required for Intl.* APIs (Collator, NumberFormat, DateTimeFormat, etc.) and full Temporal calendar support. Without it, Intl constructors throw and non-ISO calendars fall back to limited semantics."
+        "ext-intl": "Required for Intl.* APIs (Collator, NumberFormat, DateTimeFormat, etc.) and full Temporal calendar support. Without it, Intl constructors throw and non-ISO calendars fall back to limited semantics.",
+        "ext-openssl": "Required for crypto.subtle AES-CBC / AES-CTR / AES-GCM encrypt/decrypt. crypto.subtle.digest, sign, and verify (HMAC) work without it via PHP's built-in hash() / hash_hmac()."
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
