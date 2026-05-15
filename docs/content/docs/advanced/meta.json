@@ -1,4 +1,4 @@
 {
   "title": "Advanced",
-  "pages": ["architecture", "bytecode-vm", "testing", "benchmarks"]
+  "pages": ["index", "architecture", "bytecode-vm", "testing", "benchmarks"]
 }

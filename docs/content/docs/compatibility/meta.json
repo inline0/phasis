@@ -1,4 +1,4 @@
 {
   "title": "Compatibility",
-  "pages": ["test262", "web-apis", "streams", "popular-packages", "spec-surface", "limitations"]
+  "pages": ["index", "test262", "web-apis", "streams", "popular-packages", "spec-surface", "limitations"]
 }
