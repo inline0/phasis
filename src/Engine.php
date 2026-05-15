@@ -80,6 +80,21 @@ class Engine
     private $fetchTransport = null;
 
     /**
+     * Optional embedder-supplied WebSocket transport. The callable
+     * receives `(string $url, list<string> $protocols, callable $emit)`
+     * and returns `['send' => callable, 'close' => callable]`. The
+     * `$emit` callback bridges back to JS-side events ('open',
+     * 'message', 'close', 'error').
+     *
+     * Set via `setWebSocketTransport()`. There is no default — the
+     * `WebSocket` constructor throws TypeError when no transport
+     * is installed.
+     *
+     * @var callable|null
+     */
+    private $webSocketTransport = null;
+
+    /**
      * Optional pre-flight policy hook for `fetch()`. Receives the Request
      * and may: throw to deny outright; return null/void to pass through;
      * return a Request to rewrite the outgoing call.
@@ -494,6 +509,11 @@ class Engine
             // XMLHttpRequest — legacy HTTP client, layered on the same
             // pluggable transport that `fetch()` uses.
             \Phasis\BuiltIn\XMLHttpRequestConstructor::install($this->globalEnv);
+
+            // WebSocket — RFC 6455 client. Pluggable transport via
+            // setWebSocketTransport(); throws on `new WebSocket(...)`
+            // if no transport is installed.
+            \Phasis\BuiltIn\WebSocketConstructor::install($this->globalEnv);
         } else {
             $this->registerLazyBuiltins();
         }
@@ -1364,6 +1384,14 @@ class Engine
             [],
             static fn () => \Phasis\BuiltIn\XMLHttpRequestConstructor::install($env),
         );
+
+        // --- WebSocket ---
+        $reg->register(
+            ['WebSocket'],
+            // ArrayBuffer for binary message data.
+            ['ArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\WebSocketConstructor::install($env),
+        );
     }
 
     /**
@@ -1746,6 +1774,28 @@ class Engine
     }
 
     /**
+     * Install the WebSocket transport. The callable receives:
+     *
+     *   `(string $url, list<string> $protocols, callable $emit): array`
+     *
+     * where `$emit(string $type, array $data = []): void` is the
+     * bridge to the JS event surface. The supported types are
+     * 'open', 'message' (with data + isBinary keys), 'close' (with
+     * code, reason, wasClean), and 'error' (with message).
+     *
+     * The returned array must carry `'send' => callable(mixed $data,
+     * bool $isBinary): void` and `'close' => callable(int $code,
+     * string $reason): void`.
+     *
+     * Without this, `new WebSocket(...)` throws TypeError — there is
+     * no default transport in this build.
+     */
+    public function setWebSocketTransport(callable $t): void
+    {
+        $this->webSocketTransport = $t;
+    }
+
+    /**
      * Install a pre-flight policy hook. The hook is called with the
      * Request JsObject before the transport call:
      *
@@ -1779,6 +1829,12 @@ class Engine
     public function getFetchTransport(): ?callable
     {
         return $this->fetchTransport;
+    }
+
+    /** Read the currently installed WebSocket transport (may be null). */
+    public function getWebSocketTransport(): ?callable
+    {
+        return $this->webSocketTransport;
     }
 
     /** Read the currently installed fetch policy hook (may be null). */
