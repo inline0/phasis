@@ -92,7 +92,7 @@
     global.assert_array_equals = function (actual, expected, description) {
         if (actual.length !== expected.length) {
             throw AssertionError(format(actual.length, expected.length,
-                "(length) ===", description));
+                "(length) ===", description) + " [actual=" + JSON.stringify(actual) + "]");
         }
         for (let i = 0; i < actual.length; i++) {
             if (actual[i] !== expected[i]) {

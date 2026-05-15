@@ -347,25 +347,10 @@ class WebSocketDefaultTransportTest extends TestCase
 
     // ---- Transport factory ------------------------------------------------
 
-    public function testTransportFactoryReturnsCallable(): void
+    public function testTransportFactoryReturnsClosure(): void
     {
-        // The factory's return type already encodes "is callable" — we
-        // assert it via a smoke invocation that drives the failure path
-        // (unrouteable port) so the closure actually runs.
         $transport = StreamSocketTransport::create();
-        $emitted = [];
-        try {
-            $transport(
-                'ws://127.0.0.1:1/',
-                [],
-                static function (string $type, array $data = []) use (&$emitted) {
-                    $emitted[] = $type;
-                },
-            );
-        } catch (\Throwable) {
-            // expected
-        }
-        $this->assertTrue(true);
+        $this->assertInstanceOf(\Closure::class, $transport);
     }
 
     public function testTransportRejectsUnsupportedScheme(): void

@@ -657,12 +657,28 @@ final class ReadableStream
             }
         }
         $startPromise = StreamHelpers::toPromise($startResult);
+        // Per WHATWG Streams §SetUpReadableStreamDefaultController step 14
+        // ("Upon fulfillment of startPromise..."): the reaction runs as a
+        // microtask even when the start algorithm returned synchronously.
+        // Our addFulfillHandler invokes immediately on already-fulfilled
+        // promises, so wrap the [[Started]]/pullIfNeeded transition in
+        // scheduleCallback to preserve spec ordering. Without this defer,
+        // a stream constructed without a start algorithm fires pull
+        // synchronously during construction, which (a) lets pull observe
+        // the source closure in TDZ for `const stream = new ReadableStream`
+        // patterns, and (b) loses the race against a synchronous cancel
+        // that should preempt the first pull (async-iterator return() →
+        // ReadableStreamCancel sets state to closed).
         $startPromise->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            $controller->setInternalProperty('[[Started]]', true);
-            self::defaultControllerCallPullIfNeeded($controller);
+            JsPromise::scheduleCallback(static function () use ($controller): void {
+                $controller->setInternalProperty('[[Started]]', true);
+                self::defaultControllerCallPullIfNeeded($controller);
+            });
         });
         $startPromise->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            self::defaultControllerError($controller, $reason);
+            JsPromise::scheduleCallback(static function () use ($controller, $reason): void {
+                self::defaultControllerError($controller, $reason);
+            });
         });
     }
 
@@ -1156,6 +1172,130 @@ final class ReadableStream
         return $proto;
     }
 
+    /**
+     * Spec "nextSteps" for the async iterator: read one chunk, handle
+     * done/error, and resolve with an iter-result. Used by both the direct
+     * next() call and the ongoing-promise chained version.
+     */
+    private static function asyncIterRunNextSteps(JsObject $iter): JsPromise
+    {
+        if ($iter->getInternalProperty('[[IsFinished]]') === true) {
+            return StreamHelpers::promiseResolved(StreamHelpers::readResult(JsUndefined::instance(), true));
+        }
+        $reader = $iter->getInternalProperty('[[Reader]]');
+        if (!$reader instanceof JsObject) {
+            return StreamHelpers::promiseRejected(StreamHelpers::createTypeError('No reader'));
+        }
+        $readPromise = self::defaultReaderRead($reader);
+        $outer = new JsPromise();
+        $readPromise->addFulfillHandler(static function (JsValue $result) use ($iter, $reader, $outer): void {
+            if (!$result instanceof JsObject) {
+                $outer->resolve($result);
+                return;
+            }
+            $done = \Phasis\Spec\TypeConversion::toBoolean($result->get('done'));
+            if ($done) {
+                $iter->setInternalProperty('[[IsFinished]]', true);
+                self::defaultReaderRelease($reader);
+            }
+            $outer->resolve($result);
+        });
+        $readPromise->addRejectHandler(static function (JsValue $reason) use ($iter, $reader, $outer): void {
+            $iter->setInternalProperty('[[IsFinished]]', true);
+            self::defaultReaderRelease($reader);
+            $outer->reject($reason);
+        });
+        return $outer;
+    }
+
+    /**
+     * Spec "returnSteps" for the async iterator: cancel the stream (unless
+     * preventCancel) and resolve with the supplied value as a done
+     * iter-result. Mirrors WHATWG Streams §default-asynciterator-return.
+     */
+    private static function asyncIterRunReturnSteps(JsObject $iter, JsValue $value): JsPromise
+    {
+        if ($iter->getInternalProperty('[[IsFinished]]') === true) {
+            return StreamHelpers::promiseResolved(StreamHelpers::readResult($value, true));
+        }
+        $iter->setInternalProperty('[[IsFinished]]', true);
+        $reader = $iter->getInternalProperty('[[Reader]]');
+        $preventCancel = $iter->getInternalProperty('[[PreventCancel]]');
+        if (!$reader instanceof JsObject) {
+            return StreamHelpers::promiseResolved(StreamHelpers::readResult($value, true));
+        }
+        $stream = $reader->getInternalProperty('[[Stream]]');
+        if (!$preventCancel && $stream instanceof JsObject) {
+            $cancelPromise = self::readableStreamCancel($stream, $value);
+            self::defaultReaderRelease($reader);
+            $outer = new JsPromise();
+            $cancelPromise->addFulfillHandler(static function () use ($value, $outer): void {
+                $outer->resolve(StreamHelpers::readResult($value, true));
+            });
+            $cancelPromise->addRejectHandler(static function (JsValue $r) use ($outer): void {
+                $outer->reject($r);
+            });
+            return $outer;
+        }
+        self::defaultReaderRelease($reader);
+        return StreamHelpers::promiseResolved(StreamHelpers::readResult($value, true));
+    }
+
+    /**
+     * Serialize an async iterator operation against [[OngoingPromise]]:
+     * per WHATWG Streams §4.5.10, next()/return() chain off the previous
+     * in-flight promise. This is what makes patterns like `it.next();
+     * it.return()` (no awaiting) deterministic — return()'s cancel steps
+     * do not race the in-flight read; they run only after it settles.
+     */
+    private static function asyncIterEnqueue(JsObject $iter, \Closure $steps): JsPromise
+    {
+        $ongoing = $iter->getInternalProperty('[[OngoingPromise]]');
+        $newOngoing = new JsPromise();
+        $runSteps = static function () use ($steps, $newOngoing): void {
+            $stepsPromise = $steps();
+            if (!$stepsPromise instanceof JsPromise) {
+                $newOngoing->resolve(JsUndefined::instance());
+                return;
+            }
+            $stepsPromise->addFulfillHandler(static function (JsValue $v) use ($newOngoing): void {
+                $newOngoing->resolve($v);
+            });
+            $stepsPromise->addRejectHandler(static function (JsValue $r) use ($newOngoing): void {
+                $newOngoing->reject($r);
+            });
+        };
+        if ($ongoing instanceof JsPromise) {
+            // Run steps on either fulfillment OR rejection of the ongoing
+            // promise — both branches schedule the operation, only the
+            // propagation differs.
+            $ongoing->addFulfillHandler(static function (JsValue $_) use ($runSteps): void {
+                $runSteps();
+            });
+            $ongoing->addRejectHandler(static function (JsValue $_) use ($runSteps): void {
+                $runSteps();
+            });
+        } else {
+            $runSteps();
+        }
+        $iter->setInternalProperty('[[OngoingPromise]]', $newOngoing);
+        // Once this op settles, clear the slot if it's still us. The spec
+        // wording is "Set iterator.[[ongoingPromise]] to undefined" inside
+        // the chunk/close/error steps; serializing on the same JsPromise
+        // gives equivalent observable behaviour.
+        $newOngoing->addFulfillHandler(static function (JsValue $_) use ($iter, $newOngoing): void {
+            if ($iter->getInternalProperty('[[OngoingPromise]]') === $newOngoing) {
+                $iter->setInternalProperty('[[OngoingPromise]]', null);
+            }
+        });
+        $newOngoing->addRejectHandler(static function (JsValue $_) use ($iter, $newOngoing): void {
+            if ($iter->getInternalProperty('[[OngoingPromise]]') === $newOngoing) {
+                $iter->setInternalProperty('[[OngoingPromise]]', null);
+            }
+        });
+        return $newOngoing;
+    }
+
     private static function buildAsyncIterNext(): JsFunction
     {
         return JsFunction::fromCallable(
@@ -1164,33 +1304,10 @@ final class ReadableStream
                 if (!$this_ instanceof JsObject) {
                     return StreamHelpers::promiseRejected(StreamHelpers::createTypeError('next called on non-object'));
                 }
-                if ($this_->getInternalProperty('[[IsFinished]]') === true) {
-                    return StreamHelpers::promiseResolved(StreamHelpers::readResult(JsUndefined::instance(), true));
-                }
-                $reader = $this_->getInternalProperty('[[Reader]]');
-                if (!$reader instanceof JsObject) {
-                    return StreamHelpers::promiseRejected(StreamHelpers::createTypeError('No reader'));
-                }
-                $readPromise = self::defaultReaderRead($reader);
-                $outer = new JsPromise();
-                $readPromise->addFulfillHandler(function (JsValue $result) use ($this_, $reader, $outer): void {
-                    if (!$result instanceof JsObject) {
-                        $outer->resolve($result);
-                        return;
-                    }
-                    $done = \Phasis\Spec\TypeConversion::toBoolean($result->get('done'));
-                    if ($done) {
-                        $this_->setInternalProperty('[[IsFinished]]', true);
-                        self::defaultReaderRelease($reader);
-                    }
-                    $outer->resolve($result);
+                $iter = $this_;
+                return self::asyncIterEnqueue($iter, static function () use ($iter): JsPromise {
+                    return self::asyncIterRunNextSteps($iter);
                 });
-                $readPromise->addRejectHandler(function (JsValue $reason) use ($this_, $reader, $outer): void {
-                    $this_->setInternalProperty('[[IsFinished]]', true);
-                    self::defaultReaderRelease($reader);
-                    $outer->reject($reason);
-                });
-                return $outer;
             },
             0,
         );
@@ -1205,30 +1322,10 @@ final class ReadableStream
                     return StreamHelpers::promiseRejected(StreamHelpers::createTypeError('return called on non-object'));
                 }
                 $value = $args[0] ?? JsUndefined::instance();
-                if ($this_->getInternalProperty('[[IsFinished]]') === true) {
-                    return StreamHelpers::promiseResolved(StreamHelpers::readResult($value, true));
-                }
-                $this_->setInternalProperty('[[IsFinished]]', true);
-                $reader = $this_->getInternalProperty('[[Reader]]');
-                $preventCancel = $this_->getInternalProperty('[[PreventCancel]]');
-                if (!$reader instanceof JsObject) {
-                    return StreamHelpers::promiseResolved(StreamHelpers::readResult($value, true));
-                }
-                $stream = $reader->getInternalProperty('[[Stream]]');
-                if (!$preventCancel && $stream instanceof JsObject) {
-                    $cancelPromise = self::readableStreamCancel($stream, $value);
-                    self::defaultReaderRelease($reader);
-                    $outer = new JsPromise();
-                    $cancelPromise->addFulfillHandler(static function () use ($value, $outer): void {
-                        $outer->resolve(StreamHelpers::readResult($value, true));
-                    });
-                    $cancelPromise->addRejectHandler(static function (JsValue $r) use ($outer): void {
-                        $outer->reject($r);
-                    });
-                    return $outer;
-                }
-                self::defaultReaderRelease($reader);
-                return StreamHelpers::promiseResolved(StreamHelpers::readResult($value, true));
+                $iter = $this_;
+                return self::asyncIterEnqueue($iter, static function () use ($iter, $value): JsPromise {
+                    return self::asyncIterRunReturnSteps($iter, $value);
+                });
             },
             1,
         );
@@ -1248,6 +1345,7 @@ final class ReadableStream
         $iter->setInternalProperty('[[Reader]]', $reader);
         $iter->setInternalProperty('[[PreventCancel]]', $preventCancel);
         $iter->setInternalProperty('[[IsFinished]]', false);
+        $iter->setInternalProperty('[[OngoingPromise]]', null);
         return $iter;
     }
 
