@@ -87,18 +87,32 @@ final class QueuingStrategy
             PropertyDescriptor::accessor($hwmGetter, null, false, true)
         );
 
-        // size(chunk) — returns chunk.byteLength.
+        // size(chunk) — spec WHATWG Streams §6.6.1: returns
+        // `chunk["byteLength"]`. NO special-casing of undefined or
+        // non-objects. `size(undefined).byteLength` throws TypeError;
+        // a `get byteLength` accessor that throws propagates its
+        // exception. The returned value is whatever the property
+        // access yields — number, string, BigInt — passed through
+        // to the queue without coercion (the queue itself enforces
+        // finiteness when it actually uses the size).
         $sizeFn = JsFunction::fromCallable(
             'size',
             function (JsValue $this_, array $args): JsValue {
                 $chunk = $args[0] ?? JsUndefined::instance();
-                if ($chunk instanceof JsObject) {
-                    $bl = $chunk->get('byteLength');
-                    if (!$bl instanceof JsUndefined) {
-                        return JsNumber::of((float) \Phasis\Spec\TypeConversion::toNumber($bl));
-                    }
+                if ($chunk instanceof JsUndefined || $chunk instanceof \Phasis\Value\JsNull) {
+                    throw new TypeError(
+                        "Cannot read properties of " . ($chunk instanceof JsUndefined ? 'undefined' : 'null')
+                        . " (reading 'byteLength')"
+                    );
                 }
-                return JsNumber::of(0.0);
+                if (!$chunk instanceof JsObject) {
+                    // Primitive — coerce to an object briefly via
+                    // ToObject's property-access semantics. Number /
+                    // String / Boolean primitives don't have a
+                    // byteLength so the result is undefined.
+                    return JsUndefined::instance();
+                }
+                return $chunk->get('byteLength');
             },
             1,
         );
