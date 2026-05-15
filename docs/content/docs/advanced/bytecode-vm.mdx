@@ -73,6 +73,14 @@ Cache invalidation rides on `PropertyMap::$version`. Structural mutations (set /
 
 Getter accessors are never cached (they must re-run on every read).
 
+`PropertyMap` carries a second counter, `$mutationVersion`, that bumps *unconditionally* on every write (no write-barrier). The `JSON.stringify` cache pins this counter on every visited nested object/array so that an instance-only mutation like `o.a = 99` correctly invalidates the cached string even when the IC's `$version` would have skipped the bump.
+
+## JSON.stringify cache
+
+`JsObject` carries `$jsonCacheString` + `$jsonCacheVersions` (a list of `[obj, mutationVersion]` pairs for every nested object visited during the trivial-stringify walk). On the next `JSON.stringify(o)` call with no replacer / no space, the trivial fast path verifies every pinned version is unchanged and returns the cached string without re-walking or re-encoding. Hot deep-clone patterns like `JSON.parse(JSON.stringify(o))` get a roughly 2× speedup on the stringify half.
+
+The cache is dropped silently on miss (any pinned version differs) and refilled by the next walk. Objects with `toJSON`, getters, accessors, symbols, or `[[PrimitiveValue]]` slots bail to the spec serialiser and never populate the cache — so the cached path only ever sees structurally-uniform data.
+
 ## Built-in fast paths
 
 The largest perf wins came from teaching the VM about specific built-ins:
