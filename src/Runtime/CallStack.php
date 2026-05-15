@@ -26,16 +26,21 @@ class CallStack
     public function __construct(
         // The VM's custom-callstack inline path keeps the PHP stack
         // at a single frame across JS calls (`Op::CALL` / `RET` swap
-        // state inside `VM::execute` instead of recursing into PHP).
-        // So the engine's own CallStack limit is the only ceiling
-        // for inlined recursion. 65536 puts us comfortably above
-        // V8 / SpiderMonkey practical stack-overflow thresholds
-        // (~10–25 k frames) while still bounding pathological
-        // runaway recursion in finite time. Non-inlined calls
-        // remain bounded by PHP's actual recursion depth, which
-        // typically tops out at tens of thousands on default
-        // builds — so the higher value is safe there too.
-        private readonly int $maxDepth = 65536,
+        // state inside `VM::execute` instead of recursing into PHP),
+        // so the engine's own CallStack limit is the only ceiling
+        // for inlined recursion.
+        //
+        // 4096 is the sweet spot: well above legitimate JS recursion
+        // depth (every test262 test we've seen needs <2k frames) and
+        // low enough that pathological infinite recursion like
+        // staging/sm/extensions/recursion.js (`function eval(){eval();}`)
+        // fails fast instead of grinding through tens of thousands of
+        // frames under the test runner's per-shard timeout. The
+        // earlier 65536 number was set assuming "deeper is more
+        // V8-like," but in practice test262 only tests THAT a limit
+        // exists, not how high — and the high limit cost us 12 tests
+        // when pathological cases stopped failing fast enough.
+        private readonly int $maxDepth = 4096,
     ) {
     }
 
