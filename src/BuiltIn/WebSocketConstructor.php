@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Phasis\BuiltIn;
 
+use Phasis\BuiltIn\WebSocket\StreamSocketTransport;
 use Phasis\Engine;
 use Phasis\Exceptions\TypeError;
 use Phasis\Object\PropertyDescriptor;
@@ -89,15 +90,13 @@ final class WebSocketConstructor
 
                 // Resolve the transport at construct time so the error
                 // is observable on `new WebSocket(...)`, not later.
+                // The realm-installed transport wins; otherwise we fall
+                // back to the pure-PHP default
+                // (stream_socket_client + RFC 6455 framing).
                 $realm = Engine::getCurrentRealm();
                 $transport = $realm?->getWebSocketTransport();
                 if ($transport === null) {
-                    throw new TypeError(
-                        "WebSocket: no transport installed. Embedder must call "
-                        . "\$engine->setWebSocketTransport() before constructing a WebSocket. "
-                        . "The transport bridges to the underlying network library "
-                        . "(pawl / ratchet / react-socket / custom)."
-                    );
+                    $transport = StreamSocketTransport::create();
                 }
 
                 // The emitter the transport calls with lifecycle events.

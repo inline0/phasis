@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Phasis\Tests\Unit\BuiltIn;
 
 use Phasis\Engine;
-use Phasis\Exceptions\TypeError;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -44,11 +43,19 @@ class WebSocketTest extends TestCase
         return $engine;
     }
 
-    public function testConstructorThrowsWithoutTransport(): void
+    public function testConstructorWithoutExplicitTransportUsesDefault(): void
     {
+        // Without setWebSocketTransport(), the constructor falls back
+        // to the pure-PHP StreamSocketTransport. Connecting to an
+        // unrouteable port either fails fast (constructor catches the
+        // throw and converts it to async error+close, leaving state
+        // CLOSED) or stays CONNECTING until the OS reports timeout.
+        // Both are valid outcomes — we just assert no PHP exception
+        // leaks out of `new WebSocket(...)`.
         $engine = new Engine();
-        $this->expectException(TypeError::class);
-        $engine->eval("new WebSocket('wss://example.com/');");
+        $engine->eval("globalThis.__ws = new WebSocket('ws://127.0.0.1:1/'); globalThis.__rs = globalThis.__ws.readyState;");
+        $rs = $engine->eval('globalThis.__rs');
+        $this->assertContains($rs, [0, 3]);
     }
 
     public function testConstructorPassesUrlAndProtocols(): void
