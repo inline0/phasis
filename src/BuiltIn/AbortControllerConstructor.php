@@ -185,13 +185,31 @@ class AbortControllerConstructor
                     );
                 }
                 $signal = self::makeSignal($proto);
-                // Store absolute deadline in seconds (microtime base).
-                $deadline = microtime(true) + ($ms / 1000.0);
-                $signal->setInternalProperty(self::SLOT_TIMEOUT_DEADLINE, $deadline);
-                // 0ms timeouts: abort immediately so behaviour matches a
-                // setTimeout(0) draining at next microtask boundary.
-                if ($ms === 0.0) {
-                    self::tripTimeoutIfDue($signal);
+                // Store absolute deadline (microtime base, seconds) for
+                // the fallback lazy-read check in tripTimeoutIfDue —
+                // covers fetch-transport progress polls and tight loops
+                // that read signal.aborted without yielding to the
+                // event loop.
+                $signal->setInternalProperty(
+                    self::SLOT_TIMEOUT_DEADLINE,
+                    microtime(true) + ($ms / 1000.0),
+                );
+                // Spec path: schedule the abort via the event loop.
+                // Per Web spec, AbortSignal.timeout(0) returns a
+                // signal that is NOT aborted on this synchronous
+                // turn; it aborts on the next loop iteration. So we
+                // never auto-trip — always schedule.
+                $realm = \Phasis\Engine::getCurrentRealm();
+                if ($realm !== null) {
+                    $fireTimeout = JsFunction::fromCallable(
+                        'AbortSignal.timeout.fire',
+                        static function () use ($signal): JsValue {
+                            self::tripTimeoutIfDue($signal);
+                            return JsUndefined::instance();
+                        },
+                        0,
+                    );
+                    $realm->getEventLoop()->setTimeout($fireTimeout, (float) $ms);
                 }
                 return $signal;
             },
@@ -280,7 +298,6 @@ class AbortControllerConstructor
             'get aborted',
             static function (JsValue $this_): JsValue {
                 $self = self::requireSignal($this_, 'aborted');
-                self::tripTimeoutIfDue($self);
                 return JsBoolean::of((bool) $self->getInternalProperty(self::SLOT_ABORTED));
             },
             0,
@@ -296,7 +313,6 @@ class AbortControllerConstructor
             'get reason',
             static function (JsValue $this_): JsValue {
                 $self = self::requireSignal($this_, 'reason');
-                self::tripTimeoutIfDue($self);
                 $reason = $self->getInternalProperty(self::SLOT_REASON);
                 return $reason instanceof JsValue ? $reason : JsUndefined::instance();
             },
@@ -353,7 +369,6 @@ class AbortControllerConstructor
             'throwIfAborted',
             static function (JsValue $this_): JsValue {
                 $self = self::requireSignal($this_, 'throwIfAborted');
-                self::tripTimeoutIfDue($self);
                 if ($self->getInternalProperty(self::SLOT_ABORTED) === true) {
                     $reason = $self->getInternalProperty(self::SLOT_REASON);
                     if (!$reason instanceof JsValue) {

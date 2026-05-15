@@ -251,18 +251,22 @@ JS);
 
     public function testStaticTimeoutEventuallyAborts(): void
     {
-        // Lazy timeout: usleep past the deadline, then read .aborted to
-        // trigger the lazy transition. The reason must be a TimeoutError
-        // DOMException per spec.
+        // Spec: AbortSignal.timeout(ms) schedules the abort via the
+        // event loop — the signal is NOT aborted synchronously, even
+        // for timeout(0). Engine::eval drains the loop before
+        // returning, so by the time we read globalThis.__out the
+        // timer has fired and the listener has captured the state.
         $engine = new Engine();
-
-        $result = $engine->eval(<<<'JS'
-const s = AbortSignal.timeout(0);
-// The lazy-deadline check fires on first access. 0ms timeouts also trip
-// at construction time so they don't need usleep.
-[s.aborted, s.reason instanceof DOMException, s.reason.name];
+        $engine->eval(<<<'JS'
+const sig = AbortSignal.timeout(0);
+sig.addEventListener('abort', () => {
+    globalThis.__out = [sig.aborted, sig.reason instanceof DOMException, sig.reason.name];
+});
 JS);
-        $this->assertSame([true, true, 'TimeoutError'], $result);
+        $this->assertSame(
+            [true, true, 'TimeoutError'],
+            $engine->eval('globalThis.__out'),
+        );
     }
 
     public function testStaticTimeoutWithFutureDeadlineIsNotImmediatelyAborted(): void
@@ -323,23 +327,27 @@ JS);
         $this->assertSame(1, $result);
     }
 
-    public function testTimeoutReadingTwiceDoesNotDoubleFire(): void
+    public function testTimeoutFiresAbortEventExactlyOnce(): void
     {
-        // Once the lazy deadline has tripped, subsequent reads must NOT
-        // re-fire the abort algorithm (no double event dispatch).
+        // The abort event must fire exactly once when the timer
+        // deadline expires — repeated reads of `.aborted` or
+        // `.reason` post-fire must not retrigger the algorithm.
         $engine = new Engine();
-        $result = $engine->eval(<<<'JS'
+        $engine->eval(<<<'JS'
 const s = AbortSignal.timeout(0);
-let fired = 0;
-s.addEventListener("abort", () => fired++);
-// The 0ms timeout trips at construction, so the event already fired
-// before addEventListener was wired up. The point of this test is
-// that subsequent reads of .aborted do not enqueue a *second* abort.
-const first = s.aborted;
-const second = s.aborted;
-const third = s.reason;
-[first, second, fired];
+globalThis.__fired = 0;
+s.addEventListener("abort", () => {
+    globalThis.__fired++;
+    // Re-read after the event has fired; must not retrigger.
+    void s.aborted;
+    void s.reason;
+});
 JS);
-        $this->assertSame([true, true, 0], $result);
+        // After eval drained the loop, the timer has fired and the
+        // listener has run exactly once.
+        $this->assertSame(1, $engine->eval('globalThis.__fired'));
+        // Subsequent reads still report aborted, still don't refire.
+        $engine->eval('globalThis.__last = AbortSignal.timeout(0).aborted;');
+        $this->assertSame(1, $engine->eval('globalThis.__fired'));
     }
 }
