@@ -674,7 +674,7 @@ final class VM
      */
     public function execute(
         CompiledFunction $cf,
-        ?Frame $frame,
+        Frame $frame,
         ?GeneratorSnapshot $resumeFrom = null,
         ?JsValue $resumeValue = null,
         bool $resumeThrow = false,
@@ -691,7 +691,6 @@ final class VM
             $thisValue = $resumeFrom->thisValue;
             $strict = $resumeFrom->strict;
         } else {
-            assert($frame !== null, 'Frame is required when not resuming from a snapshot');
             $stack = $frame->stack;
             $sp = $frame->sp;
             $locals = $frame->locals;
