@@ -58,6 +58,8 @@ $engine->eval('console.log(config.version)');
 
 The `Engine` instance keeps its global state between calls, so subsequent `eval()` invocations see anything you defined earlier.
 
+Cold-start is cheap: only the spec-load-bearing core (`Object`, `Function`, `Array`, `Promise`, `Symbol`, `BigInt`, `RegExp`, the error types) is installed up front. `Map`, `TypedArray`, `Temporal`, `Intl`, `URL`, `fetch`, the full Web Platform / Fetch Packs, and everything else materialize transparently on first read. Pass `new Engine(eager: true)` to install every built-in at construction — useful for conformance tooling that introspects descriptors before reading them; rarely needed for normal embedding.
+
 ## Call JS functions from PHP
 
 ```php

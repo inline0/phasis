@@ -1,5 +1,4 @@
 {
   "title": "Documentation",
-  "pages": ["index", "getting-started", "cli", "api"],
-  "folders": ["interop", "compatibility", "advanced"]
+  "pages": ["index", "getting-started", "cli", "api", "interop", "compatibility", "advanced"]
 }
