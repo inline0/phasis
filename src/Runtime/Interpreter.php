@@ -134,6 +134,110 @@ class Interpreter
     private array $framePool = [];
     private int $framePoolDepth = 0;
 
+    /** Accessor used by the VM's inline-call path (Stage 1 custom callstack). */
+    public function getFramePoolDepth(): int
+    {
+        return $this->framePoolDepth;
+    }
+
+    /**
+     * Allocate (or reuse) a Frame from the pool for an inline VM call.
+     * Mirrors the pool dance in `tryRunOnVm`: index = current depth,
+     * reset if reusing, allocate + stash if growing. Bumps the depth
+     * counter; caller must call `releaseInlineVmFrame()` on return.
+     */
+    public function borrowInlineVmFrame(
+        \Phasis\Runtime\Environment $fnEnv,
+        \Phasis\Value\JsValue $thisValue,
+        int $slotCount,
+        int $paramCount,
+        \Phasis\Value\JsValue $undef,
+    ): \Phasis\Bytecode\Frame {
+        $depth = $this->framePoolDepth;
+        if ($depth < count($this->framePool)) {
+            $frame = $this->framePool[$depth];
+            $frame->reset($fnEnv, $thisValue, $slotCount, $paramCount, $undef);
+        } else {
+            $frame = new \Phasis\Bytecode\Frame(
+                env: $fnEnv,
+                thisValue: $thisValue,
+                slotCount: $slotCount,
+                undefined: $undef,
+            );
+            $this->framePool[] = $frame;
+        }
+        $this->framePoolDepth = $depth + 1;
+        return $frame;
+    }
+
+    /** Release the most recently borrowed inline-call frame. */
+    public function releaseInlineVmFrame(): void
+    {
+        if ($this->framePoolDepth > 0) {
+            $this->framePoolDepth--;
+        }
+    }
+
+    /**
+     * Per-call interpreter-state setup for the VM's inline-call path
+     * (Stage 1 custom callstack). Mirrors the subset of
+     * `executeVmFunctionDirect` that this path needs, returning the
+     * data the VM must hand back to `teardownInlineVmCall` on RET.
+     *
+     * Stage 1 precondition (caller checks): callee is strict + non-
+     * arrow OR arrow + non-async-non-generator + non-native + non-
+     * class-ctor + canSkipEnvAlloc + setCallerPropCache=false. That
+     * subset means the Annex B caller/arguments magic and the sloppy
+     * this-binding adjustment are both unnecessary.
+     *
+     * @return array{0: bool, 1: bool, 2: ?string}
+     */
+    public function setupInlineVmCall(\Phasis\Value\JsFunction $fn): array
+    {
+        $this->callStack->push($fn->name, 0);
+        $this->callerStack[] = $fn;
+
+        $previousStrictMode = $this->strictMode;
+        if ($fn->effectiveStrictCache === null) {
+            $body = $fn->getBody();
+            $fn->effectiveStrictCache = $fn->isStrict()
+                || ($body instanceof \Phasis\Ast\Statement\BlockStatement
+                    && $this->hasUseStrictDirective($body->body));
+        }
+        $this->strictMode = $fn->effectiveStrictCache;
+
+        $previousModulePath = $this->currentModulePath;
+        $switchModulePath = false;
+        if (
+            $fn->definingModulePath !== null
+            && $fn->definingModulePath !== $this->currentModulePath
+        ) {
+            $this->currentModulePath = $fn->definingModulePath;
+            $switchModulePath = true;
+        }
+
+        return [$previousStrictMode, $switchModulePath, $previousModulePath];
+    }
+
+    /**
+     * Reverse of `setupInlineVmCall`. Restores strictMode + module
+     * path, pops the call + caller stacks. Frame-pool release is
+     * driven separately by `releaseInlineVmFrame()` so the VM can
+     * call it as part of its per-RET teardown sequence.
+     *
+     * @param array{0: bool, 1: bool, 2: ?string} $restore
+     */
+    public function teardownInlineVmCall(array $restore): void
+    {
+        [$previousStrictMode, $switchModulePath, $previousModulePath] = $restore;
+        if ($switchModulePath) {
+            $this->currentModulePath = $previousModulePath;
+        }
+        $this->strictMode = $previousStrictMode;
+        array_pop($this->callerStack);
+        $this->callStack->pop();
+    }
+
     /**
      * Whether the program currently being executed is provably free
      * of direct `eval` calls. When true (the common case), the

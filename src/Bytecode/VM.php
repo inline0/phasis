@@ -677,6 +677,45 @@ final class VM
         $pc = 0;
         $hasHandlers = $cf->handlers !== [];
 
+        // === Custom callstack (Stage 1) ===========================
+        //
+        // When `Op::CALL` lands on a Stage-1-eligible BC-compiled
+        // callee (strict / non-arrow / canSkipEnvAlloc / no special
+        // semantics — see the inline guard below for the exact
+        // predicate), the VM SAVES its current frame state onto
+        // `$savedFrames`, swaps in the callee's state, and keeps
+        // dispatching. `Op::RET` pops one saved frame and resumes
+        // the caller. Exceptions walk `$savedFrames` looking for a
+        // handler in any parent frame.
+        //
+        // This eliminates the recursive PHP `vm->execute` call for
+        // the most common pure-JS-calls-pure-JS shape; PHP's
+        // stack ceiling no longer bounds JS recursion depth on this
+        // path, and PHP's per-call frame overhead is paid once per
+        // top-level entry instead of per JS call.
+        //
+        // Each entry is positionally:
+        //   [0]  cf            CompiledFunction of the caller
+        //   [1]  code          $cf->code (cached)
+        //   [2]  consts
+        //   [3]  names
+        //   [4]  nestedFns
+        //   [5]  stack         caller's operand stack
+        //   [6]  sp            caller's stack pointer
+        //   [7]  locals        caller's local slots
+        //   [8]  env
+        //   [9]  thisValue
+        //   [10] strict        $this->interp->strictMode at save time
+        //   [11] hasHandlers   whether caller's $cf has any handlers
+        //   [12] pc            RETURN ADDRESS (post-CALL pc — typically
+        //                     the saved $pc was CALL's pc + 2)
+        //   [13] restore       opaque blob from setupInlineVmCall, fed
+        //                     back to teardownInlineVmCall on RET / on
+        //                     exception unwind through this frame
+        //
+        // @var list<array{0: CompiledFunction, 1: array<int, int>, 2: list<mixed>, 3: list<string>, 4: list<mixed>, 5: list<JsValue>, 6: int, 7: list<JsValue>, 8: \Phasis\Runtime\Environment, 9: JsValue, 10: bool, 11: bool, 12: int, 13: array{0: bool, 1: bool, 2: ?string}}>
+        $savedFrames = [];
+
         // Outer loop wraps the dispatch in try/catch only when this
         // function actually has handlers. The bench-relevant hot path
         // (fib, closure, etc.) has no handlers and runs the cheaper
@@ -1301,6 +1340,72 @@ final class VM
                                     // callFunction so the call still completes.
                                 }
                             }
+                            // Stage 1 custom callstack: when the
+                            // callee is strict-or-arrow (setCallerPropCache
+                            // === false → no Annex B caller/arguments
+                            // magic) AND not a bound function AND
+                            // already eligible for the VM direct
+                            // dispatch fast path, inline the call into
+                            // the VM's own dispatch loop. Saves PHP-
+                            // stack growth and the per-call PHP method
+                            // dispatch.
+                            if (
+                                $eligible
+                                && $callee->setCallerPropCache === false
+                                && $callee->getBoundTarget() === null
+                            ) {
+                                $newCf = $callee->compiled;
+                                // Setup interpreter-side state (call
+                                // stack push, strict mode swap, module
+                                // path swap). The returned blob is what
+                                // RET / exception unwind feeds back.
+                                $restore = $this->interp->setupInlineVmCall($callee);
+                                // Allocate a Frame from the pool the
+                                // same way `tryRunOnVm` would for a
+                                // canSkipEnvAlloc callee.
+                                $paramSlots = $newCf->paramSlots;
+                                $paramCount = count($paramSlots);
+                                $newFrame = $this->interp->borrowInlineVmFrame(
+                                    $callee->closure,
+                                    $undef,
+                                    $newCf->slotCount,
+                                    $paramCount,
+                                    $undef,
+                                );
+                                // Wire params: same loop the
+                                // tryRunOnVm path uses. argc may be
+                                // less than paramCount; missing slots
+                                // default to undefined (Frame::reset
+                                // already filled the non-param slots).
+                                $argCount = count($args);
+                                for ($i = 0; $i < $paramCount; $i++) {
+                                    $newFrame->locals[$paramSlots[$i]] =
+                                        $i < $argCount ? $args[$i] : $undef;
+                                }
+                                // Save caller's state.
+                                $savedFrames[] = [
+                                    $cf, $code, $consts, $names, $nestedFns,
+                                    $stack, $sp, $locals, $env, $thisValue,
+                                    $strict, $hasHandlers,
+                                    $pc + 2,
+                                    $restore,
+                                ];
+                                // Switch to callee's state.
+                                $cf = $newCf;
+                                $code = $newCf->code;
+                                $consts = $newCf->consts;
+                                $names = $newCf->names;
+                                $nestedFns = $newCf->nestedFns;
+                                $hasHandlers = $newCf->handlers !== [];
+                                $stack = $newFrame->stack;
+                                $sp = $newFrame->sp;
+                                $locals = $newFrame->locals;
+                                $env = $newFrame->env;
+                                $thisValue = $newFrame->thisValue;
+                                $strict = $this->interp->isStrictMode();
+                                $pc = 0;
+                                break;
+                            }
                             if ($eligible) {
                                 $stack[$sp++] = $this->interp->executeVmFunctionDirect(
                                     $callee,
@@ -1645,31 +1750,84 @@ final class VM
                             // no break
 
                         case Op::RET:
-                            return $stack[--$sp];
+                            $retResult = $stack[--$sp];
+                            if ($savedFrames !== []) {
+                                // Inline-call return: pop one saved
+                                // frame, restore caller state, push
+                                // the return value onto the caller's
+                                // operand stack, continue dispatch.
+                                $saved = array_pop($savedFrames);
+                                $this->interp->teardownInlineVmCall($saved[13]);
+                                $this->interp->releaseInlineVmFrame();
+                                $cf = $saved[0];
+                                $code = $saved[1];
+                                $consts = $saved[2];
+                                $names = $saved[3];
+                                $nestedFns = $saved[4];
+                                $stack = $saved[5];
+                                $sp = $saved[6];
+                                $locals = $saved[7];
+                                $env = $saved[8];
+                                $thisValue = $saved[9];
+                                $strict = $saved[10];
+                                $hasHandlers = $saved[11];
+                                $pc = $saved[12];
+                                $stack[$sp++] = $retResult;
+                                break;
+                            }
+                            return $retResult;
 
                         default:
                             throw new InternalError('VM: unknown opcode ' . $op);
                     }
                 } // end inner while (dispatch loop)
             } catch (\Phasis\Exceptions\RuntimeError | \Phasis\Exceptions\SyntaxError $e) {
-                // Look for a handler whose protected range covers the
-                // current PC (the PC of the instruction that threw or
-                // raised the exception synchronously). SyntaxError
-                // gets the same treatment as RuntimeError so an
-                // eval() / Function() parse failure still surfaces
-                // through a JS try/catch in the calling frame.
-                if (!$hasHandlers) {
-                    throw $e;
-                }
+                // Handler search — first in the current frame, then
+                // unwinding through `$savedFrames` if necessary (the
+                // Stage 1 custom callstack puts caller frames there).
+                // SyntaxError gets the same treatment as RuntimeError
+                // so an eval() / Function() parse failure still
+                // surfaces through a JS try/catch in the calling
+                // frame.
                 $matched = null;
-                foreach ($cf->handlers as $h) {
-                    if ($pc >= $h->tryStart && $pc < $h->tryEnd) {
-                        $matched = $h;
+                while (true) {
+                    if ($hasHandlers) {
+                        foreach ($cf->handlers as $h) {
+                            if ($pc >= $h->tryStart && $pc < $h->tryEnd) {
+                                $matched = $h;
+                                break;
+                            }
+                        }
+                    }
+                    if ($matched !== null) {
                         break;
                     }
-                }
-                if ($matched === null) {
-                    throw $e;
+                    // No handler here. If there's a saved caller
+                    // frame, unwind it (tearing down the per-call
+                    // interpreter state) and retry the search in
+                    // the caller. The saved pc was the post-CALL
+                    // return address; back it up by 2 to the CALL
+                    // opcode itself so handler ranges that cover
+                    // the call site match.
+                    if ($savedFrames === []) {
+                        throw $e;
+                    }
+                    $saved = array_pop($savedFrames);
+                    $this->interp->teardownInlineVmCall($saved[13]);
+                    $this->interp->releaseInlineVmFrame();
+                    $cf = $saved[0];
+                    $code = $saved[1];
+                    $consts = $saved[2];
+                    $names = $saved[3];
+                    $nestedFns = $saved[4];
+                    $stack = $saved[5];
+                    $sp = $saved[6];
+                    $locals = $saved[7];
+                    $env = $saved[8];
+                    $thisValue = $saved[9];
+                    $strict = $saved[10];
+                    $hasHandlers = $saved[11];
+                    $pc = $saved[12] - 2;
                 }
                 // Convert the PHP exception to a JsValue for the catch
                 // parameter. JsThrowable wraps a user-thrown JS value;
