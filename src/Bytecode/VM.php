@@ -1681,24 +1681,18 @@ final class VM
                                 $method->builtinKind === 'array.push'
                                 && $receiver instanceof \Phasis\Value\JsArray
                                 && $argc === 1
-                                && $receiver->isLengthWritable()
-                                && $receiver->isExtensible()
                             ) {
-                                // Skip the inline if Array.prototype has an own
-                                // accessor / data property at the index we're
-                                // about to write — spec Set walks the proto
-                                // chain and may invoke a setter (which can
-                                // freeze the receiver, throw, etc.). Common
-                                // case: Array.prototype has no own indexed
-                                // properties → fast path runs.
-                                $proto = $receiver->getPrototype();
-                                $indexKey = (string) $receiver->getLength();
-                                if (
-                                    $proto === null
-                                    || $proto->getOwnPropertyDescriptor($indexKey) === null
-                                ) {
-                                    $receiver->push($args[0]);
-                                    $stack[$sp++] = JsNumber::of((float) $receiver->getLength());
+                                // Lean on JsArray::tryDenseWrite, which
+                                // already caches the proto-chain checks
+                                // (writable length + extensible +
+                                // no own integer-index property on
+                                // prototypes) per instance and skips the
+                                // per-iteration `getOwnPropertyDescriptor`
+                                // hash lookup on Array.prototype. False
+                                // return falls back to the spec path.
+                                $newIndex = $receiver->getLength();
+                                if ($receiver->tryDenseWrite($newIndex, $args[0])) {
+                                    $stack[$sp++] = JsNumber::of((float) ($newIndex + 1));
                                     $pc += 2;
                                     break;
                                 }
