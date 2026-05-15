@@ -201,6 +201,22 @@ trait JsToPhpEmitStatement
                     $temp = $this->emitObjectLiteral($decl->init);
                     $this->flushPending();
                     $this->emitLine($this->slotVar($name) . ' = ' . $temp . ';');
+                } elseif (
+                    $decl->init instanceof \Phasis\Ast\Expression\NewExpression
+                    && $kind === 'object'
+                ) {
+                    // `const c = new Ctor(args)` — resolve Ctor as a
+                    // free-variable (or local function-typed slot,
+                    // not yet supported), box args, dispatch to
+                    // vmNewExpression. Result must be JsObject;
+                    // otherwise Bailout so the tree-walker handles
+                    // the construct-returns-primitive corner case.
+                    $newTemp = $this->emitNewExpression($decl->init);
+                    $this->flushPending();
+                    $this->emitLine('if (!(' . $newTemp
+                        . ' instanceof \\Phasis\\Value\\JsObject)) { '
+                        . 'throw new \\Phasis\\Bytecode\\Bailout("new returned non-object"); }');
+                    $this->emitLine($this->slotVar($name) . ' = ' . $newTemp . ';');
                 } elseif ($kind === 'function' && $decl->init instanceof CallExpression) {
                     // Call returning a JsFunction (e.g. `const add5 =
                     // adder(5)`). Emit the call but skip the numeric

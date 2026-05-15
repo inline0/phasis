@@ -104,6 +104,14 @@ trait JsToPhpScope
                 if ($decl->init instanceof \Phasis\Ast\Expression\ObjectExpression) {
                     $this->markLocalAsObject($name);
                 }
+                if ($decl->init instanceof \Phasis\Ast\Expression\NewExpression) {
+                    // `const c = new C(...)` — type-promote the slot
+                    // to object so subsequent reads / method calls
+                    // see a JsObject. The emit path's NewExpression
+                    // handler invokes vmNewExpression and Bailout-
+                    // guards a non-object return.
+                    $this->markLocalAsObject($name);
+                }
                 if ($decl->init instanceof \Phasis\Ast\Expression\ArrayExpression) {
                     $this->markLocalAsArray($name);
                 }

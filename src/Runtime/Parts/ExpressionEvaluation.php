@@ -3960,7 +3960,7 @@ trait ExpressionEvaluation
             && $fn->getHomeObject() === null
         ) {
             try {
-                return ($fn->phpCompiled)($args, $fn->getClosure(), $this, $fn->phpCompiledNodes);
+                return ($fn->phpCompiled)($args, $thisValue, $fn->getClosure(), $this, $fn->phpCompiledNodes);
             } catch (\Phasis\Bytecode\Bailout) {
                 // Fall through to the slow path below.
             }
@@ -6306,7 +6306,7 @@ trait ExpressionEvaluation
             }
             if ($fn->phpCompiled !== null) {
                 try {
-                    return ($fn->phpCompiled)($args, $fnEnv, $this, $fn->phpCompiledNodes);
+                    return ($fn->phpCompiled)($args, $thisValue, $fnEnv, $this, $fn->phpCompiledNodes);
                 } catch (\Phasis\Bytecode\Bailout) {
                     // Numeric assumption broken at run time (e.g. a
                     // non-JsNumber arg). Fall through to the VM /

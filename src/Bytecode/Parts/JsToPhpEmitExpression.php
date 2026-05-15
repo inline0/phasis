@@ -501,6 +501,24 @@ trait JsToPhpEmitExpression
             // (returns the live length count as a numeric), an
             // array-typed local with a numeric computed key (dense
             // indexed read), or a string-typed local with .length.
+            // ThisExpression receiver is allowed too: lowers to
+            // `$thisValue->properties->dataSlots['key']` with the
+            // same JsNumber unbox + Bailout guard as object-typed
+            // locals. Enables `this.v + x` inside method bodies.
+            if (
+                $node->object instanceof \Phasis\Ast\Expression\ThisExpression
+                && !$node->computed
+                && $node->property instanceof Identifier
+            ) {
+                $key = $node->property->name;
+                $temp = $this->newTemp('tmr');
+                $this->pendingStatements[] = 'if (!($thisValue instanceof \\Phasis\\Value\\JsObject)) { throw new \\Phasis\\Bytecode\\Bailout("this not object"); }';
+                $this->pendingStatements[] = $temp . ' = $thisValue'
+                    . '->properties->dataSlots[' . var_export($key, true) . '] ?? null;';
+                $this->pendingStatements[] = 'if (!(' . $temp
+                    . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric this-member"); }';
+                return $temp . '->value';
+            }
             if (!$node->object instanceof Identifier) {
                 throw new Bailout('member read non-identifier receiver');
             }
@@ -673,7 +691,8 @@ trait JsToPhpEmitExpression
         $this->pendingStatements[] = $resultTemp . ' = '
             . $calleeRef . '->phpCompiledNumeric !== null'
             . ' ? (' . $calleeRef . '->phpCompiledNumeric)('
-            . $argsArr . ', ' . $calleeRef . '->closure, $interp, '
+            . $argsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
+            . $calleeRef . '->closure, $interp, '
             . $calleeRef . '->phpCompiledNodes)'
             . ' : null;';
         // null sentinel triggers spec-entry fallback. Use the same
@@ -684,7 +703,8 @@ trait JsToPhpEmitExpression
         $this->pendingStatements[] = '    ' . $boxedResult . ' = '
             . $calleeRef . '->phpCompiled !== null'
             . ' ? (' . $calleeRef . '->phpCompiled)('
-            . $boxedArgsArr . ', ' . $calleeRef . '->closure, $interp, '
+            . $boxedArgsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
+            . $calleeRef . '->closure, $interp, '
             . $calleeRef . '->phpCompiledNodes)'
             . ' : $interp->callFunction(' . $calleeRef . ', '
             . '\\Phasis\\Value\\JsUndefined::instance(), ' . $boxedArgsArr . ');';
@@ -718,6 +738,21 @@ trait JsToPhpEmitExpression
      */
     private function emitCallCore(CallExpression $node): string
     {
+        // MemberExpression callee — `obj.method(args)`. Receiver
+        // must be a known object-typed local; method name must be
+        // an identifier (non-computed). Emits a runtime lookup +
+        // JsFunction guard + dispatch with the receiver passed as
+        // `$thisValue`. Falls back to bailout if the resolved
+        // method isn't BC- or JsToPhp-compiled (callFunction
+        // handles the spec-correct path).
+        if (
+            $node->callee instanceof \Phasis\Ast\Expression\MemberExpression
+            && !$node->callee->computed
+            && $node->callee->object instanceof Identifier
+            && $node->callee->property instanceof Identifier
+        ) {
+            return $this->emitMethodCallCore($node);
+        }
         if (!$node->callee instanceof Identifier) {
             throw new Bailout('non-identifier callee');
         }
@@ -788,10 +823,118 @@ trait JsToPhpEmitExpression
         $this->pendingStatements[] = $resultTemp . ' = '
             . $calleeRef . '->phpCompiled !== null'
             . ' ? (' . $calleeRef . '->phpCompiled)('
-            . $argsArr . ', ' . $calleeRef . '->closure, $interp, '
+            . $argsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
+            . $calleeRef . '->closure, $interp, '
             . $calleeRef . '->phpCompiledNodes)'
             . ' : $interp->callFunction(' . $calleeRef . ', '
             . '\\Phasis\\Value\\JsUndefined::instance(), ' . $argsArr . ');';
+        return $resultTemp;
+    }
+
+    /**
+     * Lower `new Ctor(args)` where Ctor is an Identifier (resolved
+     * via env free-variable lookup; local-callee NewExpression
+     * isn't supported yet). Boxes args as JsNumber and dispatches
+     * to `$interp->vmNewExpression()`. Returns the temp PHP
+     * variable holding the construct result (a JsValue, usually
+     * JsObject — the caller bailouts on non-object).
+     */
+    private function emitNewExpression(\Phasis\Ast\Expression\NewExpression $node): string
+    {
+        if (!$node->callee instanceof Identifier) {
+            throw new Bailout('new with non-identifier callee');
+        }
+        $argRawExprs = [];
+        foreach ($node->arguments as $arg) {
+            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
+                throw new Bailout('spread arg in new');
+            }
+            $argRawExprs[] = $this->emitExpression($arg);
+        }
+        $ctorName = $node->callee->name;
+        $ctorRef = '$_ctor_' . preg_replace('/[^A-Za-z0-9_]/', '_', $ctorName);
+        if (!isset($this->freeVars['__ctor_' . $ctorName])) {
+            $this->freeVars['__ctor_' . $ctorName] = true;
+            $this->pendingStatements[] = $ctorRef
+                . ' = $env->get(' . var_export($ctorName, true) . ');';
+        }
+        $boxedArgs = [];
+        foreach ($argRawExprs as $expr) {
+            $boxedArgs[] = '\\Phasis\\Value\\JsNumber::of(' . $expr . ')';
+        }
+        $argsArr = '[' . implode(', ', $boxedArgs) . ']';
+        $resultTemp = $this->newTemp('nw');
+        $this->pendingStatements[] = $resultTemp
+            . ' = $interp->vmNewExpression(' . $ctorRef . ', ' . $argsArr . ', $env);';
+        return $resultTemp;
+    }
+
+    /**
+     * Lower `obj.method(args)` where obj is an object-typed local
+     * and `method` is a plain identifier (no computed access). Emits:
+     *
+     *   $recv = ...;       // object-typed slot of obj
+     *   $method = $recv->get('name');
+     *   if (!($method instanceof JsFunction)) bail;
+     *   $args = [boxed args];
+     *   $r = $method->phpCompiled !== null
+     *      ? ($method->phpCompiled)($args, $recv, $method->closure, $interp, $method->phpCompiledNodes)
+     *      : $interp->callFunction($method, $recv, $args);
+     *
+     * Receiver passes as `$thisValue` so the called body's
+     * `this.member` reads resolve correctly via JsToPhp's
+     * ThisExpression emit. Result is the boxed JsValue; the
+     * caller can unbox or assert type via emitCall's wrapper.
+     */
+    private function emitMethodCallCore(CallExpression $node): string
+    {
+        /** @var \Phasis\Ast\Expression\MemberExpression $callee */
+        $callee = $node->callee;
+        /** @var Identifier $recvId */
+        $recvId = $callee->object;
+        /** @var Identifier $propId */
+        $propId = $callee->property;
+        $recvName = $recvId->name;
+        if (!isset($this->declaredLocals[$recvName])) {
+            throw new Bailout('method call on non-local receiver');
+        }
+        $recvKind = $this->localTypes[$recvName] ?? 'numeric';
+        if ($recvKind !== 'object') {
+            throw new Bailout('method call on non-object local: ' . $recvName);
+        }
+        // Eval args before resolving method per spec — except JS spec
+        // actually says: callee is evaluated first, THEN args. But for
+        // `obj.method(a,b)` the order is: obj → method-lookup → a → b.
+        // We do the same: emit receiver+lookup as pendings first,
+        // then arg expressions in source order.
+        $recv = $this->slotVar($recvName);
+        $methodTemp = $this->newTemp('mc');
+        $this->pendingStatements[] = $methodTemp . ' = '
+            . $recv . '->get(' . var_export($propId->name, true) . ');';
+        $this->pendingStatements[] = 'if (!(' . $methodTemp
+            . ' instanceof \\Phasis\\Value\\JsFunction)) { '
+            . 'throw new \\Phasis\\Bytecode\\Bailout("non-function method"); }';
+        $argRawExprs = [];
+        foreach ($node->arguments as $arg) {
+            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
+                throw new Bailout('spread arg in method call');
+            }
+            $argRawExprs[] = $this->emitExpression($arg);
+        }
+        $boxedArgs = [];
+        foreach ($argRawExprs as $expr) {
+            $boxedArgs[] = '\\Phasis\\Value\\JsNumber::of(' . $expr . ')';
+        }
+        $argsArr = '[' . implode(', ', $boxedArgs) . ']';
+        $resultTemp = $this->newTemp('mr');
+        $this->pendingStatements[] = $resultTemp . ' = '
+            . $methodTemp . '->phpCompiled !== null'
+            . ' ? (' . $methodTemp . '->phpCompiled)('
+            . $argsArr . ', ' . $recv . ', '
+            . $methodTemp . '->closure, $interp, '
+            . $methodTemp . '->phpCompiledNodes)'
+            . ' : $interp->callFunction(' . $methodTemp . ', '
+            . $recv . ', ' . $argsArr . ');';
         return $resultTemp;
     }
 }

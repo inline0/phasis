@@ -425,6 +425,7 @@ final class VM
                         try {
                             $rawResult = $numeric(
                                 [$val->value, (float) $i],
+                                JsUndefined::instance(),
                                 $callback->closure,
                                 $this->interp,
                                 $callback->phpCompiledNodes,
@@ -496,6 +497,7 @@ final class VM
                         try {
                             $rawAcc = $numeric(
                                 [$acc->value, $val->value],
+                                JsUndefined::instance(),
                                 $callback->closure,
                                 $this->interp,
                                 $callback->phpCompiledNodes,
@@ -1373,6 +1375,7 @@ final class VM
                                     // future stack reads would observe stale data.
                                     $result = ($callee->phpCompiled)(
                                         $args,
+                                        $undef,
                                         $callee->closure,
                                         $this->interp,
                                         $callee->phpCompiledNodes,

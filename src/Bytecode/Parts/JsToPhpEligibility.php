@@ -433,9 +433,10 @@ trait JsToPhpEligibility
             // 'super' / 'arguments' / 'new.target' — all per-call.
             return $node->name === 'arguments' || $node->name === 'super';
         }
-        if ($node instanceof \Phasis\Ast\Expression\ThisExpression) {
-            return true;
-        }
+        // ThisExpression is allowed: the compiled closure now accepts
+        // an explicit `$thisValue` parameter that emit binds to PHP
+        // `$thisValue`, so `this` reads in the body resolve to it
+        // directly rather than walking the closure env.
         if ($node instanceof \Phasis\Ast\Expression\MetaProperty) {
             return true;
         }

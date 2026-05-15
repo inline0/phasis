@@ -353,9 +353,14 @@ final class JsToPhp
         } catch (Bailout) {
             return null;
         }
+        // $thisValue is the per-invocation `this` binding. The
+        // closure captures the function's lexical $closure env;
+        // `this` is NOT in that env (it's per-call), so it has
+        // to ride in as an explicit parameter. Regular function
+        // calls pass JsUndefined; method calls pass the receiver.
         $signature = $numeric
-            ? 'function (array $rawArgs, $env, $interp, $nestedFns)'
-            : 'function ($args, $env, $interp, $nestedFns)';
+            ? 'function (array $rawArgs, $thisValue, $env, $interp, $nestedFns)'
+            : 'function ($args, $thisValue, $env, $interp, $nestedFns)';
         // Guard against unbounded recursion. The interpreter's
         // CallStack enforces its own (much larger) limit, but a
         // JsToPhp closure dispatching through phpCompiled bypasses
