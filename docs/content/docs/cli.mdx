@@ -1,16 +1,17 @@
 ---
 title: CLI
-description: Complete command reference for the bin/phasis and bin/test262 executables.
+description: Complete command reference for the bin/phasis, bin/test262, and bin/wpt executables.
 ---
 
 # CLI
 
-Phasis ships two main executables in `bin/`:
+Phasis ships three main executables in `bin/`:
 
 - **`bin/phasis`** — run JavaScript files, evaluate expressions, dump ASTs, open a REPL.
 - **`bin/test262`** — run the official ECMAScript conformance suite against Phasis.
+- **`bin/wpt`** — run the Web Platform Tests fixtures against Phasis (URL, encoding, fetch, headers, Blob, AbortSignal, streams, …).
 
-After `composer require phasis/phasis`, both are linked from `vendor/bin/`.
+After `composer require phasis/phasis`, `bin/phasis` and `bin/test262` are linked from `vendor/bin/`. `bin/wpt` is dev-only — run it from a checkout of the Phasis source repo.
 
 ## bin/phasis
 
@@ -94,6 +95,46 @@ The runner reads `config/support.php` from the project root to decide which test
 | `--no-progress` | suppress the progress line |
 
 See the [Compatibility section](/docs/compatibility) for the latest CI numbers.
+
+## bin/wpt
+
+`bin/wpt` runs the Web Platform Tests fixtures imported into `tests/Wpt/fixtures/`. The corpus covers URL, encoding, atob/btoa, structuredClone, performance, Headers, Blob/File, AbortController/Signal, EventTarget, FormData, and WHATWG Streams. See [Web APIs](/docs/compatibility/web-apis) for the per-area pass-rate table.
+
+### Run all imported fixtures
+
+```bash
+./bin/wpt
+```
+
+### Run one category
+
+```bash
+./bin/wpt --category headers
+./bin/wpt --category streams
+./bin/wpt --category blob
+```
+
+### Per-subtest output
+
+```bash
+./bin/wpt --category abort --verbose
+```
+
+Prints every subtest (PASS / FAIL) inside each fixture, with assertion messages on failures.
+
+### JSON output
+
+```bash
+./bin/wpt --json
+```
+
+Machine-readable pass/fail summary for CI pipelines or scripted analysis.
+
+### Notes
+
+- Fetch-touching fixtures auto-start the bundled WPT test server at `tests/Wpt/fetch-server.php` on `127.0.0.1:8765` and tear it down afterwards.
+- The harness shim at `tests/Wpt/testharness-shim.js` implements just the WPT API surface the imported fixtures use (~400 lines vs the full ~3K-line `testharness.js`).
+- Source fixtures live at `tests/Wpt/upstream/` (a gitignored sparse-checkout of [web-platform-tests/wpt](https://github.com/web-platform-tests/wpt)). To import more, copy `.any.js` files from `upstream/<area>/` into `fixtures/<category>/` and the runner picks them up automatically.
 
 ## Exit codes
 

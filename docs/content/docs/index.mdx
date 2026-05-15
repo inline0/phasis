@@ -1,14 +1,15 @@
 ---
 title: Phasis
-description: Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript in pure PHP — no Node.js, no FFI, no extensions beyond mbstring.
+description: Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal.
 ---
 
 # Phasis
 
-Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScript in the host PHP process — without `exec('node …')`, without FFI, and without binary extensions beyond `ext-mbstring`.
+Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScript in the host PHP process — without `exec('node …')`, without FFI, and without binary extensions beyond `ext-mbstring` (always shipped) and `ext-bcmath` (default on every mainstream PHP build). `ext-intl` is optional. `ext-curl` enables outbound `fetch()`.
 
 - **Embeddable** — drop a JS runtime into any PHP app, framework, or CLI tool via the `Phasis\Engine` class.
 - **Spec-compliant** — 100 % of the official test262 suite passes (50,506 / 50,506).
+- **Web APIs** — full **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException) and **Fetch Pack** (fetch, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget, full WHATWG Streams, navigator). 100 % of imported Web Platform Tests pass.
 - **Modern surface** — arrow functions, classes, async/await, Promises, generators, Symbol, BigInt, Proxy, Reflect, Temporal, Intl, TypedArrays, full module support.
 - **Direct PHP↔JS interop** — share PHP objects with JS without serialization. Bind PHP closures as JS functions and mutate PHP arrays from JS in place.
 
@@ -16,15 +17,17 @@ Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScrip
 
 PHP applications that need to run user-supplied JavaScript — templating engines, frontend SSR shims, data-validation rules, content sandboxes, headless test runners — usually shell out to Node.js or skip the feature. Either path adds operational complexity: a second runtime, a serialization boundary, a network of subprocess pipes, and a hostile deployment story for shared hosting.
 
-Phasis closes that gap. Your PHP code can lex, parse, and execute JavaScript using only the standard library plus `mbstring`. The engine ships as a Composer package, runs anywhere PHP 8.2+ runs, and exposes a single small API surface.
+Phasis closes that gap. Your PHP code can lex, parse, and execute JavaScript using only the standard library plus `mbstring` + `bcmath`. The engine ships as a Composer package, runs anywhere PHP 8.2+ runs, and exposes a single small API surface.
 
 ## What it does
 
 - Implements the full ECMAScript standard library: `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, generators, async iterators, modules.
+- Ships the **Web Platform** APIs that real-world JS libraries pre-check for: `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`. See [Web APIs](/docs/compatibility/web-apis) for the full surface.
+- Ships **`fetch`** with the full Fetch family — `Request`, `Response`, `Headers`, body consumers, `AbortController`/`AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`/`Event`, and full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, BYOB, queuing strategies). Real HTTP works out of the box via PHP's `ext-curl`.
 - Supports modern syntax — destructuring, spread/rest, computed properties, optional chaining, nullish coalescing, template literals, tagged templates, classes (with private fields, static blocks, decorators), top-level await.
 - Bridges PHP and JS values losslessly. Pass a PHP object into JS and mutations are visible to PHP. Pass a PHP callable and JS sees it as a function.
-- Sandboxes execution. Resource limits cover call depth, loop iterations, string length, console output, and wall-clock time. The host controls the runtime.
-- Verifies every change against Node.js (V8). Compliance is measured continuously against the official test262 suite in a 73-shard CI matrix.
+- Sandboxes execution. Resource limits cover call depth, loop iterations, string length, console output, and wall-clock time. The host controls the runtime, including the `fetch` transport and policy hooks.
+- Verifies every change against Node.js (V8). Compliance is measured continuously against the official test262 suite in a 73-shard CI matrix, plus the Web Platform Tests via `bin/wpt`.
 
 ## What it is not
 

@@ -26,9 +26,10 @@ export async function HeroLeft() {
         JavaScript engine
       </h1>
       <p className="text-left max-w-xl leading-normal text-fd-muted-foreground sm:text-lg sm:leading-normal text-balance mt-4">
-        Lex, parse, and execute ECMAScript in pure PHP. No Node.js, no FFI, no
-        extensions beyond mbstring. 100% test262 compliance, embeddable in any
-        PHP app.
+        Lex, parse, and execute ECMAScript in pure PHP. 100% test262
+        compliance plus the Web Platform (URL, encoding, structuredClone) and
+        Fetch (fetch, Streams, Blob, FormData, AbortSignal) packs at 100% WPT.
+        Embeddable in any PHP app.
       </p>
       <div className="mt-8 w-full">
         <CodeBlock

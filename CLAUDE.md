@@ -1,6 +1,6 @@
 # Phasis
 
-Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shelling out to Node.js, without FFI, without extensions. Node.js (V8) is the oracle: if V8 produces a result, phasis must produce the same result. Compliance is measured against test262, the official ECMAScript conformance test suite.
+Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shelling out to Node.js and without FFI. Beyond pure ECMAScript, also ships the WHATWG / W3C **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException) and **Fetch Pack** (fetch via ext-curl, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget/Event, full WHATWG Streams, navigator). Node.js (V8) is the oracle: if V8 produces a result, phasis must produce the same result. Compliance is measured against test262 (ECMAScript) and the Web Platform Tests (WHATWG/W3C).
 
 ## Quick Reference
 
@@ -98,9 +98,10 @@ A JavaScript interpreter that:
 4. Implements the full ECMAScript standard library (Array, String, Object, Math, JSON, Date, RegExp, Map, Set, Promise, Proxy, Reflect, Symbol, TypedArray, generators, async/await, BigInt, and more)
 5. Supports modern syntax (arrow functions, destructuring, template literals, let/const, classes, optional chaining, nullish coalescing, for-of, spread/rest, computed properties)
 6. Provides direct PHP interop (share objects between PHP and JS without serialization)
-7. Achieves 100% test262 compliance (50,506 pass / 0 fail / 0 skip across the full 50,506-test suite; see COMPAT.md). The previously blocklisted SM stress fixtures (decodeURI/A2.5_T1, dst-offset-caching, toSpliced-dense, etc.) now pass under the bytecode VM with a per-test budget bump for isolated single-file chunks; the Chinese-calendar uncommon-leap-month gap was closed with a pure-PHP Reingold-Dershowitz extension to the chinese/dangi tables back to extended-year -7500.
+7. Achieves 100% test262 compliance (50,506 pass / 0 fail / 0 skip across the full 50,506-test suite; see COMPAT.md).
+8. Ships the **Web Platform Pack** (`URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`) and **Fetch Pack** (`fetch` via ext-curl, `Request`, `Response`, `Headers`, body consumers, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`). Compliance tested against the official Web Platform Tests via `bin/wpt`.
 
-All without `exec('node ...')`. Requirements: PHP 8.2+ with `ext-mbstring` and `ext-bcmath` (both ship enabled on every mainstream PHP build). `ext-intl` is optional but required for the Intl.* APIs and non-ISO Temporal calendars.
+All without `exec('node ...')`. Requirements: PHP 8.2+ with `ext-mbstring`, `ext-bcmath`, and `ext-curl` (all three ship enabled on every mainstream PHP build). `ext-intl` is optional but required for the Intl.* APIs and non-ISO Temporal calendars.
 
 ## What This Is Not
 
