@@ -512,7 +512,8 @@ trait JsToPhpEmitExpression
             ) {
                 $key = $node->property->name;
                 $temp = $this->newTemp('tmr');
-                $this->pendingStatements[] = 'if (!($thisValue instanceof \\Phasis\\Value\\JsObject)) { throw new \\Phasis\\Bytecode\\Bailout("this not object"); }';
+                $this->pendingStatements[] = 'if (!($thisValue instanceof \\Phasis\\Value\\JsObject)) { '
+                    . 'throw new \\Phasis\\Bytecode\\Bailout("this not object"); }';
                 $this->pendingStatements[] = $temp . ' = $thisValue'
                     . '->properties->dataSlots[' . var_export($key, true) . '] ?? null;';
                 $this->pendingStatements[] = 'if (!(' . $temp
