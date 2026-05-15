@@ -1987,6 +1987,7 @@ final class VM
                                 && isset($obj->properties->dataSlots[$name])
                             ) {
                                 $obj->properties->dataSlots[$name] = $val;
+                                $obj->properties->mutationVersion++;
                                 if ($obj->properties->isUsedAsProto) {
                                     $obj->properties->version++;
                                 }

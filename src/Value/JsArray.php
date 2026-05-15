@@ -143,6 +143,7 @@ class JsArray extends JsObject
             }
         }
         $this->length = $length;
+        $this->properties->mutationVersion++;
     }
 
     /**
@@ -190,6 +191,7 @@ class JsArray extends JsObject
     public function setDenseElement(int $index, JsValue $value): void
     {
         $this->denseElements[$index] = $value;
+        $this->properties->mutationVersion++;
     }
 
     /**
@@ -267,6 +269,7 @@ class JsArray extends JsObject
             }
         }
         $this->denseElements[$index] = $value;
+        $this->properties->mutationVersion++;
         if ($index >= $this->length) {
             $this->length = $index + 1;
         }
@@ -299,6 +302,7 @@ class JsArray extends JsObject
             parent::set((string) $index, $value);
         }
         $this->length = $index + 1;
+        $this->properties->mutationVersion++;
     }
 
     /**
@@ -476,6 +480,7 @@ class JsArray extends JsObject
                     return;
                 }
                 $this->denseElements[$idx] = $value;
+                $this->properties->mutationVersion++;
                 if ($idx >= $this->length) {
                     $this->length = $idx + 1;
                 }
@@ -644,6 +649,7 @@ class JsArray extends JsObject
                 }
             }
             $this->length = $newLen;
+            $this->properties->mutationVersion++;
             if (!$newWritable) {
                 $this->lengthWritable = false;
             }

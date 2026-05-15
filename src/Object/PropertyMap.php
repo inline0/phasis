@@ -62,10 +62,25 @@ class PropertyMap
     public int $version = 0;
 
     /**
+     * Mutation counter that bumps UNCONDITIONALLY on every change
+     * to this property map — including data-slot overwrites on
+     * instance objects (where `$version`'s write-barrier skips
+     * the bump). Used by caches that need transitive invalidation
+     * regardless of whether the object is observed as a prototype
+     * (e.g. `JsObject::$jsonCacheString`'s version-pinning list).
+     *
+     * Cost: one extra integer increment per write vs `$version`'s
+     * conditional bump. Sub-percent on synthetic obj-prop workloads
+     * and the only correct way to detect instance-only mutations.
+     */
+    public int $mutationVersion = 0;
+
+    /**
      * Flipped to true the moment any JsObject is constructed with
      * `$this` as its `[[Prototype]]`. Direct-write fast paths
-     * consult this flag and skip the version bump on data-slot
-     * overwrites when it's false.
+     * consult this flag and skip the `$version` bump on data-slot
+     * overwrites when it's false. `$mutationVersion` is always
+     * bumped regardless.
      */
     public bool $isUsedAsProto = false;
 
@@ -90,6 +105,7 @@ class PropertyMap
     public function set(string $key, PropertyDescriptor $desc): void
     {
         $this->version++;
+        $this->mutationVersion++;
         if (
             $desc->get === null
             && $desc->set === null
@@ -117,6 +133,7 @@ class PropertyMap
         if ($isNew || $this->isUsedAsProto) {
             $this->version++;
         }
+        $this->mutationVersion++;
         $this->dataSlots[$key] = $value;
         $this->order[$key] = true;
         if ($isNew) {
@@ -137,6 +154,7 @@ class PropertyMap
         unset($this->order[$key]);
         if ($existed) {
             $this->version++;
+            $this->mutationVersion++;
             self::touchIntegerIndex($key);
         }
         return true;

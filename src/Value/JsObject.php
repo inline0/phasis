@@ -23,6 +23,24 @@ class JsObject implements JsValue
     private bool $extensible = true;
     private bool $immutablePrototype = false;
 
+    /**
+     * Cached `JSON.stringify(this)` result + version-pinning list of
+     * every nested JsObject visited during the walk. Populated by
+     * `JsonObject::trivialJsonValue`'s top-level entry; consulted on
+     * subsequent stringify calls. Cache is valid iff every
+     * `[$obj, $ver]` entry in `$jsonCacheVersions` still satisfies
+     * `$obj->properties->version === $ver`. Any structural or value
+     * mutation anywhere in the tree bumps a `version` and forces a
+     * re-walk on the next call.
+     *
+     * Only set when stringify is called with no replacer + no space —
+     * matches the existing "trivial" fast-path gate.
+     */
+    public ?string $jsonCacheString = null;
+
+    /** @var list<array{0: JsObject, 1: int}> */
+    public array $jsonCacheVersions = [];
+
     /** @var array<int, PropertyDescriptor> Symbol-keyed properties, indexed by JsSymbol id. */
     protected array $symbolProperties = [];
 
@@ -293,6 +311,7 @@ class JsObject implements JsValue
         if ($receiver === $this) {
             if (isset($this->properties->dataSlots[$name])) {
                 $this->properties->dataSlots[$name] = $value;
+                $this->properties->mutationVersion++;
                 if ($this->properties->isUsedAsProto) {
                     $this->properties->version++;
                 }
@@ -1185,6 +1204,7 @@ class JsObject implements JsValue
     {
         if (isset($this->properties->dataSlots[$name])) {
             $this->properties->dataSlots[$name] = $value;
+            $this->properties->mutationVersion++;
             if ($this->properties->isUsedAsProto) {
                 $this->properties->version++;
             }
@@ -1198,6 +1218,7 @@ class JsObject implements JsValue
             && $desc->writable !== false
         ) {
             $desc->value = $value;
+            $this->properties->mutationVersion++;
             if ($this->properties->isUsedAsProto) {
                 $this->properties->version++;
             }
@@ -1225,6 +1246,7 @@ class JsObject implements JsValue
         if (isset($this->properties->dataSlots[$name])) {
             // Existing fast slot: in-place value swap.
             $this->properties->dataSlots[$name] = $value;
+            $this->properties->mutationVersion++;
             if ($this->properties->isUsedAsProto) {
                 $this->properties->version++;
             }

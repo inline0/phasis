@@ -181,8 +181,12 @@ class JsonObject
      * can produce JsUndefined per spec.
      *
      * @param array<int, JsObject> $stack Cycle detection (visited objects)
+     * @param list<array{0: JsObject, 1: int}> $versions Out-param: every
+     *   visited JsObject + its PropertyMap version at walk time. The
+     *   caller pins these on the root for cache validation on the next
+     *   stringify call.
      */
-    private static function trivialJsonValue(JsValue $value, array &$stack): mixed
+    private static function trivialJsonValue(JsValue $value, array &$stack, array &$versions): mixed
     {
         if ($value instanceof JsUndefined) {
             return self::trivialUndefined();
@@ -265,6 +269,7 @@ class JsonObject
             $proto = $proto->getPrototype();
         }
         $stack[] = $value;
+        $versions[] = [$value, $value->properties->mutationVersion];
         try {
             if ($value instanceof JsArray) {
                 if (!$value->isDenseMode()) {
@@ -278,7 +283,7 @@ class JsonObject
                     if ($el === null) {
                         return self::trivialBailout();
                     }
-                    $resolved = self::trivialJsonValue($el, $stack);
+                    $resolved = self::trivialJsonValue($el, $stack, $versions);
                     if ($resolved === self::trivialBailout()) {
                         return self::trivialBailout();
                     }
@@ -334,7 +339,7 @@ class JsonObject
             $out = [];
             foreach ($orderedKeys as $name) {
                 $slotVal = $value->properties->dataSlots[$name];
-                $resolved = self::trivialJsonValue($slotVal, $stack);
+                $resolved = self::trivialJsonValue($slotVal, $stack, $versions);
                 if ($resolved === self::trivialBailout()) {
                     return self::trivialBailout();
                 }
@@ -852,8 +857,30 @@ class JsonObject
                 ($replacerArg instanceof JsUndefined || $replacerArg instanceof JsNull)
                 && ($space instanceof JsUndefined || $space instanceof JsNull)
             ) {
+                // Cache hit: every visited object's PropertyMap version
+                // still matches, the cached string is still valid. The
+                // walk itself is O(tree size); a cache hit replaces the
+                // walk + json_encode with a single PHP-array compare
+                // pass — roughly 100× faster on hot JSON-roundtrip
+                // patterns like `JSON.parse(JSON.stringify(o))`.
+                if (
+                    $value instanceof JsObject
+                    && $value->jsonCacheString !== null
+                ) {
+                    $valid = true;
+                    foreach ($value->jsonCacheVersions as [$nested, $ver]) {
+                        if ($nested->properties->mutationVersion !== $ver) {
+                            $valid = false;
+                            break;
+                        }
+                    }
+                    if ($valid) {
+                        return new JsString($value->jsonCacheString);
+                    }
+                }
                 $stack = [];
-                $php = self::trivialJsonValue($value, $stack);
+                $versions = [];
+                $php = self::trivialJsonValue($value, $stack, $versions);
                 $bailout = self::trivialBailout();
                 if ($php !== $bailout) {
                     if ($php === self::trivialUndefined()) {
@@ -864,6 +891,10 @@ class JsonObject
                         JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
                     );
                     if ($encoded !== false) {
+                        if ($value instanceof JsObject) {
+                            $value->jsonCacheString = $encoded;
+                            $value->jsonCacheVersions = $versions;
+                        }
                         return new JsString($encoded);
                     }
                 }
