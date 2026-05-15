@@ -1896,8 +1896,17 @@ final class VM
                             // resolved value and the proto's PropertyMap
                             // version at capture. A hit returns the cached
                             // value without walking the prototype chain.
+                            // JsProxy is excluded from the IC entirely:
+                            // its `getPrototype()` forwards to the proxy's
+                            // `getPrototypeOf` trap, which is an observable
+                            // side effect every IC lookup would re-trigger.
+                            // The IC also can't trust the proxy's
+                            // prototype-as-identity in any case — the
+                            // trap can return a different object on each
+                            // call. Slow path handles proxies correctly.
                             if (
                                 $obj instanceof JsObject
+                                && !$obj instanceof \Phasis\Value\JsProxy
                                 && !isset($obj->properties->descriptors[$name])
                             ) {
                                 $ic = $cf->loadMemberIc[$pc] ?? null;
