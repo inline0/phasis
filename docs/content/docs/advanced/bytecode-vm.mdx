@@ -13,9 +13,11 @@ Every `JsFunction` has a hot-call counter. Once it crosses a threshold (default 
 
 Compilation succeeds when the function body fits a known set of shapes:
 
-- Local variable assignments with predictable types.
+- Local variable assignments with predictable types (numeric, object, function, array, string).
 - Arithmetic on numbers.
-- Property access and method calls.
+- Member reads on object-typed locals AND on `this` (`this.v`, `obj.x`).
+- Method calls on object-typed locals (`obj.method(args)`), dispatched with the receiver threaded through as `$thisValue`.
+- `new Ctor(args)` constructor calls — type-promotes the LHS local to `object` and Bailout-guards a non-object return.
 - `for` / `while` loops with simple condition shapes.
 - `return` with a computable expression.
 - `if` / `else` over typed conditions.
