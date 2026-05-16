@@ -190,39 +190,73 @@ final class WptRunner
      */
     private static function resolveMetaScriptPath(string $fixturePath, string $relPath): ?string
     {
+        // Absolute-from-WPT-root paths (e.g. `/common/subset-tests.js`)
+        // resolve straight against the upstream tree.
+        if (str_starts_with($relPath, '/')) {
+            $upstreamAbs = dirname(__DIR__) . '/Wpt/upstream' . $relPath;
+            $real = realpath($upstreamAbs);
+            return $real !== false && is_file($real) ? $real : null;
+        }
         $direct = dirname($fixturePath) . '/' . $relPath;
         if (is_file($direct)) {
             return $direct;
         }
-        // Imported fixtures often retain their upstream-relative
-        // script paths (e.g. `../util/helpers.js`) even though
-        // we've flattened them into `tests/Wpt/fixtures/<cat>/`.
-        // Resolve against the upstream tree by mapping each category
-        // to its WPT root directory and walking the relative path
-        // from likely upstream sub-locations.
+        // Imported fixtures retain their upstream-relative script
+        // paths (e.g. `../util/helpers.js`) even though we've
+        // flattened them into `tests/Wpt/fixtures/<cat>/`. Resolve
+        // against the upstream tree.
+        //
+        // Critical subtlety: multiple upstream subdirs can contain
+        // identically-named files (e.g. `encrypt_decrypt/rsa.js` AND
+        // `sign_verify/rsa.js` — completely different contents). To
+        // pick the right one we map each imported fixture to the
+        // upstream subdir it came from. The map keys are the
+        // fixture-file basename after `.any.js` is stripped.
         static $categoryMap = [
             'crypto' => 'WebCryptoAPI',
+        ];
+        static $fixtureSubdir = [
+            // crypto/<fixture> → WebCryptoAPI/<subdir>/
+            'aes_cbc' => 'encrypt_decrypt',
+            'aes_ctr' => 'encrypt_decrypt',
+            'aes_gcm' => 'encrypt_decrypt',
+            'rsa_oaep' => 'encrypt_decrypt',
+            'digest' => 'digest',
+            'hmac' => 'sign_verify',
+            'ecdsa' => 'sign_verify',
+            'rsa_pkcs' => 'sign_verify',
+            'rsa_pss' => 'sign_verify',
+            'hkdf' => 'derive_bits_keys',
+            'pbkdf2' => 'derive_bits_keys',
+            'ecdh_bits' => 'derive_bits_keys',
+            'ecdh_keys' => 'derive_bits_keys',
         ];
         $category = basename(dirname($fixturePath));
         if (!isset($categoryMap[$category])) {
             return null;
         }
         $upstreamRoot = dirname(__DIR__) . '/Wpt/upstream/' . $categoryMap[$category];
-        // Try every subdirectory of upstreamRoot as the anchor for
-        // the relative path. WebCryptoAPI fixtures live under
-        // categories like digest/, encrypt_decrypt/, sign_verify/ —
-        // each one has `// META: script=../util/helpers.js`.
+        $base = preg_replace('/\.any\.js$/', '', basename($fixturePath));
+        // First try the fixture's own upstream subdir — the
+        // canonical, unambiguous match for relative paths.
+        if (isset($fixtureSubdir[$base])) {
+            $candidate = realpath($upstreamRoot . '/' . $fixtureSubdir[$base] . '/' . $relPath);
+            if ($candidate !== false && is_file($candidate)) {
+                return $candidate;
+            }
+        }
+        // Fallback: try the upstream root, then every other subdir.
+        // Used for relative paths that walk OUT of the fixture's
+        // home subdir (`../util/helpers.js`).
+        $candidate = realpath($upstreamRoot . '/' . $relPath);
+        if ($candidate !== false && is_file($candidate)) {
+            return $candidate;
+        }
         foreach (glob($upstreamRoot . '/*', GLOB_ONLYDIR) ?: [] as $subdir) {
             $candidate = realpath($subdir . '/' . $relPath);
             if ($candidate !== false && is_file($candidate)) {
                 return $candidate;
             }
-        }
-        // Also try the upstream root itself for fixtures at the top
-        // level.
-        $candidate = realpath($upstreamRoot . '/' . $relPath);
-        if ($candidate !== false && is_file($candidate)) {
-            return $candidate;
         }
         return null;
     }

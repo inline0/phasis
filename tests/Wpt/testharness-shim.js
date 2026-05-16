@@ -519,6 +519,14 @@
     // server is started by bin/wpt before any HTTP-bearing fixture runs.
     global.RESOURCES_DIR = "http://127.0.0.1:8765/resources/";
 
+    // `location` shim. WPT's /common/subset-tests.js reads
+    // `location.search` to scope a fixture to a subset of its test
+    // cases via the `?N-M` query string. We run the full set every
+    // time, so the empty-search default is exactly what we want.
+    if (typeof global.location === "undefined") {
+        global.location = { search: "" };
+    }
+
     // Stub XMLHttpRequest so fixtures gated on `self.GLOBAL.isWorker()`
     // false-branch don't ReferenceError at parse time. Tests that actually
     // *use* XHR will fail; tests that branch around it will not.
