@@ -18,9 +18,9 @@ All packs are **on by default**. No flag, no setup — `typeof fetch` returns `"
 
 ## Conformance
 
-The imported [Web Platform Tests](https://github.com/web-platform-tests/wpt) corpus (`tests/Wpt/fixtures/`) covers `AbortController` / `AbortSignal`, `atob` / `btoa`, `Blob` / `File`, `TextEncoder` / `TextDecoder`, `EventTarget` / `Event`, `FormData`, `Headers`, `performance.now`, the full Streams Standard (`Readable`/`Writable`/`Transform` + BYOB + queuing), `structuredClone`, `URL` / `URLSearchParams`. Everything passes.
+The imported [Web Platform Tests](https://github.com/web-platform-tests/wpt) corpus (`tests/Wpt/fixtures/`) covers `AbortController` / `AbortSignal`, `atob` / `btoa`, `Blob` / `File`, `TextEncoder` / `TextDecoder`, `EventTarget` / `Event`, `FormData`, `Headers`, `performance.now`, the full Streams Standard (`Readable`/`Writable`/`Transform` + BYOB + queuing), `structuredClone`, `URL` / `URLSearchParams`, the full **`crypto` / `SubtleCrypto`** surface (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2 — including thousands of derive-bits permutations from `hkdf` and `pbkdf2`), and a subset of **`XMLHttpRequest`** (responseType state semantics, response-header parsing). Everything passes.
 
-`crypto` / `SubtleCrypto`, `WebSocket`, and `XMLHttpRequest` ship in the engine but don't yet have WPT fixtures imported — they're verified against Node.js via the [popular-package tests](/docs/compatibility/popular-packages) and the PHPUnit suite. Run the WPT corpus yourself:
+`WebSocket` and the remaining XHR fixtures (network-bound and event-ordering tests) ship in the engine but don't yet have WPT fixtures imported — they're verified against Node.js via the [popular-package tests](/docs/compatibility/popular-packages) and the PHPUnit suite. Run the WPT corpus yourself:
 
 ```bash
 bin/wpt                # everything
