@@ -29,9 +29,9 @@ ctrl.abort(new Error('user cancelled'));
 const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
 ```
 
-`AbortSignal.timeout(ms)` returns a signal that aborts itself after `ms`. Note Phasis has no host event loop yet, so the timeout is **lazy** — it triggers the next time something reads `signal.aborted` or the fetch transport polls. For fetch transports that poll the signal during transfer (the default `CurlTransport` does, via `CURLOPT_PROGRESSFUNCTION`), this means the request *will* be aborted close to the deadline.
+`AbortSignal.timeout(ms)` returns a signal that aborts itself after `ms`. The timer fires through the engine's event loop, the same one that drives `setTimeout` / `queueMicrotask` (see [API: Event loop](/docs/api#event-loop)). The fetch transport polls the signal during transfer — for the default `CurlTransport`, via `CURLOPT_PROGRESSFUNCTION` — so the request is aborted promptly once the deadline lands.
 
-For pure-JS code that just sleeps in a Promise loop with no polling, the timeout will never fire — there's no scheduler to wake.
+The loop is **virtual-time** by default: it advances its clock to the next pending deadline rather than sleeping PHP, so a `fetch(url, { signal: AbortSignal.timeout(5000) })` either completes before the deadline or aborts on the next loop tick — it never makes PHP wait. Real-time pacing needs the host to drive `tickEventLoop()` against a wall clock.
 
 ## Race: first cancellation wins
 

@@ -33,8 +33,8 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - **Crypto**: `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (SHA family, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2)
 - **WebSocket** (RFC 6455 + replaceable transport), **XMLHttpRequest** (layered over fetch), and a real **event loop** (`setTimeout` / `setInterval` / `queueMicrotask`, plus Stage-3 `AsyncContext`)
 - Direct PHP↔JS interop — share objects without serialization, bind PHP callables as JS functions
-- **100 % of the official test262 suite passes** (50,506 / 50,506) — ECMAScript conformance
-- **100 % of imported Web Platform Tests pass** (815 / 815) across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob
+- **100 % of the official test262 suite passes** — ECMAScript conformance, every category, no skips
+- **100 % of imported Web Platform Tests pass** across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob
 
 ## Quick Start
 
@@ -119,7 +119,7 @@ composer cs
 ./bin/test262 --category built-ins/Array --jobs 4
 ```
 
-The complete test262 matrix runs in CI on every push across 73 parallel shards. Compliance numbers are committed to `COMPAT.md` after each run.
+The complete test262 matrix runs in CI on every push. Compliance numbers are committed to `COMPAT.md` after each run.
 
 ## Compatibility
 
@@ -132,7 +132,7 @@ The complete test262 matrix runs in CI on every push across 73 parallel shards. 
 | Hermes (React Native) | ~95 % |
 | **Phasis** | **100 %** |
 
-Every one of the 50,506 tests in the official suite passes. See [`COMPAT.md`](./COMPAT.md) for the per-category breakdown.
+Every test in the official suite passes, every category. See [`COMPAT.md`](./COMPAT.md) for the latest snapshot.
 
 ## Performance
 

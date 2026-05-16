@@ -1,111 +1,60 @@
 ---
 title: Benchmarks
-description: Microbenchmark methodology, current numbers, and how to interpret Phasis's per-operation performance vs V8.
+description: How Phasis performs vs V8, what kind of workloads it handles well, and how to measure your own.
 ---
 
 # Benchmarks
 
-Phasis is ~100× slower than V8 on dispatch-bound JavaScript. This isn't an apology — it's the inherent cost of a PHP tree-walker vs a native JIT. The number is useful when deciding whether to embed Phasis (answer: yes for most embedding workloads, no for compute-bound JS).
+Phasis is **roughly two orders of magnitude slower than V8** on dispatch-bound JavaScript. That ceiling is the inherent cost of a PHP-hosted interpreter vs a native JIT compiler. The question for an embedder isn't "how does it compare to V8" — it's "is it fast enough for what I'm doing." For most embedding workloads the answer is yes.
 
-## Microbenchmark suite
+## When the ceiling doesn't matter
 
-`bench/microbench.js` runs a dozen pure-JS microbenchmarks designed to isolate specific operations. The runner (`bench/run.php`) executes each one in a fresh `Engine`, times five iterations, and records median/min/max wall time.
+- **Templating** — SSR-style render of a typical page in well under 10 ms.
+- **Validation rules** — user-supplied JS for form validation finishes in microseconds.
+- **Data transformations** — `array.map(transform)` over hundreds of items completes in tens of milliseconds.
+- **Sandbox runners** — short user-supplied scripts with a 1-second host cap leave plenty of headroom.
+
+## When the ceiling matters
+
+- **Compute-heavy inner loops** — image processing, large-array reductions, simulations. Move the compute to a native PHP library and expose it as a [host function](/docs/interop/host-functions).
+- **Real-time animation** — anything driving 60 fps. That JS belongs in the client (browser, native app), not the embedded engine.
+- **JS reimplementations of compute-expensive algorithms** — cryptography, compression, parsing. PHP has native equivalents that are 1000× faster; use those.
+
+The right mental model: Phasis is a **glue layer** for JS-shaped logic embedded in PHP-shaped applications. The PHP host handles compute; the JS layer handles configuration, branching, and small transformations.
+
+## What makes the engine fast (relative to a naïve tree-walker)
+
+- **Bytecode VM** — most hot dispatch runs through `VM::execute`'s opcode switch, not the AST.
+- **Custom callstack** — every JS call keeps state inside `VM::execute` and saves the caller's frame onto a pool; no new PHP frame per JS call. See [Bytecode VM § Custom callstack](/docs/advanced/bytecode-vm).
+- **Inline caches** — a per-PC monomorphic cache makes prototype-method-on-instance reads (the `c.method()` shape) skip the prototype-chain walk.
+- **Frame-snapshot generators** — simple generator bodies suspend by capturing the dispatch state into a heap object instead of crossing a PHP Fiber.
+- **JsToPhp transpiler** — numeric / locals-heavy bodies (including `obj.method()`, `new Ctor()`, and `this.member` reads) compile to PHP closures that PHP 8.5's tracing JIT lowers to native machine code.
+- **JSON.stringify cache** — `JSON.stringify(o)` caches its output on the input object with transitive version invalidation, accelerating the deep-clone idiom `JSON.parse(JSON.stringify(o))`.
+
+## Measuring your own workload
 
 ```bash
 php bench/run.php
 ```
 
-Current numbers (PHP 8.5, tracing JIT enabled):
+This runs the microbench suite shipped under `bench/microbench.js` — a handful of synthetic workloads (loop arithmetic, recursive functions, object creation, prototype-method calls, array push, JSON round-trip, etc.) and prints median wall time per test. Useful as a sanity check; current numbers are committed to [`BENCH.md`](https://github.com/inline0/phasis/blob/main/BENCH.md) on every CI bench run.
 
-| Test | Median |
-|---|---:|
-| `loop-arith` | 4 ms |
-| `loop-fib` | 3 ms |
-| `fn-recurse` | 23 ms |
-| `fn-deep-recurse` | 6 ms |
-| `obj-create` | 12 ms |
-| `obj-prop` | 16 ms |
-| `proto-method` | 349 ms |
-| `gen-iterate` | 93 ms |
-| `arr-push` | 86 ms |
-| `arr-map` | 17 ms |
-| `str-concat` | 2 ms |
-| `str-split-join` | 34 ms |
-| `json-roundtrip` | 52 ms |
-| `closure` | 28 ms |
-| `destructure` | 2 ms |
-| **Total** | **~873 ms** |
-
-`proto-method` is the heaviest line because it benchmarks the exact pattern most engine optimisations target (class method called on an instance, 100 k iterations). The IC handles the prototype lookup and JsToPhp lowers the outer loop (`for (...) c.sum(s)` with `new C()` and `this.member` reads in the method body) to native PHP. The remaining cost is per-iteration call dispatch into the method body.
-
-CI bench numbers are variance-prone (~20% runner-to-runner). Treat the table as "rough magnitude" — re-run on the same workflow if you need to compare changes precisely.
-
-`gen-iterate` (10 k `yield` resumes through `for…of`) measures the frame-snapshot generator path: suspension captures the frame state into a heap object and `gen.next()` re-enters `VM::execute` at the saved pc, no PHP Fiber crossing.
-
-`fn-deep-recurse` is a 2 000-deep non-tail-recursive call. The custom-callstack inline path keeps the entire chain inside a single PHP frame, bounded by `CallStack::maxDepth` (4 096) rather than the PHP process stack.
-
-`json-roundtrip` benchmarks the deep-clone idiom `JSON.parse(JSON.stringify(o))` 5 000× on a small nested object. `JSON.stringify` caches its output on the input `JsObject` keyed on every visited `PropertyMap::$mutationVersion`; the hot-loop iteration walks the version-pinning list (cheap) and returns the cached string instead of re-encoding. Cache invalidation is transitive — mutating any nested object or array bumps a version that's pinned in the cache and forces a re-walk on the next call.
-
-For comparison, the same suite runs in single-digit ms on V8. The dominant remaining cost is per-opcode PHP dispatch in the bytecode VM's `switch`, not any specific operation. The full numbers are committed in `BENCH.md` after each `bench` workflow run.
-
-## Where the time goes
-
-Per-call overhead breakdown for a typical `Engine::call('foo', $args)`:
-
-```
-Argument PHP→JS conversion       ~5 µs
-Function lookup on global object ~2 µs
-Frame allocation + scope chain   ~3 µs
-Per-AST-node dispatch            ~1 µs × N nodes in body
-Return value JS→PHP conversion   ~2 µs
-```
-
-The variable cost is the `~1 µs × N` term. A function with 100 AST nodes pays ~100 µs of dispatch; one with 1,000 nodes pays ~1 ms. This linearity is what makes inner loops the worst case — every iteration re-pays the dispatch cost.
-
-Built-in fast paths (Array.map, JSON.parse, …) bypass the AST entirely for their core hot loops, which is why a single `JSON.parse(largeString)` is comparable to V8 — PHP's native string operations close the gap.
-
-## When perf matters
-
-For most embedding workloads, V8-vs-Phasis perf doesn't matter:
-
-- **Templating** — a typical SSR template runs in under 10 ms even on Phasis.
-- **Validation rules** — user-supplied JS for form validation finishes in microseconds.
-- **Data transformations** — a `[1..1000].map(transform)` typically clocks in under 100 ms.
-- **Sandbox runners** — running short user-supplied scripts with a 1 s cap is comfortable for the host.
-
-It does matter for:
-
-- **Compute-heavy inner loops** — image processing, large-array reductions, simulations. Use a native PHP library and expose it via [host functions](/docs/interop/host-functions).
-- **Real-time animation logic** — anything driving 60 fps. Run that JS on the client (browser, native app), not the server.
-- **JS-implementation of computationally expensive algorithms** — cryptography, compression, parsing. PHP has native equivalents that are 1000× faster.
-
-The right mental model: Phasis is a **glue layer** for JS-shaped logic embedded in PHP-shaped applications. The PHP host handles compute; the JS layer handles configuration, branching, and small transformations.
-
-## Bench in CI
-
-A `bench` workflow runs the full microbenchmark suite under PHP 8.5 + tracing JIT in a Docker container. The result is committed to `BENCH.md` and any regression vs the previous baseline triggers a PR comment.
-
-The Docker isolation is required: PHP 8.5 + tracing JIT crashes on certain VM patterns we use. Running every perf change through the same Docker image catches those before push.
+For your own code, swap in any script:
 
 ```bash
-# Local equivalent of the CI bench
-docker run --rm -v "$PWD:/app" -w /app php:8.5-cli \
-  php -d opcache.enable_cli=1 -d opcache.jit=tracing \
-  -d opcache.jit_buffer_size=64M bench/run.php
+php -d xdebug.mode=off bench/run.php path/to/your-script.js
 ```
 
-## Profiling
-
-For PHP-level profiling (when you suspect the bottleneck is in the runtime itself, not in JS dispatch), Xdebug's profiler works against Phasis exactly like any other PHP code. Run a benchmark script under `xdebug.mode=profile,gc_stats` and inspect the cachegrind output to see which `Phasis\` classes dominate. For VM-side hot-path identification, the `bench/` harness's per-test wall time isolates each opcode pattern under a controlled load.
+For PHP-level profiling, Xdebug's profiler works against Phasis exactly like any other PHP application. Run a script under `xdebug.mode=profile` and inspect the cachegrind output to see which `Phasis\` classes dominate.
 
 ## Roadmap
 
 What would close more of the V8 gap, in rough order of tractability:
 
 - **Polymorphic inline caches** — let a single `LOAD_MEMBER` call site hold 2-4 cached shapes before falling back to slow dispatch. Helps code that processes heterogeneous receivers.
-- **`yield*` and try-with-yield on the frame-snapshot generator path** — these shapes currently route to the Fiber-backed `executeGeneratorBody`. Each needs explicit state-machine handling (delegate-iterator forwarding, handler stack preserved across suspend) before they're snapshot-safe.
+- **`yield*` and try-with-yield on the frame-snapshot generator path** — these shapes currently route to the Fiber-backed tree-walker. Each needs explicit state-machine handling (delegate-iterator forwarding, handler stack preserved across suspend) before they're snapshot-safe.
 - **Async generators and `await` on snapshots** — the spec composes generator suspension with the microtask queue. Once the bytecode body supports both `yield` and `await`, async generators become snapshot-friendly too.
 - **Parameter type inference in JsToPhp** — function parameters default to numeric type, so `function (obj) { obj.method() }` bails the compiler. Inferring object-typed parameters from how they're used in the body would unlock method calls on function arguments without requiring the receiver to be locally constructed via `new`.
-- **PHP-bytecode emission** — emit opcodes that opcache + tracing JIT can lower to native machine code. Deepest item; the others can be done within the existing architecture.
+- **Direct opcache emission** — skip JsToPhp's `eval()` step by writing opcache-format opcodes directly. Deepest item; the others can be done within the existing architecture.
 
 None of these are necessary for the embedding workloads Phasis targets.

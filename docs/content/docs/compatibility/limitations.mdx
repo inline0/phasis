@@ -9,11 +9,9 @@ Phasis aims to behave identically to V8 on every observable spec test. This page
 
 ## Performance ceiling
 
-The engine is a tree-walker with an opportunistic bytecode VM. Most hot dispatch happens inside the VM's switch loop — not by walking the AST — but each VM opcode still pays a PHP dispatch tax. Even with the custom callstack (one PHP frame per execute() invocation rather than per JS call), the inline cache for prototype reads, and frame-snapshot generators, Phasis sits roughly **~100× slower than V8** on dispatch-bound workloads.
+The engine is a tree-walker with an opportunistic bytecode VM and a JsToPhp transpiler that lowers numeric / locals-heavy bodies (including `obj.method()`, `new Ctor()`, and `this.member` shapes) to native PHP closures that PHP 8.5's tracing JIT can compile to machine code. Most hot dispatch happens inside the VM's switch loop or directly in JIT-compiled PHP — not by walking the AST — but each VM opcode still pays a PHP dispatch tax, and any shape JsToPhp doesn't yet handle falls back to the slower VM. The ceiling on dispatch-bound workloads is roughly **~100× slower than V8**.
 
-For embedding workloads — running user-supplied logic on PHP data, content-transformation pipelines, validation rules — the ceiling rarely matters. V8 is 100 ms; Phasis is 10 s; both are well below the request timeout.
-
-A future bytecode JIT (lowering hot JS functions to opcache-friendly PHP that the host's tracing JIT can compile to native) could close more of this gap. It's on the roadmap, not yet shipped.
+For embedding workloads — running user-supplied logic on PHP data, content-transformation pipelines, validation rules — the ceiling rarely matters. V8 is 100 ms; Phasis is 10 s; both are well below the request timeout. Closing more of the gap would require teaching JsToPhp more shapes (parameter type inference, `await` / `yield*` lowering) or emitting opcache opcodes directly rather than through `eval()`. See [Benchmarks § Roadmap](/docs/advanced/benchmarks#roadmap).
 
 ## Multi-agent concurrency
 

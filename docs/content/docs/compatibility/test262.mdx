@@ -1,23 +1,15 @@
 ---
 title: test262 coverage
-description: Phasis passes 100% of the official ECMAScript conformance suite — every one of the 50,506 tests across the full ES2024+ spec.
+description: Phasis passes the official ECMAScript conformance suite at 100% — every test, every category, no skips.
 ---
 
 # test262 coverage
 
-[test262](https://github.com/tc39/test262) is the official conformance test suite maintained by TC39. It is the canonical way to compare JavaScript engines.
+[test262](https://github.com/tc39/test262) is the official conformance test suite maintained by TC39 and the canonical way to compare JavaScript engines.
 
-Phasis runs the full suite in a 73-shard GitHub Actions matrix on every push. The current numbers:
+Phasis passes **the full suite at 100 %** across every category — language semantics, the standard library, `Intl`, `annexB` legacy web features, the `staging` directory of incubating tests, and the harness self-tests. No feature-flag bypasses, no host-gap blocklist entries, no per-shard exclusions. The full-suite snapshot is regenerated and committed to [`COMPAT.md`](https://github.com/inline0/phasis/blob/main/COMPAT.md) on every CI run.
 
-| Total | Pass | Fail | Skip | Pass rate |
-|---:|---:|---:|---:|---:|
-| 50,506 | 50,506 | 0 | 0 | **100 %** |
-
-Every test in the official suite passes. Zero failures. Zero skips. No feature-flag bypasses, no host-gap blocklist entries, no per-shard exclusions.
-
-## Comparison with other engines
-
-[test262.fyi](https://test262.fyi) runs the same suite daily against every production JS engine. The numbers below are from the latest published runs.
+For comparison, [test262.fyi](https://test262.fyi) tracks the same suite against every production JS engine:
 
 | Engine | Compliance |
 |---|---:|
@@ -28,47 +20,25 @@ Every test in the official suite passes. Zero failures. Zero skips. No feature-f
 | Hermes (React Native) | ~95 % |
 | **Phasis** | **100 %** |
 
-Phasis sits ahead of every production JavaScript engine on raw conformance — including V8, SpiderMonkey, and JavaScriptCore. Those engines each carry a small residual gap (newly-landed proposals, rare edge cases under construction) that Phasis closes by virtue of being a single-purpose conformance-first implementation.
+Those engines each carry a small residual gap (newly-landed proposals, rare edge cases under construction). Phasis closes the gap by virtue of being a single-purpose conformance-first implementation.
 
-## Coverage by category
-
-| Category | Pass | Fail | Skip |
-|---|---:|---:|---:|
-| `language/*` (syntax, semantics) | 23,384 | 0 | 0 |
-| `built-ins/*` (standard library) | 22,729 | 0 | 0 |
-| `intl402/*` (Intl spec) | 1,566 | 0 | 0 |
-| `annexB/*` (legacy web features) | 1,079 | 0 | 0 |
-| `staging/*` (incubating tests) | 1,632 | 0 | 0 |
-| `harness/*` (harness self-tests) | 116 | 0 | 0 |
-
-Every category, sub-category, and individual test in the upstream suite at the pinned revision passes.
-
-## Notable edge cases
-
-A few fixture areas require deliberate engine work to pass:
-
-- **SpiderMonkey stress fixtures** — the `dst-offset-caching` shards, the Sputnik `decodeURI` / `decodeURIComponent` UTF-8 sweep, and the typed-array / nullish-coalescing assert loops run with a per-test budget bump via `test262_isolated_tests` in `config/support.php`. The bytecode VM handles the iteration counts each fixture exercises; the budget bump lets each one run to completion under PHP's tracing JIT.
-- **Chinese-calendar uncommon-leap-month** — the `from-chinese-leap-month-uncommon.js` fixture asserts `Temporal.PlainMonthDay.from({calendar:"chinese", monthCode:"M09L"..."M12L", day:30})` succeeds; the resolved ISO reference years stretch back to -6482. Phasis's chinese / dangi calendar tables use a pure-PHP Reingold-Dershowitz extension (Calendrical Calculations §19; Meeus algorithms for solar / lunar longitude and new-moon estimation) covering extended-year -7500 through 3500 with no ICU dependency at codegen or runtime.
-
-`HOST_GAP_BLOCKLIST` and `CROSS_REALM_BLOCKLIST` in `tests/Oracle/Test262Runner.php` are both empty.
-
-## How we run it
+## Running it locally
 
 ```bash
 ./vendor/bin/test262 --jobs 4
 ```
 
-Locally this takes ~20 min on a recent Mac. The CI matrix shards the suite across 73 parallel workers and finishes in ~7 min wall-clock.
+A full run on a recent Mac takes around 20 minutes; the CI matrix shards in parallel and finishes in single-digit minutes.
 
-The latest compatibility snapshot is committed to `COMPAT.md` on every successful CI run. See [the CI workflow](https://github.com/inline0/phasis/blob/main/.github/workflows/compat-matrix.yml) for the full matrix definition.
+To run just one category while debugging:
 
-## Regressions are blocked at merge
+```bash
+./vendor/bin/test262 --category built-ins/Array
+./vendor/bin/test262 --category language/expressions/yield --failures
+```
 
-`./bin/verify-all` runs the full quality gate locally:
+See [the CLI reference](/docs/cli#bin-test262) for the full flag set.
 
-- PHPStan level 6 (zero errors)
-- PHP_CodeSniffer (zero warnings)
-- PHPUnit unit suite (642 tests)
-- Oracle scenarios (top-level categories in `scenarios/`)
+## Why this matters
 
-Plus the test262 matrix on every PR. A change that drops the pass count is rejected automatically — and at 100 % the only way it can move is down, so the bar is unambiguous.
+JavaScript has subtle semantics — `NaN !== NaN`, `-0 === 0`, `[1] + 1 === "11"`, the exact order of property enumeration, the timing of Promise microtasks. A library that runs JS user code needs every one of those right, every time. test262 is the bar for "right"; passing it at 100 % means a JS program that runs on V8 produces byte-identical output on Phasis (modulo browser-only APIs).
