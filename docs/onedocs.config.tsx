@@ -41,7 +41,7 @@ export default defineConfig({
       {
         title: "100% test262",
         description:
-          "All 50,506 official ECMAScript conformance tests pass.",
+          "Passes the entire official ECMAScript conformance suite — every test, every category, no skips.",
         icon: <CheckCircle2 className={iconClass} />,
       },
       {
@@ -95,7 +95,7 @@ export default defineConfig({
       {
         title: "Oracle-Tested",
         description:
-          "Every change verified against Node.js (V8). 73-shard CI matrix on every push.",
+          "Every change verified against Node.js (V8). test262 + WPT + popular libraries run in CI on every push.",
         icon: <Cpu className={iconClass} />,
       },
       {

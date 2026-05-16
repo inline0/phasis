@@ -8,8 +8,8 @@ description: Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web 
 Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScript in the host PHP process — without `exec('node …')`, without FFI, and without binary extensions beyond `ext-mbstring` (always shipped) and `ext-bcmath` (default on every mainstream PHP build). `ext-intl` is optional. `ext-curl` enables outbound `fetch()`.
 
 - **Embeddable** — drop a JS runtime into any PHP app, framework, or CLI tool via the `Phasis\Engine` class.
-- **Spec-compliant** — 100 % of the official test262 suite passes (50,506 / 50,506).
-- **Web APIs** — full **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException), full **Fetch Pack** (fetch, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget, full WHATWG Streams, navigator), plus `crypto` + `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, and a real event loop. 815 / 815 imported Web Platform Tests pass.
+- **Spec-compliant** — passes the official test262 suite at 100 %, every category, no skips.
+- **Web APIs** — full **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException), full **Fetch Pack** (fetch, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget, full WHATWG Streams, navigator), plus `crypto` + `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, and a real event loop. 100 % of imported Web Platform Tests pass.
 - **Modern surface** — arrow functions, classes, async/await, Promises, generators, Symbol, BigInt, Proxy, Reflect, Temporal, Intl, TypedArrays, full module support.
 - **Direct PHP↔JS interop** — share PHP objects with JS without serialization. Bind PHP closures as JS functions and mutate PHP arrays from JS in place.
 
@@ -29,7 +29,7 @@ Phasis closes that gap. Your PHP code can lex, parse, and execute JavaScript usi
 - Supports modern syntax — destructuring, spread/rest, computed properties, optional chaining, nullish coalescing, template literals, tagged templates, classes (with private fields, static blocks, decorators), top-level await.
 - Bridges PHP and JS values losslessly. Pass a PHP object into JS and mutations are visible to PHP. Pass a PHP callable and JS sees it as a function.
 - Sandboxes execution. Resource limits cover call depth, loop iterations, string length, console output, and wall-clock time. The host controls the runtime, including the `fetch` transport and policy hooks.
-- Verifies every change against Node.js (V8). Compliance is measured continuously against the official test262 suite in a 73-shard CI matrix, plus the Web Platform Tests via `bin/wpt`.
+- Verifies every change against Node.js (V8). Compliance is measured continuously against the official test262 suite plus the Web Platform Tests in CI on every push.
 
 ## What it is not
 

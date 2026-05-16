@@ -160,8 +160,7 @@ await Promise.all([
 
 ## Caveats
 
-- **No timer-based scheduling.** Phasis has no host event loop yet (no `setTimeout`/`setInterval`), so streams that depend on time-spaced production must drive their own scheduling. `Promise.resolve().then(...)` microtask draining works.
-- **Synchronous-only producers.** A `pull()` that performs blocking PHP I/O will block the script. Use the fetch transport hook for HTTP; for files, prefer reading into memory upfront.
+- **Synchronous-only producers.** A `pull()` that performs blocking PHP I/O will block the script. Use the fetch transport hook for HTTP; for files, prefer reading into memory upfront. `setTimeout` / `setInterval` are available (see [Event loop](/docs/api#event-loop)) but the engine uses **virtual time** by default — a `setTimeout(cb, 1000)` inside a `pull()` does not sleep PHP, it advances the loop clock. Real-time pacing needs the host to drive `tickEventLoop()` against a wall clock.
 
 ## See also
 

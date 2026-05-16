@@ -18,27 +18,9 @@ All packs are **on by default**. No flag, no setup — `typeof fetch` returns `"
 
 ## Conformance
 
-WPT fixtures imported into `tests/Wpt/fixtures/` cover the Web Platform Pack and Fetch Pack:
+The imported [Web Platform Tests](https://github.com/web-platform-tests/wpt) corpus (`tests/Wpt/fixtures/`) covers `AbortController` / `AbortSignal`, `atob` / `btoa`, `Blob` / `File`, `TextEncoder` / `TextDecoder`, `EventTarget` / `Event`, `FormData`, `Headers`, `performance.now`, the full Streams Standard (`Readable`/`Writable`/`Transform` + BYOB + queuing), `structuredClone`, `URL` / `URLSearchParams`. Everything passes.
 
-| Fixture area | Fixtures |
-|---|---:|
-| `abort/` (AbortController / AbortSignal) | 4 |
-| `atob/` | 1 |
-| `blob/` (Blob, File slicing, byte semantics) | 8 |
-| `encoding/` (TextEncoder / TextDecoder) | 2 |
-| `events/` (EventTarget, Event, propagation) | 8 |
-| `file/` | 1 |
-| `formdata/` | 9 |
-| `headers/` | 12 |
-| `hr-time/` (`performance.now`) | 1 |
-| `streams/` (Readable / Writable / Transform + BYOB + queuing) | 7 |
-| `structured-clone/` | 1 |
-| `url/` (URL, URLSearchParams) | 2 |
-| **Total** | **56 fixtures · 815 subtests · 100 %** |
-
-`crypto` / `SubtleCrypto`, `WebSocket`, and `XMLHttpRequest` ship in the engine but don't yet have WPT fixtures imported. They're verified against Node.js via [popular-package tests](/docs/compatibility/popular-packages) and the unit-test suite.
-
-Verified by `bin/wpt` against the official [Web Platform Tests](https://github.com/web-platform-tests/wpt). Run yourself:
+`crypto` / `SubtleCrypto`, `WebSocket`, and `XMLHttpRequest` ship in the engine but don't yet have WPT fixtures imported — they're verified against Node.js via the [popular-package tests](/docs/compatibility/popular-packages) and the PHPUnit suite. Run the WPT corpus yourself:
 
 ```bash
 bin/wpt                # everything
@@ -171,6 +153,4 @@ Most of these can be polyfilled by the embedder via `$engine->setGlobal()` if ne
 
 ## Growing the WPT corpus
 
-The local WPT clone at `tests/Wpt/upstream/` is a sparse-checkout of [web-platform-tests/wpt](https://github.com/web-platform-tests/wpt) covering `fetch/`, `streams/`, `FileAPI/`, `xhr/formdata/`, `dom/abort/`, `dom/events/`. 56 fixtures are currently imported into `tests/Wpt/fixtures/` across 12 areas.
-
-To import more: copy any `*.any.js` file from `upstream/<area>/` into `tests/Wpt/fixtures/<category>/`. The runner picks it up on next run. Failures get logged via `bin/wpt --verbose`.
+`tests/Wpt/upstream/` is a sparse-checkout of [web-platform-tests/wpt](https://github.com/web-platform-tests/wpt) covering `fetch/`, `streams/`, `FileAPI/`, `xhr/formdata/`, `dom/abort/`, `dom/events/`. To extend coverage: copy any `*.any.js` file from `upstream/<area>/` into `tests/Wpt/fixtures/<category>/`. The runner picks it up on next run; failures get logged via `bin/wpt --verbose`.
