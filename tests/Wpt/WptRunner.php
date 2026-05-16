@@ -214,6 +214,7 @@ final class WptRunner
         // fixture-file basename after `.any.js` is stripped.
         static $categoryMap = [
             'crypto' => 'WebCryptoAPI',
+            'xhr' => 'xhr',
         ];
         static $fixtureSubdir = [
             // crypto/<fixture> → WebCryptoAPI/<subdir>/

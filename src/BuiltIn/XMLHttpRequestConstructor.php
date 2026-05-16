@@ -110,7 +110,7 @@ final class XMLHttpRequestConstructor
 
         self::definePrototypeMethods($proto);
         self::defineEventTargetMethods($proto);
-        self::defineAccessors($proto);
+        self::defineAccessors($proto, $env);
 
         $env->defineVar('XMLHttpRequest', $ctor);
     }
@@ -220,7 +220,7 @@ final class XMLHttpRequestConstructor
         );
     }
 
-    private static function defineAccessors(JsObject $proto): void
+    private static function defineAccessors(JsObject $proto, Environment $env): void
     {
         $accessor = static function (string $name, \Closure $getter, ?\Closure $setter = null) use ($proto): void {
             $g = JsFunction::fromCallable('get ' . $name, $getter, 0);
@@ -255,15 +255,39 @@ final class XMLHttpRequestConstructor
                 $xhr = self::requireXhr($this_, 'responseType');
                 return new JsString((string) ($xhr->getInternalProperty('[[ResponseType]]') ?? ''));
             },
-            static function (JsValue $this_, array $args): JsValue {
+            static function (JsValue $this_, array $args) use ($env): JsValue {
                 $xhr = self::requireXhr($this_, 'responseType');
                 $val = TypeConversion::toString($args[0] ?? JsUndefined::instance());
-                // Per spec, only specific values are accepted; anything
-                // else is silently ignored. We accept the supported
-                // subset.
-                if (in_array($val, ['', 'text', 'arraybuffer', 'json', 'blob'], true)) {
-                    $xhr->setInternalProperty('[[ResponseType]]', $val);
+                // WebIDL: XMLHttpRequestResponseType is an enum.
+                // Values outside the enum are silently ignored —
+                // the spec setter steps don't even run, so no state
+                // check, no throw.
+                $validEnum = ['', 'arraybuffer', 'blob', 'document', 'json', 'text'];
+                if (!in_array($val, $validEnum, true)) {
+                    return JsUndefined::instance();
                 }
+                // "document" is only meaningful in a Window context.
+                // Phasis runs JS in worker-equivalent realms (no DOM),
+                // so a "document" assignment short-circuits without
+                // throwing or setting anything.
+                if ($val === 'document') {
+                    return JsUndefined::instance();
+                }
+                // Per spec §4.5.4: setting responseType after the
+                // request has progressed past HEADERS_RECEIVED throws
+                // InvalidStateError.
+                $rs = (int) ($xhr->getInternalProperty('[[ReadyState]]') ?? 0);
+                if ($rs >= 3) {
+                    throw new \Phasis\Exceptions\JsThrowable(
+                        DomExceptionConstructor::create(
+                            $env,
+                            "Failed to set the 'responseType' property on 'XMLHttpRequest': "
+                            . 'The response type cannot be set if the object\'s state is LOADING or DONE.',
+                            'InvalidStateError',
+                        ),
+                    );
+                }
+                $xhr->setInternalProperty('[[ResponseType]]', $val);
                 return JsUndefined::instance();
             },
         );
@@ -325,8 +349,22 @@ final class XMLHttpRequestConstructor
                 $xhr = self::requireXhr($this_, 'withCredentials');
                 return JsBoolean::of((bool) ($xhr->getInternalProperty('[[WithCredentials]]') ?? false));
             },
-            static function (JsValue $this_, array $args): JsValue {
+            static function (JsValue $this_, array $args) use ($env): JsValue {
                 $xhr = self::requireXhr($this_, 'withCredentials');
+                // Spec §4.5.4: throw InvalidStateError if state is
+                // not UNSENT or OPENED, or if the send flag is set.
+                $rs = (int) ($xhr->getInternalProperty('[[ReadyState]]') ?? 0);
+                $sendFlag = (bool) ($xhr->getInternalProperty('[[SendFlag]]') ?? false);
+                if (($rs !== 0 && $rs !== 1) || $sendFlag) {
+                    throw new \Phasis\Exceptions\JsThrowable(
+                        DomExceptionConstructor::create(
+                            $env,
+                            "Failed to set the 'withCredentials' property on 'XMLHttpRequest': "
+                            . 'The value may only be set if the object\'s state is UNSENT or OPENED.',
+                            'InvalidStateError',
+                        ),
+                    );
+                }
                 $xhr->setInternalProperty(
                     '[[WithCredentials]]',
                     TypeConversion::toBoolean($args[0] ?? JsUndefined::instance()),
@@ -435,18 +473,32 @@ final class XMLHttpRequestConstructor
             $bodyArg = $args[0] ?? JsUndefined::instance();
             $body = self::bodyArgToString($bodyArg);
             $xhr->setInternalProperty('[[Aborted]]', false);
+            $xhr->setInternalProperty('[[SendFlag]]', true);
 
             // Dispatch loadstart before queuing the transport.
             self::fireEvent($xhr, 'loadstart');
 
-            // Hand the actual transport off to a microtask so send()
-            // returns synchronously and listeners can attach mid-line.
             $realm = Engine::getCurrentRealm();
             if ($realm === null) {
                 // No realm? Treat as immediate error.
                 self::finishError($xhr, 'no realm');
                 return JsUndefined::instance();
             }
+
+            // Sync XHR (`xhr.open(method, url, false)`): run the
+            // transport inline so `send()` blocks until the request
+            // completes and readyState advances to DONE. Spec
+            // §4.5.6 step 11: synchronous XHR runs the fetch with
+            // the JS event loop frozen.
+            $async = (bool) ($xhr->getInternalProperty('[[Async]]') ?? true);
+            if (!$async) {
+                self::runTransport($xhr, $body, $realm);
+                return JsUndefined::instance();
+            }
+
+            // Async XHR: hand the transport off to a microtask so
+            // send() returns synchronously and listeners can attach
+            // mid-line.
             JsPromise::scheduleCallback(static function () use ($xhr, $body, $realm): void {
                 self::runTransport($xhr, $body, $realm);
             });
@@ -461,14 +513,30 @@ final class XMLHttpRequestConstructor
             $xhr = self::requireXhr($this_, 'abort');
             $xhr->setInternalProperty('[[Aborted]]', true);
             $rs = (int) ($xhr->getInternalProperty('[[ReadyState]]') ?? 0);
-            if ($rs > 0 && $rs < 4) {
+            $sendFlag = (bool) ($xhr->getInternalProperty('[[SendFlag]]') ?? false);
+            // Spec §4.5.7:
+            //   - If state is (OPENED with send flag set) OR
+            //     HEADERS_RECEIVED OR LOADING:
+            //       run request-error steps with "abort", set state
+            //       to DONE, fire `abort` + `loadend`, then set state
+            //       to UNSENT.
+            //   - If state is DONE: set state to UNSENT.
+            //   - Else (UNSENT, or OPENED with send flag NOT set):
+            //     do nothing observable. State stays put.
+            if (($rs === 1 && $sendFlag) || $rs === 2 || $rs === 3) {
                 $xhr->setInternalProperty('[[Status]]', 0);
                 $xhr->setInternalProperty('[[StatusText]]', '');
                 self::setReadyState($xhr, 4);
                 self::fireEvent($xhr, 'abort');
                 self::fireEvent($xhr, 'loadend');
+                $xhr->setInternalProperty('[[ReadyState]]', 0);
+                $xhr->setInternalProperty('[[SendFlag]]', false);
+            } elseif ($rs === 4) {
+                $xhr->setInternalProperty('[[ReadyState]]', 0);
+                $xhr->setInternalProperty('[[SendFlag]]', false);
             }
-            $xhr->setInternalProperty('[[ReadyState]]', 0);
+            // OPENED without send flag, or UNSENT — leave readyState
+            // alone. The spec is explicit that no events fire here.
             return JsUndefined::instance();
         };
     }
