@@ -120,6 +120,20 @@ final class WptRunner
 
         try {
             $engine->eval($this->harnessSource);
+            // Parse `// META: script=<rel-path>` directives and load
+            // each one before the fixture body. Paths are relative to
+            // the fixture file. WPT uses these to share helpers
+            // (e.g. WebCryptoAPI/util/helpers.js).
+            foreach (self::parseMetaScripts($source) as $rel) {
+                $scriptPath = self::resolveMetaScriptPath($path, $rel);
+                if ($scriptPath === null) {
+                    continue;
+                }
+                $scriptSource = @file_get_contents($scriptPath);
+                if ($scriptSource !== false) {
+                    $engine->eval($scriptSource);
+                }
+            }
             $engine->eval($source);
         } catch (\Throwable $e) {
             // A fixture that errors before any subtest counts as a
@@ -141,6 +155,78 @@ final class WptRunner
      *
      * @return array<string, list<string>>  category => list of absolute paths
      */
+    /**
+     * Extract every `// META: script=<path>` directive from a WPT
+     * fixture's source. WPT uses these as the equivalent of script
+     * tags — the harness loads each referenced file before the
+     * fixture body so its helpers (`equalBuffers`, `copyBuffer`,
+     * etc.) are in scope.
+     *
+     * @return list<string>
+     */
+    private static function parseMetaScripts(string $source): array
+    {
+        $scripts = [];
+        if (preg_match_all('~^// META: script=(\S+)~m', $source, $matches)) {
+            foreach ($matches[1] as $path) {
+                $scripts[] = $path;
+            }
+        }
+        return $scripts;
+    }
+
+    /**
+     * Resolve a `// META: script=` path against a fixture. Two
+     * lookup strategies, in order:
+     *   1. Relative to the fixture (matches WPT's own layout when
+     *      the helper lives alongside the test).
+     *   2. Relative to the upstream `tests/Wpt/upstream/` tree at
+     *      a parallel location — fixtures imported into
+     *      `tests/Wpt/fixtures/<category>/` reference helpers that
+     *      stayed in `tests/Wpt/upstream/<area>/util/`.
+     *
+     * Returns the resolved absolute path, or null if neither
+     * candidate exists.
+     */
+    private static function resolveMetaScriptPath(string $fixturePath, string $relPath): ?string
+    {
+        $direct = dirname($fixturePath) . '/' . $relPath;
+        if (is_file($direct)) {
+            return $direct;
+        }
+        // Imported fixtures often retain their upstream-relative
+        // script paths (e.g. `../util/helpers.js`) even though
+        // we've flattened them into `tests/Wpt/fixtures/<cat>/`.
+        // Resolve against the upstream tree by mapping each category
+        // to its WPT root directory and walking the relative path
+        // from likely upstream sub-locations.
+        static $categoryMap = [
+            'crypto' => 'WebCryptoAPI',
+        ];
+        $category = basename(dirname($fixturePath));
+        if (!isset($categoryMap[$category])) {
+            return null;
+        }
+        $upstreamRoot = dirname(__DIR__) . '/Wpt/upstream/' . $categoryMap[$category];
+        // Try every subdirectory of upstreamRoot as the anchor for
+        // the relative path. WebCryptoAPI fixtures live under
+        // categories like digest/, encrypt_decrypt/, sign_verify/ —
+        // each one has `// META: script=../util/helpers.js`.
+        foreach (glob($upstreamRoot . '/*', GLOB_ONLYDIR) ?: [] as $subdir) {
+            $candidate = realpath($subdir . '/' . $relPath);
+            if ($candidate !== false && is_file($candidate)) {
+                return $candidate;
+            }
+        }
+        // Also try the upstream root itself for fixtures at the top
+        // level.
+        $candidate = realpath($upstreamRoot . '/' . $relPath);
+        if ($candidate !== false && is_file($candidate)) {
+            return $candidate;
+        }
+        return null;
+    }
+
     public static function discoverFixtures(): array
     {
         $root = __DIR__ . '/fixtures';

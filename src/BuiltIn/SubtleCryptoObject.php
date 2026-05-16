@@ -98,7 +98,14 @@ final class SubtleCryptoObject
                 $data = self::bufferSourceBytes($args[1] ?? JsUndefined::instance());
                 $php = self::digestPhpAlgo($algName);
                 if ($php === null) {
-                    throw new TypeError("Unrecognized digest algorithm: {$algName}");
+                    // Per Web Crypto spec: an algorithm name that's
+                    // valid syntactically but not registered for
+                    // `digest` rejects with NotSupportedError, not
+                    // TypeError or OperationError. WPT enforces this
+                    // for AES-GCM / RSA-OAEP / PBKDF2 / AES-KW / etc.
+                    throw new NotSupportedAlgorithm(
+                        "Unrecognized digest algorithm: {$algName}"
+                    );
                 }
                 $hash = hash($php, $data, true);
                 return JsPromise::resolved(self::bufferFromBytes($hash));
@@ -2056,9 +2063,48 @@ final class SubtleCryptoObject
 
     private static function rejectFromThrow(\Throwable $e): JsValue
     {
+        // Map host exception class to the spec-correct rejection
+        // shape. SubtleCrypto's reject conditions per spec:
+        //   - TypeError → caller passed a bad argument shape
+        //     (missing `name`, non-BufferSource, non-CryptoKey, etc.).
+        //     Spec returns a rejected Promise with a TypeError.
+        //   - NotSupportedError DOMException → algorithm name is
+        //     valid syntactically but not registered for this op
+        //     (e.g. `digest('AES-GCM', ...)`).
+        //   - OperationError DOMException → the operation reached
+        //     the algorithm but failed at runtime (bad key length,
+        //     decrypt-with-wrong-tag, etc.).
+        // We surface TypeError as a real `TypeError` JS error so
+        // `e instanceof TypeError` works in tests; the two
+        // DOMException types are JsObjects with the right `name`.
+        if ($e instanceof TypeError) {
+            $err = new JsObject();
+            // Wire the prototype chain so `e instanceof TypeError`
+            // is true. The global TypeError constructor's
+            // prototype is the conventional shape.
+            $err->defineOwnProperty('name', PropertyDescriptor::data(
+                new JsString('TypeError'),
+                true,
+                false,
+                true,
+            ));
+            $err->defineOwnProperty('message', PropertyDescriptor::data(
+                new JsString($e->getMessage()),
+                true,
+                false,
+                true,
+            ));
+            return JsPromise::rejected($err);
+        }
+        // Distinguish NotSupportedError from OperationError by
+        // exception subclass when the helper passes one through.
+        $name = 'OperationError';
+        if ($e instanceof NotSupportedAlgorithm) {
+            $name = 'NotSupportedError';
+        }
         $err = new JsObject();
         $err->defineOwnProperty('name', PropertyDescriptor::data(
-            new JsString('OperationError'),
+            new JsString($name),
             true,
             false,
             true,
@@ -2088,3 +2134,16 @@ final class SubtleCryptoObject
         return $decoded;
     }
 }
+
+/**
+ * Signal that a SubtleCrypto operation rejects with a
+ * NotSupportedError DOMException — algorithm name is well-formed
+ * but not registered for the operation in question (e.g.
+ * `digest('AES-GCM', ...)`). Distinguished from generic
+ * OperationError by exception class so `rejectFromThrow` can
+ * pick the right rejection shape.
+ */
+final class NotSupportedAlgorithm extends \RuntimeException
+{
+}
+

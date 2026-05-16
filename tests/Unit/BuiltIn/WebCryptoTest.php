@@ -63,27 +63,30 @@ JS);
 
     public function testGetRandomValuesRejectsFloatArrays(): void
     {
+        // Per Web Crypto spec: Float* arrays throw TypeMismatchError
+        // (a DOMException), not TypeError. WPT enforces this.
         $engine = new Engine();
-        $threw = $engine->eval(<<<'JS'
-let threw = false;
+        $name = $engine->eval(<<<'JS'
+let name = '';
 try { crypto.getRandomValues(new Float32Array(8)); }
-catch (e) { threw = e instanceof TypeError; }
-threw
+catch (e) { name = e.name; }
+name
 JS);
-        $this->assertTrue($threw);
+        $this->assertSame('TypeMismatchError', $name);
     }
 
     public function testGetRandomValuesRespectsQuotaCap(): void
     {
-        // The 65,536-byte limit is documented and enforced by browsers.
+        // Per Web Crypto spec: > 65,536 bytes throws QuotaExceededError
+        // (a DOMException), not TypeError. WPT enforces this.
         $engine = new Engine();
-        $threw = $engine->eval(<<<'JS'
-let threw = false;
+        $name = $engine->eval(<<<'JS'
+let name = '';
 try { crypto.getRandomValues(new Uint8Array(70000)); }
-catch (e) { threw = e instanceof TypeError; }
-threw
+catch (e) { name = e.name; }
+name
 JS);
-        $this->assertTrue($threw);
+        $this->assertSame('QuotaExceededError', $name);
     }
 
     public function testSubtleDigestSha256OfHello(): void

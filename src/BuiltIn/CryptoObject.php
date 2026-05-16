@@ -43,7 +43,7 @@ final class CryptoObject
         $crypto->defineOwnProperty(
             'getRandomValues',
             PropertyDescriptor::data(
-                JsFunction::fromCallable('getRandomValues', self::getRandomValuesImpl(), 1),
+                JsFunction::fromCallable('getRandomValues', self::getRandomValuesImpl($env), 1),
                 true,
                 false,
                 true,
@@ -72,34 +72,61 @@ final class CryptoObject
         $env->defineVar('crypto', $crypto);
     }
 
-    private static function getRandomValuesImpl(): \Closure
+    private static function getRandomValuesImpl(Environment $env): \Closure
     {
-        return static function (JsValue $this_, array $args): JsValue {
+        return static function (JsValue $this_, array $args) use ($env): JsValue {
             unset($this_);
             $array = $args[0] ?? null;
+            // Spec: parameter must be an integer typed array. Other
+            // ArrayBufferView shapes (DataView, Float*Array) throw
+            // TypeMismatchError per the Web Crypto spec; anything
+            // that isn't an ArrayBufferView at all throws TypeError.
+            if ($array instanceof \Phasis\Value\JsDataView) {
+                throw new \Phasis\Exceptions\JsThrowable(
+                    DomExceptionConstructor::create(
+                        $env,
+                        "Failed to execute 'getRandomValues' on 'Crypto': "
+                        . 'The provided ArrayBufferView is of type DataView, '
+                        . 'which is not an integer array type.',
+                        'TypeMismatchError',
+                    ),
+                );
+            }
             if (!$array instanceof JsTypedArray) {
                 throw new TypeError(
                     "Failed to execute 'getRandomValues' on 'Crypto': "
                     . 'parameter 1 is not of type ArrayBufferView',
                 );
             }
-            // Per spec, Float32Array and Float64Array are NOT supported.
+            // Per spec, Float16Array / Float32Array / Float64Array are
+            // NOT supported (TypeMismatchError, a DOMException).
             $kind = $array->getTypeName();
             if ($kind === 'Float16Array' || $kind === 'Float32Array' || $kind === 'Float64Array') {
-                throw new TypeError(
-                    "Failed to execute 'getRandomValues' on 'Crypto': "
-                    . 'The provided ArrayBufferView is of type ' . $kind
-                    . ', not a Uint8Array / Int8Array / Uint8ClampedArray / Int16Array '
-                    . '/ Uint16Array / Int32Array / Uint32Array / BigInt64Array / BigUint64Array.',
+                throw new \Phasis\Exceptions\JsThrowable(
+                    DomExceptionConstructor::create(
+                        $env,
+                        "Failed to execute 'getRandomValues' on 'Crypto': "
+                        . 'The provided ArrayBufferView is of type ' . $kind
+                        . ', not a Uint8Array / Int8Array / Uint8ClampedArray / Int16Array '
+                        . '/ Uint16Array / Int32Array / Uint32Array / BigInt64Array / BigUint64Array.',
+                        'TypeMismatchError',
+                    ),
                 );
             }
             $byteLength = $array->getLength() * $array->getBytesPerElement();
             if ($byteLength > self::QUOTA_BYTES) {
-                throw new TypeError(
-                    "Failed to execute 'getRandomValues' on 'Crypto': "
-                    . 'The ArrayBufferView byte length (' . $byteLength
-                    . ') exceeds the number of bytes of entropy available '
-                    . 'via this API (' . self::QUOTA_BYTES . ').',
+                // Per spec, throw QuotaExceededError (a DOMException),
+                // not TypeError — WPT explicitly checks the exception
+                // name.
+                throw new \Phasis\Exceptions\JsThrowable(
+                    DomExceptionConstructor::create(
+                        $env,
+                        "Failed to execute 'getRandomValues' on 'Crypto': "
+                        . 'The ArrayBufferView byte length (' . $byteLength
+                        . ') exceeds the number of bytes of entropy available '
+                        . 'via this API (' . self::QUOTA_BYTES . ').',
+                        'QuotaExceededError',
+                    ),
                 );
             }
             if ($byteLength === 0) {

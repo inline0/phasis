@@ -153,6 +153,23 @@
             "did not throw");
     };
 
+    // QuotaExceededError is its own exception type (was a DOMException
+    // until 2024; now a distinct interface). For our purposes we accept
+    // anything whose name === "QuotaExceededError".
+    global.assert_throws_quotaexceedederror = function (fn, description) {
+        try {
+            fn();
+        } catch (e) {
+            if (e && e.name === "QuotaExceededError") return;
+            throw AssertionError(
+                (description ? description + ": " : "") +
+                "threw " + (e && (e.name || e)) +
+                ", expected QuotaExceededError");
+        }
+        throw AssertionError((description ? description + ": " : "") +
+            "did not throw");
+    };
+
     global.assert_throws_exactly = function (value, fn, description) {
         try {
             fn();
