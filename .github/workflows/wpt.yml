@@ -81,7 +81,12 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
-          extensions: mbstring, bcmath, intl
+          # ext-brotli (kjdev/php-ext-brotli) unlocks the brotli
+          # subtests in the compression WPT corpus. The shivammathur
+          # action builds it from PECL when present in the extensions
+          # list; falls back gracefully if the build fails so the rest
+          # of WPT still runs.
+          extensions: mbstring, bcmath, intl, brotli
           coverage: none
 
       - name: Cache Composer dependencies

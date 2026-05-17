@@ -119,16 +119,19 @@ final class CompressionStream
     }
 
     /**
-     * Map the JS-facing format string onto the ZLIB_ENCODING_*
-     * constant that PHP's incremental zlib APIs accept. Returns
-     * null when the format is unsupported.
+     * Map the JS-facing format string onto an opaque encoding
+     * descriptor. zlib formats become integer ZLIB_ENCODING_*
+     * constants; brotli (when ext-brotli is loaded) becomes the
+     * string 'brotli' so {@see initInstance()} can branch on it.
+     * Returns null when the format is unsupported.
      */
-    private static function encodingFromFormat(string $format): ?int
+    private static function encodingFromFormat(string $format): int|string|null
     {
         return match ($format) {
             'gzip' => ZLIB_ENCODING_GZIP,
             'deflate' => ZLIB_ENCODING_DEFLATE,
             'deflate-raw' => ZLIB_ENCODING_RAW,
+            'brotli' => function_exists('brotli_compress_add') ? 'brotli' : null,
             default => null,
         };
     }
@@ -140,21 +143,46 @@ final class CompressionStream
      * writer's `close()` flushes the trailing block; the readable
      * side closes once the final flush is enqueued.
      */
-    private static function initInstance(JsObject $instance, int $encoding, bool $compress): void
+    private static function initInstance(JsObject $instance, int|string $encoding, bool $compress): void
     {
         $instance->setInternalProperty('[[IsCompressionStream]]', true);
 
-        // Each stream owns one incremental zlib context. We carry
-        // it inside a "transformer" object whose start/transform/
-        // flush callables close over it.
-        $ctx = $compress ? deflate_init($encoding) : inflate_init($encoding);
-        if ($ctx === false) {
-            throw new TypeError('Failed to initialise zlib context');
+        // Each stream owns one incremental codec context. zlib
+        // formats use deflate_init / inflate_init; brotli uses the
+        // matching ext-brotli incremental APIs. The transformer
+        // captures whichever context it built plus a closure that
+        // adds a chunk and a closure that flushes the trailing
+        // block, so the rest of this method stays codec-agnostic.
+        if ($encoding === 'brotli') {
+            $ctx = $compress
+                ? brotli_compress_init(BROTLI_GENERIC, 11)
+                : brotli_uncompress_init();
+            if ($ctx === false) {
+                throw new TypeError('Failed to initialise brotli context');
+            }
+            $addFn = $compress
+                ? static fn (string $bytes): string|false => @brotli_compress_add($ctx, $bytes, BROTLI_PROCESS)
+                : static fn (string $bytes): string|false => @brotli_uncompress_add($ctx, $bytes, BROTLI_PROCESS);
+            $flushFn = $compress
+                ? static fn (): string|false => @brotli_compress_add($ctx, '', BROTLI_FINISH)
+                : static fn (): string|false => @brotli_uncompress_add($ctx, '', BROTLI_FINISH);
+        } else {
+            $ctx = $compress ? deflate_init($encoding) : inflate_init($encoding);
+            if ($ctx === false) {
+                throw new TypeError('Failed to initialise zlib context');
+            }
+            $addFn = $compress
+                ? static fn (string $bytes): string|false => @deflate_add($ctx, $bytes, ZLIB_NO_FLUSH)
+                : static fn (string $bytes): string|false => @inflate_add($ctx, $bytes, ZLIB_NO_FLUSH);
+            $flushFn = $compress
+                ? static fn (): string|false => @deflate_add($ctx, '', ZLIB_FINISH)
+                : static fn (): string|false => @inflate_add($ctx, '', ZLIB_FINISH);
         }
 
+        $compressLabel = $compress;
         $transform = JsFunction::fromCallable(
             'transform',
-            static function (JsValue $this_, array $args) use (&$ctx, $compress): JsValue {
+            static function (JsValue $this_, array $args) use ($addFn, $compressLabel): JsValue {
                 $chunk = $args[0] ?? JsUndefined::instance();
                 $controller = $args[1] ?? null;
                 if (!$controller instanceof JsObject) {
@@ -170,17 +198,10 @@ final class CompressionStream
                 if ($bytes === '') {
                     return JsUndefined::instance();
                 }
-                // Suppress the PHP-level "data error" warning that
-                // inflate_add emits before returning false — WPT
-                // fixtures deliberately feed corrupt streams and
-                // expect the failure to surface as a TypeError on
-                // the JS side, not a PHPUnit warning.
-                $out = $compress
-                    ? @deflate_add($ctx, $bytes, ZLIB_NO_FLUSH)
-                    : @inflate_add($ctx, $bytes, ZLIB_NO_FLUSH);
+                $out = $addFn($bytes);
                 if ($out === false) {
                     throw new TypeError(
-                        $compress
+                        $compressLabel
                             ? 'Compression failed'
                             : 'DecompressionStream input was corrupt',
                     );
@@ -198,17 +219,15 @@ final class CompressionStream
 
         $flush = JsFunction::fromCallable(
             'flush',
-            static function (JsValue $this_, array $args) use (&$ctx, $compress): JsValue {
+            static function (JsValue $this_, array $args) use ($flushFn, $compressLabel): JsValue {
                 $controller = $args[0] ?? null;
                 if (!$controller instanceof JsObject) {
                     return JsUndefined::instance();
                 }
-                $out = $compress
-                    ? @deflate_add($ctx, '', ZLIB_FINISH)
-                    : @inflate_add($ctx, '', ZLIB_FINISH);
+                $out = $flushFn();
                 if ($out === false) {
                     throw new TypeError(
-                        $compress
+                        $compressLabel
                             ? 'Compression flush failed'
                             : 'DecompressionStream input ended mid-stream',
                     );
