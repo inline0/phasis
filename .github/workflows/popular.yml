@@ -86,7 +86,14 @@ jobs:
         with:
           node-version: '20'
 
+      # TZ=UTC matches the phpunit.xml.dist `date.timezone=UTC`
+      # pinning — the dayjs oracle is captured in UTC so we have to
+      # regen under UTC too. Ubuntu runners default to UTC already,
+      # but making it explicit means a self-hosted or differently-
+      # configured runner won't silently produce a spurious drift.
       - name: Verify oracles match Node.js
+        env:
+          TZ: UTC
         run: |
           for dir in tests/Popular/*/; do
             if [ -f "$dir/runner.js" ] && [ -f "$dir/oracle.txt" ]; then
