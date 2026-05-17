@@ -42,6 +42,36 @@ jobs:
         with:
           submodules: false
 
+      # Many imported fixtures load helpers via `// META: script=…`
+      # directives whose paths resolve into tests/Wpt/upstream/ — a
+      # local sparse-checkout of web-platform-tests/wpt. Re-create it
+      # in CI so the helpers resolve. Pin the commit so the suite is
+      # reproducible; bump alongside fixture imports.
+      - name: Populate WPT upstream sparse-checkout
+        env:
+          WPT_COMMIT: 6fb724af7b721f91aeef4ce237ba90112408fd68
+        run: |
+          mkdir -p tests/Wpt/upstream
+          cd tests/Wpt/upstream
+          git init -q
+          git remote add origin https://github.com/web-platform-tests/wpt.git
+          git config core.sparseCheckout true
+          cat > .git/info/sparse-checkout <<'EOF'
+          /fetch/
+          /streams/
+          /FileAPI/
+          /xhr/
+          /dom/abort/
+          /dom/events/
+          /resources/testharness.js
+          /resources/testharnessreport.js
+          /common/
+          /WebCryptoAPI/
+          /websockets/
+          EOF
+          git fetch --depth 1 origin "$WPT_COMMIT"
+          git checkout -q FETCH_HEAD
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -76,7 +106,7 @@ jobs:
       # status reflects whether anything regressed beyond the
       # documented gap.
       - name: Run WPT PHPUnit testsuite
-        run: php -d memory_limit=512M vendor/bin/phpunit --testsuite wpt
+        run: php -d memory_limit=2G vendor/bin/phpunit --testsuite wpt
 
       # bin/wpt is the honest CLI — it does NOT apply the allowlist and
       # exits non-zero if any subtest fails. Kept as an informational
@@ -86,4 +116,4 @@ jobs:
       # regression is still caught by the PHPUnit step above.
       - name: Run WPT runner (CLI, informational)
         continue-on-error: true
-        run: php -d memory_limit=512M bin/wpt
+        run: php -d memory_limit=2G bin/wpt
