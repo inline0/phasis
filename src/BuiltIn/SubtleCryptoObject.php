@@ -304,7 +304,12 @@ final class SubtleCryptoObject
                 if ($iv === '') {
                     throw new TypeError("{$algName} requires an iv / counter");
                 }
-                $ct = openssl_encrypt($plain, $cipher, $key, OPENSSL_RAW_DATA, $iv);
+                // WPT exercises malformed IVs and expects rejection;
+                // openssl_encrypt emits a PHP warning before failing,
+                // which `failOnWarning` in PHPUnit treats as a hard
+                // error. Silence the warning since the rejection still
+                // surfaces via the false return below.
+                $ct = @openssl_encrypt($plain, $cipher, $key, OPENSSL_RAW_DATA, $iv);
                 if ($ct === false) {
                     throw new \RuntimeException('openssl_encrypt failed');
                 }
@@ -371,7 +376,11 @@ final class SubtleCryptoObject
                 }
 
                 $iv = self::bufferSourceBytes($alg->get($algName === 'AES-CTR' ? 'counter' : 'iv'));
-                $pt = openssl_decrypt($cipherText, $cipher, $key, OPENSSL_RAW_DATA, $iv);
+                // See note in encryptImpl: WPT supplies malformed IVs
+                // to verify rejection; suppress the openssl warning so
+                // PHPUnit's failOnWarning gate doesn't bite. The false
+                // return path still triggers the RuntimeException.
+                $pt = @openssl_decrypt($cipherText, $cipher, $key, OPENSSL_RAW_DATA, $iv);
                 if ($pt === false) {
                     throw new \RuntimeException('openssl_decrypt failed');
                 }
