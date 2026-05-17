@@ -910,8 +910,21 @@ trait JsToPhpEmitExpression
         // then arg expressions in source order.
         $recv = $this->slotVar($recvName);
         $methodTemp = $this->newTemp('mc');
+        $propLit = var_export($propId->name, true);
+        // Inline the common own-data-slot and prototype-data-slot
+        // resolutions; only fall back to `->get()` when we miss both.
+        // This mirrors the VM's LOAD_MEMBER fast paths but inside the
+        // JsToPhp-compiled closure so proto-method hot loops never
+        // pay the method-dispatch tax. The receiver was already
+        // proven to be an object-typed local upstream, so the
+        // ->properties / ->prototype field accesses are safe.
         $this->pendingStatements[] = $methodTemp . ' = '
-            . $recv . '->get(' . var_export($propId->name, true) . ');';
+            . $recv . '->properties->dataSlots[' . $propLit . ']'
+            . ' ?? ('
+            . $recv . '->prototype !== null'
+            . ' ? (' . $recv . '->prototype->properties->dataSlots[' . $propLit . ']'
+            . ' ?? ' . $recv . '->get(' . $propLit . '))'
+            . ' : ' . $recv . '->get(' . $propLit . '));';
         $this->pendingStatements[] = 'if (!(' . $methodTemp
             . ' instanceof \\Phasis\\Value\\JsFunction)) { '
             . 'throw new \\Phasis\\Bytecode\\Bailout("non-function method"); }';

@@ -18,7 +18,18 @@ class JsObject implements JsValue
      * which subclasses' overrides honour the same way as JsObject.
      */
     public PropertyMap $properties;
-    private ?JsObject $prototype;
+    /**
+     * The object's [[Prototype]] internal slot. Public to avoid a
+     * method-dispatch hop on the LOAD_MEMBER hot path — every
+     * receiver of a method call ends up checking
+     * `$obj->getPrototype()` once for the IC validity check, and a
+     * direct field read shaves measurable time off proto-heavy
+     * benchmarks (proto-method, class instances, builtin method
+     * dispatch). External code should still go through
+     * `setPrototype()` to mutate; the JsProxy override + spec
+     * immutable-prototype check live there.
+     */
+    public ?JsObject $prototype;
     private static ?JsObject $globalPrototype = null;
     private bool $extensible = true;
     private bool $immutablePrototype = false;

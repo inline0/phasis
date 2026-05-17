@@ -1913,8 +1913,15 @@ final class VM
                                 $ic = $cf->loadMemberIc[$pc] ?? null;
                                 if ($ic !== null) {
                                     $cachedProto = $ic[0];
+                                    // Direct field access on the public
+                                    // ->prototype slot skips the
+                                    // getPrototype() method dispatch on
+                                    // the hot path. Subclasses with
+                                    // exotic [[GetPrototypeOf]] (JsProxy)
+                                    // are already excluded by the outer
+                                    // instanceof check above.
                                     if (
-                                        $cachedProto === $obj->getPrototype()
+                                        $cachedProto === $obj->prototype
                                         && $cachedProto->properties->version === $ic[2]
                                     ) {
                                         $stack[$sp++] = $ic[1];
@@ -1931,7 +1938,7 @@ final class VM
                                 // descriptors with $get === null).
                                 // Getter accessors must re-run on every
                                 // read, so they're not cacheable.
-                                $proto = $obj->getPrototype();
+                                $proto = $obj->prototype;
                                 if ($proto !== null) {
                                     $cacheable = false;
                                     if (
