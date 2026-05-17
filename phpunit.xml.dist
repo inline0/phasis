@@ -12,6 +12,12 @@
              need more headroom than PHP's default 128M. Match what
              bin/wpt sets so phpunit and the CLI runner agree. -->
         <ini name="memory_limit" value="2G"/>
+        <!-- Pin UTC so Date-touching tests (popular-package oracles
+             that exercise dayjs/date-fns, WPT fixtures that touch the
+             Date constructor) produce byte-identical output on every
+             machine. Without this the dev box (CET/CEST) and CI
+             (UTC) diverge on any local-TZ format. -->
+        <ini name="date.timezone" value="UTC"/>
     </php>
     <testsuites>
         <testsuite name="unit">

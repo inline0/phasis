@@ -1,0 +1,20 @@
+unquoted-keys {"a":1,"b":2,"c":3}
+single-quoted {"name":"Phasis","kind":"engine"}
+with-comments {"name":"Alice","age":30,"active":true}
+hex-literal {"flags":255,"mask":51966}
+infinity true
+nan.isNaN true
+decimal-dot {"a":0.5,"b":1,"c":-0.25}
+plus-sign {"a":1,"b":15000000000}
+multiline-str {"msg":"hello world"}
+nested-mixed {"users":[{"id":1,"name":"alice"},{"id":2,"name":"bob"}],"count":2}
+strict-json {"plain":"json","n":42}
+stringify.compact "{a:1,b:[2,3],c:'hi'}"
+stringify.indent2 "{\n  a: 1,\n  b: {\n    c: 2,\n  },\n}"
+stringify.indent.tab "{\n\ta: 1,\n}"
+stringify.replacer.array "{keep:1,alsoKeep:3}"
+stringify.replacer.fn "{a:1,c:3}"
+roundtrip.equal true
+relaxed-to-strict "{\"a\":1,\"b\":\"two\",\"c\":[0.5,255]}"
+stringify.infinity "{a:Infinity,b:-Infinity}"
+stringify.nan "{n:NaN}"
