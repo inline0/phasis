@@ -103,7 +103,8 @@ For backends with native cancellation (Guzzle's `on_progress`, Symfony's `Respon
 ## Patterns that won't work yet
 
 - **`signal.addEventListener('abort', () => fetch(cleanupUrl))`** — listener firing is synchronous; the cleanup fetch starts but won't complete inside the abort dispatch. Schedule it via the surrounding `await`.
-- **`setTimeout(() => ctrl.abort(), 100)`** — `setTimeout` isn't shipped yet. Use `AbortSignal.timeout(100)` instead.
+
+`setTimeout(() => ctrl.abort(), N)` works (the timer family ships and is WPT-covered), but `AbortSignal.timeout(N)` is shorter and conveys intent better when all you want is an abort-after-deadline signal.
 
 ## See also
 
