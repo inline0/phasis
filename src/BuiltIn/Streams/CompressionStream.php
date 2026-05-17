@@ -170,9 +170,14 @@ final class CompressionStream
                 if ($bytes === '') {
                     return JsUndefined::instance();
                 }
+                // Suppress the PHP-level "data error" warning that
+                // inflate_add emits before returning false — WPT
+                // fixtures deliberately feed corrupt streams and
+                // expect the failure to surface as a TypeError on
+                // the JS side, not a PHPUnit warning.
                 $out = $compress
-                    ? deflate_add($ctx, $bytes, ZLIB_NO_FLUSH)
-                    : inflate_add($ctx, $bytes, ZLIB_NO_FLUSH);
+                    ? @deflate_add($ctx, $bytes, ZLIB_NO_FLUSH)
+                    : @inflate_add($ctx, $bytes, ZLIB_NO_FLUSH);
                 if ($out === false) {
                     throw new TypeError(
                         $compress
@@ -199,8 +204,8 @@ final class CompressionStream
                     return JsUndefined::instance();
                 }
                 $out = $compress
-                    ? deflate_add($ctx, '', ZLIB_FINISH)
-                    : inflate_add($ctx, '', ZLIB_FINISH);
+                    ? @deflate_add($ctx, '', ZLIB_FINISH)
+                    : @inflate_add($ctx, '', ZLIB_FINISH);
                 if ($out === false) {
                     throw new TypeError(
                         $compress
