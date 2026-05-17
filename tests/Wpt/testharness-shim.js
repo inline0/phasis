@@ -260,6 +260,52 @@
         throw AssertionError(format(actual, expected, "===", description));
     };
 
+    // assert_own_property — true iff `propertyName` is an own
+    // property of `object` (string OR symbol key). Used by
+    // namespace / interface conformance fixtures.
+    global.assert_own_property = function (object, propertyName, description) {
+        if (object !== null && object !== undefined
+            && Object.prototype.hasOwnProperty.call(object, propertyName)) {
+            return;
+        }
+        throw AssertionError(
+            (description ? description + ": " : "") +
+            "expected own property " + String(propertyName) +
+            " on " + describe(object)
+        );
+    };
+
+    // assert_inherits — true iff `object` does NOT have `propertyName`
+    // as own, but accessing it via the prototype chain yields a value.
+    global.assert_inherits = function (object, propertyName, description) {
+        if (object !== null && object !== undefined
+            && !Object.prototype.hasOwnProperty.call(object, propertyName)
+            && object[propertyName] !== undefined) {
+            return;
+        }
+        throw AssertionError(
+            (description ? description + ": " : "") +
+            "expected inherited property " + String(propertyName) +
+            " on " + describe(object)
+        );
+    };
+
+    // assert_idl_attribute — minimal stand-in. WebIDL fixtures use
+    // this to assert presence of an IDL attribute; for our
+    // imported subset it's equivalent to "has own or inherited".
+    global.assert_idl_attribute = function (object, attributeName, description) {
+        if (object !== null && object !== undefined
+            && (Object.prototype.hasOwnProperty.call(object, attributeName)
+                || object[attributeName] !== undefined)) {
+            return;
+        }
+        throw AssertionError(
+            (description ? description + ": " : "") +
+            "expected IDL attribute " + attributeName +
+            " on " + describe(object)
+        );
+    };
+
     // Element-wise compare two typed arrays / array-likes (length + values).
     global.assert_equals_typed_array = function (actual, expected, description) {
         if (actual.length !== expected.length) {

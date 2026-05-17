@@ -7,8 +7,8 @@ description: The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding
 
 Beyond ECMAScript itself, Phasis ships several layered packs of WHATWG / W3C APIs:
 
-- **Web Platform Pack** — pure value types, no I/O: `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException`.
-- **Fetch Pack** — real HTTP from JavaScript: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `navigator`.
+- **Web Platform Pack** — pure value types, no I/O: `URL`, `URLSearchParams`, `URLPattern`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException`.
+- **Fetch Pack** — real HTTP from JavaScript: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `CompressionStream` / `DecompressionStream` (gzip / deflate / deflate-raw via zlib), `navigator`.
 - **Crypto** — `crypto.getRandomValues`, `crypto.randomUUID`, and full `SubtleCrypto`: digest (SHA-1/256/384/512), HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA (P-256/384/521), ECDH, HKDF, PBKDF2 — plus JWK import/export. Backed by `ext-openssl`.
 - **WebSocket** — constructor, RFC 6455 frame codec, events. Default transport uses `stream_socket_client`; replaceable via `Engine::setWebSocketTransport()` for ReactPHP / Ratchet / mocks in tests.
 - **XMLHttpRequest** — layered over the fetch transport, so the same policy hooks and swappable transport apply.

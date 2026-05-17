@@ -491,6 +491,8 @@ class Engine
             // full WHATWG Streams (needs EventTarget for signal integration).
             \Phasis\BuiltIn\AbortControllerConstructor::install($this->globalEnv);
             \Phasis\BuiltIn\StreamsConstructor::install($this->globalEnv);
+            \Phasis\BuiltIn\Streams\CompressionStream::install($this->globalEnv);
+            \Phasis\BuiltIn\UrlPatternConstructor::install($this->globalEnv);
 
             // Fetch Pack — round 3: Request + Response value types (need
             // Headers/Blob/FormData/Streams/AbortSignal for body extract).
@@ -1341,6 +1343,18 @@ class Engine
             // and Uint8Array views directly during read/pipe paths.
             ['EventTarget', 'ArrayBuffer'],
             static fn () => \Phasis\BuiltIn\StreamsConstructor::install($env),
+        );
+        $reg->register(
+            ['CompressionStream', 'DecompressionStream'],
+            // Layered on TransformStream; the constructor wires a
+            // zlib context into its transform / flush callables.
+            ['TransformStream', 'ArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\Streams\CompressionStream::install($env),
+        );
+        $reg->register(
+            ['URLPattern'],
+            ['URL'],
+            static fn () => \Phasis\BuiltIn\UrlPatternConstructor::install($env),
         );
         $reg->register(
             ['Request'],

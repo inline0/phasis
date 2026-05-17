@@ -68,6 +68,11 @@ jobs:
           /common/
           /WebCryptoAPI/
           /websockets/
+          /console/
+          /compression/
+          /html/webappapis/timers/
+          /html/webappapis/microtask-queuing/
+          /urlpattern/
           EOF
           git fetch --depth 1 origin "$WPT_COMMIT"
           git checkout -q FETCH_HEAD

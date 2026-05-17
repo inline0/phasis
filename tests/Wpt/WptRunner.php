@@ -328,6 +328,11 @@ final class WptRunner
             'crypto' => 'WebCryptoAPI',
             'xhr' => 'xhr',
             'fetch' => 'fetch/api',
+            'compression' => 'compression',
+            'console' => 'console',
+            'timers' => 'html/webappapis/timers',
+            'microtask-queuing' => 'html/webappapis/microtask-queuing',
+            'urlpattern' => 'urlpattern',
         ];
         static $fixtureSubdir = [
             // crypto/<fixture> → WebCryptoAPI/<subdir>/

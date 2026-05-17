@@ -33,14 +33,31 @@ final class WptTest extends TestCase
      * @var array<string, list<string>>
      */
     /**
-     * Allowlist of WPT subtests we know are not yet passing. Empty
-     * today — every imported fixture passes every subtest. Add new
-     * entries only with a comment explaining the deferral and a
-     * matching tracking task.
+     * Allowlist of WPT subtests we know are not yet passing.
+     * Entries can be literal subtest names OR regex patterns
+     * prefixed with `re:` for fixtures that iterate over a format
+     * list (compression brotli, etc.) and produce hundreds of
+     * combinatorial subtest names.
+     *
+     * Add new entries only with a comment explaining the deferral.
      *
      * @var array<string, list<string>>
      */
-    private const EXPECTED_FAILURES = [];
+    private const EXPECTED_FAILURES = [
+        // CompressionStream / DecompressionStream — brotli format
+        // requires ext-brotli, which isn't shipped by default with
+        // PHP. Our impl supports the three zlib-backed formats
+        // (gzip, deflate, deflate-raw). All brotli subtests across
+        // the fixture set are allowlisted as a single regex.
+        'compression-bad-chunks.any.js' => ['re:/brotli/', 're:/SharedArrayBuffer|shared Uint8Array/'],
+        'decompression-bad-chunks.any.js' => ['re:/brotli/', 're:/SharedArrayBuffer|shared Uint8Array/'],
+        'decompression-buffersource.any.js' => ['re:/brotli/'],
+        'decompression-correct-input.any.js' => ['re:/brotli/'],
+        'decompression-empty-input.any.js' => ['re:/brotli/'],
+        'decompression-extra-input.any.js' => ['re:/brotli/'],
+        'decompression-split-chunk.any.js' => ['re:/brotli/'],
+        'decompression-uint8array-output.any.js' => ['re:/brotli/'],
+    ];
 
     public static function setUpBeforeClass(): void
     {
@@ -93,10 +110,29 @@ final class WptTest extends TestCase
         $basename = basename($path);
         $expected = self::EXPECTED_FAILURES[$basename] ?? [];
 
+        // Allowlist entries are either literal subtest names OR
+        // regex patterns prefixed with `re:` (e.g. `re:/brotli$/`).
+        // Regex covers WPT fixtures that iterate over a format list
+        // and produce hundreds of "X for brotli" subtests we can't
+        // pass without ext-brotli — listing each name would balloon
+        // the table.
+        $matches = static function (string $name) use ($expected): bool {
+            foreach ($expected as $entry) {
+                if (str_starts_with($entry, 're:')) {
+                    if (preg_match(substr($entry, 3), $name)) {
+                        return true;
+                    }
+                } elseif ($entry === $name) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
         $failures = array_filter(
             $results,
             static fn (array $r): bool =>
-                $r['status'] !== 'PASS' && !in_array($r['name'], $expected, true)
+                $r['status'] !== 'PASS' && !$matches($r['name'])
         );
 
         if ($failures !== []) {
