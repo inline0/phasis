@@ -14,6 +14,7 @@ use Phasis\Runtime\Environment;
 use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsBoolean;
 use Phasis\Value\JsFunction;
+use Phasis\Value\JsString;
 use Phasis\Value\JsNull;
 use Phasis\Value\JsObject;
 use Phasis\Value\JsUndefined;
@@ -106,6 +107,50 @@ class UrlConstructor
         }, 1);
         $parseFn->setNonConstructable();
         $constructor->defineOwnProperty('parse', PropertyDescriptor::data($parseFn, true, false, true));
+
+        // URL.createObjectURL(blob|MediaSource) and URL.revokeObjectURL(url).
+        // We support the Blob/File case; MediaSource isn't shipped. Each
+        // call mints a `blob:<scheme>//<origin>/<uuid>` URL the fetch
+        // transport recognises and resolves out of an in-memory
+        // registry (see BlobURLRegistry).
+        $createObjectURL = JsFunction::fromCallable(
+            'createObjectURL',
+            static function (JsValue $this_, array $args): JsValue {
+                $obj = $args[0] ?? JsUndefined::instance();
+                if (!$obj instanceof JsObject || !\Phasis\BuiltIn\BlobConstructor::isBlob($obj)) {
+                    throw new TypeError(
+                        "Failed to execute 'createObjectURL' on 'URL': "
+                        . 'parameter 1 is not of type Blob.'
+                    );
+                }
+                $url = \Phasis\BuiltIn\BlobURLRegistry::register(
+                    \Phasis\BuiltIn\BlobConstructor::getBytes($obj),
+                    \Phasis\BuiltIn\BlobConstructor::getType($obj),
+                );
+                return new JsString($url);
+            },
+            1,
+        );
+        $createObjectURL->setNonConstructable();
+        $constructor->defineOwnProperty(
+            'createObjectURL',
+            PropertyDescriptor::data($createObjectURL, true, false, true),
+        );
+
+        $revokeObjectURL = JsFunction::fromCallable(
+            'revokeObjectURL',
+            static function (JsValue $this_, array $args): JsValue {
+                $url = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                \Phasis\BuiltIn\BlobURLRegistry::revoke($url);
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        $revokeObjectURL->setNonConstructable();
+        $constructor->defineOwnProperty(
+            'revokeObjectURL',
+            PropertyDescriptor::data($revokeObjectURL, true, false, true),
+        );
 
         $env->defineVar('URL', $constructor);
 

@@ -461,6 +461,58 @@ final class StreamHelpers
     }
 
     /**
+     * Variant that re-enqueues an arbitrary list of JS values onto a
+     * fresh ReadableStream — identity preserved. Used by BodyMixin to
+     * materialize `response.body` for a Response that was originally
+     * constructed from a ReadableStream so reads return the same JS
+     * instances the upstream code enqueued.
+     *
+     * @param list<JsValue> $chunks
+     */
+    public static function createReadableStreamFromChunks(array $chunks): JsObject
+    {
+        $proto = \Phasis\BuiltIn\Streams\ReadableStream::getPrototype();
+        $controllerProto = \Phasis\BuiltIn\Streams\ReadableStream::getControllerPrototype();
+        if (!$proto instanceof JsObject || !$controllerProto instanceof JsObject) {
+            $proto = new JsObject();
+            $controllerProto = new JsObject();
+        }
+
+        $stream = new JsObject($proto);
+        \Phasis\BuiltIn\Streams\ReadableStream::initializeStream($stream);
+
+        $controller = new JsObject($controllerProto);
+        $controller->setInternalProperty('[[IsReadableStreamDefaultController]]', true);
+        $controller->setInternalProperty('[[Stream]]', $stream);
+        self::resetQueue($controller);
+        $controller->setInternalProperty('[[Started]]', true);
+        $controller->setInternalProperty('[[Pulling]]', false);
+        $controller->setInternalProperty('[[PullAgain]]', false);
+        $controller->setInternalProperty('[[CloseRequested]]', false);
+        $controller->setInternalProperty('[[StrategyHWM]]', 0.0);
+        $controller->setInternalProperty('[[StrategySizeAlgorithm]]', null);
+        $controller->setInternalProperty(
+            '[[PullAlgorithm]]',
+            static fn(): JsPromise => self::promiseResolved(JsUndefined::instance())
+        );
+        $controller->setInternalProperty(
+            '[[CancelAlgorithm]]',
+            static fn(JsValue $_): JsPromise => self::promiseResolved(JsUndefined::instance())
+        );
+        $stream->setInternalProperty('[[Controller]]', $controller);
+        $stream->setInternalProperty('[[ControllerType]]', 'default');
+
+        foreach ($chunks as $chunk) {
+            if ($chunk instanceof JsValue) {
+                \Phasis\BuiltIn\Streams\ReadableStream::defaultControllerEnqueue($controller, $chunk);
+            }
+        }
+        \Phasis\BuiltIn\Streams\ReadableStream::defaultControllerClose($controller);
+
+        return $stream;
+    }
+
+    /**
      * Variant of createReadableStreamFromBytes that returns a stream backed
      * by a ReadableByteStreamController. The result supports both default
      * and BYOB readers (per the WHATWG Blob.stream() spec which requires a

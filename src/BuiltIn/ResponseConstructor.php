@@ -138,14 +138,25 @@ final class ResponseConstructor
     // Construction
     // ------------------------------------------------------------------
 
-    private static function initResponse(JsObject $instance, JsValue $body, JsValue $init, Environment $env, bool $isError): void
-    {
+    private static function initResponse(
+        JsObject $instance,
+        JsValue $body,
+        JsValue $init,
+        Environment $env,
+        bool $isError,
+        ?string $contentTypeOverride = null,
+    ): void {
         $instance->setInternalProperty('[[IsResponse]]', true);
 
         // -------- Status / statusText ------------------------------------
         $status = 200;
         $statusText = '';
-        $type = $isError ? 'error' : 'basic';
+        // Per spec, `new Response(...)` produces a response with
+        // [[type]] = "default". The "basic" type is reserved for
+        // responses returned through the fetch pipeline (i.e. same-
+        // origin network responses). `Response.error()` is the only
+        // constructor-side path that produces "error".
+        $type = $isError ? 'error' : 'default';
         $initObj = $init instanceof JsObject ? $init : null;
 
         if ($initObj !== null) {
@@ -166,6 +177,33 @@ final class ResponseConstructor
             $stVal = $initObj->get('statusText');
             if (!$stVal instanceof JsUndefined) {
                 $st = TypeConversion::toString($stVal);
+                // WebIDL ByteString conversion: every JS code unit
+                // must be ≤ 0xFF. Walk the UTF-8 bytes and reject
+                // any leading byte ≥ 0xC4 — that's the smallest
+                // 2-byte UTF-8 sequence whose codepoint exceeds
+                // 0xFF (0xC4 0x80 = U+0100). Leading bytes 0xC2 and
+                // 0xC3 cover codepoints 0x80–0xFF, which are valid.
+                $len = strlen($st);
+                for ($i = 0; $i < $len; $i++) {
+                    $b = ord($st[$i]);
+                    if ($b < 0x80) {
+                        continue;
+                    }
+                    if ($b < 0xC2) {
+                        // Stray continuation byte — not a valid
+                        // leading byte; skip.
+                        continue;
+                    }
+                    if ($b >= 0xC4) {
+                        throw new TypeError(
+                            "Failed to construct 'Response': "
+                            . 'The statusText contains a character that is not a byte (code unit > 0xFF).',
+                        );
+                    }
+                    // 2-byte sequence 0xC2-0xC3 — codepoint in
+                    // [0x80, 0xFF]. Skip the continuation byte.
+                    $i++;
+                }
                 if (!self::isValidReasonPhrase($st)) {
                     throw new TypeError("Failed to construct 'Response': Invalid statusText.");
                 }
@@ -206,7 +244,21 @@ final class ResponseConstructor
             $extracted = BodyExtraction::extractBody($body, $headers, $env);
             $bodyBytes = $extracted['bytes'];
             $bodyContentType = $extracted['contentType'];
+            // If the caller (e.g. Response.json) wants a different
+            // default Content-Type than what the body extraction
+            // would suggest, swap it in here. Init-supplied headers
+            // still win — the override only applies when no
+            // Content-Type is present yet.
+            if ($contentTypeOverride !== null) {
+                $extracted['contentType'] = $contentTypeOverride;
+            }
             BodyExtraction::maybeSetContentType($headers, $extracted);
+            // Preserve original ReadableStream chunks so .body
+            // re-emits them with identity (response-clone teed
+            // structureClone WPT tests rely on this).
+            $bodyChunks = $extracted['chunks'] ?? null;
+            BodyMixin::markAsBodyHost($instance, $bodyBytes, $bodyContentType, $bodyChunks);
+            return;
         }
 
         BodyMixin::markAsBodyHost($instance, $bodyBytes, $bodyContentType);
@@ -340,6 +392,9 @@ final class ResponseConstructor
                 $obj->setInternalProperty('[[Url]]', '');
                 $obj->setInternalProperty('[[Redirected]]', false);
                 $errHeaders = HeadersConstructor::create($env, []);
+                // Per spec, Response.error() returns a response whose
+                // Headers list is immutable — any mutation must throw.
+                HeadersConstructor::setGuard($errHeaders, 'immutable');
                 $obj->setInternalProperty('[[Headers]]', $errHeaders);
                 BodyMixin::markAsBodyHost($obj, null, null);
                 return $obj;
@@ -411,14 +466,11 @@ final class ResponseConstructor
                 // so all init handling (status, statusText, headers) runs.
                 $bodyJs = new JsString($jsonText);
                 $obj = new JsObject($proto);
-                self::initResponse($obj, $bodyJs, $init, $env, false);
-
-                // Force Content-Type to application/json per spec (even if
-                // the init already supplied one).
-                $headers = $obj->getInternalProperty('[[Headers]]');
-                if ($headers instanceof JsObject) {
-                    HeadersConstructor::setFromPhp($headers, 'Content-Type', 'application/json');
-                }
+                // Per spec, Response.json appends Content-Type:
+                // application/json when the init didn't already
+                // specify one. Pass it through as the override so
+                // init-supplied headers still win.
+                self::initResponse($obj, $bodyJs, $init, $env, false, 'application/json');
                 return $obj;
             },
             1,
@@ -587,7 +639,22 @@ final class ResponseConstructor
 
                 $bytes = BodyMixin::bodyBytes($this_);
                 $ct = BodyMixin::bodyContentType($this_);
-                BodyMixin::markAsBodyHost($clone, $bytes, $ct);
+                // For ReadableStream-backed bodies, the spec clones
+                // the underlying stream — implemented here by
+                // structuredClone-ing each captured chunk so the
+                // cloned half reads independent (but content-equal)
+                // JS values.
+                $srcChunks = $this_->getInternalProperty('[[BodyChunks]]');
+                $clonedChunks = null;
+                if (is_array($srcChunks) && !empty($srcChunks)) {
+                    $clonedChunks = [];
+                    foreach ($srcChunks as $chunk) {
+                        if ($chunk instanceof JsValue) {
+                            $clonedChunks[] = \Phasis\BuiltIn\StructuredCloneFunction::cloneJsValue($chunk);
+                        }
+                    }
+                }
+                BodyMixin::markAsBodyHost($clone, $bytes, $ct, $clonedChunks);
                 return $clone;
             },
             0,

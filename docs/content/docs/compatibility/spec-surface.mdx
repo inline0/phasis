@@ -137,9 +137,9 @@ Beyond pure ECMAScript, Phasis ships several layered packs of Web APIs that real
 |---|---|---|
 | **Web Platform** | `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException` | 100 % |
 | **Fetch** | `fetch`, `Request`, `Response`, `Headers`, `Body` mixin, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `navigator` | 100 % |
-| **Crypto** | `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA P-256/384/521, ECDH, HKDF, PBKDF2) | n/a (unit-tested) |
-| **WebSocket** | `WebSocket` (constructor + RFC 6455 frame codec, replaceable transport via `setWebSocketTransport`) | n/a (unit-tested) |
-| **XHR** | `XMLHttpRequest` (layered over the fetch transport, so policy hooks apply) | n/a (unit-tested) |
+| **Crypto** | `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA P-256/384/521, ECDH, HKDF, PBKDF2) | 100 % |
+| **WebSocket** | `WebSocket` (constructor + RFC 6455 frame codec, replaceable transport via `setWebSocketTransport`) | 100 % |
+| **XHR** | `XMLHttpRequest` + `XMLHttpRequestUpload` + `ProgressEvent` (layered over the fetch transport, so policy hooks apply) | 100 % |
 | **Event loop** | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, `AsyncContext` (Stage 3) | n/a (oracle-tested) |
 
 All imported Web Platform Tests pass — see [Web APIs](/docs/compatibility/web-apis) for the conformance breakdown.

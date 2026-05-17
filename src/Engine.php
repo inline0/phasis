@@ -1385,9 +1385,9 @@ class Engine
             static fn () => \Phasis\BuiltIn\CryptoObject::install($env),
         );
 
-        // --- XMLHttpRequest ---
+        // --- XMLHttpRequest + ProgressEvent ---
         $reg->register(
-            ['XMLHttpRequest'],
+            ['XMLHttpRequest', 'ProgressEvent'],
             // Uses the realm's fetch transport on send().
             [],
             static fn () => \Phasis\BuiltIn\XMLHttpRequestConstructor::install($env),

@@ -77,6 +77,31 @@ final class CurlTransport
         $timeout = (int) ($descriptor['timeout'] ?? 30);
         $connectTimeout = (int) ($descriptor['connectTimeout'] ?? 10);
 
+        // `blob:` URLs short-circuit the network — the bytes live in
+        // the per-realm BlobURLRegistry that `URL.createObjectURL`
+        // populates. Anything not registered yields a network error.
+        if (str_starts_with($url, 'blob:')) {
+            $entry = \Phasis\BuiltIn\BlobURLRegistry::lookup($url);
+            if ($entry === null) {
+                throw new TransportException(
+                    "blob URL not found in registry: {$url}",
+                    'network-error',
+                );
+            }
+            $type = $entry['type'] !== '' ? $entry['type'] : 'application/octet-stream';
+            return [
+                'status' => 200,
+                'statusText' => 'OK',
+                'headers' => [
+                    ['Content-Type', $type],
+                    ['Content-Length', (string) strlen($entry['bytes'])],
+                ],
+                'body' => $entry['bytes'],
+                'finalUrl' => $url,
+                'redirected' => false,
+            ];
+        }
+
         // Header storage, populated by CURLOPT_HEADERFUNCTION.
         $responseHeaders = [];
         $statusLine = '';
@@ -120,7 +145,17 @@ final class CurlTransport
             CURLOPT_CONNECTTIMEOUT => $connectTimeout,
             // We walk redirects manually so fetch() can honour
             // `manual` / `error` modes and let cookie jars intercept.
-            CURLOPT_FOLLOWLOCATION => false,
+            // XHR can opt into curl-native following via the
+            // `followRedirects` flag — that lets it preserve auth
+            // headers across same-origin redirects (which fetch's
+            // own walker enforces explicitly).
+            CURLOPT_FOLLOWLOCATION => !empty($descriptor['followRedirects']),
+            CURLOPT_MAXREDIRS => 20,
+            // Default: strip Authorization when redirecting across
+            // hosts (matches the Fetch spec's "same-origin only"
+            // forwarding rule). Callers that need wider forwarding
+            // can opt in via `unrestrictedAuth: true`.
+            CURLOPT_UNRESTRICTED_AUTH => !empty($descriptor['unrestrictedAuth']),
             CURLOPT_HEADERFUNCTION => static function ($curl, $line) use (&$responseHeaders, &$statusLine) {
                 unset($curl);
                 $len = strlen($line);

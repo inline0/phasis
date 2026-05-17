@@ -6,6 +6,13 @@
          cacheDirectory=".phpunit.cache"
          failOnRisky="true"
          failOnWarning="true">
+    <php>
+        <!-- WPT fixtures (crypto / pbkdf2 / hkdf with thousands of
+             permutations, and the larger response/fetch fixtures)
+             need more headroom than PHP's default 128M. Match what
+             bin/wpt sets so phpunit and the CLI runner agree. -->
+        <ini name="memory_limit" value="2G"/>
+    </php>
     <testsuites>
         <testsuite name="unit">
             <directory>tests/Unit</directory>

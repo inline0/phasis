@@ -33,13 +33,14 @@ final class WptTest extends TestCase
      * @var array<string, list<string>>
      */
     private const EXPECTED_FAILURES = [
-        // Tests assert event order ['cancel','return value'] after a
-        // synchronous it.return()+it.next() pair. Real browsers defer the
-        // start handler's pull-if-needed to a microtask so cancel arrives
-        // first; Phasis has no event loop and runs pull synchronously when
-        // start() returns. Deferring globally regresses 5+ tests that DO
-        // expect a pull during normal consumption. Will resolve when
-        // Phasis gains event-loop semantics.
+        // streams/async-iterator.any.js — tests assert event order
+        // ['cancel','return value'] after a synchronous
+        // it.return()+it.next() pair. Real browsers defer the start
+        // handler's pull-if-needed to a microtask so cancel arrives
+        // first; Phasis has no event loop and runs pull synchronously
+        // when start() returns. Deferring globally regresses 5+ tests
+        // that DO expect a pull during normal consumption. Will
+        // resolve when Phasis grows full event-loop semantics.
         'async-iterator.any.js' => [
             'return(); next() with delayed cancel() [no awaiting]',
         ],

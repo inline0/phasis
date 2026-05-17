@@ -67,6 +67,12 @@ foreach (WptRunner::discoverFixtures() as $cat => $files) {
             str_contains($src, 'fetch(')
             || str_contains($src, 'RESOURCES_DIR')
             || str_contains($src, '../resources/')
+            // XHR fixtures hit `resources/foo.py` (no `../`) thanks
+            // to the category-specific base URL the runner installs.
+            || str_contains($src, '"resources/')
+            || str_contains($src, "'resources/")
+            // XHR open-* fixtures use absolute paths under /resources/
+            || str_contains($src, '/resources/')
         ) {
             $serverNeeded = true;
             break 2;

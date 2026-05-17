@@ -166,13 +166,15 @@ JS);
     {
         $captured = [];
         $engine = $this->engineWithMockTransport($captured);
-        $threw = $engine->eval(<<<'JS'
+        // Per spec, send() while readyState is CONNECTING must throw an
+        // InvalidStateError DOMException (not a TypeError).
+        $name = $engine->eval(<<<'JS'
 const ws = new WebSocket('wss://example.com/');
-let threw = false;
-try { ws.send('too early'); } catch (e) { threw = e instanceof TypeError; }
-threw
+let name = null;
+try { ws.send('too early'); } catch (e) { name = e && e.name; }
+name
 JS);
-        $this->assertTrue($threw);
+        $this->assertSame('InvalidStateError', $name);
     }
 
     public function testCloseTransitionsThroughClosingToClosed(): void
@@ -203,13 +205,15 @@ JS);
     {
         $captured = [];
         $engine = $this->engineWithMockTransport($captured);
-        $threw = $engine->eval(<<<'JS'
+        // Per spec, close(code) with a code outside {1000, 3000-4999}
+        // throws an InvalidAccessError DOMException (not a TypeError).
+        $name = $engine->eval(<<<'JS'
 (function () {
     const ws = new WebSocket('wss://example.com/');
-    try { ws.close(500); return false; } catch (e) { return e instanceof TypeError; }
+    try { ws.close(500); return null; } catch (e) { return e && e.name; }
 })()
 JS);
-        $this->assertTrue($threw);
+        $this->assertSame('InvalidAccessError', $name);
     }
 
     public function testErrorEventFires(): void

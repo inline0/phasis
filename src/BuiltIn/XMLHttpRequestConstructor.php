@@ -108,11 +108,109 @@ final class XMLHttpRequestConstructor
             $proto->defineOwnProperty($name, $desc);
         }
 
-        self::definePrototypeMethods($proto);
+        self::definePrototypeMethods($proto, $env);
         self::defineEventTargetMethods($proto);
         self::defineAccessors($proto, $env);
 
         $env->defineVar('XMLHttpRequest', $ctor);
+
+        // Expose XMLHttpRequestUpload as a global ctor. Instances
+        // created via `xhr.upload` carry the [[IsXHRUpload]] brand;
+        // direct construction throws to match the spec (only the XHR
+        // pipeline can mint these). The class is used by fixtures for
+        // `evt.target instanceof XMLHttpRequestUpload` discrimination.
+        $uploadCtorProto = new JsObject();
+        $uploadCtor = JsFunction::fromCallable(
+            'XMLHttpRequestUpload',
+            static function (JsValue $this_): JsValue {
+                throw new TypeError(
+                    'Illegal constructor: XMLHttpRequestUpload is only '
+                    . 'obtainable via `XMLHttpRequest.upload`.',
+                );
+            },
+            0,
+        );
+        $uploadCtor->setConstructable();
+        $uploadCtor->defineOwnProperty(
+            'prototype',
+            PropertyDescriptor::data($uploadCtorProto, false, false, false),
+        );
+        $uploadCtorProto->defineOwnProperty(
+            'constructor',
+            PropertyDescriptor::data($uploadCtor, true, false, true),
+        );
+        $env->defineVar('XMLHttpRequestUpload', $uploadCtor);
+
+        // Expose ProgressEvent as a global so fixtures using
+        // `evt instanceof ProgressEvent` succeed. We don't ship a
+        // full Event/ProgressEvent class hierarchy; this is a minimal
+        // brand-checked stand-in that the upload-side events claim
+        // membership in via [[IsProgressEvent]].
+        $peProto = new JsObject();
+        $peCtor = JsFunction::fromCallable(
+            'ProgressEvent',
+            static function (JsValue $this_, array $args) use ($peProto): JsValue {
+                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                    throw new TypeError("Constructor ProgressEvent requires 'new'");
+                }
+                $type = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                $init = $args[1] ?? null;
+                $lengthComputable = false;
+                $loaded = 0;
+                $total = 0;
+                if ($init instanceof JsObject) {
+                    $lengthComputable = TypeConversion::toBoolean($init->get('lengthComputable'));
+                    $loaded = (int) TypeConversion::toNumber($init->get('loaded'));
+                    $total = (int) TypeConversion::toNumber($init->get('total'));
+                }
+                $this_->setPrototype($peProto);
+                $this_->setInternalProperty('[[IsEvent]]', true);
+                $this_->setInternalProperty('[[IsProgressEvent]]', true);
+                $this_->defineOwnProperty('type', PropertyDescriptor::data(new JsString($type), false, true, false));
+                $this_->defineOwnProperty(
+                    'lengthComputable',
+                    PropertyDescriptor::data(JsBoolean::of($lengthComputable), false, true, false),
+                );
+                $this_->defineOwnProperty(
+                    'loaded',
+                    PropertyDescriptor::data(JsNumber::of((float) $loaded), false, true, false),
+                );
+                $this_->defineOwnProperty(
+                    'total',
+                    PropertyDescriptor::data(JsNumber::of((float) $total), false, true, false),
+                );
+                return $this_;
+            },
+            1,
+        );
+        $peCtor->setConstructable();
+        $peCtor->defineOwnProperty('prototype', PropertyDescriptor::data($peProto, false, false, false));
+        $peProto->defineOwnProperty('constructor', PropertyDescriptor::data($peCtor, true, false, true));
+        $env->defineVar('ProgressEvent', $peCtor);
+    }
+
+    /**
+     * Track the ProgressEvent prototype so makeProgressEvent can set
+     * it on instances. Lazily resolved against the realm — we don't
+     * have a stable accessor from a static helper, but the prototype
+     * is keyed by name on the global object.
+     */
+    private static function progressEventProto(): ?JsObject
+    {
+        $realm = Engine::getCurrentRealm();
+        if ($realm === null) {
+            return null;
+        }
+        try {
+            $ctor = $realm->getGlobalEnv()->get('ProgressEvent');
+        } catch (\Throwable) {
+            return null;
+        }
+        if (!$ctor instanceof JsObject) {
+            return null;
+        }
+        $proto = $ctor->get('prototype');
+        return $proto instanceof JsObject ? $proto : null;
     }
 
     private static function initInstance(JsObject $xhr): void
@@ -134,13 +232,221 @@ final class XMLHttpRequestConstructor
         $xhr->setInternalProperty('[[Timeout]]', 0);
         $xhr->setInternalProperty('[[WithCredentials]]', false);
         $xhr->setInternalProperty('[[Aborted]]', false);
+        $xhr->setInternalProperty('[[Upload]]', self::makeUploadObject());
     }
 
-    private static function definePrototypeMethods(JsObject $proto): void
+    /**
+     * Build the XMLHttpRequestUpload sibling object exposed as
+     * `xhr.upload`. It's a minimal EventTarget that the request
+     * pipeline fires loadstart / progress / load / loadend / error /
+     * abort against during the upload phase.
+     */
+    private static function makeUploadObject(): JsObject
+    {
+        $upload = new JsObject();
+        // Inherit from XMLHttpRequestUpload.prototype so
+        // `evt.target instanceof XMLHttpRequestUpload` works in fixtures.
+        $realm = Engine::getCurrentRealm();
+        if ($realm !== null) {
+            try {
+                $ctor = $realm->getGlobalEnv()->get('XMLHttpRequestUpload');
+                if ($ctor instanceof JsObject) {
+                    $proto = $ctor->get('prototype');
+                    if ($proto instanceof JsObject) {
+                        $upload->setPrototype($proto);
+                    }
+                }
+            } catch (\Throwable) {
+                // Pre-install — leave on default Object proto.
+            }
+        }
+        $upload->setInternalProperty('[[IsXHRUpload]]', true);
+        $upload->setInternalProperty('[[IsEventTarget]]', true);
+        $upload->setInternalProperty('[[EventListeners]]', []);
+
+        $addEventListener = JsFunction::fromCallable(
+            'addEventListener',
+            static function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    return JsUndefined::instance();
+                }
+                $type = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                $cb = $args[1] ?? JsUndefined::instance();
+                if (!$cb instanceof JsFunction) {
+                    return JsUndefined::instance();
+                }
+                $listeners = $this_->getInternalProperty('[[EventListeners]]');
+                if (!is_array($listeners)) {
+                    $listeners = [];
+                }
+                if (!isset($listeners[$type])) {
+                    $listeners[$type] = [];
+                }
+                foreach ($listeners[$type] as $existing) {
+                    if (($existing['callback'] ?? null) === $cb) {
+                        return JsUndefined::instance();
+                    }
+                }
+                $listeners[$type][] = ['callback' => $cb];
+                $this_->setInternalProperty('[[EventListeners]]', $listeners);
+                return JsUndefined::instance();
+            },
+            2,
+        );
+        $removeEventListener = JsFunction::fromCallable(
+            'removeEventListener',
+            static function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    return JsUndefined::instance();
+                }
+                $type = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                $cb = $args[1] ?? JsUndefined::instance();
+                $listeners = $this_->getInternalProperty('[[EventListeners]]');
+                if (!is_array($listeners) || !isset($listeners[$type])) {
+                    return JsUndefined::instance();
+                }
+                $listeners[$type] = array_values(array_filter(
+                    $listeners[$type],
+                    static fn ($entry) => ($entry['callback'] ?? null) !== $cb,
+                ));
+                $this_->setInternalProperty('[[EventListeners]]', $listeners);
+                return JsUndefined::instance();
+            },
+            2,
+        );
+        $upload->defineOwnProperty(
+            'addEventListener',
+            PropertyDescriptor::data($addEventListener, true, false, true),
+        );
+        $upload->defineOwnProperty(
+            'removeEventListener',
+            PropertyDescriptor::data($removeEventListener, true, false, true),
+        );
+
+        // on<event> accessors for the upload events the spec requires:
+        // loadstart, progress, load, loadend, error, abort, timeout.
+        foreach (['loadstart', 'progress', 'load', 'loadend', 'error', 'abort', 'timeout'] as $event) {
+            $key = '[[On' . $event . ']]';
+            $upload->defineOwnProperty(
+                'on' . $event,
+                PropertyDescriptor::accessor(
+                    JsFunction::fromCallable(
+                        'get on' . $event,
+                        static function (JsValue $this_) use ($key): JsValue {
+                            if (!$this_ instanceof JsObject) {
+                                return JsNull::instance();
+                            }
+                            $h = $this_->getInternalProperty($key);
+                            return $h instanceof JsFunction ? $h : JsNull::instance();
+                        },
+                        0,
+                    ),
+                    JsFunction::fromCallable(
+                        'set on' . $event,
+                        static function (JsValue $this_, array $args) use ($key): JsValue {
+                            if (!$this_ instanceof JsObject) {
+                                return JsUndefined::instance();
+                            }
+                            $val = $args[0] ?? JsUndefined::instance();
+                            $this_->setInternalProperty($key, $val instanceof JsFunction ? $val : null);
+                            return JsUndefined::instance();
+                        },
+                        1,
+                    ),
+                    false,
+                    true,
+                ),
+            );
+        }
+
+        return $upload;
+    }
+
+    /**
+     * Fire an event on the XMLHttpRequestUpload sibling object —
+     * dispatches to the on<event> handler attribute (if set) and to
+     * any addEventListener listeners. Always emits a ProgressEvent-
+     * shaped object with `lengthComputable`, `loaded`, and `total`
+     * fields populated from the current upload state.
+     */
+    private static function fireUploadEvent(JsObject $xhr, string $name, int $loaded, int $total): void
+    {
+        $upload = $xhr->getInternalProperty('[[Upload]]');
+        if (!$upload instanceof JsObject) {
+            return;
+        }
+        $lengthComputable = $total > 0;
+        $event = self::makeProgressEvent($name, $upload, $lengthComputable, $loaded, $total);
+        $handler = $upload->getInternalProperty('[[On' . $name . ']]');
+        if ($handler instanceof JsFunction) {
+            try {
+                Engine::getCurrentRealm()?->getInterpreter()->callFunction(
+                    $handler,
+                    $upload,
+                    [$event],
+                );
+            } catch (\Throwable $e) {
+                error_log('Phasis: uncaught in XHR.upload.' . $name . ': ' . $e->getMessage());
+            }
+        }
+        $listeners = $upload->getInternalProperty('[[EventListeners]]');
+        if (is_array($listeners) && isset($listeners[$name])) {
+            foreach ($listeners[$name] as $entry) {
+                $fn = $entry['callback'] ?? null;
+                if ($fn instanceof JsFunction) {
+                    try {
+                        Engine::getCurrentRealm()?->getInterpreter()->callFunction(
+                            $fn,
+                            $upload,
+                            [$event],
+                        );
+                    } catch (\Throwable $e) {
+                        error_log('Phasis: uncaught in XHR.upload.' . $name . ' listener: ' . $e->getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    private static function makeProgressEvent(
+        string $type,
+        JsObject $target,
+        bool $lengthComputable,
+        int $loaded,
+        int $total,
+    ): JsObject {
+        $event = new JsObject();
+        $proto = self::progressEventProto();
+        if ($proto !== null) {
+            $event->setPrototype($proto);
+        }
+        $event->setInternalProperty('[[IsEvent]]', true);
+        $event->setInternalProperty('[[IsProgressEvent]]', true);
+        $event->defineOwnProperty('type', PropertyDescriptor::data(new JsString($type), false, true, false));
+        $event->defineOwnProperty('target', PropertyDescriptor::data($target, false, true, false));
+        $event->defineOwnProperty('currentTarget', PropertyDescriptor::data($target, false, true, false));
+        $event->defineOwnProperty('bubbles', PropertyDescriptor::data(JsBoolean::of(false), false, true, false));
+        $event->defineOwnProperty('cancelable', PropertyDescriptor::data(JsBoolean::of(false), false, true, false));
+        $event->defineOwnProperty(
+            'lengthComputable',
+            PropertyDescriptor::data(JsBoolean::of($lengthComputable), false, true, false),
+        );
+        $event->defineOwnProperty(
+            'loaded',
+            PropertyDescriptor::data(JsNumber::of((float) $loaded), false, true, false),
+        );
+        $event->defineOwnProperty(
+            'total',
+            PropertyDescriptor::data(JsNumber::of((float) $total), false, true, false),
+        );
+        return $event;
+    }
+
+    private static function definePrototypeMethods(JsObject $proto, Environment $env): void
     {
         self::method($proto, 'open', 5, self::openImpl());
         self::method($proto, 'setRequestHeader', 2, self::setRequestHeaderImpl());
-        self::method($proto, 'send', 1, self::sendImpl());
+        self::method($proto, 'send', 1, self::sendImpl($env));
         self::method($proto, 'abort', 0, self::abortImpl());
         self::method($proto, 'getResponseHeader', 1, self::getResponseHeaderImpl());
         self::method($proto, 'getAllResponseHeaders', 0, self::getAllResponseHeadersImpl());
@@ -372,6 +678,12 @@ final class XMLHttpRequestConstructor
                 return JsUndefined::instance();
             },
         );
+        // xhr.upload — returns the XMLHttpRequestUpload sibling.
+        $accessor('upload', static function (JsValue $this_): JsValue {
+            $xhr = self::requireXhr($this_, 'upload');
+            $upload = $xhr->getInternalProperty('[[Upload]]');
+            return $upload instanceof JsObject ? $upload : JsNull::instance();
+        });
 
         // Event handler IDL attributes — onreadystatechange, onload, etc.
         foreach (
@@ -418,11 +730,20 @@ final class XMLHttpRequestConstructor
         return static function (JsValue $this_, array $args): JsValue {
             $xhr = self::requireXhr($this_, 'open');
             $method = strtoupper(TypeConversion::toString($args[0] ?? JsUndefined::instance()));
-            $url = TypeConversion::toString($args[1] ?? JsUndefined::instance());
+            $rawUrl = TypeConversion::toString($args[1] ?? JsUndefined::instance());
             $async = isset($args[2]) ? TypeConversion::toBoolean($args[2]) : true;
-            if ($method === '' || $url === '') {
+            if ($method === '' || $rawUrl === '') {
                 throw new TypeError("Failed to execute 'open' on 'XMLHttpRequest': method and url required");
             }
+            // Resolve relative URLs against the realm's base URL:
+            //   1. globalThis.__phasisRequestBaseUrl if installed
+            //      (the WPT runner sets this so fixtures hitting
+            //      `resources/foo.py` land on the fetch-server),
+            //   2. globalThis.location.href otherwise,
+            //   3. no base — pass through (the fetch transport will
+            //      fail loudly, which matches browser behavior for
+            //      an unresolved relative URL).
+            $url = self::resolveRequestUrl($rawUrl);
             // Per XHR spec, open() resets the request/response state
             // but PRESERVES event listeners and the responseType.
             $xhr->setInternalProperty('[[Method]]', $method);
@@ -438,6 +759,105 @@ final class XMLHttpRequestConstructor
             self::setReadyState($xhr, 1);
             return JsUndefined::instance();
         };
+    }
+
+    /**
+     * Derive an `Origin: scheme://host[:port]` header value from the
+     * realm's base URL. Returns null when nothing resembling a base
+     * URL is configured.
+     */
+    private static function deriveOrigin(?Engine $realm): ?string
+    {
+        if ($realm === null) {
+            return null;
+        }
+        $base = null;
+        try {
+            $hook = $realm->getGlobalEnv()->get('__phasisRequestBaseUrl');
+            if ($hook instanceof JsString && $hook->value !== '') {
+                $base = $hook->value;
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+        if ($base === null) {
+            try {
+                $loc = $realm->getGlobalEnv()->get('location');
+                if ($loc instanceof JsObject) {
+                    $href = $loc->get('href');
+                    if ($href instanceof JsString && $href->value !== '') {
+                        $base = $href->value;
+                    }
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+        if ($base === null) {
+            return null;
+        }
+        $rec = \Phasis\BuiltIn\Url\UrlParser::parse($base);
+        if ($rec === null || $rec->scheme === '') {
+            return null;
+        }
+        $origin = $rec->scheme . '://' . \Phasis\BuiltIn\Url\UrlSerializer::serializeHost($rec->host ?? '');
+        if ($rec->port !== null) {
+            $origin .= ':' . $rec->port;
+        }
+        return $origin;
+    }
+
+    /**
+     * Resolve a possibly-relative URL against the realm's base URL.
+     * Mirrors what `new URL(input, base)` does on the JS side, but
+     * picks the base from realm-level hooks so embedders don't have
+     * to set `location` directly.
+     */
+    private static function resolveRequestUrl(string $input): string
+    {
+        // Already absolute? Short-circuit.
+        $rec = \Phasis\BuiltIn\Url\UrlParser::parse($input);
+        if ($rec !== null && $rec->scheme !== '' && !($input !== '' && $input[0] === '/')) {
+            return \Phasis\BuiltIn\Url\UrlSerializer::serializeUrl($rec);
+        }
+        $base = null;
+        $realm = Engine::getCurrentRealm();
+        if ($realm !== null) {
+            $globalEnv = $realm->getGlobalEnv();
+            try {
+                $hook = $globalEnv->get('__phasisRequestBaseUrl');
+                if ($hook instanceof JsString && $hook->value !== '') {
+                    $base = $hook->value;
+                }
+            } catch (\Throwable) {
+                // binding missing — fall through to location lookup
+            }
+            if ($base === null) {
+                try {
+                    $loc = $globalEnv->get('location');
+                    if ($loc instanceof JsObject) {
+                        $href = $loc->get('href');
+                        if ($href instanceof JsString && $href->value !== '') {
+                            $base = $href->value;
+                        }
+                    }
+                } catch (\Throwable) {
+                    // no location — leave $base null
+                }
+            }
+        }
+        if ($base === null) {
+            return $input;
+        }
+        $baseRec = \Phasis\BuiltIn\Url\UrlParser::parse($base);
+        if ($baseRec === null) {
+            return $input;
+        }
+        $resolved = \Phasis\BuiltIn\Url\UrlParser::parse($input, $baseRec);
+        if ($resolved === null) {
+            return $input;
+        }
+        return \Phasis\BuiltIn\Url\UrlSerializer::serializeUrl($resolved);
     }
 
     private static function setRequestHeaderImpl(): \Closure
@@ -461,22 +881,63 @@ final class XMLHttpRequestConstructor
         };
     }
 
-    private static function sendImpl(): \Closure
+    private static function sendImpl(Environment $env): \Closure
     {
-        return static function (JsValue $this_, array $args): JsValue {
+        return static function (JsValue $this_, array $args) use ($env): JsValue {
             $xhr = self::requireXhr($this_, 'send');
-            if ((int) ($xhr->getInternalProperty('[[ReadyState]]') ?? 0) !== 1) {
-                throw new TypeError(
-                    "Failed to execute 'send' on 'XMLHttpRequest': state must be OPENED",
+            $rs = (int) ($xhr->getInternalProperty('[[ReadyState]]') ?? 0);
+            $sendFlag = (bool) ($xhr->getInternalProperty('[[SendFlag]]') ?? false);
+            // Spec §4.5.6: if state is not OPENED, or send flag is
+            // already set (i.e. a previous send() is in flight), throw
+            // InvalidStateError DOMException.
+            if ($rs !== 1 || $sendFlag) {
+                throw new \Phasis\Exceptions\JsThrowable(
+                    DomExceptionConstructor::create(
+                        $env,
+                        "Failed to execute 'send' on 'XMLHttpRequest': "
+                        . "The object's state must be OPENED.",
+                        'InvalidStateError',
+                    ),
                 );
             }
             $bodyArg = $args[0] ?? JsUndefined::instance();
-            $body = self::bodyArgToString($bodyArg);
+            $extracted = self::bodyArgToBytes($bodyArg);
+            $body = $extracted['bytes'];
+            // If the body shape implies a Content-Type and the JS
+            // code didn't already set one via setRequestHeader, set
+            // it now. Spec §4.5.6 step 4: "If author request header
+            // does not contain a header named `Content-Type`, then
+            // append one with the [extracted MIME type] value."
+            if ($extracted['contentType'] !== null) {
+                $headers = $xhr->getInternalProperty('[[RequestHeaders]]');
+                if (!is_array($headers)) {
+                    $headers = [];
+                }
+                $hasContentType = false;
+                foreach ($headers as $h) {
+                    if (strcasecmp((string) ($h[0] ?? ''), 'content-type') === 0) {
+                        $hasContentType = true;
+                        break;
+                    }
+                }
+                if (!$hasContentType) {
+                    $headers[] = ['Content-Type', $extracted['contentType']];
+                    $xhr->setInternalProperty('[[RequestHeaders]]', $headers);
+                }
+            }
             $xhr->setInternalProperty('[[Aborted]]', false);
             $xhr->setInternalProperty('[[SendFlag]]', true);
+            $xhr->setInternalProperty('[[UploadBodyLength]]', strlen($body));
 
             // Dispatch loadstart before queuing the transport.
             self::fireEvent($xhr, 'loadstart');
+            // Per spec, the upload-listener flag is set if any listener
+            // was attached to `xhr.upload` before send(). Fire the
+            // upload's loadstart only when there's a body to upload —
+            // otherwise the upload algorithm short-circuits.
+            if ($body !== '') {
+                self::fireUploadEvent($xhr, 'loadstart', 0, strlen($body));
+            }
 
             $realm = Engine::getCurrentRealm();
             if ($realm === null) {
@@ -489,10 +950,22 @@ final class XMLHttpRequestConstructor
             // transport inline so `send()` blocks until the request
             // completes and readyState advances to DONE. Spec
             // §4.5.6 step 11: synchronous XHR runs the fetch with
-            // the JS event loop frozen.
+            // the JS event loop frozen, and any network error
+            // surfaces as a NetworkError DOMException out of send().
             $async = (bool) ($xhr->getInternalProperty('[[Async]]') ?? true);
             if (!$async) {
                 self::runTransport($xhr, $body, $realm);
+                $errKind = $xhr->getInternalProperty('[[LastErrorKind]]');
+                if (is_string($errKind) && $errKind !== '') {
+                    throw new \Phasis\Exceptions\JsThrowable(
+                        DomExceptionConstructor::create(
+                            $env,
+                            'Failed to execute \'send\' on \'XMLHttpRequest\': '
+                            . ($xhr->getInternalProperty('[[LastErrorMessage]]') ?? $errKind),
+                            $errKind === 'timeout' ? 'TimeoutError' : 'NetworkError',
+                        ),
+                    );
+                }
                 return JsUndefined::instance();
             }
 
@@ -526,6 +999,14 @@ final class XMLHttpRequestConstructor
             if (($rs === 1 && $sendFlag) || $rs === 2 || $rs === 3) {
                 $xhr->setInternalProperty('[[Status]]', 0);
                 $xhr->setInternalProperty('[[StatusText]]', '');
+                // If the upload phase was still in progress (no
+                // HEADERS_RECEIVED yet), the spec requires upload's
+                // abort + loadend before the request-side events.
+                $uploadLen = (int) ($xhr->getInternalProperty('[[UploadBodyLength]]') ?? 0);
+                if ($rs === 1 && $uploadLen > 0) {
+                    self::fireUploadEvent($xhr, 'abort', 0, $uploadLen);
+                    self::fireUploadEvent($xhr, 'loadend', 0, $uploadLen);
+                }
                 self::setReadyState($xhr, 4);
                 self::fireEvent($xhr, 'abort');
                 self::fireEvent($xhr, 'loadend');
@@ -608,12 +1089,36 @@ final class XMLHttpRequestConstructor
         $headers = is_array($rawHeaders) ? $rawHeaders : [];
         $timeoutMs = (int) $xhr->getInternalProperty('[[Timeout]]');
 
+        // Per Fetch spec, request inherits Origin from the realm's
+        // base URL when it's not already present. We derive it from
+        // the realm's __phasisRequestBaseUrl (set by the WPT runner)
+        // or location.href so fixtures that test CORS / Origin echo
+        // see a meaningful value rather than an empty header.
+        $hasOrigin = false;
+        foreach ($headers as $h) {
+            if (strcasecmp((string) ($h[0] ?? ''), 'origin') === 0) {
+                $hasOrigin = true;
+                break;
+            }
+        }
+        if (!$hasOrigin) {
+            $origin = self::deriveOrigin($realm);
+            if ($origin !== null) {
+                $headers[] = ['Origin', $origin];
+            }
+        }
+
         $descriptor = [
             'method' => $method,
             'url' => $url,
             'headers' => $headers,
             'body' => $body,
             'redirect' => 'follow',
+            // XHR follows redirects automatically (spec §4.5.6 step
+            // 12). We delegate the walk to libcurl rather than
+            // reimplementing here so Authorization and other auth
+            // headers persist across same-origin redirects.
+            'followRedirects' => true,
             'timeout' => $timeoutMs > 0 ? (int) ceil($timeoutMs / 1000.0) : 30,
             'connectTimeout' => 10,
             'credentials' => $xhr->getInternalProperty('[[WithCredentials]]') === true ? 'include' : 'same-origin',
@@ -654,6 +1159,19 @@ final class XMLHttpRequestConstructor
         $respBody = (string) ($response['body'] ?? '');
         $finalUrl = (string) ($response['finalUrl'] ?? $url);
 
+        // Upload phase completed — fire the upload progress / load /
+        // loadend events. The real network has streamed the body to
+        // the wire by the time we see headers; our curl-driven
+        // transport returns synchronously after the full request
+        // and response, so we emit the upload events in a single
+        // batch right before the response phase starts.
+        $uploadLen = (int) ($xhr->getInternalProperty('[[UploadBodyLength]]') ?? 0);
+        if ($uploadLen > 0) {
+            self::fireUploadEvent($xhr, 'progress', $uploadLen, $uploadLen);
+            self::fireUploadEvent($xhr, 'load', $uploadLen, $uploadLen);
+            self::fireUploadEvent($xhr, 'loadend', $uploadLen, $uploadLen);
+        }
+
         $xhr->setInternalProperty('[[Status]]', $status);
         $xhr->setInternalProperty('[[StatusText]]', $statusText);
         $xhr->setInternalProperty('[[ResponseHeaders]]', is_array($respHeaders) ? $respHeaders : []);
@@ -672,9 +1190,12 @@ final class XMLHttpRequestConstructor
 
     private static function finishError(JsObject $xhr, string $message): void
     {
-        unset($message);
         $xhr->setInternalProperty('[[Status]]', 0);
         $xhr->setInternalProperty('[[StatusText]]', '');
+        // Remember the failure kind so the sync send() path can
+        // surface it as a NetworkError DOMException per spec.
+        $xhr->setInternalProperty('[[LastErrorKind]]', 'network');
+        $xhr->setInternalProperty('[[LastErrorMessage]]', $message);
         self::setReadyState($xhr, 4);
         self::fireEvent($xhr, 'error');
         self::fireEvent($xhr, 'loadend');
@@ -684,6 +1205,7 @@ final class XMLHttpRequestConstructor
     {
         $xhr->setInternalProperty('[[Status]]', 0);
         $xhr->setInternalProperty('[[StatusText]]', '');
+        $xhr->setInternalProperty('[[LastErrorKind]]', 'timeout');
         self::setReadyState($xhr, 4);
         self::fireEvent($xhr, 'timeout');
         self::fireEvent($xhr, 'loadend');
@@ -701,6 +1223,17 @@ final class XMLHttpRequestConstructor
 
     private static function fireEvent(JsObject $xhr, string $name): void
     {
+        // Per XHR spec, every event the request lifecycle fires —
+        // except readystatechange — is a ProgressEvent. Build one
+        // event object up-front; both the on<event> handler and the
+        // addEventListener listeners receive the same shape.
+        $isProgressEvent = $name !== 'readystatechange';
+        if ($isProgressEvent) {
+            $loaded = strlen((string) ($xhr->getInternalProperty('[[ResponseBody]]') ?? ''));
+            $event = self::makeProgressEvent($name, $xhr, false, $loaded, 0);
+        } else {
+            $event = self::makeEventObject($name, $xhr);
+        }
         // 1. Invoke the on<event> handler attribute if set.
         $handler = $xhr->getInternalProperty('[[On' . $name . ']]');
         if ($handler instanceof JsFunction) {
@@ -708,7 +1241,7 @@ final class XMLHttpRequestConstructor
                 Engine::getCurrentRealm()?->getInterpreter()->callFunction(
                     $handler,
                     $xhr,
-                    [],
+                    [$event],
                 );
             } catch (\Throwable $e) {
                 error_log('Phasis: uncaught in XHR.' . $name . ': ' . $e->getMessage());
@@ -717,7 +1250,6 @@ final class XMLHttpRequestConstructor
         // 2. Dispatch to addEventListener listeners via EventTarget.
         $listeners = $xhr->getInternalProperty('[[EventListeners]]');
         if (is_array($listeners) && isset($listeners[$name])) {
-            $event = self::makeEventObject($name, $xhr);
             foreach ($listeners[$name] as $entry) {
                 $fn = $entry['callback'] ?? null;
                 if ($fn instanceof JsFunction) {
@@ -747,24 +1279,75 @@ final class XMLHttpRequestConstructor
         return $event;
     }
 
-    private static function bodyArgToString(JsValue $val): string
+    /**
+     * Reduce a JS body argument to wire bytes plus the matching
+     * Content-Type. The Content-Type is `null` when the body shape
+     * does not imply one (e.g. ArrayBuffer / TypedArray / strings —
+     * the caller's setRequestHeader wins). FormData generates its
+     * own boundary; URLSearchParams / Blob carry their own MIME.
+     *
+     * @return array{bytes: string, contentType: ?string}
+     */
+    private static function bodyArgToBytes(JsValue $val): array
     {
         if ($val instanceof JsUndefined || $val instanceof JsNull) {
-            return '';
+            return ['bytes' => '', 'contentType' => null];
         }
         if ($val instanceof JsString) {
-            return $val->value;
+            return [
+                'bytes' => $val->value,
+                'contentType' => 'text/plain;charset=UTF-8',
+            ];
         }
         if ($val instanceof JsArrayBuffer) {
-            return $val->readBytes(0, $val->getByteLength());
+            return [
+                'bytes' => $val->readBytes(0, $val->getByteLength()),
+                'contentType' => null,
+            ];
         }
         if ($val instanceof JsTypedArray) {
-            return $val->getBuffer()->readBytes(
-                $val->getByteOffset(),
-                $val->getLength() * $val->getBytesPerElement(),
-            );
+            return [
+                'bytes' => $val->getBuffer()->readBytes(
+                    $val->getByteOffset(),
+                    $val->getLength() * $val->getBytesPerElement(),
+                ),
+                'contentType' => null,
+            ];
         }
-        return TypeConversion::toString($val);
+        if ($val instanceof JsObject) {
+            // Blob / File — bytes are stored directly.
+            if (BlobConstructor::isBlob($val)) {
+                $bytes = BlobConstructor::getBytes($val);
+                $type = BlobConstructor::getType($val);
+                return [
+                    'bytes' => $bytes,
+                    'contentType' => $type !== '' ? $type : null,
+                ];
+            }
+            // FormData → multipart/form-data with a generated boundary.
+            if (\Phasis\BuiltIn\FormDataConstructor::isFormData($val)) {
+                $boundary = '----PhasisFormBoundary' . bin2hex(random_bytes(8));
+                $bytes = \Phasis\BuiltIn\Fetch\BodyExtraction::serializeFormData($val, $boundary);
+                return [
+                    'bytes' => $bytes,
+                    'contentType' => 'multipart/form-data; boundary=' . $boundary,
+                ];
+            }
+            // URLSearchParams stringifies to its urlencoded form via
+            // toString(). The send-usp.any.js fixtures already round-
+            // trip the bytes correctly through the fallback below, so
+            // we only need to set the right Content-Type here.
+            if ($val->getInternalProperty('[[SearchParamsList]]') !== null) {
+                return [
+                    'bytes' => TypeConversion::toString($val),
+                    'contentType' => 'application/x-www-form-urlencoded;charset=UTF-8',
+                ];
+            }
+        }
+        return [
+            'bytes' => TypeConversion::toString($val),
+            'contentType' => null,
+        ];
     }
 
     private static function bufferFromBytes(string $bytes): JsArrayBuffer

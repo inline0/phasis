@@ -134,15 +134,45 @@
             "did not throw");
     };
 
+    // Map legacy DOMException SHOUTY_CASE codes to their modern
+    // PascalCase names. Used by assert_throws_dom because many WPT
+    // fixtures still pass the legacy form (e.g. "SYNTAX_ERR").
+    var DOM_LEGACY = {
+        INDEX_SIZE_ERR: "IndexSizeError",
+        HIERARCHY_REQUEST_ERR: "HierarchyRequestError",
+        WRONG_DOCUMENT_ERR: "WrongDocumentError",
+        INVALID_CHARACTER_ERR: "InvalidCharacterError",
+        NO_MODIFICATION_ALLOWED_ERR: "NoModificationAllowedError",
+        NOT_FOUND_ERR: "NotFoundError",
+        NOT_SUPPORTED_ERR: "NotSupportedError",
+        INUSE_ATTRIBUTE_ERR: "InUseAttributeError",
+        INVALID_STATE_ERR: "InvalidStateError",
+        SYNTAX_ERR: "SyntaxError",
+        INVALID_MODIFICATION_ERR: "InvalidModificationError",
+        NAMESPACE_ERR: "NamespaceError",
+        INVALID_ACCESS_ERR: "InvalidAccessError",
+        TYPE_MISMATCH_ERR: "TypeMismatchError",
+        SECURITY_ERR: "SecurityError",
+        NETWORK_ERR: "NetworkError",
+        ABORT_ERR: "AbortError",
+        URL_MISMATCH_ERR: "URLMismatchError",
+        QUOTA_EXCEEDED_ERR: "QuotaExceededError",
+        TIMEOUT_ERR: "TimeoutError",
+        INVALID_NODE_TYPE_ERR: "InvalidNodeTypeError",
+        DATA_CLONE_ERR: "DataCloneError",
+    };
+
     global.assert_throws_dom = function (codeOrName, fn, description) {
         try {
             fn();
         } catch (e) {
-            // Accept both numeric legacy code or string name
+            // Accept both numeric legacy code or string name (modern
+            // PascalCase or legacy SHOUTY_SNAKE_CASE).
             if (typeof codeOrName === "number") {
                 if (e && e.code === codeOrName) return;
             } else {
-                if (e && e.name === codeOrName) return;
+                var expected = DOM_LEGACY[codeOrName] || codeOrName;
+                if (e && e.name === expected) return;
             }
             throw AssertionError(
                 (description ? description + ": " : "") +
@@ -344,17 +374,65 @@
             fn = null;
         }
         const t = makeTestObject();
+        // For the long-form `var test = async_test(name); test.step(...);
+        // test.done()` pattern the caller drives the lifecycle. Override
+        // `step` / `step_func` to record the first failure, and `done`
+        // to report PASS (or the recorded FAIL) exactly once.
+        let failure = null;
+        let reported = false;
+        const reportOnce = function () {
+            if (reported) return;
+            reported = true;
+            if (failure === null) {
+                report("PASS", name);
+            } else {
+                report("FAIL", name, (failure && failure.message) || String(failure));
+            }
+            t._runCleanups();
+        };
+        // Bind step_func / step_func_done callbacks to the test
+        // object (`t`), not to the invoke-time `this`. WPT fixtures
+        // call `xhr.onreadystatechange = test.step_func(...)`, and
+        // the callback body uses `this.done()` / `this.step_func()`
+        // expecting the test, not the XHR.
+        const wrap = function (cb) {
+            return function () {
+                try {
+                    return cb.apply(t, arguments);
+                } catch (e) {
+                    if (failure === null) failure = e;
+                    throw e;
+                }
+            };
+        };
+        t.step = function (cb) {
+            try {
+                return cb.call(t);
+            } catch (e) {
+                if (failure === null) failure = e;
+                throw e;
+            }
+        };
+        t.step_func = function (cb) { return wrap(cb); };
+        t.step_func_done = function (cb) {
+            return function () {
+                try { if (cb) cb.apply(t, arguments); }
+                catch (e) { if (failure === null) failure = e; }
+                reportOnce();
+            };
+        };
+        t.done = reportOnce;
         if (fn === null) {
-            // Caller will call `.step` etc. against the returned object.
             return t;
         }
         try {
             fn.call(t, t);
-            report("PASS", name);
+            // If fn ran synchronously without calling done(), treat the
+            // implicit completion as PASS (matches the short-form `test`).
+            reportOnce();
         } catch (e) {
-            report("FAIL", name, (e && e.message) || String(e));
-        } finally {
-            t._runCleanups();
+            if (failure === null) failure = e;
+            reportOnce();
         }
         return t;
     };
@@ -523,8 +601,26 @@
     // `location.search` to scope a fixture to a subset of its test
     // cases via the `?N-M` query string. We run the full set every
     // time, so the empty-search default is exactly what we want.
+    //
+    // WebSocket fixtures also use `location.origin`, `location.host`,
+    // and `location.protocol` to build target URLs. We expose a
+    // plausible default so the constructor-validation tests in
+    // websockets/ can run without a live test server.
     if (typeof global.location === "undefined") {
-        global.location = { search: "" };
+        global.location = {
+            search: "",
+            protocol: "http:",
+            host: "web-platform.test:8000",
+            hostname: "web-platform.test",
+            port: "8000",
+            origin: "http://web-platform.test:8000",
+            href: "http://web-platform.test:8000/",
+            pathname: "/",
+            hash: "",
+            // `new URL(relative, location)` stringifies the base via
+            // toString, so this must return the absolute href.
+            toString: function () { return this.href; },
+        };
     }
 
     // Stub XMLHttpRequest so fixtures gated on `self.GLOBAL.isWorker()`

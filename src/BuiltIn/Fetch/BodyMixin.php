@@ -84,10 +84,25 @@ final class BodyMixin
      * Mark a freshly-constructed Request/Response as a body host. Called
      * by the relevant constructors right before populating [[BodyBytes]].
      */
-    public static function markAsBodyHost(JsObject $instance, ?string $bytes, ?string $contentType): void
-    {
+    /**
+     * Mark an object as a body host (Request/Response) and stash the
+     * buffered bytes + (optionally) the original JS-side chunks list
+     * that {@see BodyExtraction::extractBody()} captured when the
+     * source was a ReadableStream. The chunks list is replayed by
+     * `getOrCreateBodyStream()` so reads see the same JS values that
+     * were enqueued upstream, satisfying the WPT structureClone tests.
+     *
+     * @param list<\Phasis\Value\JsValue>|null $chunks
+     */
+    public static function markAsBodyHost(
+        JsObject $instance,
+        ?string $bytes,
+        ?string $contentType,
+        ?array $chunks = null,
+    ): void {
         $instance->setInternalProperty('[[HasBody]]', true);
         $instance->setInternalProperty('[[BodyBytes]]', $bytes);
+        $instance->setInternalProperty('[[BodyChunks]]', $chunks);
         $instance->setInternalProperty('[[BodyUsed]]', false);
         $instance->setInternalProperty('[[BodyStream]]', null);
         $instance->setInternalProperty('[[BodyContentType]]', $contentType);
@@ -102,7 +117,19 @@ final class BodyMixin
 
     public static function isBodyUsed(JsObject $instance): bool
     {
-        return $instance->getInternalProperty('[[BodyUsed]]') === true;
+        // Per spec, bodyUsed is `body is null ? false : body.stream
+        // is disturbed`. Mirror that: an explicit [[BodyUsed]] flag
+        // (set by our text() / blob() / etc. paths) wins; otherwise
+        // fall back to the stream's [[Disturbed]] state, which
+        // ReadableStream.cancel() / getReader().read() set.
+        if ($instance->getInternalProperty('[[BodyUsed]]') === true) {
+            return true;
+        }
+        $stream = $instance->getInternalProperty('[[BodyStream]]');
+        if ($stream instanceof JsObject && $stream->getInternalProperty('[[Disturbed]]') === true) {
+            return true;
+        }
+        return false;
     }
 
     public static function markUsed(JsObject $instance): void
@@ -130,7 +157,16 @@ final class BodyMixin
         if ($cached instanceof JsObject) {
             return $cached;
         }
-        $stream = StreamHelpers::createReadableStreamFromBytes($bytes);
+        // If the original body was a ReadableStream we kept the
+        // enqueued JS values around — re-use them so .body reads see
+        // the same chunks (and same identity for the original side,
+        // structured-cloned for the cloned side).
+        $chunks = $instance->getInternalProperty('[[BodyChunks]]');
+        if (is_array($chunks) && !empty($chunks)) {
+            $stream = StreamHelpers::createReadableStreamFromChunks($chunks);
+        } else {
+            $stream = StreamHelpers::createReadableStreamFromBytes($bytes);
+        }
         $instance->setInternalProperty('[[BodyStream]]', $stream);
         return $stream;
     }
@@ -234,14 +270,12 @@ final class BodyMixin
                     return $err;
                 }
                 $bytes = self::consume($instance);
-                $ct = self::bodyContentType($instance) ?? '';
-                // Per spec: blob's type comes from the body's Content-Type
-                // header (if present on the host) rather than the
-                // extract-time content-type. Try headers first.
-                $hdrCt = self::contentTypeFromHeaders($instance);
-                if ($hdrCt !== null) {
-                    $ct = $hdrCt;
-                }
+                // Per spec, blob.type comes from the LIVE Content-Type
+                // header on the body host — not the extract-time MIME.
+                // A caller that deletes the header before calling blob()
+                // expects an untyped blob, even when extraction set an
+                // implicit Content-Type.
+                $ct = self::contentTypeFromHeaders($instance) ?? '';
                 $blob = BlobConstructor::createBlob($bytes, $ct);
                 return JsPromise::resolved($blob);
             },
@@ -344,8 +378,19 @@ final class BodyMixin
                 if ($err !== null) {
                     return $err;
                 }
-                $bytes = self::consume($instance);
                 $ct = self::contentTypeFromHeaders($instance) ?? (self::bodyContentType($instance) ?? '');
+                $rawBytes = self::bodyBytes($instance);
+                // Per spec, a Response with a null body and a
+                // multipart/form-data Content-Type rejects with
+                // TypeError — there's no payload to find the
+                // boundary delimiters in. The urlencoded branch is
+                // tolerant: an empty body parses as an empty list.
+                if ($rawBytes === null && str_starts_with(strtolower(trim($ct)), 'multipart/form-data')) {
+                    return JsPromise::rejected(
+                        StreamHelpers::createTypeError('Failed to parse FormData: no body')
+                    );
+                }
+                $bytes = self::consume($instance);
 
                 try {
                     $fd = self::parseFormDataFromBytes($bytes, $ct, $env);
@@ -418,12 +463,19 @@ final class BodyMixin
 
     /**
      * Drain + mark used. Returns the body bytes (empty string when no body).
+     *
+     * Per spec, a Response/Request with a null body (no body stream)
+     * does NOT flip bodyUsed when consumed — there's nothing to
+     * drain. Only flip the bit when a real body is present.
      */
     private static function consume(JsObject $instance): string
     {
-        self::markUsed($instance);
         $bytes = self::bodyBytes($instance);
-        return $bytes ?? '';
+        if ($bytes !== null) {
+            self::markUsed($instance);
+            return $bytes;
+        }
+        return '';
     }
 
     /**

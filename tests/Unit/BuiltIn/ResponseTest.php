@@ -22,7 +22,10 @@ class ResponseTest extends TestCase
 const r = new Response();
 [r.status, r.statusText, r.ok, r.type, r.redirected, r.url, r.body === null];
 JS);
-        $this->assertSame([200, '', true, 'basic', false, '', true], $result);
+        // Per spec, a Response constructed directly (not produced by
+        // fetch) has type "default" — "basic" is reserved for the
+        // fetch pipeline's same-origin successful responses.
+        $this->assertSame([200, '', true, 'default', false, '', true], $result);
     }
 
     public function testStatusValidation(): void
@@ -212,12 +215,14 @@ JS);
     public function testResponseJsonForcesContentType(): void
     {
         $engine = new Engine();
-        // Even if init.headers sets a different CT, Response.json overrides.
+        // Per WHATWG spec, Response.json only sets Content-Type when
+        // the init didn't already provide one — a caller-supplied
+        // value wins.
         $result = $engine->eval(<<<'JS'
 const r = Response.json({ x: 1 }, { headers: { "Content-Type": "text/plain" } });
 r.headers.get("content-type");
 JS);
-        $this->assertSame('application/json', $result);
+        $this->assertSame('text/plain', $result);
     }
 
     public function testResponseJsonRejectsUndefined(): void

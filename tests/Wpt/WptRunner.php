@@ -59,6 +59,82 @@ final class WptRunner
         $this->results = [];
 
         $engine = new Engine(eager: true);
+
+        // Stub WebSocket transport for the WPT fixtures we currently
+        // import. They cover constructor validation, property
+        // defaults, close()-while-CONNECTING semantics, and a
+        // handful of post-open assertions. None of them speak to a
+        // live peer, so this transport synthesizes the open / close
+        // events the harness expects:
+        //
+        //   - On construct, schedule an async `open` event. The
+        //     handler is guarded — it skips emitting if the JS code
+        //     already moved the socket out of CONNECTING (via
+        //     close() during connect), so close-while-CONNECTING
+        //     fixtures still observe their CLOSING → CLOSED flow.
+        //   - close() schedules an async clean `close` event.
+        $state = (object) ['closed' => false];
+        $engine->setWebSocketTransport(static function (
+            string $url,
+            array $protocols,
+            callable $emit,
+        ) use ($state): array {
+            $local = (object) ['closed' => false, 'opened' => false];
+            \Phasis\Value\JsPromise::scheduleCallback(static function () use ($emit, $local): void {
+                if ($local->closed) {
+                    return;
+                }
+                $local->opened = true;
+                $emit('open', []);
+            });
+            return [
+                'send' => static function ($data, bool $isBinary) use ($emit, $local): void {
+                    // Echo the payload back as a message event so
+                    // the Send-* fixtures, which expect an echo
+                    // peer, can observe the round-trip.
+                    if ($local->closed) {
+                        return;
+                    }
+                    \Phasis\Value\JsPromise::scheduleCallback(static function () use ($emit, $local, $data, $isBinary): void {
+                        if ($local->closed) {
+                            return;
+                        }
+                        $emit('message', ['data' => $data, 'isBinary' => $isBinary]);
+                    });
+                },
+                'close' => static function (int $code = 1000, string $reason = '') use ($emit, $local): void {
+                    if ($local->closed) {
+                        return;
+                    }
+                    $local->closed = true;
+                    \Phasis\Value\JsPromise::scheduleCallback(static function () use ($emit, $local, $code, $reason): void {
+                        // If the connection never reached `open`,
+                        // close-while-CONNECTING semantics apply:
+                        // emit `error` then a clean `close` with
+                        // wasClean=false. After `open`, close cleanly.
+                        if (!$local->opened) {
+                            $emit('error', ['message' => 'connection aborted by close()']);
+                            $emit('close', [
+                                'code' => 1006,
+                                'reason' => '',
+                                'wasClean' => false,
+                            ]);
+                        } else {
+                            // 0 from the engine signals "no code on
+                            // the wire" — the receiver surfaces it as
+                            // 1005 in the close event.
+                            $eventCode = $code === 0 ? 1005 : $code;
+                            $emit('close', [
+                                'code' => $eventCode,
+                                'reason' => $reason,
+                                'wasClean' => true,
+                            ]);
+                        }
+                    });
+                },
+            ];
+        });
+
         $engine->setGlobal('__phasisWptReport', function (
             string $status,
             string $name,
@@ -80,17 +156,26 @@ final class WptRunner
             \Phasis\Value\JsPromise::drainMicrotasks();
         });
 
-        // Base URL the Request constructor uses to resolve relative URLs
-        // in fixtures that hardcode paths like `../resources/foo.py`.
-        // The fixtures live under `fetch/api/headers/`, so a relative
-        // `../resources/...` resolves into `fetch/api/resources/...`.
-        // Our PHP server, by contrast, routes `/resources/<name>`. To
-        // bridge the two we set the base such that the `..` jump lands
-        // directly on `/resources/`.
-        $engine->setGlobal(
-            '__phasisRequestBaseUrl',
-            'http://127.0.0.1:8765/headers/'
-        );
+        // Base URL the Request constructor uses to resolve relative
+        // URLs in fixtures that hardcode paths like
+        // `../resources/foo.py` (fetch fixtures) or `resources/foo.py`
+        // (xhr fixtures). Our PHP test server routes `/resources/<X>`.
+        // Pick a per-category base so both layouts resolve there.
+        $category = basename(dirname($path));
+        $baseUrl = match ($category) {
+            // XHR fixtures reference `resources/X.py` directly — base
+            // is the server root so the relative resolves cleanly.
+            'xhr' => 'http://127.0.0.1:8765/',
+            // WebSocket fixtures compare resolved URLs against
+            // `new URL(input, location)`. Use the same value the
+            // location stub reports so the two match.
+            'websockets' => 'http://web-platform.test:8000/',
+            // Fetch fixtures originally lived under `fetch/api/headers/`
+            // and reference `../resources/...`. Base = /headers/ so
+            // the `..` jump lands on /resources/.
+            default => 'http://127.0.0.1:8765/headers/',
+        };
+        $engine->setGlobal('__phasisRequestBaseUrl', $baseUrl);
 
         // Synchronous bytes accessor for Blob/File — works around the
         // headless runner not being able to await Blob.text(). Returns
@@ -191,15 +276,42 @@ final class WptRunner
     private static function resolveMetaScriptPath(string $fixturePath, string $relPath): ?string
     {
         // Absolute-from-WPT-root paths (e.g. `/common/subset-tests.js`)
-        // resolve straight against the upstream tree.
+        // resolve straight against the upstream tree — unless a
+        // category-specific override exists under `_helpers/`, which
+        // wins so we can ship pre-substituted variants of the
+        // server-template helpers (e.g. `/common/get-host-info.sub.js`).
         if (str_starts_with($relPath, '/')) {
+            $category = basename(dirname($fixturePath));
+            $override = dirname($fixturePath) . '/_helpers' . $relPath;
+            if (is_file($override)) {
+                return $override;
+            }
             $upstreamAbs = dirname(__DIR__) . '/Wpt/upstream' . $relPath;
             $real = realpath($upstreamAbs);
             return $real !== false && is_file($real) ? $real : null;
         }
+        // Per-category override directory. WebSocket fixtures pull
+        // helpers from `constants.sub.js`, which the WPT server
+        // normally fills in with template substitutions
+        // (`{{host}}`, `{{ports[ws][0]}}`, …). We ship a resolved
+        // copy under `fixtures/<category>/_helpers/` and consult
+        // that first so the fixtures can run without the WPT server.
+        $category = basename(dirname($fixturePath));
+        $override = dirname($fixturePath) . '/_helpers/' . $relPath;
+        if (is_file($override)) {
+            return $override;
+        }
         $direct = dirname($fixturePath) . '/' . $relPath;
         if (is_file($direct)) {
             return $direct;
+        }
+        // XHR fixtures reference helpers like `resources/X.js` that
+        // live in the upstream xhr/resources directory.
+        if ($category === 'xhr' && !str_contains($relPath, '..')) {
+            $upstreamPeer = dirname(__DIR__) . '/Wpt/upstream/xhr/' . $relPath;
+            if (is_file($upstreamPeer)) {
+                return $upstreamPeer;
+            }
         }
         // Imported fixtures retain their upstream-relative script
         // paths (e.g. `../util/helpers.js`) even though we've
@@ -215,6 +327,7 @@ final class WptRunner
         static $categoryMap = [
             'crypto' => 'WebCryptoAPI',
             'xhr' => 'xhr',
+            'fetch' => 'fetch/api',
         ];
         static $fixtureSubdir = [
             // crypto/<fixture> → WebCryptoAPI/<subdir>/
@@ -232,7 +345,6 @@ final class WptRunner
             'ecdh_bits' => 'derive_bits_keys',
             'ecdh_keys' => 'derive_bits_keys',
         ];
-        $category = basename(dirname($fixturePath));
         if (!isset($categoryMap[$category])) {
             return null;
         }

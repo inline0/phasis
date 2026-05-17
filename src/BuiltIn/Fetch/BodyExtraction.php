@@ -117,6 +117,20 @@ final class BodyExtraction
         // ----- FormData ----------------------------------------------------
         if (FormDataConstructor::isFormData($source)) {
             /** @var JsObject $source */
+            // An empty FormData extracts to a zero-byte body — see
+            // WPT response-consume-empty.any.js ("Consume empty
+            // FormData response body as text" expects length === 0).
+            // Browsers skip the multipart wrapper entirely in that
+            // case and we follow suit.
+            $entries = FormDataConstructor::getEntries($source);
+            if (empty($entries)) {
+                return [
+                    'bytes' => '',
+                    'contentType' => 'multipart/form-data; boundary=' . self::generateBoundary(),
+                    'length' => 0,
+                    'sourceKind' => 'formdata',
+                ];
+            }
             $boundary = self::generateBoundary();
             $bytes = self::serializeFormData($source, $boundary);
             return [
@@ -150,12 +164,18 @@ final class BodyExtraction
             if (ReadableStream::isReadableStreamLocked($source)) {
                 throw new TypeError('Failed to construct: body stream is locked');
             }
+            $chunks = self::snapshotStreamChunks($source);
             $bytes = self::drainStream($source);
             return [
                 'bytes' => $bytes,
                 'contentType' => null,
                 'length' => null, // streams have indeterminate length per spec
                 'sourceKind' => 'stream',
+                // Preserve the original JS-side chunks so the host's
+                // `body` stream can replay them with identity
+                // preserved (response.clone() then structured-clones
+                // them for the cloned half).
+                'chunks' => $chunks,
             ];
         }
 
@@ -230,6 +250,40 @@ final class BodyExtraction
         return $out;
     }
 
+    /**
+     * Return the list of JS-side chunks currently enqueued on a
+     * ReadableStream's default controller. Used in addition to
+     * {@see drainStream()} so we can preserve the original chunk
+     * references when a Response is constructed from a stream — the
+     * `response.body` materializer then replays the same chunks
+     * (identity preserved), and `response.clone()` structured-clones
+     * each chunk for the cloned half.
+     *
+     * @return list<JsValue>
+     */
+    public static function snapshotStreamChunks(JsObject $stream): array
+    {
+        $controller = $stream->getInternalProperty('[[Controller]]');
+        if (!$controller instanceof JsObject) {
+            return [];
+        }
+        $queue = $controller->getInternalProperty('[[queue]]');
+        if (!is_array($queue)) {
+            return [];
+        }
+        $out = [];
+        foreach ($queue as $entry) {
+            if (!is_array($entry) || !isset($entry['value'])) {
+                continue;
+            }
+            $val = $entry['value'];
+            if ($val instanceof JsValue) {
+                $out[] = $val;
+            }
+        }
+        return $out;
+    }
+
     private static function chunkToBytes(JsValue $chunk): string
     {
         if ($chunk instanceof JsString) {
@@ -266,7 +320,7 @@ final class BodyExtraction
      * Content-Type sub-header (the consumer interprets them as text/plain
      * by default).
      */
-    private static function serializeFormData(JsObject $formData, string $boundary): string
+    public static function serializeFormData(JsObject $formData, string $boundary): string
     {
         $crlf = "\r\n";
         $out = '';

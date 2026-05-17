@@ -84,6 +84,18 @@ final class StructuredCloneFunction
     }
 
     /**
+     * PHP-side entry point: deep-clone a JS value the same way the
+     * global `structuredClone(value)` would. Used by Response.clone()
+     * and other body-host clone paths that need to fan out a chunk
+     * list without sharing references.
+     */
+    public static function cloneJsValue(JsValue $value): JsValue
+    {
+        $seen = new \SplObjectStorage();
+        return self::cloneValue($value, $seen, new \SplObjectStorage());
+    }
+
+    /**
      * Build a map of (source ArrayBuffer -> transferred clone). Each
      * entry in options.transfer becomes a freshly-allocated buffer
      * that takes over the source's bytes; the source is detached

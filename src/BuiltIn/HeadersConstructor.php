@@ -166,6 +166,26 @@ class HeadersConstructor
     }
 
     /**
+     * Check whether a header is already present on the list — PHP
+     * counterpart of `Headers.prototype.has` used by Response.json /
+     * fetch policy code to decide whether to inject a default
+     * Content-Type without overriding a caller-supplied one.
+     */
+    public static function hasFromPhp(JsObject $headers, string $name): bool
+    {
+        if (!self::isHeaders($headers)) {
+            return false;
+        }
+        $needle = strtolower($name);
+        foreach (self::listOf($headers) as $pair) {
+            if ($pair[0] === $needle) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Read a header value by name from PHP — returns null if absent.
      * Matches `Headers.prototype.get` semantics (comma-joined multi-values
      * except for Set-Cookie, which returns the first).
@@ -266,7 +286,19 @@ class HeadersConstructor
                 if (count($args) < 1) {
                     throw new TypeError("Failed to execute 'delete' on 'Headers': 1 argument required");
                 }
+                // Respect the guard. "immutable" forbids any mutation;
+                // other guards may forbid specific names (set-cookie on
+                // response guard, etc).
+                $guard = $this_ instanceof JsObject
+                    ? ($this_->getInternalProperty(self::SLOT_GUARD) ?? 'none')
+                    : 'none';
+                if ($guard === 'immutable') {
+                    throw new TypeError('Headers are immutable');
+                }
                 $name = self::normalizeName(TypeConversion::toString($args[0]));
+                if (self::guardForbidsName(is_string($guard) ? $guard : 'none', $name)) {
+                    return JsUndefined::instance();
+                }
                 $list = self::listOf($this_);
                 $filtered = [];
                 foreach ($list as $pair) {
