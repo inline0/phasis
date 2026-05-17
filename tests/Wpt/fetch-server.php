@@ -127,6 +127,19 @@ function dispatch(): array
     if ($path === '/common/blank.html') {
         return [200, ['content-type' => 'text/html'], '<!doctype html>'];
     }
+    // /resources/urlpatterntestdata.json — backing data for the
+    // urlpattern WPT fixture. Streamed straight off the upstream
+    // sparse-checkout tree.
+    if (str_ends_with($path, '/urlpatterntestdata.json')) {
+        $candidate = dirname(__DIR__, 1) . '/Wpt/upstream/urlpattern/resources/urlpatterntestdata.json';
+        if (is_file($candidate)) {
+            return [
+                200,
+                ['content-type' => 'application/json'],
+                (string) file_get_contents($candidate),
+            ];
+        }
+    }
 
     // /cors/resources/not-cors-safelisted.json — small fixture file the
     // WPT fetch headers tests load to discover non-CORS-safelisted names.

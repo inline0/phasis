@@ -166,6 +166,9 @@ final class WptRunner
             // XHR fixtures reference `resources/X.py` directly — base
             // is the server root so the relative resolves cleanly.
             'xhr' => 'http://127.0.0.1:8765/',
+            // urlpattern fixtures fetch `resources/urlpatterntestdata.json`;
+            // serve the upstream copy from the server root.
+            'urlpattern' => 'http://127.0.0.1:8765/',
             // WebSocket fixtures compare resolved URLs against
             // `new URL(input, location)`. Use the same value the
             // location stub reports so the two match.
