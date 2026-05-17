@@ -490,6 +490,14 @@
     // The function form is essentially a synchronous-setup hook; we
     // run it immediately so any module-scope state (handlers, fixtures)
     // is populated before tests execute.
+    // When setup({single_test: true}) is called the file represents
+    // one implicit test; report PASS only when the global `done()`
+    // fires (or FAIL on uncaught exception). Without this branch a
+    // timer / microtask fixture that uses the bare `setTimeout(...)
+    // ... done()` pattern produces no subtests at all and the
+    // runner flags it as a harness boot failure.
+    var singleTestActive = false;
+    var singleTestReported = false;
     global.setup = function (fnOrOptions, maybeOptions) {
         if (typeof fnOrOptions === "function") {
             try {
@@ -497,12 +505,23 @@
             } catch (_) {
                 // Setup errors are surfaced through the next test that runs.
             }
+            return;
+        }
+        var opts = fnOrOptions;
+        if (typeof opts === "object" && opts !== null && opts.single_test) {
+            singleTestActive = true;
         }
     };
 
-    // done() / add_completion_callback / add_result_callback — no-ops; we
-    // report per-subtest already.
-    global.done = function () {};
+    // done() — in the single-test setup mode this reports the file
+    // as one PASS. Outside that mode it's a no-op (we report per
+    // subtest via test / async_test / promise_test).
+    global.done = function () {
+        if (singleTestActive && !singleTestReported) {
+            singleTestReported = true;
+            report("PASS", "(single_test)");
+        }
+    };
     global.add_completion_callback = function () {};
     global.add_result_callback = function () {};
 
