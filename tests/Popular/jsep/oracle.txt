@@ -1,0 +1,13 @@
+number {"type":"Literal","value":42,"raw":"42"}
+string {"type":"Literal","value":"hello","raw":"\"hello\""}
+binary {"type":"BinaryExpression","operator":"+","left":{"type":"Literal","value":1,"raw":"1"},"right":{"type":"Literal","value":2,"raw":"2"}}
+compare {"type":"BinaryExpression","operator":">","left":{"type":"Identifier","name":"a"},"right":{"type":"Identifier","name":"b"}}
+member {"type":"MemberExpression","computed":false,"object":{"type":"Identifier","name":"obj"},"property":{"type":"Identifier","name":"foo"}}
+call {"type":"CallExpression","arguments":[{"type":"Literal","value":1,"raw":"1"},{"type":"Literal","value":2,"raw":"2"},{"type":"Literal","value":3,"raw":"3"}],"callee":{"type":"MemberExpression","computed":false,"object":{"type":"Identifier","name":"Math"},"property":{"type":"Identifier","name":"max"}}}
+array {"type":"ArrayExpression","elements":[{"type":"Literal","value":1,"raw":"1"},{"type":"Literal","value":2,"raw":"2"},{"type":"Literal","value":3,"raw":"3"}]}
+conditional {"type":"ConditionalExpression","test":{"type":"Identifier","name":"a"},"consequent":{"type":"Identifier","name":"b"},"alternate":{"type":"Identifier","name":"c"}}
+logical {"type":"BinaryExpression","operator":"||","left":{"type":"BinaryExpression","operator":"&&","left":{"type":"Identifier","name":"a"},"right":{"type":"Identifier","name":"b"}},"right":{"type":"Identifier","name":"c"}}
+unary {"type":"UnaryExpression","operator":"!","argument":{"type":"Identifier","name":"x"},"prefix":true}
+precedence {"type":"BinaryExpression","operator":"+","left":{"type":"Literal","value":1,"raw":"1"},"right":{"type":"BinaryExpression","operator":"*","left":{"type":"Literal","value":2,"raw":"2"},"right":{"type":"Literal","value":3,"raw":"3"}}}
+paren {"type":"BinaryExpression","operator":"*","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Literal","value":1,"raw":"1"},"right":{"type":"Literal","value":2,"raw":"2"}},"right":{"type":"Literal","value":3,"raw":"3"}}
+member.deep {"type":"MemberExpression","computed":false,"object":{"type":"MemberExpression","computed":false,"object":{"type":"MemberExpression","computed":false,"object":{"type":"Identifier","name":"a"},"property":{"type":"Identifier","name":"b"}},"property":{"type":"Identifier","name":"c"}},"property":{"type":"Identifier","name":"d"}}

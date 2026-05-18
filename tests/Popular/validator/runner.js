@@ -1,0 +1,31 @@
+const v = Validator;
+const out = [];
+const log = (k, val) => out.push(k + " " + JSON.stringify(val));
+
+log("isEmail.ok", v.isEmail("alice@example.com"));
+log("isEmail.bad", v.isEmail("not-an-email"));
+log("isURL.ok", v.isURL("https://example.com"));
+log("isURL.bad", v.isURL("not a url"));
+log("isUUID.v4", v.isUUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8"));
+log("isUUID.bad", v.isUUID("xx"));
+log("isIP.v4", v.isIP("192.168.1.1"));
+log("isIP.v6", v.isIP("2001:db8::1"));
+log("isInt.ok", v.isInt("42"));
+log("isInt.bad", v.isInt("3.14"));
+log("isAlpha.ok", v.isAlpha("hello"));
+log("isAlphanumeric.ok", v.isAlphanumeric("hello123"));
+log("isBase64.ok", v.isBase64("SGVsbG8="));
+log("isCreditCard.ok", v.isCreditCard("4111111111111111"));
+log("isPostalCode.us", v.isPostalCode("90210", "US"));
+log("isJSON.ok", v.isJSON('{"a":1}'));
+log("isJSON.bad", v.isJSON("{not json}"));
+log("equals", v.equals("abc", "abc"));
+log("contains", v.contains("hello world", "world"));
+log("matches", v.matches("abc123", /^[a-z]+\d+$/));
+log("normalizeEmail", v.normalizeEmail("Alice@GMAIL.com"));
+log("escape", v.escape("<script>alert('xss')</script>"));
+log("trim", v.trim("   hi   "));
+log("toInt", v.toInt("42"));
+log("toFloat", v.toFloat("3.14"));
+
+console.log(out.join("\n"));

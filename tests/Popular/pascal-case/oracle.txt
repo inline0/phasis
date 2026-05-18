@@ -1,0 +1,7 @@
+camelCase "CamelCase"
+snake_case "SnakeCase"
+kebab-case "KebabCase"
+space-sep "HelloWorld"
+dot.case "DotCase"
+mixed "FooBarBazQux"
+number "Foo_1Bar_2"

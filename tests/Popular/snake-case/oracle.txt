@@ -1,0 +1,7 @@
+camelCase "camel_case"
+PascalCase "pascal_case"
+kebab-case "kebab_case"
+space-sep "hello_world"
+dot.case "dot_case"
+mixed "foo_bar_baz_qux"
+number "foo_1_bar_2"

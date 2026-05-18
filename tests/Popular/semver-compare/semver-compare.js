@@ -1,0 +1,1 @@
+var SemverCompare=(()=>{var p=(i,r)=>()=>(r||i((r={exports:{}}).exports,r),r.exports);var v=p((o,u)=>{u.exports=function(r,a){for(var s=r.split("."),f=a.split("."),N=0;N<3;N++){var t=Number(s[N]),e=Number(f[N]);if(t>e)return 1;if(e>t)return-1;if(!isNaN(t)&&isNaN(e))return 1;if(isNaN(t)&&!isNaN(e))return-1}return 0}});return v();})();

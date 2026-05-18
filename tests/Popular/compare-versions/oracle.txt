@@ -1,0 +1,12 @@
+compare.lt -1
+compare.eq 0
+compare.gt 1
+compare.pre -1
+compare.fn.lt true
+compare.fn.eq true
+compare.fn.ge true
+validate.ok true
+validate.bad false
+satisfies.tilde true
+satisfies.caret true
+satisfies.range true

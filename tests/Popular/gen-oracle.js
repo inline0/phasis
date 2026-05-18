@@ -42,6 +42,13 @@ const sandbox = {
   Float32Array, Float64Array, BigInt64Array, BigUint64Array, ArrayBuffer,
   Promise, Symbol, Map, Set, WeakMap, WeakSet,
   Error, TypeError, RangeError, SyntaxError, ReferenceError,
+  // Web Platform basics that Phasis ships and many libraries
+  // (jwt-decode, ulid, hash libs, etc.) reach for unconditionally.
+  atob: typeof atob === "function" ? atob : undefined,
+  btoa: typeof btoa === "function" ? btoa : undefined,
+  URL: typeof URL === "function" ? URL : undefined,
+  URLSearchParams: typeof URLSearchParams === "function" ? URLSearchParams : undefined,
+  performance: typeof performance === "object" ? performance : undefined,
   globalThis: undefined, // gets set after createContext below
 };
 vm.createContext(sandbox);

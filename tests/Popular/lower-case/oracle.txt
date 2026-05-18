@@ -1,0 +1,8 @@
+simple "hello"
+camelCase "camelcase"
+PascalCase "pascalcase"
+snake_case "snake_case"
+kebab-case "kebab-case"
+dot.case "dot.case"
+mixed "foo_bar-baz qux"
+number "hello123"

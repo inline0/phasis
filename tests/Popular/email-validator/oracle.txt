@@ -1,0 +1,7 @@
+ok true
+bad.no-at false
+bad.no-tld false
+bad.empty false
+subdomain true
+plus-alias true
+punycode true

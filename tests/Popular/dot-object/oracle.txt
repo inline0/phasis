@@ -1,0 +1,6 @@
+set.nested {"user":{"name":"alice","address":{"city":"berlin"}}}
+pick "Bob"
+flatten {"a.b":1,"a.c.d":2}
+object {"a":{"b":1,"c":{"d":2}}}
+delete {"a":{"c":2}}
+copy {"dst":{"x":1}}

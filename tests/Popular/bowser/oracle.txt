@@ -1,0 +1,8 @@
+Mozilla/5.0 (Windows NT 10.0; Win64 {"browser":"Chrome","os":"Windows"}
+Mozilla/5.0 (Macintosh; Intel Mac O {"browser":"Safari","os":"macOS"}
+Mozilla/5.0 (X11; Ubuntu; Linux x86 {"browser":"Firefox","os":"Linux"}
+Mozilla/5.0 (iPhone; CPU iPhone OS  {"browser":"Safari","os":"iOS"}
+getParser.browserName "Chrome"
+getParser.osName "Windows"
+getParser.platform "desktop"
+getParser.engine "Blink"

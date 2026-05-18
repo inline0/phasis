@@ -1,0 +1,2 @@
+payload {"sub":"1234","name":"Alice","iat":1516239022}
+header {"alg":"HS256","typ":"JWT"}

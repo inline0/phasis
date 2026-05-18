@@ -1,0 +1,8 @@
+hash.empty "29ce484222f9a"
+hash.a "3dc4c8601e67a"
+hash.abc "fa2190541593a"
+hash.fox "eb7b40bd8c4b8"
+fast1a32hex "4f9f2cab"
+fast1a32hex.same true
+fast1a52hex "0d84680aab748"
+hash64.hex "a430d84680aabd0b"

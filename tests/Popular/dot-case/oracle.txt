@@ -1,0 +1,7 @@
+camelCase "camel.case"
+PascalCase "pascal.case"
+snake_case "snake.case"
+kebab-case "kebab.case"
+spaces "hello.world"
+mixed "foo.bar.baz.qux"
+number "xml2.json"

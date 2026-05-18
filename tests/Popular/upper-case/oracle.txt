@@ -1,0 +1,6 @@
+simple "HELLO"
+camelCase "CAMELCASE"
+snake_case "SNAKE_CASE"
+kebab-case "KEBAB-CASE"
+dot.case "DOT.CASE"
+mixed "FOO_BAR-BAZ QUX"

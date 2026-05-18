@@ -1,0 +1,5 @@
+hello world "Hello World"
+the quick brown fox "The Quick Brown Fox"
+camelCase "camelCase"
+snake_case "Snake_case"
+from a single word "From"
