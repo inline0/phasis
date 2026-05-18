@@ -1532,10 +1532,6 @@ final class VM
                                     $savedFrames[] = $sf;
                                 }
                                 $sf->cf = $cf;
-                                $sf->code = $code;
-                                $sf->consts = $consts;
-                                $sf->names = $names;
-                                $sf->nestedFns = $nestedFns;
                                 $sf->stack = $stack;
                                 $sf->sp = $sp;
                                 $sf->locals = $locals;
@@ -1755,10 +1751,6 @@ final class VM
                                         $savedFrames[] = $sf;
                                     }
                                     $sf->cf = $cf;
-                                    $sf->code = $code;
-                                    $sf->consts = $consts;
-                                    $sf->names = $names;
-                                    $sf->nestedFns = $nestedFns;
                                     $sf->stack = $stack;
                                     $sf->sp = $sp;
                                     $sf->locals = $locals;
@@ -2007,10 +1999,6 @@ final class VM
                                     $savedFrames[] = $sf;
                                 }
                                 $sf->cf = $cf;
-                                $sf->code = $code;
-                                $sf->consts = $consts;
-                                $sf->names = $names;
-                                $sf->nestedFns = $nestedFns;
                                 $sf->stack = $stack;
                                 $sf->sp = $sp;
                                 $sf->locals = $locals;
@@ -2476,10 +2464,10 @@ final class VM
                                 $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
                                 $this->interp->releaseInlineVmFrame();
                                 $cf = $sf->cf;
-                                $code = $sf->code;
-                                $consts = $sf->consts;
-                                $names = $sf->names;
-                                $nestedFns = $sf->nestedFns;
+                                $code = $cf->code;
+                                $consts = $cf->consts;
+                                $names = $cf->names;
+                                $nestedFns = $cf->nestedFns;
                                 $stack = $sf->stack;
                                 $sp = $sf->sp;
                                 $locals = $sf->locals;
@@ -2587,10 +2575,10 @@ final class VM
                     $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
                     $this->interp->releaseInlineVmFrame();
                     $cf = $sf->cf;
-                    $code = $sf->code;
-                    $consts = $sf->consts;
-                    $names = $sf->names;
-                    $nestedFns = $sf->nestedFns;
+                    $code = $cf->code;
+                    $consts = $cf->consts;
+                    $names = $cf->names;
+                    $nestedFns = $cf->nestedFns;
                     $stack = $sf->stack;
                     $sp = $sf->sp;
                     $locals = $sf->locals;
