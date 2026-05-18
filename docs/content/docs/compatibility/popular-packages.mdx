@@ -1,13 +1,13 @@
 ---
 title: Popular packages
-description: Phasis runs real-world JS libraries — acorn, mustache.js, lodash, marked, dayjs, bignumber.js, json5, fuse.js, handlebars — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+description: Phasis runs real-world JS libraries — acorn, mustache.js, lodash, marked, dayjs, bignumber.js, json5, fuse.js, handlebars, zod — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies nine widely-used libraries byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+Phasis verifies ten widely-used libraries byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
 
 ## Coverage
 
@@ -22,8 +22,9 @@ Phasis verifies nine widely-used libraries byte-for-byte against Node.js (V8) on
 | **[json5](https://json5.org)** | 2.2.3 | Relaxed JSON parse / stringify. Unquoted keys, single-quoted strings, trailing commas, line + block comments, hex literals (`0xff`), `Infinity` / `NaN`, leading / trailing decimal points (`.5`, `1.`), `+` sign, multi-line strings via `\` continuation, indent + replacer (array + function) on stringify. | byte-equal |
 | **[fuse.js](https://fusejs.io)** | 7.0.0 | Fuzzy search. Exact match, typo-tolerant match (Bitap), nested-key lookup (`author.last`), per-key weighting, tags-as-array indexing, threshold tuning (0.0 exact → 0.3 near-exact). Babel-transpiled UMD that exercises `_classCallCheck` (`this instanceof Ctor` after factory-IIFE return) and `var` hoisting inside `else if` blocks. | byte-equal |
 | **[handlebars](https://handlebarsjs.com)** | 4.7.8 | Template compile + render. Plain interpolation, triple-stache escape skip, `{{#if}}` / `{{else}}` blocks, `{{#each}}` over arrays and objects (with `@index` / `@key` / `@first` / `@last`), `{{#with}}`, built-in `lookup` helper, custom helper + `SafeString`, block helpers, partials (`{{> name}}`), parent-context paths (`{{../prefix}}`), subexpressions, compile-once / render-many reuse. | byte-equal |
+| **[zod](https://zod.dev)** | 3.23.8 | Runtime type validation. Primitive schemas with refinements (`.min`/`.max`/`.email`/`.int`/`.positive`), object schemas with optional / nullable fields, array length constraints, discriminated unions, `.transform()` pipelines, `.default()` values, custom `.refine()` predicates, `z.enum` membership, structured `ZodError.issues` (path + code per failure). | byte-equal |
 
-Total: **9 libraries · ~570 KB of vendored upstream JS** all reproduce Node's exact output.
+Total: **10 libraries · ~740 KB of vendored upstream JS** all reproduce Node's exact output.
 
 ## How it works
 
@@ -72,6 +73,7 @@ Both jobs must pass before the PR merges. A test262 win that breaks lodash isn't
 - **json5** — relaxed JSON parsing leans heavily on character-class regexes and stateful tokenization. A good canary for both regex correctness and string-iteration edges.
 - **fuse.js** — a Babel-transpiled UMD that exercises `_classCallCheck` (the `this instanceof Ctor` pattern that every pre-ES6 transpiled class uses) plus the full bitap fuzzy-match algorithm. It's the canary that surfaced two real engine bugs during the night: the hoisted-FunctionDeclaration env-sync miss in the bytecode VM, and the missing `var` recursion through `else if` bodies in `forceHoistVarNames`. Both were quietly wrong on `main` for months and would have hit any other Babel-transpiled library too.
 - **handlebars** — full-featured templating with compile-then-render. Exercises the `eval`-free runtime path through a single huge `compile()` entry, AST traversal, helper dispatch through a dynamic lookup table, and `SafeString` brand-checking that uses `instanceof` across realms. A counterpoint to mustache.js's simpler template walker.
+- **zod** — runtime schema validation. Heavy class hierarchies (`ZodString`, `ZodObject`, `ZodArray`, `ZodUnion`, …) with method chaining that returns refined sub-classes, structured error formatting where the JS-side `.issues` array shape has to match Node byte-for-byte, and discriminator/literal-tag patterns. Tests the kind of OO-heavy validation code that wraps half of modern TypeScript apps.
 
 ## Adding more
 
@@ -84,4 +86,4 @@ git add tests/Popular/<name>
 
 The PHPUnit suite auto-discovers it on the next run. CI picks it up on the next push.
 
-Strong candidates worth adding: `chevrotain` (parser combinator, exercises closures + regex), `nanoid` (crypto/randomness boundary), `zod` (schema/error formatting).
+Strong candidates worth adding: `chevrotain` (parser combinator, exercises closures + regex), `nanoid` (crypto/randomness boundary), `date-fns` (timezone surface beyond dayjs).
