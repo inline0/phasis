@@ -112,6 +112,14 @@ final class XMLHttpRequestConstructor
         self::defineEventTargetMethods($proto);
         self::defineAccessors($proto, $env);
 
+        // Symbol.toStringTag = "XMLHttpRequest" so Object.prototype.toString
+        // (and the implicit String() coercion fetch/XHR test fixtures rely
+        // on, e.g. send-data-es-object.any.js) emits the right tag.
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('XMLHttpRequest'), false, false, true),
+        );
+
         $env->defineVar('XMLHttpRequest', $ctor);
 
         // Expose XMLHttpRequestUpload as a global ctor. Instances
