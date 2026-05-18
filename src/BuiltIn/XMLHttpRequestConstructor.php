@@ -1167,6 +1167,11 @@ final class XMLHttpRequestConstructor
         $respBody = (string) ($response['body'] ?? '');
         $finalUrl = (string) ($response['finalUrl'] ?? $url);
 
+        // Per XHR spec §5 send: sync requests skip every "progress"
+        // event (upload + response). They still fire load + loadend
+        // because those are gated on terminal state, not progress.
+        $isAsync = (bool) ($xhr->getInternalProperty('[[Async]]') ?? true);
+
         // Upload phase completed — fire the upload progress / load /
         // loadend events. The real network has streamed the body to
         // the wire by the time we see headers; our curl-driven
@@ -1175,7 +1180,9 @@ final class XMLHttpRequestConstructor
         // batch right before the response phase starts.
         $uploadLen = (int) ($xhr->getInternalProperty('[[UploadBodyLength]]') ?? 0);
         if ($uploadLen > 0) {
-            self::fireUploadEvent($xhr, 'progress', $uploadLen, $uploadLen);
+            if ($isAsync) {
+                self::fireUploadEvent($xhr, 'progress', $uploadLen, $uploadLen);
+            }
             self::fireUploadEvent($xhr, 'load', $uploadLen, $uploadLen);
             self::fireUploadEvent($xhr, 'loadend', $uploadLen, $uploadLen);
         }
@@ -1189,7 +1196,9 @@ final class XMLHttpRequestConstructor
 
         $xhr->setInternalProperty('[[ResponseBody]]', $respBody);
         self::setReadyState($xhr, 3); // LOADING
-        self::fireEvent($xhr, 'progress');
+        if ($isAsync) {
+            self::fireEvent($xhr, 'progress');
+        }
 
         self::setReadyState($xhr, 4); // DONE
         self::fireEvent($xhr, 'load');
