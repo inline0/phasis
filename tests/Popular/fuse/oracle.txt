@@ -1,0 +1,7 @@
+exact.title ["Clean Code"]
+fuzzy.title.typo ["Refactoring"]
+weighted.martin ["Clean Code","Domain-Driven Design"]
+nested.first.steve ["Steve"]
+tags.design ["Refactoring","Design Patterns","Domain-Driven Design"]
+tight.0.exact ["Code Complete"]
+tight.0.fuzzy.empty []

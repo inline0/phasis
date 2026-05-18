@@ -1736,11 +1736,19 @@ trait Hoisting
                     $this->forceHoistVarNames($stmt->body->body, $env);
                 }
             } elseif ($stmt instanceof IfStatement) {
-                if ($stmt->consequent instanceof BlockStatement) {
-                    $this->forceHoistVarNames($stmt->consequent->body, $env);
-                }
-                if ($stmt->alternate instanceof BlockStatement) {
-                    $this->forceHoistVarNames($stmt->alternate->body, $env);
+                // Recurse into consequent + alternate as single-statement
+                // lists. Wrapping in [] is correct for both: a Block becomes
+                // [Block] (which our own elseif-BlockStatement branch
+                // unwraps), and a non-block (like `else if`, or a brace-less
+                // `if (x) var y;`) becomes [IfStatement] / [VarDecl] and the
+                // outer foreach dispatches by node kind. Without this,
+                // `var` decls inside else-if chains never got hoisted to
+                // the function scope, so the assignment `f = ...` walked
+                // up the closure chain and clobbered an outer binding —
+                // observed corrupting fuse.js's `function f` spread helper.
+                $this->forceHoistVarNames([$stmt->consequent], $env);
+                if ($stmt->alternate !== null) {
+                    $this->forceHoistVarNames([$stmt->alternate], $env);
                 }
             } elseif ($stmt instanceof BlockStatement) {
                 $this->forceHoistVarNames($stmt->body, $env);
@@ -1750,6 +1758,20 @@ trait Hoisting
                 } else {
                     $this->forceHoistVarNames([$stmt->body], $env);
                 }
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\TryStatement) {
+                $this->forceHoistVarNames($stmt->block->body, $env);
+                if ($stmt->handler !== null) {
+                    $this->forceHoistVarNames($stmt->handler->body->body, $env);
+                }
+                if ($stmt->finalizer !== null) {
+                    $this->forceHoistVarNames($stmt->finalizer->body, $env);
+                }
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\SwitchStatement) {
+                foreach ($stmt->cases as $case) {
+                    $this->forceHoistVarNames($case->consequent, $env);
+                }
+            } elseif ($stmt instanceof \Phasis\Ast\Statement\LabeledStatement) {
+                $this->forceHoistVarNames([$stmt->body], $env);
             }
         }
     }
