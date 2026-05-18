@@ -1,0 +1,5 @@
+base64.roundtrip true
+utf16.roundtrip true
+uri.roundtrip true
+short.base64.roundtrip true
+empty.base64.roundtrip true

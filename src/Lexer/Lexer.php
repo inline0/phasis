@@ -1766,6 +1766,39 @@ class Lexer
             return true;
         }
         $prev = $this->tokens[count($this->tokens) - 1];
+        // RightParen is the most ambiguous case: after `)` from a
+        // function call / grouping expression `/` is division, but
+        // after `)` from a flow-control statement header (`if(...)`,
+        // `for(...)`, `while(...)`, `switch(...)`, `with(...)`) the
+        // following `/` starts a regex (the statement body is a
+        // fresh expression). Walk back through the token stream
+        // matching parens to find the keyword that owns this `)`.
+        if ($prev->type === TokenType::RightParen) {
+            $depth = 1;
+            for ($i = count($this->tokens) - 2; $i >= 0; $i--) {
+                $t = $this->tokens[$i];
+                if ($t->type === TokenType::RightParen) {
+                    $depth++;
+                } elseif ($t->type === TokenType::LeftParen) {
+                    $depth--;
+                    if ($depth === 0) {
+                        // Look at the token preceding the matching `(`.
+                        if ($i === 0) {
+                            return true; // `(` at file start — regex
+                        }
+                        $owner = $this->tokens[$i - 1];
+                        return $owner->type === TokenType::If
+                            || $owner->type === TokenType::For
+                            || $owner->type === TokenType::While
+                            || $owner->type === TokenType::Switch
+                            || $owner->type === TokenType::With
+                            || $owner->type === TokenType::Catch;
+                    }
+                }
+            }
+            // Unbalanced — let the parser surface the real error.
+            return false;
+        }
         // After value-producing tokens, / is division. After everything else, it's regex.
         // Value-producing tokens:
         if (
@@ -1776,7 +1809,6 @@ class Lexer
             || $prev->type === TokenType::RegExp
             || $prev->type === TokenType::NoSubstitutionTemplate
             || $prev->type === TokenType::TemplateTail
-            || $prev->type === TokenType::RightParen
             || $prev->type === TokenType::RightBracket
             || $prev->type === TokenType::RightBrace
             || $prev->type === TokenType::PlusPlus
