@@ -202,7 +202,11 @@ trait MatcherAtom
             }
             if ($cp < 0x10000) {
                 $ch = mb_chr($cp, 'UTF-8');
-                if ($ch === '') {
+                // mb_chr returns false for invalid codepoints (lone
+                // surrogates, anything above 0x10FFFF). Falling through
+                // to mb_strtolower(false) triggers a PHP TypeError that
+                // bubbles out of the regex engine. Pass the cp through.
+                if (!is_string($ch) || $ch === '') {
                     return $cp;
                 }
                 return mb_ord(mb_strtolower($ch, 'UTF-8'), 'UTF-8');
@@ -215,7 +219,7 @@ trait MatcherAtom
         }
         if ($cp < 0x10000) {
             $ch = mb_chr($cp, 'UTF-8');
-            if ($ch === '') {
+            if (!is_string($ch) || $ch === '') {
                 return $cp;
             }
             $upper = mb_strtoupper($ch, 'UTF-8');

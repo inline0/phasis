@@ -350,7 +350,14 @@ trait CompilerScope
             // DUP + STORE_NAME syncs the env binding so both paths agree.
             $this->emit(Op::DUP);
             $this->emit(Op::STORE_LOCAL, $slot);
-            $this->emit(Op::STORE_NAME, $this->internName($name));
+            // DEFINE_NAME (not STORE_NAME): defineVar semantics, so it
+            // overwrites any existing binding on the local env without
+            // walking the chain. STORE_NAME with strict=true throws
+            // ReferenceError when the binding doesn't yet exist higher
+            // up — which can happen when ramda-style libraries declare
+            // many top-level `function r(t,n){...}` shapes whose tree-
+            // walker hoist binding got eclipsed or never created.
+            $this->emit(Op::DEFINE_NAME, $this->internName($name));
         }
     }
 

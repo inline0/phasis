@@ -1,0 +1,57 @@
+=== headings ===
+<h1>H1</h1>
+<h2>H2</h2>
+<h3>H3</h3>
+
+=== inline ===
+<p><strong>bold</strong> and <em>italic</em> and <code>code</code> and <a href="https://example.com">link</a>.</p>
+
+=== list ===
+<ul>
+<li>a</li>
+<li>b
+<ul>
+<li>nested</li>
+</ul>
+</li>
+<li>c</li>
+</ul>
+
+=== code ===
+<pre><code class="language-js">const x = 1;
+</code></pre>
+
+=== blockquote ===
+<blockquote>
+<p>quoted text
+on two lines</p>
+</blockquote>
+
+=== table ===
+<table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+<tr>
+<td>3</td>
+<td>4</td>
+</tr>
+</tbody>
+</table>
+
+=== hr ===
+<p>before</p>
+<hr>
+<p>after</p>
+
+=== autolink ===
+<p><a href="https://example.com">https://example.com</a></p>
+

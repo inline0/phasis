@@ -51,6 +51,16 @@ final class Op
     // the scope-depth cache on the Identifier AST node we hand off).
     public const LOAD_NAME = 30;   // N  — push env->get(names[N])
     public const STORE_NAME = 31;  // N  — env->set(names[N], pop())
+    public const DEFINE_NAME = 32; // N  — env->defineVar(names[N], pop());
+                                   // unlike STORE_NAME this creates the binding
+                                   // on the current env regardless of whether
+                                   // one already exists higher up the chain.
+                                   // Used by FunctionDeclaration hoisting to
+                                   // re-bind the env entry that hoistDeclarations
+                                   // pre-created in the tree-walker, with the
+                                   // VM-instantiated JsFunction value so both
+                                   // the frame slot and env binding stay in
+                                   // sync (closure-capture safety).
 
     // ---- Arithmetic & comparison ----------------------------------------
     public const ADD = 40;
@@ -211,6 +221,7 @@ final class Op
             case self::DEC_LOCAL:
             case self::LOAD_NAME:
             case self::STORE_NAME:
+            case self::DEFINE_NAME:
             case self::JUMP:
             case self::JUMP_IF_TRUE:
             case self::JUMP_IF_FALSE:

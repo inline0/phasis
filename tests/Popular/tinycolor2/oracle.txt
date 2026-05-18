@@ -1,0 +1,22 @@
+hex.in.hex.out "#ff0000"
+hex.in.rgb.out "rgb(255, 0, 0)"
+hex.in.hsl.out "hsl(0, 100%, 50%)"
+hex.in.name.out "red"
+named.in.hex "#663399"
+rgb.in.hex "#ff7f00"
+hsl.in.hex "#40bf40"
+hsla.in.rgba "rgba(0, 255, 255, 0.5)"
+rgb {"r":0,"g":128,"b":255,"a":1}
+hsl {"h":209.8823529411765,"s":1,"l":0.5,"a":1}
+hsv {"h":209.8823529411765,"s":1,"v":1,"a":1}
+brightness 104.206
+luminance "0.2266"
+isDark true
+isLight false
+lighten "#ff6666"
+darken "#990000"
+desaturate "#bf4040"
+complement "#00ffff"
+isReadable true
+readability 21
+toString "#ff0000"

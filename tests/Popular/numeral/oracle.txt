@@ -1,0 +1,14 @@
+fmt.0,0 "1,234,567"
+fmt.0,0.00 "1,234.57"
+fmt.percent "97.488%"
+fmt.currency "$1,230.50"
+fmt.thousands "1.2m"
+fmt.bytes "5MB"
+fmt.ordinal "1st"
+fmt.exp "1e+6"
+fmt.time "0:42:00"
+add 1250
+subtract 850
+multiply 50
+divide 25
+difference 25
