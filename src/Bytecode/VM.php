@@ -1433,12 +1433,24 @@ final class VM
                             // bailouts (non-numeric arg) throw a Bailout that
                             // we catch and retry through the normal direct /
                             // slow path.
-                            if (
-                                $callee->phpCompiled !== null
-                                && !$callee->isClassConstructor()
-                                && !$callee->isDerivedConstructor()
-                                && $callee->getHomeObject() === null
-                            ) {
+                            // Cached eligibility for the phpCompiled fast
+                            // dispatch: a single boolean read replaces
+                            // four field/method calls per dispatch.
+                            // Negative results aren't cached (phpCompiled
+                            // populates lazily; an early-call false would
+                            // permanently lock the function out of the
+                            // JIT). Reset by the JIT compiler when it
+                            // first installs phpCompiled.
+                            $phpEligible = $callee->phpCompiledDispatchCache;
+                            if ($phpEligible === null && $callee->phpCompiled !== null) {
+                                $phpEligible = !$callee->isClassConstructor()
+                                    && !$callee->isDerivedConstructor()
+                                    && $callee->getHomeObject() === null;
+                                if ($phpEligible) {
+                                    $callee->phpCompiledDispatchCache = true;
+                                }
+                            }
+                            if ($phpEligible === true && $callee->phpCompiled !== null) {
                                 try {
                                     // Compute the result first, push only after
                                     // the call returns. PHP evaluates `$stack[$sp++]`'s
@@ -2045,12 +2057,28 @@ final class VM
                                         $pc += 2;
                                         break;
                                     }
-                                    // Linear scan up to 4 entries.
+                                    // Unroll the monomorphic 1-entry
+                                    // case so the foreach setup cost
+                                    // doesn't penalise the most common
+                                    // shape (class instances where every
+                                    // receiver shares a prototype).
+                                    $e0 = $ic[0];
+                                    if (
+                                        $e0[0] === $objProto
+                                        && $objProto->properties->version === $e0[2]
+                                    ) {
+                                        $stack[$sp++] = $e0[1];
+                                        $pc += 2;
+                                        break;
+                                    }
+                                    // Polymorphic walk: 2..4 entries.
+                                    $icLen = count($ic);
                                     $hit = false;
-                                    foreach ($ic as $entry) {
+                                    for ($i = 1; $i < $icLen; $i++) {
+                                        $entry = $ic[$i];
                                         if (
                                             $entry[0] === $objProto
-                                            && $entry[0]->properties->version === $entry[2]
+                                            && $objProto->properties->version === $entry[2]
                                         ) {
                                             $stack[$sp++] = $entry[1];
                                             $pc += 2;
@@ -2234,67 +2262,23 @@ final class VM
                             ) {
                                 $ic = $cf->storeMemberIc[$pc] ?? null;
                                 if ($ic !== null) {
-                                    // Unroll the most common chain
-                                    // lengths (1 = just Object.prototype,
-                                    // 2 = class instance with one user
-                                    // proto) so the foreach overhead
-                                    // doesn't dominate the hit path.
-                                    // ctor-heavy hits this with a 2-entry
-                                    // chain on every `this.x = …` /
-                                    // `this.y = …` after the first
-                                    // construction.
-                                    $icLen = count($ic);
-                                    $proto0 = $obj->prototype;
-                                    if ($icLen === 1) {
-                                        $e0 = $ic[0];
+                                    $chainOk = true;
+                                    $cursor = $obj->prototype;
+                                    foreach ($ic as $entry) {
                                         if (
-                                            $proto0 === $e0[0]
-                                            && $proto0->properties->version === $e0[1]
-                                            && $proto0->prototype === null
+                                            $cursor !== $entry[0]
+                                            || $cursor->properties->version !== $entry[1]
                                         ) {
-                                            $obj->properties->setDataSlot($name, $val);
-                                            $stack[$sp++] = $val;
-                                            $pc += 2;
+                                            $chainOk = false;
                                             break;
                                         }
-                                    } elseif ($icLen === 2) {
-                                        $e0 = $ic[0];
-                                        $e1 = $ic[1];
-                                        if (
-                                            $proto0 === $e0[0]
-                                            && $proto0->properties->version === $e0[1]
-                                        ) {
-                                            $proto1 = $proto0->prototype;
-                                            if (
-                                                $proto1 === $e1[0]
-                                                && $proto1->properties->version === $e1[1]
-                                                && $proto1->prototype === null
-                                            ) {
-                                                $obj->properties->setDataSlot($name, $val);
-                                                $stack[$sp++] = $val;
-                                                $pc += 2;
-                                                break;
-                                            }
-                                        }
-                                    } else {
-                                        $chainOk = true;
-                                        $cursor = $proto0;
-                                        foreach ($ic as $entry) {
-                                            if (
-                                                $cursor !== $entry[0]
-                                                || $cursor->properties->version !== $entry[1]
-                                            ) {
-                                                $chainOk = false;
-                                                break;
-                                            }
-                                            $cursor = $cursor->prototype;
-                                        }
-                                        if ($chainOk && $cursor === null) {
-                                            $obj->properties->setDataSlot($name, $val);
-                                            $stack[$sp++] = $val;
-                                            $pc += 2;
-                                            break;
-                                        }
+                                        $cursor = $cursor->prototype;
+                                    }
+                                    if ($chainOk && $cursor === null) {
+                                        $obj->properties->setDataSlot($name, $val);
+                                        $stack[$sp++] = $val;
+                                        $pc += 2;
+                                        break;
                                     }
                                 }
                                 // IC miss. Walk the chain to see whether this

@@ -587,6 +587,20 @@ class JsFunction extends JsObject
     public bool $annexBDescriptorsObserved = false;
 
     /**
+     * Cached "the VM CALL op can dispatch this function via its
+     * phpCompiled closure directly" eligibility. Set on first hit
+     * once `phpCompiled` is populated AND none of the disqualifiers
+     * apply (class ctor, derived ctor, home object). Saves four
+     * field reads + one comparison on the hot CALL path: each call
+     * site that hits the JIT direct dispatch reads this single
+     * boolean instead of re-running the guard ladder. Initialised
+     * lazily because `phpCompiled` only becomes non-null after the
+     * first call's compile attempt — checking eligibility before
+     * then would memoise a false negative.
+     */
+    public ?bool $phpCompiledDispatchCache = null;
+
+    /**
      * Override JsObject::defineOwnProperty so the Annex B observed flag
      * flips the first time a `caller` or `arguments` descriptor lands
      * on this function. This is the only entry point through which the
