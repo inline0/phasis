@@ -335,11 +335,22 @@ trait CompilerScope
             if ($this->capturesOuterLocal($stmt)) {
                 throw new CompilerBailout('hoisted fn captures outer local');
             }
+            $name = $stmt->id->name;
             $idx = count($this->nestedFns);
             $this->nestedFns[] = $stmt;
             $this->emit(Op::MAKE_FUNCTION, $idx);
-            $slot = $this->localSlots[$stmt->id->name] ?? $this->declareLocal($stmt->id->name);
+            $slot = $this->localSlots[$name] ?? $this->declareLocal($name);
+            // The tree-walker pre-hoist (Interpreter::hoistDeclarations,
+            // run on this body before the VM starts) already created an
+            // env binding pointing to its own JsFunction copy. STORE_LOCAL
+            // alone would leave that env binding stale, so any nested
+            // closure that LOAD_NAMEs `$name` (including the function
+            // referring to itself by name) would see a *different*
+            // JsFunction than what `return $name` returns from the slot.
+            // DUP + STORE_NAME syncs the env binding so both paths agree.
+            $this->emit(Op::DUP);
             $this->emit(Op::STORE_LOCAL, $slot);
+            $this->emit(Op::STORE_NAME, $this->internName($name));
         }
     }
 
