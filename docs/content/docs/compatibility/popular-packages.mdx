@@ -1,30 +1,37 @@
 ---
 title: Popular packages
-description: Phasis runs real-world JS libraries — acorn, mustache.js, lodash, marked, dayjs, bignumber.js, json5, fuse.js, handlebars, zod — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+description: Phasis runs 60+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies ten widely-used libraries byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+Phasis verifies **66 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
 
-## Coverage
+## Coverage by category
 
-| Library | Version | Surface exercised | CI gate |
-|---|---|---|---|
-| **[acorn](https://github.com/acornjs/acorn)** | 8.16.0 | Modern-ES parser: classes with private fields, arrow + async generator + yield-await, destructuring with default/rest, tagged template (`String.raw`), import/export, ES2024 syntax. 126-line AST summary emitted via deterministic walker. | byte-equal |
-| **mustache.js** | 4.2.0 | Template renderer with sections, inverted sections, partials, dotted lookup, lambdas, HTML escaping vs raw `{{{}}}`. Seven templates render to a 25-line concatenated string. | byte-equal |
-| **lodash** | 4.18.1 | Full utility surface: array methods (`map`, `filter`, `reduce`, `flat`, `flatten`, `chunk`, `uniq`, `zip`, `union`, `intersection`), collection (`sortBy`, `orderBy`, `groupBy`, `keyBy`), object (`pick`, `omit`, `get`, `set`, `merge`, `defaults`, `invert`), lang (`isEqual`, `cloneDeep`, `isMatch`), string transforms, math reducers, function helpers (`memoize`, `once`), `_.chain`. ~60 invocations. | byte-equal |
-| **marked** | 18.0.3 | Markdown parser. Headings, inline emphasis, lists (ordered + unordered + nested), code blocks (fenced + indented), block-quotes, tables, HTML passthrough, combined readme. | byte-equal |
-| **[dayjs](https://day.js.org)** | 1.11.20 | Date arithmetic + formatting. Constructors from ISO / epoch ms / `Date`, `add` / `subtract` across day / month / year, `diff` in absolute units, `startOf` / `endOf`, format-token output (`YYYY-MM-DD`, `HH:mm:ss`, etc.), comparison operators, immutability. Pinned to `date.timezone=UTC` so the oracle is byte-stable across runners. | byte-equal |
-| **[bignumber.js](https://mikemcl.github.io/bignumber.js/)** | 11.1.1 | Arbitrary-precision arithmetic. `plus` / `minus` / `times` / `div` / `mod` on 30-digit operands, `pow` / `sqrt`, rounding modes (`HALF_UP` / `HALF_DOWN` / `FLOOR` / `CEIL`), `decimalPlaces`, base conversion (`toString(2)` / `toString(16)`), scientific notation, factorial(15). | byte-equal |
-| **[json5](https://json5.org)** | 2.2.3 | Relaxed JSON parse / stringify. Unquoted keys, single-quoted strings, trailing commas, line + block comments, hex literals (`0xff`), `Infinity` / `NaN`, leading / trailing decimal points (`.5`, `1.`), `+` sign, multi-line strings via `\` continuation, indent + replacer (array + function) on stringify. | byte-equal |
-| **[fuse.js](https://fusejs.io)** | 7.3.0 | Fuzzy search. Exact match, typo-tolerant match (Bitap), nested-key lookup (`author.last`), per-key weighting, tags-as-array indexing, threshold tuning (0.0 exact → 0.3 near-exact). Babel-transpiled bundle that exercises `_classCallCheck` (`this instanceof Ctor` after factory-IIFE return) and `var` hoisting inside `else if` blocks. Vendored as an esbuild IIFE (upstream dropped UMD at 7.1). | byte-equal |
-| **[handlebars](https://handlebarsjs.com)** | 4.7.9 | Template compile + render. Plain interpolation, triple-stache escape skip, `{{#if}}` / `{{else}}` blocks, `{{#each}}` over arrays and objects (with `@index` / `@key` / `@first` / `@last`), `{{#with}}`, built-in `lookup` helper, custom helper + `SafeString`, block helpers, partials (`{{> name}}`), parent-context paths (`{{../prefix}}`), subexpressions, compile-once / render-many reuse. | byte-equal |
-| **[zod](https://zod.dev)** | 4.4.3 | Runtime type validation. Primitive schemas with refinements (`.min`/`.max`/`.email`/`.int`/`.positive`), object schemas with optional / nullable fields, array length constraints, discriminated unions, `.transform()` pipelines, `.default()` values, custom `.refine()` predicates, `z.enum` membership, structured `ZodError.issues` (path + code per failure). Vendored as an esbuild IIFE (upstream dropped UMD at 3.25). | byte-equal |
+| Category | Libraries |
+|---|---|
+| **Parsers / AST** | acorn 8.16.0, chevrotain 11.0.3 |
+| **Templating / Markdown** | mustache 4.2.0, handlebars 4.7.9, marked 18.0.3, markdown-it 14.1.0 (+ markdown-it-emoji), markdown-table 3.0.4, showdown 2.1.0 |
+| **Utility / Functional** | lodash 4.18.1, ramda 0.31.3, immutable 5.1.3, immer 10.1.1, redux 5.0.1, deepmerge 4.3.1 |
+| **Validation / Schema** | zod 4.4.3, yup 1.4.0, valibot 1.1.0, superstruct 2.0.2 |
+| **Date / time** | dayjs 1.11.20, date-fns 4.1.0, timeago.js 4.0.2 |
+| **Math / numbers** | bignumber.js 11.1.1, decimal.js 10.6.0, numeral 2.0.6 |
+| **Hashing / crypto** | blueimp-md5 2.19.0, crypto-js 4.2.0 |
+| **Search / diff** | fuse.js 7.3.0, minisearch 7.1.1, diff 8.0.2, diff-match-patch 1.0.5, fast-deep-equal 3.1.3, fastest-levenshtein 1.0.16 |
+| **JSON / data formats** | json5 2.2.3, js-yaml 4.1.0, fast-json-patch 3.1.1, jmespath 0.16.0 |
+| **Strings / linguistic** | he 1.2.0, slugify 1.6.9, camelcase 8.0.0, entities 6.0.1, pluralize 8.0.0, inflection 3.0.2, wcwidth 1.0.1, emoji-regex 10.4.0 |
+| **URL / web** | url-parse 1.5.10, qs 6.13.1, query-string 9.1.1, tldts 6.1.69, punycode 2.3.1, linkifyjs 4.3.1, ipaddr.js 2.2.0 |
+| **Compression / encoding** | pako 2.1.0, lz-string 1.5.0, base64-js 1.5.1 |
+| **Color** | color-string 2.1.1, d3-color 3.1.0, chroma-js 3.1.2, color-name 2.0.0, tinycolor2 1.6.0 |
+| **Format / display** | ms 2.1.3, bytes 3.1.2 |
+| **IDs / UUIDs** | uuid 10.0.0 |
+| **Type detection / glob** | type-detect 4.1.0, picomatch 4.0.2 |
+| **Semver / config** | semver 7.6.3 |
 
-Total: **10 libraries · ~1.2 MB of vendored upstream JS** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
+Total: **66 libraries · ~2.4 MB of vendored upstream JS** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
 
 ## How it works
 

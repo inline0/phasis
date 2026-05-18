@@ -9,7 +9,7 @@ Phasis is verified against three independent oracles on every push:
 
 1. **test262** — the official TC39 ECMAScript conformance suite. **100 %.**
 2. **Web Platform Tests** — the official WHATWG / W3C suite for non-ECMAScript Web APIs (fetch, XHR, WebSocket, Streams, Headers, Blob, encoding, URL, structured-clone, abort, hr-time, atob, crypto). **100 %** on the imported corpus.
-3. **Popular libraries** — `acorn`, `mustache.js`, `lodash`, `marked`, `dayjs`, `bignumber.js`, `json5`, `fuse.js`, `handlebars`, `zod` execute byte-equal to Node.js on every push.
+3. **Popular libraries** — 66 widely-used npm packages (acorn, lodash, zod, ramda, immer, redux, date-fns, marked, fuse.js, semver, …) execute byte-equal to Node.js on every push.
 
 ## vs other engines
 
@@ -29,7 +29,7 @@ Numbers from [test262.fyi](https://test262.fyi). Phasis sits in the top tier alo
 - **[test262 coverage](/docs/compatibility/test262)** — what's tested, how the suite runs, why 100% matters.
 - **[Web APIs (WPT)](/docs/compatibility/web-apis)** — Web Platform Pack and Fetch Pack: URL, encoding, atob/btoa, structuredClone, performance, Headers, Blob, AbortSignal, EventTarget, Streams, plus crypto, WebSocket, and XMLHttpRequest.
 - **[Streams](/docs/compatibility/streams)** — full WHATWG Streams Standard: ReadableStream, WritableStream, TransformStream, BYOB, tee, pipeTo/pipeThrough, queuing strategies, async iteration.
-- **[Popular packages](/docs/compatibility/popular-packages)** — CI-gated byte-equality with Node.js for acorn, mustache.js, lodash, marked, dayjs, bignumber.js, json5, fuse.js, handlebars, zod.
+- **[Popular packages](/docs/compatibility/popular-packages)** — CI-gated byte-equality with Node.js for 66 npm packages across parsing, templating, validation, date/time, math, hashing, search/diff, color, URL handling, and more.
 - **[Spec surface](/docs/compatibility/spec-surface)** — every ECMAScript built-in, syntactic feature, and standard-library object that Phasis ships.
 - **[Known limitations](/docs/compatibility/limitations)** — where Phasis intentionally diverges from V8: performance ceiling, multi-agent concurrency, Wasm, browser-only Web APIs.
 
