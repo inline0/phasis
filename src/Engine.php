@@ -246,6 +246,15 @@ class Engine
             \Phasis\Object\PropertyDescriptor::data($globalObj, true, false, true),
         );
 
+        // self — HTML spec exposes `self` as an alias for the global
+        // (WindowOrWorkerGlobalScope mixin). Lots of WPT shims assume
+        // it; we expose it as a plain alias to keep them happy.
+        $globalObj->defineOwnProperty(
+            'self',
+            \Phasis\Object\PropertyDescriptor::data($globalObj, true, false, true),
+        );
+        $this->globalEnv->defineVar('self', $globalObj);
+
         // In lazy mode, install accessor placeholders on the global
         // object for every registered lazy module. Reading any of those
         // names — `Map`, `fetch`, `Temporal`, … — fires the accessor,

@@ -10,7 +10,9 @@ use Phasis\Runtime\Environment;
 use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
 use Phasis\Value\JsPromise;
+use Phasis\Value\JsString;
 use Phasis\Value\JsUndefined;
 use Phasis\Value\JsValue;
 
@@ -72,6 +74,38 @@ final class TimerFunctions
             'clearInterval',
             JsFunction::fromCallable('clearInterval', $clearImpl, 1),
         );
+
+        // reportError(error) — HTML spec global that surfaces an error
+        // through the global "error" event handler (or the host's
+        // uncaught-exception channel when none is registered). We
+        // don't have a host event handler hook here, so we mirror the
+        // same error_log path the microtask drainer uses; that's the
+        // observable behaviour every other host uses too (Node logs
+        // to stderr, Workers route to globalThis.onerror).
+        $env->defineVar('reportError', JsFunction::fromCallable(
+            'reportError',
+            static function (JsValue $this_, array $args): JsValue {
+                unset($this_);
+                $err = $args[0] ?? JsUndefined::instance();
+                $msg = '';
+                if ($err instanceof JsObject) {
+                    $messageProp = $err->get('message');
+                    if ($messageProp instanceof JsString && $messageProp->value !== '') {
+                        $msg = $messageProp->value;
+                    }
+                    $nameProp = $err->get('name');
+                    if ($nameProp instanceof JsString && $nameProp->value !== '') {
+                        $msg = $nameProp->value . ($msg !== '' ? ': ' . $msg : '');
+                    }
+                }
+                if ($msg === '') {
+                    $msg = TypeConversion::toString($err);
+                }
+                error_log('Phasis: reportError: ' . $msg);
+                return JsUndefined::instance();
+            },
+            1,
+        ));
 
         $env->defineVar('queueMicrotask', JsFunction::fromCallable(
             'queueMicrotask',
