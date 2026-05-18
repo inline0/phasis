@@ -1985,11 +1985,19 @@ trait RegExpHelpers
             }
             // Find the matching ] (respecting backslash escapes).
             $end = $i + 1;
-            // Skip a leading ^ and a leading ] (literal first char).
+            // Skip a leading ^ so `[^…]` works. Do NOT skip a leading
+            // `]` — in ES2015+ regex syntax `[]` is an empty (positive)
+            // class matching nothing and `[^]` is an empty negated
+            // class matching anything; their `]` immediately closes
+            // the class. The previous "skip leading `]`" heuristic
+            // treated that `]` as a literal first char and walked past
+            // the actual close, then the next `]` in the pattern (often
+            // hundreds of chars later, inside an unrelated subpattern)
+            // would be picked up as the close — producing a "class body"
+            // that was actually a pattern fragment and tripping the
+            // range validator. Surfaced by Svelte's HTML scanner:
+            // `<!--[^]*?-->|<script…/script>`.
             if ($end < $len && $pattern[$end] === '^') {
-                $end++;
-            }
-            if ($end < $len && $pattern[$end] === ']') {
                 $end++;
             }
             while ($end < $len && $pattern[$end] !== ']') {

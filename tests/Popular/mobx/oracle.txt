@@ -1,0 +1,12 @@
+initial.count 0
+initial.doubled 0
+after.inc.count 1
+after.inc.doubled 2
+after.step5.count 6
+autorun.traces ["count=6","count=11","count=16"]
+obj.traces ["a=1 x=10","a=99 x=50"]
+final.obj {"a":99,"b":2,"x":50}
+arr.traces ["len=3 sum=6","len=4 sum=10","len=5 sum=15","len=4 sum=14"]
+arr.final [2,3,4,5]
+map.traces ["size=2 a=1","size=2 a=99","size=3 a=99"]
+map.entries [["a",99],["b",2],["c",3]]

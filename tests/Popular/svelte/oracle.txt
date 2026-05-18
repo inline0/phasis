@@ -1,0 +1,10 @@
+version "5.55.7"
+ast.type "Root"
+ast.children ["Text","RegularElement","Text"]
+compile.warnings 0
+compile.hasCode true
+compile.css.exists true
+hello.has.name true
+hello.has.template true
+ssr.warnings 0
+parse.error "Unexpected token"

@@ -1,13 +1,13 @@
 ---
 title: Popular packages
-description: Phasis runs 122+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, terser, @babel/parser, graphql-js, ajv, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+description: Phasis runs 124+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies **122 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+Phasis verifies **124 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
 
 ## Coverage by category
 
@@ -32,9 +32,9 @@ Phasis verifies **122 widely-used libraries** byte-for-byte against Node.js (V8)
 | **Type detection / glob** | type-detect 4.1.0, picomatch 4.0.2 |
 | **Semver / config** | semver 7.6.3, compare-versions 6.1.1, semver-compare 1.0.0 |
 | **Caches / perf** | lru-cache 11.0.2, marky 1.3.0, array-flatten 3.0.0, arr-diff 4.0.0 |
-| **Heavy / stress** | typescript 6.0.3, prettier 3.3.3, terser 5.46.0, @babel/parser 7.28.5, graphql-js 16.11.0, ajv 8.17.1, highlight.js 11.11.1, postcss 8.5.7, moment 2.30.2, luxon 3.7.3, JSZip 3.10.1, xstate 5.23.0, chai 6.2.1, mqtt-packet 9.0.4, cheerio 1.1.2, htmlparser2 11.0.0, papaparse 5.5.4, lunr 2.3.9 |
+| **Heavy / stress** | typescript 6.0.3, prettier 3.3.3, svelte 5.55.7 (compiler), terser 5.46.0, @babel/parser 7.28.5, graphql-js 16.11.0, ajv 8.17.1, mobx 6.13.7, highlight.js 11.11.1, postcss 8.5.7, moment 2.30.2, luxon 3.7.3, JSZip 3.10.1, xstate 5.23.0, chai 6.2.1, mqtt-packet 9.0.4, cheerio 1.1.2, htmlparser2 11.0.0, papaparse 5.5.4, lunr 2.3.9 |
 
-Total: **122 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
+Total: **124 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
 
 ## How it works
 
@@ -90,6 +90,8 @@ Both jobs must pass before the PR merges. A test262 win that breaks lodash isn't
 - **cheerio / htmlparser2** — server-side jQuery on top of a fast HTML parser. Together they cover selector-engine parsing, DOM-style traversal, attribute manipulation, and HTML serialization. Pattern-heavy work that any HTML-rendering integration would lean on.
 - **papaparse** — CSV parsing with quote handling, custom delimiters, and roundtrips. Pure-string state machine — a clean canary for character-level scanning correctness.
 - **lunr** — full-text search index. Tokenization, stemming, IDF scoring — pure algorithm work that exercises Maps, Sets, and tight numeric loops together.
+- **svelte/compiler** — Svelte's standalone compiler. Parses `.svelte` source, walks the AST, emits JS for both client and SSR targets. Surfaced an Annex-B regex bug: `[^]` (negated empty class — matches anything in ES2015+) was tripping the class-body scanner that treated the trailing `]` as a literal first char and walked past it, picking up an unrelated `]` hundreds of bytes downstream as the close.
+- **mobx** — proxy-based reactive state. Every read of an observable runs through a Proxy `get` trap that registers a dependency; every write fires reactions. A clean stress test for the Proxy infrastructure, including class-based observables, observable Maps / arrays / nested objects, and the autorun scheduler.
 - **terser / @babel/parser / postcss** — full JS compilers and parsers, running on the embedded engine. Tens of thousands of lines of minified code that re-parse arbitrary input — exactly the surface where rare AST shapes show up. These caught the JsToPhp JIT emitting a duplicate `static` declaration when the same free variable was read from both arms of a conditional.
 - **moment / JSZip** — date math and async ZIP generation. JSZip's `setimmediate` polyfill exposed that Phasis's `setTimeout(cb, delay, …args)` dropped the trailing args (the polyfill threads its task id through them). Moment's tight `&&` chains hit the same conditional-arm duplicate-`static` issue.
 - **mqtt-packet** — pure-JS MQTT codec. Exercises byte-level packing and decoding, but the interesting bit was its base64-non-alphabet regex `[^+/0-9A-Za-z-_]`. V8 parses the trailing `-_` as a literal dash followed by an underscore; Phasis's Annex-B rewriter was treating it as the start of a second range `z-_` and throwing. Now matches V8.
