@@ -135,8 +135,8 @@ Beyond pure ECMAScript, Phasis ships several layered packs of Web APIs that real
 
 | Pack | Globals | WPT |
 |---|---|---|
-| **Web Platform** | `URL`, `URLSearchParams`, `URLPattern`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `console`, `setTimeout` / `setInterval` / `queueMicrotask`, `DOMException` | 100 % |
-| **Fetch** | `fetch`, `Request`, `Response`, `Headers`, `Body` mixin, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `CompressionStream` / `DecompressionStream`, `navigator` | 100 %* |
+| **Web Platform** | `URL`, `URLSearchParams`, `URLPattern`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `console`, `setTimeout` / `setInterval` / `queueMicrotask`, `reportError`, `self` (alias of `globalThis`), `DOMException` | 100 % |
+| **Fetch** | `fetch`, `Request`, `Response`, `Headers`, `Body` mixin, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `CompressionStream` / `DecompressionStream` (zlib + optional brotli via `ext-brotli`), `navigator` | 100 %* |
 | **Crypto** | `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA P-256/384/521, ECDH, HKDF, PBKDF2) | 100 % |
 | **WebSocket** | `WebSocket` (constructor + RFC 6455 frame codec, replaceable transport via `setWebSocketTransport`) | 100 % |
 | **XHR** | `XMLHttpRequest` + `XMLHttpRequestUpload` + `ProgressEvent` (layered over the fetch transport, so policy hooks apply) | 100 % |

@@ -1,13 +1,13 @@
 ---
 title: Popular packages
-description: Phasis runs real-world JS libraries — acorn, mustache.js, lodash, marked — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+description: Phasis runs real-world JS libraries — acorn, mustache.js, lodash, marked, dayjs, bignumber.js, json5, fuse.js — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies four widely-used libraries byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+Phasis verifies eight widely-used libraries byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
 
 ## Coverage
 
@@ -17,8 +17,12 @@ Phasis verifies four widely-used libraries byte-for-byte against Node.js (V8) on
 | **mustache.js** | 4.2.0 | Template renderer with sections, inverted sections, partials, dotted lookup, lambdas, HTML escaping vs raw `{{{}}}`. Seven templates render to a 25-line concatenated string. | byte-equal |
 | **lodash** | 4.17.21 | Full utility surface: array methods (`map`, `filter`, `reduce`, `flat`, `flatten`, `chunk`, `uniq`, `zip`, `union`, `intersection`), collection (`sortBy`, `orderBy`, `groupBy`, `keyBy`), object (`pick`, `omit`, `get`, `set`, `merge`, `defaults`, `invert`), lang (`isEqual`, `cloneDeep`, `isMatch`), string transforms, math reducers, function helpers (`memoize`, `once`), `_.chain`. ~60 invocations. | byte-equal |
 | **marked** | 13.0.3 | Markdown parser. Headings, inline emphasis, lists (ordered + unordered + nested), code blocks (fenced + indented), block-quotes, tables, HTML passthrough, combined readme. | byte-equal |
+| **[dayjs](https://day.js.org)** | 1.11.13 | Date arithmetic + formatting. Constructors from ISO / epoch ms / `Date`, `add` / `subtract` across day / month / year, `diff` in absolute units, `startOf` / `endOf`, format-token output (`YYYY-MM-DD`, `HH:mm:ss`, etc.), comparison operators, immutability. Pinned to `date.timezone=UTC` so the oracle is byte-stable across runners. | byte-equal |
+| **[bignumber.js](https://mikemcl.github.io/bignumber.js/)** | 9.1.2 | Arbitrary-precision arithmetic. `plus` / `minus` / `times` / `div` / `mod` on 30-digit operands, `pow` / `sqrt`, rounding modes (`HALF_UP` / `HALF_DOWN` / `FLOOR` / `CEIL`), `decimalPlaces`, base conversion (`toString(2)` / `toString(16)`), scientific notation, factorial(15). | byte-equal |
+| **[json5](https://json5.org)** | 2.2.3 | Relaxed JSON parse / stringify. Unquoted keys, single-quoted strings, trailing commas, line + block comments, hex literals (`0xff`), `Infinity` / `NaN`, leading / trailing decimal points (`.5`, `1.`), `+` sign, multi-line strings via `\` continuation, indent + replacer (array + function) on stringify. | byte-equal |
+| **[fuse.js](https://fusejs.io)** | 7.0.0 | Fuzzy search. Exact match, typo-tolerant match (Bitap), nested-key lookup (`author.last`), per-key weighting, tags-as-array indexing, threshold tuning (0.0 exact → 0.3 near-exact). Babel-transpiled UMD that exercises `_classCallCheck` (`this instanceof Ctor` after factory-IIFE return) and `var` hoisting inside `else if` blocks. | byte-equal |
 
-Total: **4 libraries · 384 KB of vendored upstream JS · ~250 individual library calls** all reproduce Node's exact output.
+Total: **8 libraries · ~480 KB of vendored upstream JS** all reproduce Node's exact output.
 
 ## How it works
 
@@ -56,12 +60,16 @@ Runs on every push to `main` and on every PR. Two jobs:
 
 Both jobs must pass before the PR merges. A test262 win that breaks lodash isn't acceptable; a lodash win that breaks test262 isn't either.
 
-## Why these four
+## Why these libraries
 
 - **acorn** — parsing is the most fragile surface in any JS engine. It exercises every syntactic corner case modern JS adds. If Phasis can parse arbitrary modern code with acorn, the runtime is sound.
 - **mustache.js** — templating is one of the embedding use cases Phasis explicitly targets (the README's first concrete example is "templating engines"). Mustache exercises iteration, scope resolution, and string transforms in the order real templates do.
 - **lodash** — the most-used JS utility library on the planet. Its 300+ functions transitively touch every standard-library method. If lodash works, generic data-transformation JS works.
 - **marked** — markdown rendering. Practical and exercises regex (lots of it) plus string manipulation with cross-line state. Surfaces regex-engine drift between PCRE2 (Phasis' fallback) and V8's Irregexp.
+- **dayjs** — Date/time arithmetic is a classic source of off-by-one bugs that no test262 case catches. dayjs hits constructor variants, arithmetic across DST-equivalent month boundaries, and format-token expansion in roughly the same code paths every JS Date library uses.
+- **bignumber.js** — arbitrary-precision arithmetic without TypedArrays exercises string-based number parsing, large-integer multiply / divide loops, and rounding-mode dispatch — all in pure JS so the engine carries the entire cost. Surfaces any subtle break in Number ↔ String conversion.
+- **json5** — relaxed JSON parsing leans heavily on character-class regexes and stateful tokenization. A good canary for both regex correctness and string-iteration edges.
+- **fuse.js** — a Babel-transpiled UMD that exercises `_classCallCheck` (the `this instanceof Ctor` pattern that every pre-ES6 transpiled class uses) plus the full bitap fuzzy-match algorithm. It's the canary that surfaced two real engine bugs during the night: the hoisted-FunctionDeclaration env-sync miss in the bytecode VM, and the missing `var` recursion through `else if` bodies in `forceHoistVarNames`. Both were quietly wrong on `main` for months and would have hit any other Babel-transpiled library too.
 
 ## Adding more
 
@@ -74,4 +82,4 @@ git add tests/Popular/<name>
 
 The PHPUnit suite auto-discovers it on the next run. CI picks it up on the next push.
 
-Strong candidates worth adding: `chevrotain` (parser combinator, exercises closures + regex), `nanoid` (crypto/randomness boundary), `date-fns` (Date/timezone surface), `zod` (schema/error formatting), `handlebars` (template compile + cache).
+Strong candidates worth adding: `chevrotain` (parser combinator, exercises closures + regex), `nanoid` (crypto/randomness boundary), `zod` (schema/error formatting), `handlebars` (template compile + cache).
