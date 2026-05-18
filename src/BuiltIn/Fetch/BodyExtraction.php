@@ -8,6 +8,7 @@ use Phasis\BuiltIn\BlobConstructor;
 use Phasis\BuiltIn\FormDataConstructor;
 use Phasis\BuiltIn\HeadersConstructor;
 use Phasis\BuiltIn\Streams\ReadableStream;
+use Phasis\BuiltIn\TextEncoderConstructor;
 use Phasis\BuiltIn\Url\SearchParams;
 use Phasis\Exceptions\TypeError;
 use Phasis\Runtime\Environment;
@@ -181,9 +182,13 @@ final class BodyExtraction
 
         // ----- String / fallback ToString ---------------------------------
         // Any other type goes through ToString per the spec's "scalar value
-        // string" branch (matches text/plain;charset=UTF-8 with NUL/BOM
-        // pass-through since we already store as UTF-8 bytes).
-        $str = TypeConversion::toString($source);
+        // string" branch. The result is treated as a USVString — Phasis
+        // stores strings as CESU-8 (lone surrogates kept as their 3-byte
+        // invalid-UTF-8 form) so we have to scalarize: lone surrogate →
+        // U+FFFD before the bytes hit the wire.
+        $str = TextEncoderConstructor::stringToUtf8Bytes(
+            TypeConversion::toString($source),
+        );
         return [
             'bytes' => $str,
             'contentType' => 'text/plain;charset=UTF-8',
@@ -287,7 +292,9 @@ final class BodyExtraction
     private static function chunkToBytes(JsValue $chunk): string
     {
         if ($chunk instanceof JsString) {
-            return $chunk->value;
+            // ReadableStream-of-strings (textual body): scalarize lone
+            // surrogates to U+FFFD before they're emitted as wire bytes.
+            return TextEncoderConstructor::stringToUtf8Bytes($chunk->value);
         }
         if ($chunk instanceof JsArrayBuffer) {
             return $chunk->getData();

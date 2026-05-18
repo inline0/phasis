@@ -1294,8 +1294,15 @@ final class XMLHttpRequestConstructor
             return ['bytes' => '', 'contentType' => null];
         }
         if ($val instanceof JsString) {
+            // Per Fetch's "extract a body" + XHR's send(USVString): the
+            // input is a USVString, which means any lone surrogate must
+            // be substituted with U+FFFD before UTF-8 encoding. Phasis
+            // stores JsString as CESU-8 (lone surrogates kept as their
+            // 3-byte invalid-UTF-8 form so JS round-trips bit-for-bit),
+            // so we have to scalarize here. The TextEncoder helper
+            // already implements this loop.
             return [
-                'bytes' => $val->value,
+                'bytes' => TextEncoderConstructor::stringToUtf8Bytes($val->value),
                 'contentType' => 'text/plain;charset=UTF-8',
             ];
         }
