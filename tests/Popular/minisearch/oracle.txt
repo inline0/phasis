@@ -1,0 +1,8 @@
+exact [1]
+fuzzy [1,4]
+prefix [3]
+body [3,4]
+combined [2]
+suggest.count 1
+suggest.first "markdown marked"
+docCount 5

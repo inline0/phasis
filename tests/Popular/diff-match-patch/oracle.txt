@@ -1,0 +1,9 @@
+diff [[0,"hello "],[1,"there "],[0,"world"]]
+patch.toText.contains true
+patch.applied "hello there world"
+patch.allOk true
+fuzzy.applied "hello there world!"
+match 4
+levenshtein.equal 0
+levenshtein.short 3
+prettyHtml.startsWithSpan true

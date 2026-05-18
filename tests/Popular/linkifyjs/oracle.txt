@@ -1,0 +1,8 @@
+find.0 [{"type":"url","value":"https://example.com","href":"https://example.com"}]
+find.1 [{"type":"email","value":"alice@example.com","href":"mailto:alice@example.com"},{"type":"email","value":"bob@test.org","href":"mailto:bob@test.org"}]
+find.2 [{"type":"url","value":"http://a.com","href":"http://a.com"},{"type":"url","value":"http://b.io","href":"http://b.io"},{"type":"email","value":"foo@bar.com","href":"mailto:foo@bar.com"}]
+find.3 []
+find.4 [{"type":"url","value":"www.example.com","href":"http://www.example.com"}]
+find.5 [{"type":"url","value":"https://x.com","href":"https://x.com"},{"type":"email","value":"foo@y.com","href":"mailto:foo@y.com"}]
+urls.only ["https://x.com"]
+emails.only ["y@z.com"]

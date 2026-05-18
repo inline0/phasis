@@ -1,0 +1,13 @@
+simple "alice"
+pluck ["alice","bob","carol"]
+nested 2
+filter ["alice"]
+filter.numeric ["alice","carol"]
+multiselect.list [1,"alice","admin"]
+multiselect.hash {"ident":1,"who":"alice"}
+flatten "alice"
+length 3
+sort ["bob","alice","carol"]
+max_by "carol"
+min_by "bob"
+contains true

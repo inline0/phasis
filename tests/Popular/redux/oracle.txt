@@ -1,0 +1,9 @@
+initial 0
+after.3xINC 3
+after.DEC 2
+after.SET 100
+combined {"todos":["buy milk"],"user":{"name":"alice"}}
+subscribe.events [1,2]
+after.unsub 3
+bound 42
+compose 11

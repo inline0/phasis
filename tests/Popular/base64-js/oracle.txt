@@ -1,0 +1,10 @@
+from.empty ""
+from.abc "YWJj"
+from.bytes "/wCAQA=="
+to.YWJj [97,98,99]
+to.empty []
+byteLength 11
+rt.1 true
+rt.6 true
+rt.4 true
+rt.100 true

@@ -1,0 +1,15 @@
+num.ok true
+num.bad false
+obj.ok true
+obj.optional true
+obj.missing false
+obj.extra-no-mask false
+arr.ok true
+arr.bad false
+refine.ok true
+refine.bad false
+enum.ok true
+enum.bad false
+validate {"err":true,"val":{"id":1,"name":"Alice"}}
+validate.error true
+type.ok true
