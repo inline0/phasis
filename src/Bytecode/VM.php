@@ -1702,7 +1702,16 @@ final class VM
                                     }
                                 }
                                 if ($newInlineable) {
-                                    $proto = $callee->get('prototype');
+                                    // Inline the dataSlots-fast-path of
+                                    // $callee->get('prototype'): regular
+                                    // function instances always carry
+                                    // `prototype` as an own data slot,
+                                    // so the hit lands in one array
+                                    // lookup with no method dispatch.
+                                    // Fall back to the spec getter only
+                                    // if the slot was deleted (rare).
+                                    $proto = $callee->properties->dataSlots['prototype']
+                                        ?? $callee->get('prototype');
                                     $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
                                     // Skip the [[NewTarget]] install
                                     // for function bodies that don't

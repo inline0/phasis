@@ -217,9 +217,10 @@ class Interpreter
     ): array {
         $this->callStack->push($fn->name, 0);
 
-        $callerFn = !empty($this->callerStack)
-            ? $this->callerStack[count($this->callerStack) - 1]
-            : null;
+        // The previous top frame ($callerFn) is only consulted inside
+        // the Annex B `if ($setCallerProp)` block below — most calls
+        // never read it. Push first and fetch lazily so the hot path
+        // skips the empty/count/index dance entirely.
         $this->callerStack[] = $fn;
 
         if ($fn->setCallerPropCache === null) {
@@ -251,6 +252,10 @@ class Interpreter
         $autoUpdateCaller = false;
         $autoUpdateArguments = false;
         if ($setCallerProp) {
+            // $fn was just pushed at count-1; the actual caller frame
+            // sits one slot below.
+            $stackCount = count($this->callerStack);
+            $callerFn = $stackCount >= 2 ? $this->callerStack[$stackCount - 2] : null;
             $savedCaller = $fn->getOwnPropertyDescriptor("caller");
             $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
             $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
