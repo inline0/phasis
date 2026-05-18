@@ -1,0 +1,5 @@
+deflate.shrinks true
+inflate.match true
+gzip.magic [31,139]
+gunzip.match true
+raw.roundtrip true

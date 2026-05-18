@@ -1,0 +1,4 @@
+lex.simple ["1","+","2"]
+lex.parens ["(","1","+","2",")"]
+lex.spaces ["1","+","2"]
+lex.error true
