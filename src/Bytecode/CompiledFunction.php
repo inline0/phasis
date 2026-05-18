@@ -53,7 +53,13 @@ final class CompiledFunction
      * methods, `Array.prototype.push`-style hot calls) where the
      * existing `$obj->properties->dataSlots` fast path can't fire.
      *
-     * @var array<int, array{0: \Phasis\Value\JsObject, 1: JsValue, 2: int}>
+     * Polymorphic shape: each PC maps to either a list of up to 4
+     * [proto, resolved, version] triples (one per observed shape), or
+     * the boolean `true` sentinel marking a megamorphic site (more
+     * than 4 distinct shapes seen — the IC walk is skipped, every read
+     * routes through lookupMember).
+     *
+     * @var array<int, list<array{0: \Phasis\Value\JsObject, 1: JsValue, 2: int}>|true>
      */
     public array $loadMemberIc = [];
 

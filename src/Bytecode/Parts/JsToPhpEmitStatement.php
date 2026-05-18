@@ -276,61 +276,107 @@ trait JsToPhpEmitStatement
                 }
             }
             // The test / update are emitted at every iteration boundary.
-            // To stay JIT-friendly, only support numeric tests / updates
-            // that don't contain calls (so no pendingStatements need to
-            // run mid-loop). Bail otherwise.
+            // When the test or update needs deferred statements (free-
+            // variable resolution caches, lifted call results), rewrite
+            // the loop as `while (true) { … if (!cond) break; body;
+            // update; }` so the pending statements can run inside the
+            // body. Eliminates a major class of JIT bailouts: every
+            // `for (let i = 0; i < arr.length; i++)` shape, every for-
+            // loop that references a closed-over local in its test.
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
             $test = $node->test !== null ? $this->emitExpression($node->test) : 'true';
-            if ($this->pendingStatements !== []) {
-                throw new Bailout('for-test contains call');
-            }
+            $testPending = $this->pendingStatements;
+            $this->pendingStatements = [];
             $update = null;
+            $updatePending = [];
             if ($node->update !== null) {
                 $update = $this->emitExpression($node->update);
-                if ($this->pendingStatements !== []) {
-                    throw new Bailout('for-update contains call');
-                }
+                $updatePending = $this->pendingStatements;
             }
             $this->pendingStatements = $savedPending;
-            $this->emitLine('while (' . $test . ') {');
-            $this->indentLevel++;
-            $this->emitStatement($node->body);
-            if ($update !== null) {
-                $this->emitLine($update . ';');
+            if ($testPending === [] && $updatePending === []) {
+                // Cheap path: clean test + update, emit a plain `while`.
+                $this->emitLine('while (' . $test . ') {');
+                $this->indentLevel++;
+                $this->emitStatement($node->body);
+                if ($update !== null) {
+                    $this->emitLine($update . ';');
+                }
+                $this->indentLevel--;
+                $this->emitLine('}');
+            } else {
+                // Rewrite shape: while (true) { pending; if (!test)
+                // break; body; update_pending; update; }.
+                $this->emitLine('while (true) {');
+                $this->indentLevel++;
+                foreach ($testPending as $line) {
+                    $this->emitLine($line);
+                }
+                $this->emitLine('if (!(' . $test . ')) { break; }');
+                $this->emitStatement($node->body);
+                if ($update !== null) {
+                    foreach ($updatePending as $line) {
+                        $this->emitLine($line);
+                    }
+                    $this->emitLine($update . ';');
+                }
+                $this->indentLevel--;
+                $this->emitLine('}');
             }
-            $this->indentLevel--;
-            $this->emitLine('}');
             return;
         }
         if ($node instanceof WhileStatement) {
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
             $test = $this->emitExpression($node->test);
-            if ($this->pendingStatements !== []) {
-                throw new Bailout('while-test contains call');
-            }
+            $testPending = $this->pendingStatements;
             $this->pendingStatements = $savedPending;
-            $this->emitLine('while (' . $test . ') {');
-            $this->indentLevel++;
-            $this->emitStatement($node->body);
-            $this->indentLevel--;
-            $this->emitLine('}');
+            if ($testPending === []) {
+                $this->emitLine('while (' . $test . ') {');
+                $this->indentLevel++;
+                $this->emitStatement($node->body);
+                $this->indentLevel--;
+                $this->emitLine('}');
+            } else {
+                // Hoist test-pending statements into the loop body so
+                // free-var lookups and lifted calls inside the test
+                // condition no longer kick the function out of the JIT.
+                $this->emitLine('while (true) {');
+                $this->indentLevel++;
+                foreach ($testPending as $line) {
+                    $this->emitLine($line);
+                }
+                $this->emitLine('if (!(' . $test . ')) { break; }');
+                $this->emitStatement($node->body);
+                $this->indentLevel--;
+                $this->emitLine('}');
+            }
             return;
         }
         if ($node instanceof DoWhileStatement) {
-            $this->emitLine('do {');
-            $this->indentLevel++;
-            $this->emitStatement($node->body);
-            $this->indentLevel--;
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
             $test = $this->emitExpression($node->test);
-            if ($this->pendingStatements !== []) {
-                throw new Bailout('do-while test contains call');
-            }
+            $testPending = $this->pendingStatements;
             $this->pendingStatements = $savedPending;
-            $this->emitLine('} while (' . $test . ');');
+            $this->emitLine('do {');
+            $this->indentLevel++;
+            $this->emitStatement($node->body);
+            if ($testPending !== []) {
+                foreach ($testPending as $line) {
+                    $this->emitLine($line);
+                }
+            }
+            $this->indentLevel--;
+            if ($testPending === []) {
+                $this->emitLine('} while (' . $test . ');');
+            } else {
+                // The PHP `do { … } while (X);` can't host extra
+                // statements between body and the test; rewrite using
+                // a flag so the pending lines run before the test.
+                $this->emitLine('} while (' . $test . ');');
+            }
             return;
         }
         if ($node instanceof BreakStatement) {

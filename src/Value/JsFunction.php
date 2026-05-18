@@ -571,6 +571,40 @@ class JsFunction extends JsObject
     public ?bool $setCallerPropCache = null;
 
     /**
+     * Sticky flag: true when JS code (or the engine, on a previous
+     * tick) has installed a `caller` or `arguments` own descriptor on
+     * this function. When false, setupInlineVmCall and
+     * executeFunction skip the entire Annex B maintenance block — the
+     * two `getOwnPropertyDescriptor` lookups per dispatch + the
+     * isEngineDefault* checks add up over millions of calls on
+     * constructor-heavy code. Flipped to true by the function's
+     * defineOwnProperty when name === 'caller' || 'arguments', which
+     * is the only way the descriptor enters $properties. Once set,
+     * stays set: we don't downgrade even if the descriptor is
+     * configured-off, because the spec semantics of caller-write +
+     * subsequent-call require continued maintenance.
+     */
+    public bool $annexBDescriptorsObserved = false;
+
+    /**
+     * Override JsObject::defineOwnProperty so the Annex B observed flag
+     * flips the first time a `caller` or `arguments` descriptor lands
+     * on this function. This is the only entry point through which the
+     * descriptors can be installed (Object.defineProperty, the engine's
+     * own maintenance writes in setupInlineVmCall, the function's
+     * built-in install hook all route here). The flag stays false for
+     * the vast majority of functions, which lets the dispatch path
+     * skip the per-call descriptor reads entirely.
+     */
+    public function defineOwnProperty(string $name, \Phasis\Object\PropertyDescriptor $desc): bool
+    {
+        if (!$this->annexBDescriptorsObserved && ($name === 'caller' || $name === 'arguments')) {
+            $this->annexBDescriptorsObserved = true;
+        }
+        return parent::defineOwnProperty($name, $desc);
+    }
+
+    /**
      * Memoised: true when the function body references the `arguments`
      * Identifier (outside nested non-arrow function/class/method bodies)
      * at a textual offset earlier than the first block-scoped

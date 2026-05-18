@@ -906,19 +906,30 @@ final class VM
                         case Op::DIV:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '/');
+                            // fdiv preserves JS division-by-zero semantics
+                            // (Infinity / -Infinity / NaN) where PHP's `/`
+                            // would throw DivisionByZeroError.
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of(fdiv($l->value, $r->value))
+                                : $this->interp->numericBinaryOp($l, $r, '/');
                             $pc++;
                             break;
                         case Op::MOD:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '%');
+                            // fmod gives IEEE-754 remainder; PHP `%` only
+                            // accepts ints and truncates.
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of(fmod($l->value, $r->value))
+                                : $this->interp->numericBinaryOp($l, $r, '%');
                             $pc++;
                             break;
                         case Op::POW:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = $this->interp->exponentiate($l, $r);
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of($l->value ** $r->value)
+                                : $this->interp->exponentiate($l, $r);
                             $pc++;
                             break;
 
@@ -1013,21 +1024,76 @@ final class VM
                             break;
 
                 // ---- Bitwise --------------------------------------------
+                // Fast path: both operands are JsNumber with int-valued
+                // doubles in int32 range. ToInt32 is the identity here, so
+                // PHP's native bitwise op produces the same result as the
+                // spec helper without paying its method-dispatch +
+                // ToNumeric + JsBigInt branch ladder. Codec/encoder/hash
+                // libraries (xxhashjs, noble-hashes, crypto-js) live in
+                // this corner.
                         case Op::BAND:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value; $rv = $r->value;
+                                // Guard NaN/Inf BEFORE the (int) cast —
+                                // PHP 8.5 deprecates casting non-finite
+                                // doubles to int.
+                                if (
+                                    is_finite($lv) && is_finite($rv)
+                                    && $lv >= -2147483648.0 && $lv <= 2147483647.0
+                                    && $rv >= -2147483648.0 && $rv <= 2147483647.0
+                                ) {
+                                    $li = (int) $lv; $ri = (int) $rv;
+                                    if ((float) $li === $lv && (float) $ri === $rv) {
+                                        $stack[$sp++] = JsNumber::of((float) ($li & $ri));
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '&');
                             $pc++;
                             break;
                         case Op::BOR:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value; $rv = $r->value;
+                                if (
+                                    is_finite($lv) && is_finite($rv)
+                                    && $lv >= -2147483648.0 && $lv <= 2147483647.0
+                                    && $rv >= -2147483648.0 && $rv <= 2147483647.0
+                                ) {
+                                    $li = (int) $lv; $ri = (int) $rv;
+                                    if ((float) $li === $lv && (float) $ri === $rv) {
+                                        $stack[$sp++] = JsNumber::of((float) ($li | $ri));
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '|');
                             $pc++;
                             break;
                         case Op::BXOR:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value; $rv = $r->value;
+                                if (
+                                    is_finite($lv) && is_finite($rv)
+                                    && $lv >= -2147483648.0 && $lv <= 2147483647.0
+                                    && $rv >= -2147483648.0 && $rv <= 2147483647.0
+                                ) {
+                                    $li = (int) $lv; $ri = (int) $rv;
+                                    if ((float) $li === $lv && (float) $ri === $rv) {
+                                        $stack[$sp++] = JsNumber::of((float) ($li ^ $ri));
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '^');
                             $pc++;
                             break;
@@ -1490,7 +1556,20 @@ final class VM
                         case Op::NEW_ARRAY:
                             $count = $code[$pc + 1];
                             $base = $sp - $count;
-                            $items = $count === 0 ? [] : array_slice($stack, $base, $count);
+                            // Inline arg packing for small counts. Empty
+                            // and single-element array literals are very
+                            // common in real code (every `[]`, every
+                            // `[node]` push, every iterator step); two
+                            // are the typical `[key, value]` pair.
+                            if ($count === 0) {
+                                $items = [];
+                            } elseif ($count === 1) {
+                                $items = [$stack[$base]];
+                            } elseif ($count === 2) {
+                                $items = [$stack[$base], $stack[$base + 1]];
+                            } else {
+                                $items = array_slice($stack, $base, $count);
+                            }
                             $sp = $base;
                             $stack[$sp++] = \Phasis\Value\JsArray::fromArray($items);
                             $pc += 2;
@@ -1654,7 +1733,22 @@ final class VM
                             // already surfaced before any argument was eval'd.
                             $argc = $code[$pc + 1];
                             $base = $sp - $argc;
-                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            // Inline arg packing for argc ≤ 2. array_slice
+                            // is the long-tail allocator on method-call-
+                            // heavy code (arr.push(x), obj.method(a,b),
+                            // Math.max(a,b)). Two array literals are
+                            // cheaper than array_slice's copy + length
+                            // counting; argc=0 short-circuits to the
+                            // shared $undefArgs reference.
+                            if ($argc === 0) {
+                                $args = [];
+                            } elseif ($argc === 1) {
+                                $args = [$stack[$base]];
+                            } elseif ($argc === 2) {
+                                $args = [$stack[$base], $stack[$base + 1]];
+                            } else {
+                                $args = array_slice($stack, $base, $argc);
+                            }
                             $method = $stack[$base - 1];
                             $receiver = $stack[$base - 2];
                             $sp = $base - 2;
@@ -1914,22 +2008,45 @@ final class VM
                                 && !$obj instanceof \Phasis\Value\JsProxy
                                 && !isset($obj->properties->descriptors[$name])
                             ) {
+                                // Polymorphic inline cache: stores up to
+                                // 4 [proto, resolved, version] triples
+                                // per PC. Real-world code routinely
+                                // polymorphs at the same property-read
+                                // site (`node.type` where node can be
+                                // any of N AST node kinds; `arr[i].x`
+                                // where arr is sometimes objects A,
+                                // sometimes B). The monomorphic version
+                                // missed on every alternation and
+                                // re-walked the prototype chain via
+                                // lookupMember; the polymorphic version
+                                // catches up to 4 shapes per site, then
+                                // marks the PC megamorphic (a sentinel)
+                                // so future calls skip the IC walk and
+                                // go straight to lookupMember.
                                 $ic = $cf->loadMemberIc[$pc] ?? null;
                                 if ($ic !== null) {
-                                    $cachedProto = $ic[0];
-                                    // Direct field access on the public
-                                    // ->prototype slot skips the
-                                    // getPrototype() method dispatch on
-                                    // the hot path. Subclasses with
-                                    // exotic [[GetPrototypeOf]] (JsProxy)
-                                    // are already excluded by the outer
-                                    // instanceof check above.
-                                    if (
-                                        $cachedProto === $obj->prototype
-                                        && $cachedProto->properties->version === $ic[2]
-                                    ) {
-                                        $stack[$sp++] = $ic[1];
+                                    $objProto = $obj->prototype;
+                                    // Megamorphic sentinel: skip the
+                                    // IC walk entirely.
+                                    if ($ic === true) {
+                                        $stack[$sp++] = $this->lookupMember($obj, $name);
                                         $pc += 2;
+                                        break;
+                                    }
+                                    // Linear scan up to 4 entries.
+                                    $hit = false;
+                                    foreach ($ic as $entry) {
+                                        if (
+                                            $entry[0] === $objProto
+                                            && $entry[0]->properties->version === $entry[2]
+                                        ) {
+                                            $stack[$sp++] = $entry[1];
+                                            $pc += 2;
+                                            $hit = true;
+                                            break;
+                                        }
+                                    }
+                                    if ($hit) {
                                         break;
                                     }
                                 }
@@ -1962,11 +2079,31 @@ final class VM
                                         }
                                     }
                                     if ($cacheable) {
-                                        $cf->loadMemberIc[$pc] = [
+                                        $newEntry = [
                                             $proto,
                                             $resolved,
                                             $proto->properties->version,
                                         ];
+                                        $existing = $cf->loadMemberIc[$pc] ?? null;
+                                        if ($existing === null) {
+                                            $cf->loadMemberIc[$pc] = [$newEntry];
+                                        } elseif (is_array($existing) && count($existing) < 4) {
+                                            // Append; no need to dedupe
+                                            // since a miss above means
+                                            // this proto wasn't in the
+                                            // list under the current
+                                            // version.
+                                            $existing[] = $newEntry;
+                                            $cf->loadMemberIc[$pc] = $existing;
+                                        } else {
+                                            // 4 shapes already seen; site
+                                            // is megamorphic. Sentinel
+                                            // stops further IC churn so
+                                            // future hits go straight to
+                                            // lookupMember without the
+                                            // walk overhead.
+                                            $cf->loadMemberIc[$pc] = true;
+                                        }
                                     }
                                 }
                                 $stack[$sp++] = $resolved;
@@ -1979,6 +2116,38 @@ final class VM
                         case Op::LOAD_COMPUTED:
                             $key = $stack[--$sp];
                             $obj = $stack[--$sp];
+                            // Hot path: `arr[i]` with a JsArray base and a
+                            // non-negative-integer JsNumber index. Mirrors
+                            // STORE_COMPUTED's fast write at line 2168 so
+                            // bracket reads and writes have the same cost.
+                            // Dense-array indexing is the inner loop of
+                            // every parser / iterator / numerical kernel,
+                            // and routing through the full toPropertyKey →
+                            // lookupComputed dispatch ladder allocated a
+                            // JsString and walked the descriptor table for
+                            // every read. Bails to the spec path on holes
+                            // (denseElements[$kvi] === null), non-integer
+                            // keys, or non-dense arrays.
+                            if (
+                                $obj instanceof \Phasis\Value\JsArray
+                                && $key instanceof JsNumber
+                                && $obj->isDenseMode()
+                            ) {
+                                $kv = $key->value;
+                                $kvi = (int) $kv;
+                                if (
+                                    $kvi >= 0
+                                    && (float) $kvi === $kv
+                                    && $kvi < $obj->getLength()
+                                ) {
+                                    $val = $obj->getDenseElements()[$kvi] ?? null;
+                                    if ($val !== null) {
+                                        $stack[$sp++] = $val;
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->lookupComputed($obj, $key);
                             $pc++;
                             break;

@@ -235,7 +235,15 @@ class Interpreter
                 && !$fn->isClassConstructor()
                 && $fn->isConstructable();
         }
-        $setCallerProp = $fn->setCallerPropCache;
+        // Annex B caller/arguments maintenance: only do the descriptor
+        // dance when the function has actually had a `caller` or
+        // `arguments` descriptor installed at some point. The flag is
+        // sticky and JsFunction::defineOwnProperty flips it. The vast
+        // majority of functions never have these descriptors written,
+        // so the per-call cost of two getOwnPropertyDescriptor lookups
+        // + two isEngineDefault* checks is pure waste — observable on
+        // ctor-heavy and fn-recurse benchmarks.
+        $setCallerProp = $fn->setCallerPropCache && $fn->annexBDescriptorsObserved;
         $savedCaller = null;
         $savedArguments = null;
         $savedCallerValue = null;

@@ -4088,7 +4088,12 @@ trait ExpressionEvaluation
                 && !$fn->isClassConstructor()
                 && $fn->isConstructable();
         }
-        $setCallerProp = $fn->setCallerPropCache;
+        // Annex B caller/arguments maintenance only kicks in once a
+        // descriptor has actually been installed on this function;
+        // until then there's nothing to update and the per-call
+        // descriptor reads are pure overhead. See JsFunction::
+        // $annexBDescriptorsObserved.
+        $setCallerProp = $fn->setCallerPropCache && $fn->annexBDescriptorsObserved;
         $savedCaller = null;
         $savedArguments = null;
         $savedCallerValue = null;
@@ -4699,7 +4704,10 @@ trait ExpressionEvaluation
                 && !$fn->isClassConstructor()
                 && $fn->isConstructable();
         }
-        $setCallerProp = $fn->setCallerPropCache;
+        // See JsFunction::$annexBDescriptorsObserved — skip the whole
+        // descriptor-read + isEngineDefault* block when no JS code has
+        // ever installed a caller/arguments descriptor on this fn.
+        $setCallerProp = $fn->setCallerPropCache && $fn->annexBDescriptorsObserved;
         $savedCaller = null;
         $savedArguments = null;
         $savedCallerValue = null;
