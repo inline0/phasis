@@ -1,0 +1,9 @@
+type "object"
+source.contains.unicode true
+flags "g"
+"no emoji here" {"count":0,"matches":[]}
+"🙂 smiling" {"count":1,"matches":["🙂"]}
+"🇩🇪 flag" {"count":1,"matches":["🇩🇪"]}
+"👨‍💻 person + zwj" {"count":1,"matches":["👨‍💻"]}
+"🌍" {"count":1,"matches":["🌍"]}
+"a 😀 b 😎 c" {"count":2,"matches":["😀","😎"]}

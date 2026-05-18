@@ -1,0 +1,14 @@
+star true
+star.no false
+globstar true
+question true
+brace true
+range true
+range.out false
+negate true
+dot.default false
+dot.enabled true
+case.default false
+case.insensitive true
+match.list ["a.js","c.js"]
+makeRe "^(?:(?!\\.)(?=.)[^/]*?\\.js\\/?)$"

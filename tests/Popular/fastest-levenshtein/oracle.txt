@@ -1,0 +1,13 @@
+identical 0
+one-edit 1
+classic 3
+empty.left 3
+empty.right 3
+both.empty 0
+unicode 1
+long 8
+case-sensitive 3
+closest.exact "blue"
+closest.typo "blue"
+closest.numbers "five"
+closest.array "long"

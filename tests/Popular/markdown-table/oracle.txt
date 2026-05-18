@@ -1,0 +1,15 @@
+| Name  | Score |
+| ----- | ----- |
+| Alice | 95    |
+| Bob   | 82    |
+| Carol | 100   |
+---
+| A  |  B  |  C |
+| :- | :-: | -: |
+| x  |  y  |  z |
+| 1  |  2  |  3 |
+---
+| Long header column        | Short |
+| ------------------------- | ----- |
+| 1                         | a     |
+| a really really long cell | ok    |

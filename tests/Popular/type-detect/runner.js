@@ -1,0 +1,30 @@
+const td = TypeDetect;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+
+log("number", td(42));
+log("string", td("hi"));
+log("boolean", td(true));
+log("null", td(null));
+log("undefined", td(undefined));
+log("array", td([]));
+log("object", td({}));
+log("date", td(new Date()));
+log("regex", td(/x/));
+log("set", td(new Set()));
+log("map", td(new Map()));
+log("promise", td(Promise.resolve()));
+log("error", td(new Error()));
+log("typeError", td(new TypeError()));
+log("nan", td(NaN));
+log("infinity", td(Infinity));
+log("function", td(function () {}));
+log("arrow", td(() => {}));
+log("genFunction", td(function* () {}));
+log("asyncFunction", td(async function () {}));
+log("symbol", td(Symbol()));
+log("bigint", td(1n));
+log("arraybuffer", td(new ArrayBuffer(8)));
+log("uint8array", td(new Uint8Array(4)));
+
+console.log(out.join("\n"));

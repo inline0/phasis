@@ -1,0 +1,25 @@
+year 2024
+month 2
+date 15
+day 5
+hour 10
+addDays.7 "2024-03-22T10:30:45.000Z"
+addMonths.3 "2024-06-15T10:30:45.000Z"
+addYears.1 "2025-03-15T10:30:45.000Z"
+subDays.5 "2024-03-10T10:30:45.000Z"
+subMinutes.30 "2024-03-15T10:00:45.000Z"
+startOfDay "2024-03-15T00:00:00.000Z"
+endOfDay "2024-03-15T23:59:59.999Z"
+startOfMonth "2024-03-01T00:00:00.000Z"
+startOfYear "2024-01-01T00:00:00.000Z"
+diffDays 649
+diffMonths 21
+diffMinutes 935369
+isBefore true
+isAfter true
+isSameDay true
+format.iso "2024-03-15T10:30:45Z"
+format.dist "almost 2 years"
+parseISO "2024-06-15T12:00:00.000Z"
+isValid.ok true
+isValid.bad false

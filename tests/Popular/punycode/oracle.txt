@@ -1,0 +1,13 @@
+encode.bare "bcher-kva"
+encode.ascii "hello-"
+encode.umlaut "mlut-moa5l"
+encode.chinese "fiq228c"
+decode.bare "bücher"
+decode.chinese "中文"
+toASCII.url "xn--bcher-kva.example.com"
+toASCII.full-unicode "xn--caf-dma.fr"
+toUnicode.bare "bücher.example.com"
+toUnicode.fr "café.fr"
+ucs2.decode.ascii [97,98,99]
+ucs2.encode "abc"
+ucs2.decode.emoji [128512]

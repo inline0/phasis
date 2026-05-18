@@ -1,0 +1,9 @@
+ascii.hello 5
+ascii.space 1
+ascii.empty 0
+cjk.han 4
+cjk.kana 10
+mixed 10
+combining 1
+null 0
+tab 0

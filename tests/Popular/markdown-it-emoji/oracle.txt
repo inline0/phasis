@@ -1,0 +1,4 @@
+has.bare "function"
+has.full "function"
+has.light "function"
+bare.is.function true

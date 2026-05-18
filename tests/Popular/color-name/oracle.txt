@@ -1,0 +1,10 @@
+red [255,0,0]
+white [255,255,255]
+black [0,0,0]
+rebeccapurple [102,51,153]
+hotpink [255,105,180]
+dodgerblue [30,144,255]
+aliceblue [240,248,255]
+count 148
+seagreen [46,139,87]
+salmon [250,128,114]

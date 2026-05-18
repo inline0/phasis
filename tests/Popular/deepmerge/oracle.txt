@@ -1,0 +1,9 @@
+merge.flat {"a":1,"b":2,"c":3}
+merge.override {"a":99,"b":2}
+merge.nested {"a":{"x":1,"y":99,"z":3}}
+merge.arrays.concat {"a":[1,2,3,4]}
+merge.arrays.replace {"a":[3,4]}
+deep {"user":{"profile":{"name":"Alice","tags":["a","b","c"],"email":"x@y.com"}},"count":1}
+all {"a":99,"b":2,"c":3,"d":4}
+immutable.left true
+immutable.right true

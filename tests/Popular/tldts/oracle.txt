@@ -1,0 +1,12 @@
+parse.com {"domain":"example.com","domainWithoutSuffix":"example","hostname":"example.com","isIcann":true,"isIp":false,"isPrivate":false,"publicSuffix":"com","subdomain":""}
+parse.co.uk {"domain":"example.co.uk","domainWithoutSuffix":"example","hostname":"example.co.uk","isIcann":true,"isIp":false,"isPrivate":false,"publicSuffix":"co.uk","subdomain":""}
+parse.deep {"domain":"example.com","domainWithoutSuffix":"example","hostname":"api.v1.example.com","isIcann":true,"isIp":false,"isPrivate":false,"publicSuffix":"com","subdomain":"api.v1"}
+parse.subdom "api"
+parse.tld.uk "co.uk"
+parse.tld.com "com"
+domain "example.co.uk"
+domain.bare "example.com"
+hostname "api.example.com"
+validHostname null
+ip {"domain":null,"domainWithoutSuffix":null,"hostname":"1.2.3.4","isIcann":null,"isIp":true,"isPrivate":null,"publicSuffix":null,"subdomain":null}
+punycode {"domain":"example.com","domainWithoutSuffix":"example","hostname":"xn--bcher-kva.example.com","isIcann":true,"isIp":false,"isPrivate":false,"publicSuffix":"com","subdomain":"xn--bcher-kva"}
