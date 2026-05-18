@@ -23,10 +23,9 @@ use Phasis\Value\JsValue;
  * a recycled instance in place.
  *
  * Field meaning matches the previous positional array layout:
- *   - cf: the caller's CompiledFunction. The dispatch loop's
- *     hot views (code / consts / names / nestedFns) are
- *     immutable public properties on $cf, so RET rederives
- *     them rather than storing four redundant copies per call.
+ *   - cf / code / consts / names / nestedFns: the caller's
+ *     CompiledFunction plus its destructured hot views the VM
+ *     reads on every dispatch tick.
  *   - stack / sp / locals: the caller's operand stack, stack
  *     pointer, and local-slot array.
  *   - env / thisValue: the caller's lexical env + this binding.
@@ -44,12 +43,17 @@ final class SavedFrame
 {
     public CompiledFunction $cf;
 
-    // The caller's `code` / `consts` / `names` / `nestedFns` views
-    // are no longer stored as separate fields: they are immutable
-    // public properties of $cf, so the RET path rederives them with
-    // four field reads instead of paying for four typed-property
-    // writes on every inline call. Calls happen at the same rate as
-    // (or more often than) returns — fewer writes is the net win.
+    /** @var list<int> */
+    public array $code;
+
+    /** @var list<mixed> */
+    public array $consts;
+
+    /** @var list<string> */
+    public array $names;
+
+    /** @var list<mixed> */
+    public array $nestedFns;
 
     /** @var list<JsValue> */
     public array $stack;
