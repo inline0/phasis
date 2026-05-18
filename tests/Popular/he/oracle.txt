@@ -1,0 +1,12 @@
+encode.basic "foo &#xA9; bar &#x2260; baz &#x1D306; qux"
+encode.ascii "foo &#x26; bar &#x3C; baz &#x3E; &#x27;q&#x27; &#x22;q&#x22;"
+encode.named "caf&eacute; &amp; no&euml;l"
+decode.named "foo © bar ≠ baz 𝌆 qux"
+decode.numeric "AB😀"
+escape.html "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+unescape.html "<b>&\"'</b>"
+rt."hello world" true
+rt."café" true
+rt."<a>" true
+rt."😀" true
+rt."100% & co" true
