@@ -1,0 +1,4 @@
+merge {"a":1,"b":2}
+nested {"a":{"x":1,"y":2}}
+override {"a":99}
+arrays {"a":[3,2]}

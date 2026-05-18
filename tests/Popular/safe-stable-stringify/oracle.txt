@@ -1,0 +1,4 @@
+simple "{\"a\":1,\"b\":2}"
+order true
+circular "{\"a\":1,\"self\":\"[Circular]\"}"
+nested "{\"a\":null,\"z\":{\"x\":[3,2,1],\"y\":1}}"

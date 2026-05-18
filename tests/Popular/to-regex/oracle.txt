@@ -1,0 +1,4 @@
+string "^(?:foo.bar)$"
+regex "foo"
+array "^(?:foo|bar)$"
+test true

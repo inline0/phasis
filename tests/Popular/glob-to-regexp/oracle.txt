@@ -1,0 +1,5 @@
+star true
+star.fail false
+globstar true
+question false
+source "^.*\\.(js|ts)$"

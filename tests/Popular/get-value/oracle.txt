@@ -1,0 +1,4 @@
+path 42
+array 1
+missing undefined
+default "fallback"

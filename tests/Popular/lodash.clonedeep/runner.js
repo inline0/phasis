@@ -1,0 +1,11 @@
+const cloneDeep = LodashclonedeepLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const obj = { a: 1, b: { c: [1, 2, 3] }, d: new Date(2026, 0, 1) };
+const copy = cloneDeep(obj);
+log("equal", JSON.stringify(copy) === JSON.stringify(obj));
+log("not.same.ref", copy !== obj);
+log("deep.not.same", copy.b !== obj.b);
+copy.b.c.push(99);
+log("orig.unaffected", obj.b.c.length);
+console.log(out.join("\n"));

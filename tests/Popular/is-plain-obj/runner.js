@@ -1,0 +1,12 @@
+const isPlainObj = IsplainobjLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("plain", isPlainObj({}));
+log("plain.props", isPlainObj({ a: 1 }));
+log("array", isPlainObj([]));
+log("date", isPlainObj(new Date()));
+log("null", isPlainObj(null));
+log("undefined", isPlainObj(undefined));
+log("class", isPlainObj(new (class {})()));
+log("create.null", isPlainObj(Object.create(null)));
+console.log(out.join("\n"));

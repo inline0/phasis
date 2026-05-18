@@ -1,0 +1,10 @@
+const XXH = XxhLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const h32 = XXH.h32("hello world", 0xCAFEBABE).toString(16);
+log("h32", h32);
+const h64 = XXH.h64("hello world", 0xCAFEBABE).toString(16);
+log("h64", h64);
+log("h32.empty", XXH.h32("", 0).toString(16));
+log("h32.long", XXH.h32("the quick brown fox jumps over the lazy dog", 0).toString(16));
+console.log(out.join("\n"));

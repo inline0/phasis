@@ -1,0 +1,10 @@
+const stringify = SssLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("simple", stringify({ a: 1, b: 2 }));
+log("order", stringify({ b: 2, a: 1 }) === stringify({ a: 1, b: 2 }));
+const circ = { a: 1 };
+circ.self = circ;
+log("circular", stringify(circ));
+log("nested", stringify({ z: { y: 1, x: [3, 2, 1] }, a: null }));
+console.log(out.join("\n"));

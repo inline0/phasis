@@ -1,0 +1,3 @@
+circ "{\"a\":1,\"self\":\"[Circular ~]\"}"
+normal "{\"a\":1,\"b\":2}"
+nested.circ "{\"root\":{\"a\":1,\"self\":\"[Circular ~.root]\"}}"

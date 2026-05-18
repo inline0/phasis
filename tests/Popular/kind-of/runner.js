@@ -1,0 +1,15 @@
+const kindOf = KindofLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("string", kindOf("hello"));
+log("number", kindOf(42));
+log("array", kindOf([]));
+log("object", kindOf({}));
+log("null", kindOf(null));
+log("undefined", kindOf(undefined));
+log("date", kindOf(new Date()));
+log("regex", kindOf(/foo/));
+log("function", kindOf(() => 1));
+log("map", kindOf(new Map()));
+log("set", kindOf(new Set()));
+console.log(out.join("\n"));

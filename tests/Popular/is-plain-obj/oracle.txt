@@ -1,0 +1,8 @@
+plain true
+plain.props true
+array false
+date false
+null false
+undefined false
+class false
+create.null true

@@ -1,0 +1,4 @@
+equal true
+not.same.ref true
+deep.not.same true
+orig.unaffected 3

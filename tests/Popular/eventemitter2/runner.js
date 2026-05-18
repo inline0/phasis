@@ -1,0 +1,12 @@
+const { EventEmitter2 } = Ee2Lib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const ee = new EventEmitter2({ wildcard: true, delimiter: "." });
+const events = [];
+ee.on("a.b.c", (...args) => events.push(["abc"].concat(args)));
+ee.on("a.*", (...args) => events.push(["a.wild"].concat(args)));
+ee.emit("a.b.c", 1, 2);
+ee.emit("a.x");
+log("events", events);
+log("count", ee.listenerCount("a.b.c"));
+console.log(out.join("\n"));

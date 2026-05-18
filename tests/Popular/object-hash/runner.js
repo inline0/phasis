@@ -1,0 +1,10 @@
+const hash = OhLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("simple", hash({ a: 1, b: 2 }));
+log("order.indep", hash({ b: 2, a: 1 }) === hash({ a: 1, b: 2 }));
+log("nested", hash({ x: { y: [1, 2, 3] } }));
+log("array", hash([1, 2, 3]));
+log("md5", hash({ a: 1 }, { algorithm: "md5" }));
+log("string", hash("hello"));
+console.log(out.join("\n"));

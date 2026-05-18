@@ -1,0 +1,5 @@
+obj "{\"a\":1,\"b\":2}"
+nested "{\"a\":null,\"z\":{\"y\":[3,1,2]}}"
+string "\"hello\""
+number "42"
+ordered true
