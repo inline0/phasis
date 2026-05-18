@@ -1,0 +1,11 @@
+scalar "hello"
+map {"a":1,"b":2,"c":"hello"}
+seq ["foo","bar","baz"]
+nested {"user":{"name":"alice","tags":["admin","dev"]}}
+types {"yes":true,"no":false,"n":null,"flt":3.14,"int":42}
+anchors {"base":{"x":1,"y":2},"derived":{"x":1,"y":2,"z":3}}
+multi-doc [{"a":1},{"b":2},{"c":3}]
+dump.simple "a: 1\nb:\n  - 2\n  - 3\nc:\n  d: x\n"
+dump.indent "k:\n    nested:\n        - 1\n        - 2\n"
+dump.flow "{a: [1, 2, 3]}\n"
+roundtrip {"name":"Phasis","version":1,"deps":["a","b"],"meta":{"stable":true}}

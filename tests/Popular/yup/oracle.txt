@@ -1,0 +1,15 @@
+num.ok true
+num.bad false
+num.missing false
+email.ok true
+email.bad false
+len.ok true
+len.short false
+len.long false
+obj.ok true
+obj.missing false
+obj.optional-omitted true
+arr.ok true
+arr.empty false
+cast.int 42
+default 8080

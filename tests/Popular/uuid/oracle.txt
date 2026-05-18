@@ -1,0 +1,14 @@
+v3.example.com "9073926b-929f-31c2-abc9-fad77ae3e8eb"
+v3.www.widgets.com "3d813cbb-47fb-32ba-91df-831e1593ac29"
+v3.same.input.matches true
+v5.example.com "cfbff0d1-9375-5685-968c-48ce8b15ae17"
+v5.www.widgets.com "21f7f8de-8051-5b89-8680-0195ef798b6a"
+v5.same.input.matches true
+NIL "00000000-0000-0000-0000-000000000000"
+MAX "ffffffff-ffff-ffff-ffff-ffffffffffff"
+validate.nil true
+validate.bad false
+validate.v5 true
+version.v5 5
+roundtrip true
+parsed.length 16

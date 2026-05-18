@@ -1,0 +1,16 @@
+num.ok true
+num.bad false
+email.ok true
+email.bad false
+obj.ok true
+obj.optional true
+obj.missing false
+obj.empty-name false
+arr.ok true
+arr.empty false
+union.str true
+union.num true
+union.bool false
+transform "HELLO"
+enum.ok true
+enum.bad false
