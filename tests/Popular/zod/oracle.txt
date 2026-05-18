@@ -26,7 +26,7 @@ default.given 443
 nullable.null true
 nullable.str true
 err.success false
-err.issues [{"path":"email","code":"invalid_string"},{"path":"id","code":"invalid_type"},{"path":"name","code":"too_small"}]
+err.issues [{"path":"email","code":"invalid_format"},{"path":"id","code":"invalid_type"},{"path":"name","code":"too_small"}]
 refine.even.4 true
 refine.even.5 false
 enum.ok true
