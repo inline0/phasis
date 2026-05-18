@@ -1,0 +1,11 @@
+parse.headers [{"id":1,"name":"Alice","active":true},{"id":2,"name":"Bob","active":false},{"id":3,"name":"Carol","active":true}]
+parse.errors 0
+noheader [[1,2,3],[4,5,6],[7,8,9]]
+quoted [["hello, world","quoted \"inside\"","plain"],["a","b","c"]]
+semicolon [{"x":"1","y":"2","z":"3"},{"x":"4","y":"5","z":"6"}]
+skipEmpty [{"a":"1","b":"2"},{"a":"3","b":"4"}]
+unparse "id,name,roles\r\n1,Alice,\"admin,user\"\r\n2,\"B\"\"ob\",user"
+unparse.rows "a,b,c\r\n1,2,3\r\n4,5,6"
+roundtrip [{"name":"first","value":"has \"quotes\" and, comma"},{"name":"second","value":"plain"}]
+autodelim [{"a":"1","b":"2","c":"3"}]
+autodelim.meta {"delim":"|","linebreak":"\n"}

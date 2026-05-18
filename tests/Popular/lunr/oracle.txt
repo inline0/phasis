@@ -1,0 +1,8 @@
+simple.javascript [{"ref":"2","score":0.484},{"ref":"1","score":0.393},{"ref":"3","score":0.393}]
+simple.engine [{"ref":"1","score":0.676},{"ref":"4","score":0.368}]
+simple.parser [{"ref":"2","score":7.265}]
+required [{"ref":"3","score":3.139}]
+wildcard [{"ref":"4","score":4.211}]
+titleBoost [{"ref":"1","score":10.323},{"ref":"3","score":5.084}]
+nomatch []
+multi [{"ref":"3","score":3.237},{"ref":"2","score":0.279},{"ref":"1","score":0.227}]

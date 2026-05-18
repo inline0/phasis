@@ -1,0 +1,17 @@
+valid.ok true
+valid.missing false
+valid.missing.errors ["required::must have required property 'id'"]
+valid.extra false
+valid.extra.errors ["additionalProperties:must NOT have additional properties"]
+valid.types false
+valid.types.errors ["type:/id","type:/name"]
+event.coord true
+event.string true
+event.bad.enum false
+event.bad.payload false
+tags.ok true
+tags.empty false
+tags.dup false
+tags.pattern false
+ref.ok true
+ref.bad false

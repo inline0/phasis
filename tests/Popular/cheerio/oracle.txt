@@ -1,0 +1,17 @@
+h1.text "Phasis"
+h1.id "title"
+h1.class "hero"
+intro.text "A pure-PHP JS engine."
+li.count 3
+li.texts ["one","two","three"]
+active.text "two"
+active.data-i "2"
+nth.2 "two"
+first.next "two"
+last.prev "two"
+after.addClass "item"
+after.swap "2"
+count.after.append 4
+hrefs ["https://example.com/a","https://example.com/b"]
+h1.html "<h1 id=\"title\" class=\"hero\">Phasis</h1>"
+p.text "A pure-PHP JS engine."

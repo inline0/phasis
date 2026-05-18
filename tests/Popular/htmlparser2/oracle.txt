@@ -1,0 +1,11 @@
+events.count 34
+events ["open:html:{}","open:head:{}","open:title:{}","text:\"Phasis\"","close:title","close:head","open:body:{}","open:h1:{\"class\":\"hero\"}","text:\"Hello\"","close:h1","open:p:{\"data-id\":\"42\"}","text:\"Lorem\"","open:a:{\"href\":\"/x\"}","text:\"link\"","close:a","text:\"ipsum.\"","close:p","comment:a comment","open:ul:{}","open:li:{}","text:\"one\"","close:li","open:li:{}","text:\"two\"","close:li","open:li:{}","text:\"three\"","close:li","close:ul","open:script:{}","text:\"var x = 1;\"","close:script","close:body","close:html"]
+dom.type "root"
+dom.children 3
+h1.attrs {"class":"hero"}
+h1.text "Hello"
+li.count 3
+li.texts ["one","two","three"]
+a.href "/x"
+tags {"html":1,"head":1,"title":1,"body":1,"h1":1,"p":1,"a":1,"ul":1,"li":3,"script":1}
+voids ["div","img","br","input"]

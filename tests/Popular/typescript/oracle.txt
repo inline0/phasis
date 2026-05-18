@@ -1,0 +1,9 @@
+tokens ["ConstKeyword:const","WhitespaceTrivia: ","Identifier:x","ColonToken::","WhitespaceTrivia: ","NumberKeyword:number","WhitespaceTrivia: ","FirstAssignment:=","WhitespaceTrivia: ","FirstLiteralToken:42","SemicolonToken:;"]
+ast.kinds ["InterfaceDeclaration","FirstStatement","FunctionDeclaration","EndOfFileToken"]
+transpile.simple "const greet = (name) => `Hello, ${name}`;\nexport { greet };\n"
+transpile.class "\"use strict\";\nclass Box {\n    constructor(value) {\n        this.value = value;\n    }\n    get() { return this.value; }\n}\n"
+transpile.async "\"use strict\";\nasync function fetchUser(id) { return { id }; }\n"
+transpile.enum "\"use strict\";\nvar Color;\n(function (Color) {\n    Color[Color[\"Red\"] = 0] = \"Red\";\n    Color[Color[\"Green\"] = 1] = \"Green\";\n    Color[Color[\"Blue\"] = 2] = \"Blue\";\n})(Color || (Color = {}));\nconst c = Color.Green;\n"
+transpile.invalid.out "\"use strict\";\nconst x = 'not a number';\n"
+transpile.invalid.diagCount 0
+version "6.0.3"

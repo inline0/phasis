@@ -1,13 +1,13 @@
 ---
 title: Popular packages
-description: Phasis runs 116+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, terser, @babel/parser, graphql-js, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+description: Phasis runs 122+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, terser, @babel/parser, graphql-js, ajv, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies **116 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+Phasis verifies **122 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
 
 ## Coverage by category
 
@@ -32,9 +32,9 @@ Phasis verifies **116 widely-used libraries** byte-for-byte against Node.js (V8)
 | **Type detection / glob** | type-detect 4.1.0, picomatch 4.0.2 |
 | **Semver / config** | semver 7.6.3, compare-versions 6.1.1, semver-compare 1.0.0 |
 | **Caches / perf** | lru-cache 11.0.2, marky 1.3.0, array-flatten 3.0.0, arr-diff 4.0.0 |
-| **Heavy / stress** | prettier 3.3.3, terser 5.46.0, @babel/parser 7.28.5, graphql-js 16.11.0, highlight.js 11.11.1, postcss 8.5.7, moment 2.30.2, luxon 3.7.3, JSZip 3.10.1, xstate 5.23.0, chai 6.2.1, mqtt-packet 9.0.4 |
+| **Heavy / stress** | typescript 6.0.3, prettier 3.3.3, terser 5.46.0, @babel/parser 7.28.5, graphql-js 16.11.0, ajv 8.17.1, highlight.js 11.11.1, postcss 8.5.7, moment 2.30.2, luxon 3.7.3, JSZip 3.10.1, xstate 5.23.0, chai 6.2.1, mqtt-packet 9.0.4, cheerio 1.1.2, htmlparser2 11.0.0, papaparse 5.5.4, lunr 2.3.9 |
 
-Total: **116 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
+Total: **122 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
 
 ## How it works
 
@@ -85,6 +85,11 @@ Both jobs must pass before the PR merges. A test262 win that breaks lodash isn't
 - **handlebars** — full-featured templating with compile-then-render. Exercises the `eval`-free runtime path through a single huge `compile()` entry, AST traversal, helper dispatch through a dynamic lookup table, and `SafeString` brand-checking that uses `instanceof` across realms. A counterpoint to mustache.js's simpler template walker.
 - **zod** — runtime schema validation. Heavy class hierarchies (`ZodString`, `ZodObject`, `ZodArray`, `ZodUnion`, …) with method chaining that returns refined sub-classes, structured error formatting where the JS-side `.issues` array shape has to match Node byte-for-byte, and discriminator/literal-tag patterns. Tests the kind of OO-heavy validation code that wraps half of modern TypeScript apps.
 - **prettier** — the ultimate stress test. Formatting JS *with* JS means every spec corner the engine has gets touched by the same control flow that formats your code. Prettier was the canary that surfaced two long-standing engine bugs in one go: array `length` writes silently losing truncation through a stale fast-path, and tail-call optimization firing across a `finally` boundary. With both fixed, prettier formats end-to-end byte-equal to Node.
+- **typescript** — the *actual* TypeScript compiler running on the embedded engine. 9 MB of minified compiler that re-parses arbitrary TS, walks the AST, and emits JS — the heaviest pure-JS payload imaginable. If Phasis can transpile generics, async/await, enums, and class hierarchies byte-for-byte equal to `tsc`, the language semantics are sound.
+- **ajv** — JSON Schema validator that JIT-compiles each schema to a custom validator function via `new Function(...)`. Catches anything subtle in the Function-constructor path, plus all the spec corners JSON Schema exercises (recursive refs, oneOf/anyOf, format hooks).
+- **cheerio / htmlparser2** — server-side jQuery on top of a fast HTML parser. Together they cover selector-engine parsing, DOM-style traversal, attribute manipulation, and HTML serialization. Pattern-heavy work that any HTML-rendering integration would lean on.
+- **papaparse** — CSV parsing with quote handling, custom delimiters, and roundtrips. Pure-string state machine — a clean canary for character-level scanning correctness.
+- **lunr** — full-text search index. Tokenization, stemming, IDF scoring — pure algorithm work that exercises Maps, Sets, and tight numeric loops together.
 - **terser / @babel/parser / postcss** — full JS compilers and parsers, running on the embedded engine. Tens of thousands of lines of minified code that re-parse arbitrary input — exactly the surface where rare AST shapes show up. These caught the JsToPhp JIT emitting a duplicate `static` declaration when the same free variable was read from both arms of a conditional.
 - **moment / JSZip** — date math and async ZIP generation. JSZip's `setimmediate` polyfill exposed that Phasis's `setTimeout(cb, delay, …args)` dropped the trailing args (the polyfill threads its task id through them). Moment's tight `&&` chains hit the same conditional-arm duplicate-`static` issue.
 - **mqtt-packet** — pure-JS MQTT codec. Exercises byte-level packing and decoding, but the interesting bit was its base64-non-alphabet regex `[^+/0-9A-Za-z-_]`. V8 parses the trailing `-_` as a literal dash followed by an underscore; Phasis's Annex-B rewriter was treating it as the start of a second range `z-_` and throwing. Now matches V8.
