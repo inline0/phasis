@@ -1,0 +1,15 @@
+encode.html "&lt;b&gt;foo &amp; bar&lt;&sol;b&gt;"
+encode.xml "&lt;b&gt;foo &amp; bar&lt;/b&gt;"
+encode.nonAsciiHTML "caf&eacute; &amp; no&euml;l"
+escape "&lt;script&gt;alert(1)&lt;/script&gt;"
+escapeUTF8 "&lt;&gt;&amp;&quot;&apos;"
+escapeAttribute "a&quot;b'c"
+decode.named "foo &copy; bar"
+decode.numeric "AB"
+decode.html "<a href=\"x\">"
+decode.utf16 "𝌆"
+decode.strict "foo &copy; bar"
+rt.plain true
+rt.<a> true
+rt.café false
+rt.100% & up false

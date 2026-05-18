@@ -1,0 +1,14 @@
+fmt.1024 "1KB"
+fmt.1048576 "1MB"
+fmt.1073741824 "1GB"
+fmt.500 "500B"
+fmt.0 "0B"
+parse.1KB 1024
+parse.1MB 1048576
+parse.1.5GB 1610612736
+parse.500 500
+fmt.thousandsSep "1.46KB"
+fmt.decimalPlaces "2KB"
+fmt.fixedDecimals "1.00KB"
+fmt.unit "1KB"
+fmt.unitSep "1 KB"

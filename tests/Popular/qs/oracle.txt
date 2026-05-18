@@ -1,0 +1,16 @@
+parse.basic {"a":"1","b":"2"}
+parse.nested {"a":{"b":"1","c":"2"}}
+parse.array {"a":["1","2","3"]}
+parse.indexed {"a":["x","y"]}
+parse.deep {"a":{"b":{"c":"deep"}}}
+parse.bracket {"a":"1","b":"2","c":"3"}
+parse.encoded {"a":"hello world","b":"café"}
+stringify.basic "a=1&b=2"
+stringify.nested "a%5Bb%5D=1&a%5Bc%5D=2"
+stringify.array.indices "a%5B0%5D=x&a%5B1%5D=y"
+stringify.array.brackets "a%5B%5D=x&a%5B%5D=y"
+stringify.array.repeat "a=x&a=y"
+stringify.delim "a=1;b=2"
+stringify.encode "name=caf%C3%A9"
+stringify.encode.disable "name=café"
+roundtrip.matches false

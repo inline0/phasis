@@ -1,0 +1,16 @@
+parse.basic {"a":"1","b":"2"}
+parse.empty {}
+parse.encoded {"a":"hello world"}
+parse.array.repeat {"a":["1","2","3"]}
+parse.array.brackets {"a":["1","2"]}
+parse.array.indexed {"a":["x","y"]}
+parse.array.comma {"a":["1","2","3"]}
+parse.number {"n":42}
+parse.bool {"off":false,"on":true}
+stringify.basic "a=1&b=2"
+stringify.array.bracket "a[]=1&a[]=2"
+stringify.array.comma "a=1,2,3"
+stringify.sort "a=2&z=1"
+extract "a=1&b=2"
+parseUrl {"url":"https://example.com/page","query":{"a":"1","b":"2"}}
+stringifyUrl "https://x.com?a=1&b=2"

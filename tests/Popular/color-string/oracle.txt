@@ -1,0 +1,14 @@
+get.hex {"model":"rgb","value":[170,187,204,1]}
+get.hex3 {"model":"rgb","value":[170,187,204,1]}
+get.rgb {"model":"rgb","value":[255,0,0,1]}
+get.rgba {"model":"rgb","value":[255,0,0,0.5]}
+get.hsl {"model":"hsl","value":[120,50,50,1]}
+get.named {"model":"rgb","value":[102,51,153,1]}
+get.bad null
+to.hex.rgb "#NANNANNAN"
+to.hex.alpha "#NANNANNAN"
+to.rgb "rgb(NaN, NaN, NaN)"
+to.rgb.alpha "rgb(NaN, NaN, NaN)"
+to.hsl "hsl(120,50,50, undefined%, undefined%)"
+to.hsl.alpha "hsl(120,50,50,0.5, undefined%, undefined%)"
+to.keyword "cyan"

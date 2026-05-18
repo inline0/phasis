@@ -1,0 +1,11 @@
+replace {"foo":"baz","num":1,"list":[10,20,30]}
+add {"foo":"bar","num":1,"list":[10,20,30],"added":42}
+remove {"num":1,"list":[10,20,30]}
+move {"num":1,"list":[10,20,30],"renamed":"bar"}
+copy {"foo":"bar","num":1,"list":[10,20,30],"copied":"bar"}
+append [10,20,30,40]
+test.ok true
+batch {"foo":"baz","num":1,"list":[10,20,30],"extra":true}
+valid.ok true
+valid.bad true
+diff [{"op":"replace","path":"/b","value":99},{"op":"add","path":"/c","value":3}]

@@ -1,0 +1,15 @@
+parse.30s 30000
+parse.5m 300000
+parse.2h 7200000
+parse.1d 86400000
+parse.1w 604800000
+parse.500ms 500
+parse.float 5400000
+parse.neg -3600000
+fmt.30000 "30s"
+fmt.300000 "5m"
+fmt.3600000 "1h"
+fmt.86400000 "1d"
+fmt.long.30s "30 seconds"
+fmt.long.5m "5 minutes"
+fmt.long.1h "1 hour"
