@@ -183,6 +183,12 @@ final class WebSocketConstructor
         self::defineEventTargetMethods($proto);
         self::defineAccessors($proto);
 
+        // Symbol.toStringTag = "WebSocket" per the WebSocket Standard.
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('WebSocket'), false, false, true),
+        );
+
         $env->defineVar('WebSocket', $ctor);
     }
 

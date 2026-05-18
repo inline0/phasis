@@ -161,6 +161,13 @@ final class UrlPatternConstructor
         $execFn->setNonConstructable();
         $proto->defineOwnProperty('exec', PropertyDescriptor::data($execFn, true, false, true));
 
+        // Symbol.toStringTag = "URLPattern" so Object.prototype.toString
+        // emits "[object URLPattern]" per the URL Pattern Standard.
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('URLPattern'), false, false, true),
+        );
+
         $env->defineVar('URLPattern', $ctor);
     }
 

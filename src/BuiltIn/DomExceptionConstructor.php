@@ -140,6 +140,14 @@ class DomExceptionConstructor
             $proto->defineOwnProperty($constName, $desc);
         }
 
+        // Symbol.toStringTag = "DOMException" — overrides Error's tag
+        // so Object.prototype.toString.call(new DOMException()) emits
+        // "[object DOMException]" per WebIDL.
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('DOMException'), false, false, true),
+        );
+
         $env->defineVar('DOMException', $constructor);
     }
 
