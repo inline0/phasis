@@ -1982,13 +1982,11 @@ final class VM
                             $val = $stack[--$sp];
                             $obj = $stack[--$sp];
                             $name = $names[$code[$pc + 1]];
-                            // Fast path: assigning to an existing own default-
+                            // Fast path 1: assigning to an existing own default-
                             // attr data slot. Per OrdinarySetWithOwnDescriptor
                             // an own writable data property wins over any
                             // prototype-chain accessor or readonly slot, so a
-                            // direct in-place write is spec-correct here. The
-                            // slow path handles non-extensible / accessor
-                            // setter / readonly proto / strict-mode error cases.
+                            // direct in-place write is spec-correct here.
                             if (
                                 $obj instanceof JsObject
                                 && isset($obj->properties->dataSlots[$name])
@@ -1998,9 +1996,91 @@ final class VM
                                 if ($obj->properties->isUsedAsProto) {
                                     $obj->properties->version++;
                                 }
-                            } else {
-                                $this->writeMember($obj, $name, $val);
+                                $stack[$sp++] = $val;
+                                $pc += 2;
+                                break;
                             }
+                            // Fast path 2: inline cache for "new own property"
+                            // writes. The IC stores a snapshot of the prototype
+                            // chain (proto refs + their PropertyMap versions)
+                            // taken when the chain was known to have no setter
+                            // or readonly descriptor for $name at any depth.
+                            // On hit, the receiver gets a direct setDataSlot,
+                            // which is what the slow path would land on anyway
+                            // but without the method-dispatch ladder.
+                            // Excludes Proxy, non-extensible objects, and
+                            // receivers that already carry an own descriptor
+                            // for $name (which would force the slow path).
+                            if (
+                                $obj instanceof JsObject
+                                && !$obj instanceof \Phasis\Value\JsProxy
+                                && $obj->isExtensible()
+                                && !isset($obj->properties->descriptors[$name])
+                            ) {
+                                $ic = $cf->storeMemberIc[$pc] ?? null;
+                                if ($ic !== null) {
+                                    $chainOk = true;
+                                    $cursor = $obj->prototype;
+                                    foreach ($ic as $entry) {
+                                        if (
+                                            $cursor !== $entry[0]
+                                            || $cursor->properties->version !== $entry[1]
+                                        ) {
+                                            $chainOk = false;
+                                            break;
+                                        }
+                                        $cursor = $cursor->prototype;
+                                    }
+                                    if ($chainOk && $cursor === null) {
+                                        $obj->properties->setDataSlot($name, $val);
+                                        $stack[$sp++] = $val;
+                                        $pc += 2;
+                                        break;
+                                    }
+                                }
+                                // IC miss. Walk the chain to see whether this
+                                // site is even cacheable. A miss is cheap; a
+                                // permanent uncacheable mark is cheaper still.
+                                if (!isset($cf->storeMemberIcUncacheable[$pc])) {
+                                    $chain = [];
+                                    $cursor = $obj->prototype;
+                                    $cacheable = true;
+                                    while ($cursor !== null) {
+                                        if ($cursor instanceof \Phasis\Value\JsProxy) {
+                                            $cacheable = false;
+                                            break;
+                                        }
+                                        // Reject if any ancestor has a setter
+                                        // or readonly data descriptor for $name
+                                        // — both would intercept the write per
+                                        // spec OrdinarySetWithOwnDescriptor.
+                                        $ancDesc = $cursor->properties->descriptors[$name] ?? null;
+                                        if ($ancDesc !== null) {
+                                            if (
+                                                $ancDesc->set !== null
+                                                || $ancDesc->get !== null
+                                                || $ancDesc->writable === false
+                                            ) {
+                                                $cacheable = false;
+                                                break;
+                                            }
+                                        }
+                                        $chain[] = [$cursor, $cursor->properties->version];
+                                        $cursor = $cursor->prototype;
+                                    }
+                                    if ($cacheable) {
+                                        $cf->storeMemberIc[$pc] = $chain;
+                                        // Fall through to the slow path for
+                                        // the current write — populating the
+                                        // cache and writing in one step would
+                                        // duplicate the spec checks the slow
+                                        // path already enforces.
+                                    } else {
+                                        $cf->storeMemberIcUncacheable[$pc] = true;
+                                    }
+                                }
+                            }
+                            $this->writeMember($obj, $name, $val);
                             $stack[$sp++] = $val;
                             $pc += 2;
                             break;

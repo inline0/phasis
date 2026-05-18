@@ -71,6 +71,32 @@ const tests = {
       return s;
     };
   })(),
+  // Constructor-heavy: instantiating 50k Points exercises STORE_MEMBER
+  // on *new* own properties (this.x = …, this.y = …), the case the
+  // dataSlots fast path can't catch (slot doesn't exist yet on a
+  // fresh receiver). Targets the STORE_MEMBER inline cache that
+  // remembers the prototype chain has no setter for x/y after the
+  // first construct, then short-circuits the writeMember → JsObject::set
+  // → ordinarySetWithOwnDescriptor walk on every subsequent call.
+  "ctor-heavy": (() => {
+    function Point(x, y) {
+      this.x = x;
+      this.y = y;
+    }
+    Point.prototype.dist2 = function (other) {
+      const dx = this.x - other.x, dy = this.y - other.y;
+      return dx * dx + dy * dy;
+    };
+    return () => {
+      const origin = new Point(0, 0);
+      let s = 0;
+      for (let i = 0; i < 50000; i++) {
+        const p = new Point(i, i + 1);
+        s += p.dist2(origin);
+      }
+      return s;
+    };
+  })(),
   "arr-push": () => {
     const a = [];
     for (let i = 0; i < 50000; i++) a.push(i);

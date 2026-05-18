@@ -58,6 +58,42 @@ final class CompiledFunction
     public array $loadMemberIc = [];
 
     /**
+     * Inline cache for STORE_MEMBER, indexed by PC. Optimises the
+     * "create a new own data property on the receiver" path that the
+     * existing dataSlot-fast-path can't fire on (the slot doesn't
+     * exist yet, so writeMember -> JsObject::set -> ordinarySetWith…
+     * walks the prototype chain looking for interfering setters or
+     * readonly inherited descriptors before falling back to
+     * defineOwnProperty).
+     *
+     * Cache shape: a list of [proto, capturedVersion] pairs covering
+     * the entire prototype chain at fill time. On hit, the chain is
+     * re-walked and every (identity, version) must still match —
+     * which guarantees no setter/readonly for $name has appeared
+     * anywhere in the chain since the cache was filled. When the
+     * chain is clean, the receiver gets a direct setDataSlot, the
+     * same as what the slow path would land on.
+     *
+     * Cache filled only when (a) the chain has no descriptor for
+     * $name at any depth and (b) every chain member is a plain
+     * JsObject (no Proxy). Anything else falls back to the slow
+     * path forever for that PC.
+     *
+     * @var array<int, list<array{0: \Phasis\Value\JsObject, 1: int}>>
+     */
+    public array $storeMemberIc = [];
+
+    /**
+     * PCs where STORE_MEMBER tried to fill its IC and discovered the
+     * site is not cacheable (Proxy in chain, setter/readonly inherited
+     * descriptor, etc). Marked once so subsequent dispatches skip the
+     * walk entirely and go straight to the slow path.
+     *
+     * @var array<int, true>
+     */
+    public array $storeMemberIcUncacheable = [];
+
+    /**
      * Exception-handler table for this function's bytecode. Each entry
      * defines a [tryStart, tryEnd) PC range, a catchPc to jump to on
      * throw, an exception slot for the catch parameter, and the
