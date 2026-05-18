@@ -552,6 +552,16 @@ trait JsToPhpScope
             }
             if (
                 $node->operator === '='
+                && $node->right instanceof \Phasis\Ast\Expression\NewExpression
+            ) {
+                // `local = new Ctor(...)` re-assignment: same as the
+                // declarator-with-NewExpression-init pre-walk, mark the
+                // slot object-typed so the emit-side AssignmentExpression
+                // path lowers through vmNewExpression instead of bailing.
+                $this->markLocalAsObject($node->left->name);
+            }
+            if (
+                $node->operator === '='
                 && $node->right instanceof \Phasis\Ast\Expression\ArrayExpression
             ) {
                 $this->markLocalAsArray($node->left->name);

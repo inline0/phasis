@@ -415,6 +415,24 @@ trait JsToPhpEmitExpression
                 $this->pendingStatements[] = $this->slotVar($name) . ' = ' . $temp . ';';
                 return $temp;
             }
+            // local = new Ctor(args): lift to vmNewExpression and
+            // assign the resulting JsObject to the object-typed slot.
+            // Mirrors the VariableDeclarator-with-NewExpression-init
+            // path in emitStatement so a re-assignment in a loop
+            // (`p = new Point(i, i+1)` after `let p;`) still benefits
+            // from JsToPhp lowering instead of forcing a bailout.
+            if (
+                $node->operator === '='
+                && $node->right instanceof \Phasis\Ast\Expression\NewExpression
+                && ($this->localTypes[$name] ?? null) === 'object'
+            ) {
+                $newTemp = $this->emitNewExpression($node->right);
+                $this->pendingStatements[] = 'if (!(' . $newTemp
+                    . ' instanceof \\Phasis\\Value\\JsObject)) { '
+                    . 'throw new \\Phasis\\Bytecode\\Bailout("new returned non-object"); }';
+                $this->pendingStatements[] = $this->slotVar($name) . ' = ' . $newTemp . ';';
+                return $newTemp;
+            }
             // String-typed local: only accept ASCII string literal
             // RHS for assignment / concat. The result expression is
             // the slot's PHP string, which is non-numeric — only
@@ -833,11 +851,11 @@ trait JsToPhpEmitExpression
     }
 
     /**
-     * Lower `new Ctor(args)` where Ctor is an Identifier (resolved
-     * via env free-variable lookup; local-callee NewExpression
-     * isn't supported yet). Boxes args as JsNumber and dispatches
-     * to `$interp->vmNewExpression()`. Returns the temp PHP
-     * variable holding the construct result (a JsValue, usually
+     * Lower `new Ctor(args)` where Ctor is an Identifier resolved
+     * either as a function-typed local (from the same compile frame)
+     * or via env free-variable lookup. Boxes args as JsNumber and
+     * dispatches to `$interp->vmNewExpression()`. Returns the temp
+     * PHP variable holding the construct result (a JsValue, usually
      * JsObject — the caller bailouts on non-object).
      */
     private function emitNewExpression(\Phasis\Ast\Expression\NewExpression $node): string
@@ -853,11 +871,22 @@ trait JsToPhpEmitExpression
             $argRawExprs[] = $this->emitExpression($arg);
         }
         $ctorName = $node->callee->name;
-        $ctorRef = '$_ctor_' . preg_replace('/[^A-Za-z0-9_]/', '_', $ctorName);
-        if (!isset($this->freeVars['__ctor_' . $ctorName])) {
-            $this->freeVars['__ctor_' . $ctorName] = true;
-            $this->pendingStatements[] = $ctorRef
-                . ' = $env->get(' . var_export($ctorName, true) . ');';
+        // Prefer the function-typed local slot when the constructor was
+        // declared in this compile frame (e.g. a nested
+        // `function Inner(...)` factory). The slot read is one PHP local
+        // dereference vs. an env->get walk.
+        if (
+            isset($this->declaredLocals[$ctorName])
+            && ($this->localTypes[$ctorName] ?? null) === 'function'
+        ) {
+            $ctorRef = $this->slotVar($ctorName);
+        } else {
+            $ctorRef = '$_ctor_' . preg_replace('/[^A-Za-z0-9_]/', '_', $ctorName);
+            if (!isset($this->freeVars['__ctor_' . $ctorName])) {
+                $this->freeVars['__ctor_' . $ctorName] = true;
+                $this->pendingStatements[] = $ctorRef
+                    . ' = $env->get(' . var_export($ctorName, true) . ');';
+            }
         }
         $boxedArgs = [];
         foreach ($argRawExprs as $expr) {
