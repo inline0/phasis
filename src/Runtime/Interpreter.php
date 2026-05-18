@@ -302,21 +302,26 @@ class Interpreter
         }
         $this->strictMode = $fn->effectiveStrictCache;
 
-        if (!$this->strictMode && !$fn->isArrow) {
+        // Sloppy-this coercion. The common case — `this` already a
+        // JsObject — short-circuits on a single instanceof check
+        // before the more expensive branches; the previous shape did
+        // 3 instanceof's just to fall through.
+        if (
+            !$this->strictMode
+            && !$fn->isArrow
+            && !$thisValue instanceof \Phasis\Value\JsObject
+        ) {
             if (
                 $thisValue instanceof \Phasis\Value\JsUndefined
                 || $thisValue instanceof \Phasis\Value\JsNull
             ) {
                 $thisValue = $this->getGlobalObject();
             } elseif (
-                !$thisValue instanceof \Phasis\Value\JsObject
-                && (
-                    $thisValue instanceof \Phasis\Value\JsNumber
-                    || $thisValue instanceof \Phasis\Value\JsString
-                    || $thisValue instanceof \Phasis\Value\JsBoolean
-                    || $thisValue instanceof \Phasis\Value\JsSymbol
-                    || $thisValue instanceof \Phasis\Value\JsBigInt
-                )
+                $thisValue instanceof \Phasis\Value\JsNumber
+                || $thisValue instanceof \Phasis\Value\JsString
+                || $thisValue instanceof \Phasis\Value\JsBoolean
+                || $thisValue instanceof \Phasis\Value\JsSymbol
+                || $thisValue instanceof \Phasis\Value\JsBigInt
             ) {
                 $thisValue = \Phasis\Spec\TypeConversion::toObject($thisValue);
             }

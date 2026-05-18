@@ -4210,16 +4210,19 @@ trait ExpressionEvaluation
             // coercion, which would only burn cycles since LOAD_THIS
             // (not emitted for canSkipEnvAlloc bodies) wouldn't read
             // the coerced value anyway.
-            if (!$this->strictMode && !$fn->isArrow()) {
+            if (
+                !$this->strictMode
+                && !$fn->isArrow()
+                && !$thisValue instanceof JsObject
+            ) {
                 if ($thisValue instanceof JsUndefined || $thisValue instanceof JsNull) {
                     $thisValue = $this->getGlobalObject();
                 } elseif (
-                    !$thisValue instanceof JsObject
-                    && ($thisValue instanceof JsNumber
-                        || $thisValue instanceof JsString
-                        || $thisValue instanceof JsBoolean
-                        || $thisValue instanceof JsSymbol
-                        || $thisValue instanceof JsBigInt)
+                    $thisValue instanceof JsNumber
+                    || $thisValue instanceof JsString
+                    || $thisValue instanceof JsBoolean
+                    || $thisValue instanceof JsSymbol
+                    || $thisValue instanceof JsBigInt
                 ) {
                     $thisValue = TypeConversion::toObject($thisValue);
                 }
