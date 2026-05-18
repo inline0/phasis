@@ -1,0 +1,2 @@
+events.count 15
+events [{"pi":{"name":"xml","body":"version=\"1.0\""}},{"open":"library","attrs":{}},{"open":"book","attrs":{"id":"b1"}},{"open":"title","attrs":{}},{"text":"Foundation"},{"close":"title"},{"open":"author","attrs":{}},{"text":"Asimov"},{"close":"author"},{"close":"book"},{"comment":"a comment"},{"open":"book","attrs":{"id":"b2"}},{"cdata":"<raw>data</raw>"},{"close":"book"},{"close":"library"}]

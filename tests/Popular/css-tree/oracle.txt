@@ -1,0 +1,5 @@
+ast.type "StyleSheet"
+selectors [".foo",".bar"]
+decls [{"property":"color","value":"#ff0000"},{"property":"padding","value":"10px 20px"},{"property":"font-size","value":"14px"}]
+generated ".foo{color:#ff0000;padding:10px 20px}@media (max-width:600px){.bar{font-size:14px}}"
+value.type "Value"
