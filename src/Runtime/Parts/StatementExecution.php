@@ -2922,9 +2922,26 @@ trait StatementExecution
     private function execTryStatement(TryStatement $node, Environment $env): Completion
     {
         $generatorReturnSignal = null;
+        // Per HasCallInTailPosition (§15.8.1): a call inside a try block
+        // whose enclosing statement has a finalizer is NOT in tail
+        // position — the finally runs after the call returns, so the
+        // call can't be safely thunked into a TailCallThunk that fires
+        // post-finally. Without this guard, `try { return fn(this); }
+        // finally { mutate(); }` would let `mutate()` run BEFORE fn
+        // actually executed, and the thunk's fn() would observe the
+        // post-mutation state. Surfaced by prettier's Path.call/each
+        // shape: `s.length -= a` in the finally pre-mutated the path
+        // stack so the visitor saw the parent node instead of the
+        // pushed child and recursed forever on the same root.
+        $savedTailPosForTry = $this->inTailPosition;
+        if ($node->finalizer !== null) {
+            $this->inTailPosition = false;
+        }
         try {
             $completion = $this->execBlockStatement($node->block, $env);
+            $this->inTailPosition = $savedTailPosForTry;
         } catch (GeneratorReturnSignal $returnSignal) {
+            $this->inTailPosition = $savedTailPosForTry;
             // generator.return() signal must propagate through finally blocks.
             // Stash it and let the finally block below run (if any), then re-throw.
             $generatorReturnSignal = $returnSignal;
@@ -2934,18 +2951,22 @@ trait StatementExecution
         } catch (GeneratorThrowSignal $e) {
             // A generator.throw() signal propagated into a try block.
             // Convert it to a Throw completion so the catch handler can run.
+            $this->inTailPosition = $savedTailPosForTry;
             $completion = Completion::throw($e->jsValue);
         } catch (\Phasis\Exceptions\JsThrowable $e) {
             // A PHP exception carrying a JS value (e.g., from generator.throw()).
             // Extract the original JS value for the catch handler.
+            $this->inTailPosition = $savedTailPosForTry;
             $completion = Completion::throw($e->jsValue);
         } catch (\Phasis\Exceptions\SyntaxError $e) {
             // A PHP SyntaxError (e.g. from eval parsing). Convert to a JS
             // SyntaxError so the catch handler can process it.
+            $this->inTailPosition = $savedTailPosForTry;
             $completion = Completion::throw($this->phpExceptionToJsValue($e));
         } catch (\Phasis\Exceptions\RuntimeError $e) {
             // A PHP exception representing a JS runtime error. Convert to
             // a Throw completion so the JS catch handler can process it.
+            $this->inTailPosition = $savedTailPosForTry;
             $completion = Completion::throw($this->phpExceptionToJsValue($e));
         }
 

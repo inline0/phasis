@@ -1991,8 +1991,24 @@ final class VM
                             // an own writable data property wins over any
                             // prototype-chain accessor or readonly slot, so a
                             // direct in-place write is spec-correct here.
+                            //
+                            // Exotic-slot bailout: JsArray's `length` is NOT
+                            // stored in $properties->dataSlots — it lives in
+                            // a dedicated field with custom setter semantics
+                            // (ArraySetLength, which trims dense elements and
+                            // can throw RangeError). Skipping the slow path
+                            // and stashing the new length into dataSlots
+                            // creates a phantom `length` property that
+                            // shadows the real exotic slot on subsequent
+                            // reads and corrupts the array. Same shape would
+                            // apply to TypedArray length and any future
+                            // exotic-length carrier — the safe gate is "no
+                            // exotic length descriptor at all," which on
+                            // plain JsObject is always true.
                             if (
                                 $obj instanceof JsObject
+                                && !$obj instanceof \Phasis\Value\JsArray
+                                && !$obj instanceof \Phasis\Value\JsTypedArray
                                 && isset($obj->properties->dataSlots[$name])
                             ) {
                                 $obj->properties->dataSlots[$name] = $val;
@@ -2015,9 +2031,23 @@ final class VM
                             // Excludes Proxy, non-extensible objects, and
                             // receivers that already carry an own descriptor
                             // for $name (which would force the slow path).
+                            //
+                            // Also excludes JsArray / JsTypedArray: their
+                            // `length` lives in an exotic slot rather than
+                            // dataSlots, and setDataSlot would create a
+                            // phantom property that shadows the real length
+                            // on subsequent reads — defeating push, splice,
+                            // and the truncation done by `arr.length = N`.
+                            // Surfaced by prettier's path-stack code:
+                            // `s.length -= 2` after a push was silently
+                            // dropping the truncation on the second hit and
+                            // recursing forever as the visitor re-entered
+                            // the same node.
                             if (
                                 $obj instanceof JsObject
                                 && !$obj instanceof \Phasis\Value\JsProxy
+                                && !$obj instanceof \Phasis\Value\JsArray
+                                && !$obj instanceof \Phasis\Value\JsTypedArray
                                 && $obj->isExtensible()
                                 && !isset($obj->properties->descriptors[$name])
                             ) {
