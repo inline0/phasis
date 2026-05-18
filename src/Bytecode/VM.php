@@ -985,13 +985,31 @@ final class VM
                         case Op::EQ:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $true : $false;
+                            // Loose-equals inline fast paths: same-type
+                            // shortcuts that match abstractEquals's
+                            // identity branches without the method
+                            // dispatch + branch ladder.
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $stack[$sp++] = ($lv === $r->value && !is_nan($lv)) ? $true : $false;
+                            } elseif ($l instanceof JsString && $r instanceof JsString) {
+                                $stack[$sp++] = $l->value === $r->value ? $true : $false;
+                            } else {
+                                $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $true : $false;
+                            }
                             $pc++;
                             break;
                         case Op::NEQ:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $false : $true;
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $stack[$sp++] = ($lv !== $r->value || is_nan($lv)) ? $true : $false;
+                            } elseif ($l instanceof JsString && $r instanceof JsString) {
+                                $stack[$sp++] = $l->value === $r->value ? $false : $true;
+                            } else {
+                                $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $false : $true;
+                            }
                             $pc++;
                             break;
                         case Op::SEQ:
