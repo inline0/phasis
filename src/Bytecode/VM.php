@@ -1847,8 +1847,15 @@ final class VM
                             // marker is set at engine init when the built-in
                             // is installed; absence falls through to the spec
                             // path so semantics never diverge.
+                            //
+                            // Hoist $kind read so user-defined methods (the
+                            // dominant case on proto-method / ctor-heavy /
+                            // any class-body workload) skip the entire
+                            // builtin-fast-path ladder in one branch.
+                            $kind = $method->builtinKind;
+                            if ($kind !== null) {
                             if (
-                                $method->builtinKind === 'array.push'
+                                $kind === 'array.push'
                                 && $receiver instanceof \Phasis\Value\JsArray
                                 && $argc === 1
                             ) {
@@ -1867,14 +1874,13 @@ final class VM
                                     break;
                                 }
                             }
-                            $kind = $method->builtinKind;
                             // Date.prototype hot paths used by the SM
                             // dst-offset-caching stress harness. Both
                             // helpers return null when the receiver
                             // shape does not match, in which case the
                             // dispatch falls through to the normal
                             // callFunction path.
-                            if ($kind !== null && $kind[0] === 'd' && str_starts_with($kind, 'date.')) {
+                            if ($kind[0] === 'd' && str_starts_with($kind, 'date.')) {
                                 if ($kind === 'date.getTimezoneOffset') {
                                     $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateGetTimezoneOffset($receiver);
                                     if ($fast !== null) {
@@ -1933,8 +1939,7 @@ final class VM
                                 }
                             }
                             if (
-                                $kind !== null
-                                && $receiver instanceof \Phasis\Value\JsArray
+                                $receiver instanceof \Phasis\Value\JsArray
                                 && $receiver->isDenseMode()
                             ) {
                                 $inlined = $this->inlineDenseArrayMethod(
@@ -1949,6 +1954,7 @@ final class VM
                                     break;
                                 }
                             }
+                            } // end if ($kind !== null) builtin fast-path ladder
                             // Stage 4 custom callstack: extend the
                             // inline-call path to method calls too.
                             // Same eligibility predicate Op::CALL
