@@ -69,6 +69,12 @@ final class SubtleCryptoObject
         self::defineMethod($subtle, 'deriveBits', 3, self::deriveBitsImpl());
         self::defineMethod($subtle, 'deriveKey', 5, self::deriveKeyImpl());
 
+        // Symbol.toStringTag = "SubtleCrypto" per the Web Crypto API.
+        $subtle->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('SubtleCrypto'), false, false, true),
+        );
+
         return $subtle;
     }
 

@@ -9,6 +9,7 @@ use Phasis\Runtime\Environment;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsNumber;
 use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
 use Phasis\Value\JsValue;
 
 /**
@@ -64,6 +65,13 @@ class PerformanceObject
         $perf->defineOwnProperty(
             'now',
             PropertyDescriptor::data($nowFn, true, false, true),
+        );
+
+        // Symbol.toStringTag = "Performance" per the HR-Time / Performance
+        // Timeline standard.
+        $perf->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('Performance'), false, false, true),
         );
 
         $env->defineVar('performance', $perf);

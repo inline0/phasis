@@ -69,6 +69,12 @@ final class CryptoObject
             PropertyDescriptor::data($subtle, false, false, true),
         );
 
+        // Symbol.toStringTag = "Crypto" per the Web Crypto API.
+        $crypto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('Crypto'), false, false, true),
+        );
+
         $env->defineVar('crypto', $crypto);
     }
 

@@ -115,6 +115,13 @@ final class CompressionStream
             ),
         );
 
+        // Symbol.toStringTag = "{Compression,Decompression}Stream" per
+        // the Compression Streams API spec.
+        $proto->definePropertyBySymbol(
+            \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new \Phasis\Value\JsString($className), false, false, true),
+        );
+
         return $ctor;
     }
 
