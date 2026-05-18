@@ -1,0 +1,12 @@
+isValid.v4 true
+isValid.v6 true
+isValid.bad false
+v4.kind "ipv4"
+v4.range "private"
+v6.kind "ipv6"
+v6.range "reserved"
+v6.normalize "2001:db8:0:0:0:0:0:1"
+loopback.v4 "loopback"
+loopback.v6 "loopback"
+private "private"
+public "unicast"

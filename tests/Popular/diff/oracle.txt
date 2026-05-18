@@ -1,0 +1,11 @@
+chars.count 6
+chars.first.value "hello "
+chars.added ["the","e"]
+chars.removed ["wo","ld"]
+lines.count 6
+lines.added ["BETA\n","DELTA\n"]
+lines.removed ["beta\n","delta\n"]
+patch.has-header true
+apply "alpha\nBETA\n"
+json.parts 6
+identical.empty true
