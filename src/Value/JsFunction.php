@@ -601,6 +601,17 @@ class JsFunction extends JsObject
     public ?bool $phpCompiledDispatchCache = null;
 
     /**
+     * Memoised: true when the function body references `new.target`
+     * (represented as the synthetic `[[NewTarget]]` identifier) or
+     * makes a `super(...)` call. When false, the VM's inline-
+     * construct path can skip installing `[[NewTarget]]` on the
+     * fresh receiver AND the matching forceDelete on the RET path —
+     * a defineOwnProperty + delete pair per construct. ctor-heavy
+     * (50 k Point allocations) sits firmly in this skip-able bucket.
+     */
+    public ?bool $bodyUsesNewTargetCache = null;
+
+    /**
      * Override JsObject::defineOwnProperty so the Annex B observed flag
      * flips the first time a `caller` or `arguments` descriptor lands
      * on this function. This is the only entry point through which the

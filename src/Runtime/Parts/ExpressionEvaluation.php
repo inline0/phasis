@@ -6531,6 +6531,89 @@ trait ExpressionEvaluation
      *
      * @param Node[] $params
      */
+    /**
+     * Whether a function body would observe `new.target` at runtime.
+     * Used by the VM inline-construct path to skip the per-call
+     * `[[NewTarget]]` install + forceDelete when the body provably
+     * never reads the slot. Delegates to the existing `nodeContains
+     * NewTarget` walker (which already understands arrow / nested-
+     * function / class boundaries); also flips to true on `super(...)`
+     * calls so derived constructors stay correct.
+     */
+    public function bodyContainsNewTarget(mixed $body): bool
+    {
+        if ($body === null) {
+            return false;
+        }
+        if ($body instanceof BlockStatement) {
+            return $this->bodyContainsNewTargetOrSuperCall($body->body);
+        }
+        if ($body instanceof Node) {
+            return $this->nodeContainsNewTargetOrSuperCall($body);
+        }
+        if (is_array($body)) {
+            return $this->bodyContainsNewTargetOrSuperCall($body);
+        }
+        return false;
+    }
+
+    /**
+     * @param Node[] $statements
+     */
+    private function bodyContainsNewTargetOrSuperCall(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof Node && $this->nodeContainsNewTargetOrSuperCall($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsNewTargetOrSuperCall(Node $node): bool
+    {
+        if ($node instanceof Identifier && $node->name === '[[NewTarget]]') {
+            return true;
+        }
+        if (
+            $node instanceof CallExpression
+            && $node->callee instanceof Identifier
+            && $node->callee->name === 'super'
+        ) {
+            return true;
+        }
+        if ($node instanceof WithStatement) {
+            return true;
+        }
+        // Don't descend into nested non-arrow functions / classes —
+        // they own their own new.target. Arrow functions DO inherit
+        // it, so descend.
+        if (
+            $node instanceof FunctionExpression
+            || $node instanceof FunctionDeclaration
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->nodeContainsNewTargetOrSuperCall($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeContainsNewTargetOrSuperCall($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private function bodyUsesArguments(mixed $body, array $params = []): bool
     {
         foreach ($params as $param) {

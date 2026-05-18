@@ -1704,10 +1704,25 @@ final class VM
                                 if ($newInlineable) {
                                     $proto = $callee->get('prototype');
                                     $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
-                                    $newObj->defineOwnProperty(
-                                        '[[NewTarget]]',
-                                        \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
-                                    );
+                                    // Skip the [[NewTarget]] install
+                                    // for function bodies that don't
+                                    // read new.target / super(). The
+                                    // matching forceDelete on the RET
+                                    // path below also skips. Typical
+                                    // `function Ctor() { this.x = … }`
+                                    // bodies never observe new.target;
+                                    // ctor-heavy is the canonical case.
+                                    if ($callee->bodyUsesNewTargetCache === null) {
+                                        $callee->bodyUsesNewTargetCache =
+                                            $this->interp->bodyContainsNewTarget($callee->getBody());
+                                    }
+                                    $installNewTarget = $callee->bodyUsesNewTargetCache;
+                                    if ($installNewTarget) {
+                                        $newObj->defineOwnProperty(
+                                            '[[NewTarget]]',
+                                            \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
+                                        );
+                                    }
                                     $newCf = $callee->compiled;
                                     $restore = $this->interp->setupInlineVmCall($callee, $newObj);
                                     $paramSlots = $newCf->paramSlots;
@@ -2419,11 +2434,23 @@ final class VM
                                 // derived ctors are not inlined).
                                 if ($sf->isConstruct) {
                                     $newObj = $sf->newObject;
+                                    // Matching skip for the body-uses-
+                                    // new.target optimisation above. When
+                                    // the install was elided, neither
+                                    // newObj nor the returned object
+                                    // carries the slot, so forceDelete is
+                                    // pure overhead.
+                                    $needsDelete = $sf->callee instanceof JsFunction
+                                        && $sf->callee->bodyUsesNewTargetCache === true;
                                     if ($retResult instanceof JsObject) {
-                                        $retResult->forceDelete('[[NewTarget]]');
+                                        if ($needsDelete) {
+                                            $retResult->forceDelete('[[NewTarget]]');
+                                        }
                                         $finalResult = $retResult;
                                     } else {
-                                        $newObj->forceDelete('[[NewTarget]]');
+                                        if ($needsDelete) {
+                                            $newObj->forceDelete('[[NewTarget]]');
+                                        }
                                         $finalResult = $newObj;
                                     }
                                     $sf->newObject = null;
