@@ -153,10 +153,12 @@ class JsObject implements JsValue
         $this->properties = new PropertyMap();
         $resolved = $prototype ?? self::$globalPrototype;
         $this->prototype = $resolved;
-        if ($resolved !== null) {
+        if ($resolved !== null && !$resolved->properties->isUsedAsProto) {
             // Mark the prototype's PropertyMap as observed-as-proto
             // so its write paths know to bump $version. Instances
             // not used as anyone's prototype skip the bump entirely.
+            // Guard the write so a hot constructor (every `new Point(…)`)
+            // doesn't repeatedly re-set an already-true flag.
             $resolved->properties->isUsedAsProto = true;
         }
     }

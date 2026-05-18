@@ -906,19 +906,30 @@ final class VM
                         case Op::DIV:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '/');
+                            // fdiv preserves JS division-by-zero semantics
+                            // (Infinity / -Infinity / NaN) where PHP's `/`
+                            // would throw DivisionByZeroError.
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of(fdiv($l->value, $r->value))
+                                : $this->interp->numericBinaryOp($l, $r, '/');
                             $pc++;
                             break;
                         case Op::MOD:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '%');
+                            // fmod gives IEEE-754 remainder; PHP `%` only
+                            // accepts ints and truncates.
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of(fmod($l->value, $r->value))
+                                : $this->interp->numericBinaryOp($l, $r, '%');
                             $pc++;
                             break;
                         case Op::POW:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = $this->interp->exponentiate($l, $r);
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of($l->value ** $r->value)
+                                : $this->interp->exponentiate($l, $r);
                             $pc++;
                             break;
 
@@ -974,13 +985,31 @@ final class VM
                         case Op::EQ:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $true : $false;
+                            // Loose-equals inline fast paths: same-type
+                            // shortcuts that match abstractEquals's
+                            // identity branches without the method
+                            // dispatch + branch ladder.
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $stack[$sp++] = ($lv === $r->value && !is_nan($lv)) ? $true : $false;
+                            } elseif ($l instanceof JsString && $r instanceof JsString) {
+                                $stack[$sp++] = $l->value === $r->value ? $true : $false;
+                            } else {
+                                $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $true : $false;
+                            }
                             $pc++;
                             break;
                         case Op::NEQ:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $false : $true;
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $stack[$sp++] = ($lv !== $r->value || is_nan($lv)) ? $true : $false;
+                            } elseif ($l instanceof JsString && $r instanceof JsString) {
+                                $stack[$sp++] = $l->value === $r->value ? $false : $true;
+                            } else {
+                                $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $false : $true;
+                            }
                             $pc++;
                             break;
                         case Op::SEQ:
@@ -1013,21 +1042,76 @@ final class VM
                             break;
 
                 // ---- Bitwise --------------------------------------------
+                // Fast path: both operands are JsNumber with int-valued
+                // doubles in int32 range. ToInt32 is the identity here, so
+                // PHP's native bitwise op produces the same result as the
+                // spec helper without paying its method-dispatch +
+                // ToNumeric + JsBigInt branch ladder. Codec/encoder/hash
+                // libraries (xxhashjs, noble-hashes, crypto-js) live in
+                // this corner.
                         case Op::BAND:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value; $rv = $r->value;
+                                // Guard NaN/Inf BEFORE the (int) cast —
+                                // PHP 8.5 deprecates casting non-finite
+                                // doubles to int.
+                                if (
+                                    is_finite($lv) && is_finite($rv)
+                                    && $lv >= -2147483648.0 && $lv <= 2147483647.0
+                                    && $rv >= -2147483648.0 && $rv <= 2147483647.0
+                                ) {
+                                    $li = (int) $lv; $ri = (int) $rv;
+                                    if ((float) $li === $lv && (float) $ri === $rv) {
+                                        $stack[$sp++] = JsNumber::of((float) ($li & $ri));
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '&');
                             $pc++;
                             break;
                         case Op::BOR:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value; $rv = $r->value;
+                                if (
+                                    is_finite($lv) && is_finite($rv)
+                                    && $lv >= -2147483648.0 && $lv <= 2147483647.0
+                                    && $rv >= -2147483648.0 && $rv <= 2147483647.0
+                                ) {
+                                    $li = (int) $lv; $ri = (int) $rv;
+                                    if ((float) $li === $lv && (float) $ri === $rv) {
+                                        $stack[$sp++] = JsNumber::of((float) ($li | $ri));
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '|');
                             $pc++;
                             break;
                         case Op::BXOR:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value; $rv = $r->value;
+                                if (
+                                    is_finite($lv) && is_finite($rv)
+                                    && $lv >= -2147483648.0 && $lv <= 2147483647.0
+                                    && $rv >= -2147483648.0 && $rv <= 2147483647.0
+                                ) {
+                                    $li = (int) $lv; $ri = (int) $rv;
+                                    if ((float) $li === $lv && (float) $ri === $rv) {
+                                        $stack[$sp++] = JsNumber::of((float) ($li ^ $ri));
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '^');
                             $pc++;
                             break;
@@ -1367,12 +1451,24 @@ final class VM
                             // bailouts (non-numeric arg) throw a Bailout that
                             // we catch and retry through the normal direct /
                             // slow path.
-                            if (
-                                $callee->phpCompiled !== null
-                                && !$callee->isClassConstructor()
-                                && !$callee->isDerivedConstructor()
-                                && $callee->getHomeObject() === null
-                            ) {
+                            // Cached eligibility for the phpCompiled fast
+                            // dispatch: a single boolean read replaces
+                            // four field/method calls per dispatch.
+                            // Negative results aren't cached (phpCompiled
+                            // populates lazily; an early-call false would
+                            // permanently lock the function out of the
+                            // JIT). Reset by the JIT compiler when it
+                            // first installs phpCompiled.
+                            $phpEligible = $callee->phpCompiledDispatchCache;
+                            if ($phpEligible === null && $callee->phpCompiled !== null) {
+                                $phpEligible = !$callee->isClassConstructor()
+                                    && !$callee->isDerivedConstructor()
+                                    && $callee->getHomeObject() === null;
+                                if ($phpEligible) {
+                                    $callee->phpCompiledDispatchCache = true;
+                                }
+                            }
+                            if ($phpEligible === true && $callee->phpCompiled !== null) {
                                 try {
                                     // Compute the result first, push only after
                                     // the call returns. PHP evaluates `$stack[$sp++]`'s
@@ -1490,7 +1586,20 @@ final class VM
                         case Op::NEW_ARRAY:
                             $count = $code[$pc + 1];
                             $base = $sp - $count;
-                            $items = $count === 0 ? [] : array_slice($stack, $base, $count);
+                            // Inline arg packing for small counts. Empty
+                            // and single-element array literals are very
+                            // common in real code (every `[]`, every
+                            // `[node]` push, every iterator step); two
+                            // are the typical `[key, value]` pair.
+                            if ($count === 0) {
+                                $items = [];
+                            } elseif ($count === 1) {
+                                $items = [$stack[$base]];
+                            } elseif ($count === 2) {
+                                $items = [$stack[$base], $stack[$base + 1]];
+                            } else {
+                                $items = array_slice($stack, $base, $count);
+                            }
                             $sp = $base;
                             $stack[$sp++] = \Phasis\Value\JsArray::fromArray($items);
                             $pc += 2;
@@ -1526,7 +1635,19 @@ final class VM
                         case Op::NEW_CALL:
                             $argc = $code[$pc + 1];
                             $base = $sp - $argc;
-                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            // Inline small-argc packing (mirrors CALL).
+                            // Constructor calls with 0–2 args are the
+                            // common shape (every `new Point(x, y)`,
+                            // every `new Map()`).
+                            if ($argc === 0) {
+                                $args = [];
+                            } elseif ($argc === 1) {
+                                $args = [$stack[$base]];
+                            } elseif ($argc === 2) {
+                                $args = [$stack[$base], $stack[$base + 1]];
+                            } else {
+                                $args = array_slice($stack, $base, $argc);
+                            }
                             $callee = $stack[$base - 1];
                             $sp = $base - 1;
                             // Fast path for `new Date(<number>)`. The SM
@@ -1581,12 +1702,36 @@ final class VM
                                     }
                                 }
                                 if ($newInlineable) {
-                                    $proto = $callee->get('prototype');
+                                    // Inline the dataSlots-fast-path of
+                                    // $callee->get('prototype'): regular
+                                    // function instances always carry
+                                    // `prototype` as an own data slot,
+                                    // so the hit lands in one array
+                                    // lookup with no method dispatch.
+                                    // Fall back to the spec getter only
+                                    // if the slot was deleted (rare).
+                                    $proto = $callee->properties->dataSlots['prototype']
+                                        ?? $callee->get('prototype');
                                     $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
-                                    $newObj->defineOwnProperty(
-                                        '[[NewTarget]]',
-                                        \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
-                                    );
+                                    // Skip the [[NewTarget]] install
+                                    // for function bodies that don't
+                                    // read new.target / super(). The
+                                    // matching forceDelete on the RET
+                                    // path below also skips. Typical
+                                    // `function Ctor() { this.x = … }`
+                                    // bodies never observe new.target;
+                                    // ctor-heavy is the canonical case.
+                                    if ($callee->bodyUsesNewTargetCache === null) {
+                                        $callee->bodyUsesNewTargetCache =
+                                            $this->interp->bodyContainsNewTarget($callee->getBody());
+                                    }
+                                    $installNewTarget = $callee->bodyUsesNewTargetCache;
+                                    if ($installNewTarget) {
+                                        $newObj->defineOwnProperty(
+                                            '[[NewTarget]]',
+                                            \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
+                                        );
+                                    }
                                     $newCf = $callee->compiled;
                                     $restore = $this->interp->setupInlineVmCall($callee, $newObj);
                                     $paramSlots = $newCf->paramSlots;
@@ -1654,7 +1799,22 @@ final class VM
                             // already surfaced before any argument was eval'd.
                             $argc = $code[$pc + 1];
                             $base = $sp - $argc;
-                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            // Inline arg packing for argc ≤ 2. array_slice
+                            // is the long-tail allocator on method-call-
+                            // heavy code (arr.push(x), obj.method(a,b),
+                            // Math.max(a,b)). Two array literals are
+                            // cheaper than array_slice's copy + length
+                            // counting; argc=0 short-circuits to the
+                            // shared $undefArgs reference.
+                            if ($argc === 0) {
+                                $args = [];
+                            } elseif ($argc === 1) {
+                                $args = [$stack[$base]];
+                            } elseif ($argc === 2) {
+                                $args = [$stack[$base], $stack[$base + 1]];
+                            } else {
+                                $args = array_slice($stack, $base, $argc);
+                            }
                             $method = $stack[$base - 1];
                             $receiver = $stack[$base - 2];
                             $sp = $base - 2;
@@ -1687,8 +1847,15 @@ final class VM
                             // marker is set at engine init when the built-in
                             // is installed; absence falls through to the spec
                             // path so semantics never diverge.
+                            //
+                            // Hoist $kind read so user-defined methods (the
+                            // dominant case on proto-method / ctor-heavy /
+                            // any class-body workload) skip the entire
+                            // builtin-fast-path ladder in one branch.
+                            $kind = $method->builtinKind;
+                            if ($kind !== null) {
                             if (
-                                $method->builtinKind === 'array.push'
+                                $kind === 'array.push'
                                 && $receiver instanceof \Phasis\Value\JsArray
                                 && $argc === 1
                             ) {
@@ -1707,14 +1874,13 @@ final class VM
                                     break;
                                 }
                             }
-                            $kind = $method->builtinKind;
                             // Date.prototype hot paths used by the SM
                             // dst-offset-caching stress harness. Both
                             // helpers return null when the receiver
                             // shape does not match, in which case the
                             // dispatch falls through to the normal
                             // callFunction path.
-                            if ($kind !== null && $kind[0] === 'd' && str_starts_with($kind, 'date.')) {
+                            if ($kind[0] === 'd' && str_starts_with($kind, 'date.')) {
                                 if ($kind === 'date.getTimezoneOffset') {
                                     $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateGetTimezoneOffset($receiver);
                                     if ($fast !== null) {
@@ -1773,8 +1939,7 @@ final class VM
                                 }
                             }
                             if (
-                                $kind !== null
-                                && $receiver instanceof \Phasis\Value\JsArray
+                                $receiver instanceof \Phasis\Value\JsArray
                                 && $receiver->isDenseMode()
                             ) {
                                 $inlined = $this->inlineDenseArrayMethod(
@@ -1789,6 +1954,7 @@ final class VM
                                     break;
                                 }
                             }
+                            } // end if ($kind !== null) builtin fast-path ladder
                             // Stage 4 custom callstack: extend the
                             // inline-call path to method calls too.
                             // Same eligibility predicate Op::CALL
@@ -1914,22 +2080,61 @@ final class VM
                                 && !$obj instanceof \Phasis\Value\JsProxy
                                 && !isset($obj->properties->descriptors[$name])
                             ) {
+                                // Polymorphic inline cache: stores up to
+                                // 4 [proto, resolved, version] triples
+                                // per PC. Real-world code routinely
+                                // polymorphs at the same property-read
+                                // site (`node.type` where node can be
+                                // any of N AST node kinds; `arr[i].x`
+                                // where arr is sometimes objects A,
+                                // sometimes B). The monomorphic version
+                                // missed on every alternation and
+                                // re-walked the prototype chain via
+                                // lookupMember; the polymorphic version
+                                // catches up to 4 shapes per site, then
+                                // marks the PC megamorphic (a sentinel)
+                                // so future calls skip the IC walk and
+                                // go straight to lookupMember.
                                 $ic = $cf->loadMemberIc[$pc] ?? null;
                                 if ($ic !== null) {
-                                    $cachedProto = $ic[0];
-                                    // Direct field access on the public
-                                    // ->prototype slot skips the
-                                    // getPrototype() method dispatch on
-                                    // the hot path. Subclasses with
-                                    // exotic [[GetPrototypeOf]] (JsProxy)
-                                    // are already excluded by the outer
-                                    // instanceof check above.
-                                    if (
-                                        $cachedProto === $obj->prototype
-                                        && $cachedProto->properties->version === $ic[2]
-                                    ) {
-                                        $stack[$sp++] = $ic[1];
+                                    $objProto = $obj->prototype;
+                                    // Megamorphic sentinel: skip the
+                                    // IC walk entirely.
+                                    if ($ic === true) {
+                                        $stack[$sp++] = $this->lookupMember($obj, $name);
                                         $pc += 2;
+                                        break;
+                                    }
+                                    // Unroll the monomorphic 1-entry
+                                    // case so the foreach setup cost
+                                    // doesn't penalise the most common
+                                    // shape (class instances where every
+                                    // receiver shares a prototype).
+                                    $e0 = $ic[0];
+                                    if (
+                                        $e0[0] === $objProto
+                                        && $objProto->properties->version === $e0[2]
+                                    ) {
+                                        $stack[$sp++] = $e0[1];
+                                        $pc += 2;
+                                        break;
+                                    }
+                                    // Polymorphic walk: 2..4 entries.
+                                    $icLen = count($ic);
+                                    $hit = false;
+                                    for ($i = 1; $i < $icLen; $i++) {
+                                        $entry = $ic[$i];
+                                        if (
+                                            $entry[0] === $objProto
+                                            && $objProto->properties->version === $entry[2]
+                                        ) {
+                                            $stack[$sp++] = $entry[1];
+                                            $pc += 2;
+                                            $hit = true;
+                                            break;
+                                        }
+                                    }
+                                    if ($hit) {
                                         break;
                                     }
                                 }
@@ -1962,11 +2167,31 @@ final class VM
                                         }
                                     }
                                     if ($cacheable) {
-                                        $cf->loadMemberIc[$pc] = [
+                                        $newEntry = [
                                             $proto,
                                             $resolved,
                                             $proto->properties->version,
                                         ];
+                                        $existing = $cf->loadMemberIc[$pc] ?? null;
+                                        if ($existing === null) {
+                                            $cf->loadMemberIc[$pc] = [$newEntry];
+                                        } elseif (is_array($existing) && count($existing) < 4) {
+                                            // Append; no need to dedupe
+                                            // since a miss above means
+                                            // this proto wasn't in the
+                                            // list under the current
+                                            // version.
+                                            $existing[] = $newEntry;
+                                            $cf->loadMemberIc[$pc] = $existing;
+                                        } else {
+                                            // 4 shapes already seen; site
+                                            // is megamorphic. Sentinel
+                                            // stops further IC churn so
+                                            // future hits go straight to
+                                            // lookupMember without the
+                                            // walk overhead.
+                                            $cf->loadMemberIc[$pc] = true;
+                                        }
                                     }
                                 }
                                 $stack[$sp++] = $resolved;
@@ -1979,6 +2204,38 @@ final class VM
                         case Op::LOAD_COMPUTED:
                             $key = $stack[--$sp];
                             $obj = $stack[--$sp];
+                            // Hot path: `arr[i]` with a JsArray base and a
+                            // non-negative-integer JsNumber index. Mirrors
+                            // STORE_COMPUTED's fast write at line 2168 so
+                            // bracket reads and writes have the same cost.
+                            // Dense-array indexing is the inner loop of
+                            // every parser / iterator / numerical kernel,
+                            // and routing through the full toPropertyKey →
+                            // lookupComputed dispatch ladder allocated a
+                            // JsString and walked the descriptor table for
+                            // every read. Bails to the spec path on holes
+                            // (denseElements[$kvi] === null), non-integer
+                            // keys, or non-dense arrays.
+                            if (
+                                $obj instanceof \Phasis\Value\JsArray
+                                && $key instanceof JsNumber
+                                && $obj->isDenseMode()
+                            ) {
+                                $kv = $key->value;
+                                $kvi = (int) $kv;
+                                if (
+                                    $kvi >= 0
+                                    && (float) $kvi === $kv
+                                    && $kvi < $obj->getLength()
+                                ) {
+                                    $val = $obj->getDenseElements()[$kvi] ?? null;
+                                    if ($val !== null) {
+                                        $stack[$sp++] = $val;
+                                        $pc++;
+                                        break;
+                                    }
+                                }
+                            }
                             $stack[$sp++] = $this->lookupComputed($obj, $key);
                             $pc++;
                             break;
@@ -2192,11 +2449,23 @@ final class VM
                                 // derived ctors are not inlined).
                                 if ($sf->isConstruct) {
                                     $newObj = $sf->newObject;
+                                    // Matching skip for the body-uses-
+                                    // new.target optimisation above. When
+                                    // the install was elided, neither
+                                    // newObj nor the returned object
+                                    // carries the slot, so forceDelete is
+                                    // pure overhead.
+                                    $needsDelete = $sf->callee instanceof JsFunction
+                                        && $sf->callee->bodyUsesNewTargetCache === true;
                                     if ($retResult instanceof JsObject) {
-                                        $retResult->forceDelete('[[NewTarget]]');
+                                        if ($needsDelete) {
+                                            $retResult->forceDelete('[[NewTarget]]');
+                                        }
                                         $finalResult = $retResult;
                                     } else {
-                                        $newObj->forceDelete('[[NewTarget]]');
+                                        if ($needsDelete) {
+                                            $newObj->forceDelete('[[NewTarget]]');
+                                        }
                                         $finalResult = $newObj;
                                     }
                                     $sf->newObject = null;

@@ -217,9 +217,10 @@ class Interpreter
     ): array {
         $this->callStack->push($fn->name, 0);
 
-        $callerFn = !empty($this->callerStack)
-            ? $this->callerStack[count($this->callerStack) - 1]
-            : null;
+        // The previous top frame ($callerFn) is only consulted inside
+        // the Annex B `if ($setCallerProp)` block below — most calls
+        // never read it. Push first and fetch lazily so the hot path
+        // skips the empty/count/index dance entirely.
         $this->callerStack[] = $fn;
 
         if ($fn->setCallerPropCache === null) {
@@ -235,7 +236,15 @@ class Interpreter
                 && !$fn->isClassConstructor()
                 && $fn->isConstructable();
         }
-        $setCallerProp = $fn->setCallerPropCache;
+        // Annex B caller/arguments maintenance: only do the descriptor
+        // dance when the function has actually had a `caller` or
+        // `arguments` descriptor installed at some point. The flag is
+        // sticky and JsFunction::defineOwnProperty flips it. The vast
+        // majority of functions never have these descriptors written,
+        // so the per-call cost of two getOwnPropertyDescriptor lookups
+        // + two isEngineDefault* checks is pure waste — observable on
+        // ctor-heavy and fn-recurse benchmarks.
+        $setCallerProp = $fn->setCallerPropCache && $fn->annexBDescriptorsObserved;
         $savedCaller = null;
         $savedArguments = null;
         $savedCallerValue = null;
@@ -243,6 +252,10 @@ class Interpreter
         $autoUpdateCaller = false;
         $autoUpdateArguments = false;
         if ($setCallerProp) {
+            // $fn was just pushed at count-1; the actual caller frame
+            // sits one slot below.
+            $stackCount = count($this->callerStack);
+            $callerFn = $stackCount >= 2 ? $this->callerStack[$stackCount - 2] : null;
             $savedCaller = $fn->getOwnPropertyDescriptor("caller");
             $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
             $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
@@ -294,23 +307,26 @@ class Interpreter
         }
         $this->strictMode = $fn->effectiveStrictCache;
 
+        // Sloppy-this coercion. Two common shapes dominate: `this`
+        // already a JsObject (method calls), and `this` undefined
+        // (bare function calls). Check them first so they each take
+        // one instanceof; the rare boxed-primitive coercion path
+        // takes the remaining branches.
         if (!$this->strictMode && !$fn->isArrow) {
-            if (
-                $thisValue instanceof \Phasis\Value\JsUndefined
-                || $thisValue instanceof \Phasis\Value\JsNull
-            ) {
+            if ($thisValue instanceof \Phasis\Value\JsUndefined) {
                 $thisValue = $this->getGlobalObject();
-            } elseif (
-                !$thisValue instanceof \Phasis\Value\JsObject
-                && (
+            } elseif (!$thisValue instanceof \Phasis\Value\JsObject) {
+                if ($thisValue instanceof \Phasis\Value\JsNull) {
+                    $thisValue = $this->getGlobalObject();
+                } elseif (
                     $thisValue instanceof \Phasis\Value\JsNumber
                     || $thisValue instanceof \Phasis\Value\JsString
                     || $thisValue instanceof \Phasis\Value\JsBoolean
                     || $thisValue instanceof \Phasis\Value\JsSymbol
                     || $thisValue instanceof \Phasis\Value\JsBigInt
-                )
-            ) {
-                $thisValue = \Phasis\Spec\TypeConversion::toObject($thisValue);
+                ) {
+                    $thisValue = \Phasis\Spec\TypeConversion::toObject($thisValue);
+                }
             }
         }
 
@@ -348,34 +364,26 @@ class Interpreter
      */
     public function teardownInlineVmCall(\Phasis\Value\JsFunction $fn, array $restore): void
     {
-        [
-            $_thisValue,
-            $previousStrictMode,
-            $switchModulePath,
-            $previousModulePath,
-            $setCallerProp,
-            $autoUpdateCaller,
-            $autoUpdateArguments,
-            $savedCaller,
-            $savedArguments,
-            $savedCallerValue,
-            $savedArgumentsValue,
-        ] = $restore;
-        if ($switchModulePath) {
-            $this->currentModulePath = $previousModulePath;
+        // Hot path: direct-index reads instead of list destructure.
+        // The 11-slot destructure showed up as a per-call cost on
+        // ctor-heavy / proto-method (100k+ inline-call returns).
+        // Annex B / module-path slots are checked only when their
+        // gate flag (slot 2 / slot 4) is true.
+        if ($restore[2]) {
+            $this->currentModulePath = $restore[3];
         }
         array_pop($this->callerStack);
-        if ($setCallerProp) {
-            if ($autoUpdateCaller) {
+        if ($restore[4]) {
+            if ($restore[5]) {
                 if (
                     !$fn->tryUpdateDataValue(
                         "caller",
-                        $savedCallerValue ?? \Phasis\Value\JsNull::instance(),
+                        $restore[9] ?? \Phasis\Value\JsNull::instance(),
                     )
                 ) {
                     $fn->defineOwnProperty(
                         "caller",
-                        $savedCaller ?? \Phasis\Object\PropertyDescriptor::data(
+                        $restore[7] ?? \Phasis\Object\PropertyDescriptor::data(
                             \Phasis\Value\JsNull::instance(),
                             true,
                             false,
@@ -384,16 +392,16 @@ class Interpreter
                     );
                 }
             }
-            if ($autoUpdateArguments) {
+            if ($restore[6]) {
                 if (
                     !$fn->tryUpdateDataValue(
                         "arguments",
-                        $savedArgumentsValue ?? \Phasis\Value\JsNull::instance(),
+                        $restore[10] ?? \Phasis\Value\JsNull::instance(),
                     )
                 ) {
                     $fn->defineOwnProperty(
                         "arguments",
-                        $savedArguments ?? \Phasis\Object\PropertyDescriptor::data(
+                        $restore[8] ?? \Phasis\Object\PropertyDescriptor::data(
                             \Phasis\Value\JsNull::instance(),
                             true,
                             false,
@@ -403,7 +411,7 @@ class Interpreter
                 }
             }
         }
-        $this->strictMode = $previousStrictMode;
+        $this->strictMode = $restore[1];
         $this->callStack->pop();
     }
 
