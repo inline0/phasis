@@ -1,0 +1,5 @@
+simple {"name":"phasis","version":1}
+array {"tags":["a","b","c"]}
+nested {"server":{"port":8080,"tls":{"enabled":true}}}
+string-escapes {"s":"a\nb\tc"}
+stringify "name = \"phasis\"\nversion = 1\ntags = [ \"a\", \"b\" ]"

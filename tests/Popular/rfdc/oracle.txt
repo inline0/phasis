@@ -1,0 +1,9 @@
+equal true
+different.ref true
+different.nested.ref true
+isolated true
+primitive 42
+null null
+arr-of-arr [[1,2],[3,4]]
+date.iso "1970-01-01T00:00:00.000Z"
+proto.clone 1

@@ -1,0 +1,5 @@
+has.parse "function"
+has.serialize "function"
+tree.nodeName "#document"
+roundtrip true
+frag.childNodes.length 2

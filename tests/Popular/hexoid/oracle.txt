@@ -1,0 +1,4 @@
+length 16
+hex.shape true
+uniq.100 true
+custom-len 32

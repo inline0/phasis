@@ -1,0 +1,10 @@
+equal true
+different.ref true
+nested.different.ref true
+isolated true
+date.iso "2024-01-01T00:00:00.000Z"
+regex.source "abc"
+primitive 42
+null null
+map.same-data true
+set.same-data true

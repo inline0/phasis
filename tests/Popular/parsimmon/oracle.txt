@@ -1,0 +1,9 @@
+digit {"status":true,"value":"5"}
+digits {"status":true,"value":"42"}
+string {"status":true,"value":"hello"}
+regex {"status":false,"index":{"offset":3,"line":1,"column":4},"expected":["EOF"]}
+seq {"status":true,"value":["foo",":","bar"]}
+alt {"status":true,"value":"yes"}
+many {"status":true,"value":["a","b","c"]}
+map {"status":true,"value":42}
+recurse.1 {"status":true,"value":6}

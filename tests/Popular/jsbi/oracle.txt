@@ -1,0 +1,14 @@
+add "1111111110"
+sub "864197532"
+mul "121932631112635269"
+div "8"
+mod "9"
+pow "18446744073709551616"
+eq true
+lt true
+gt true
+toString.16 "ffff"
+toString.2 "11111111"
+bitAnd "15"
+bitOr "255"
+shl "1024"

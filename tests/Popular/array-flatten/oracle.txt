@@ -1,0 +1,7 @@
+flat [1,2,3,4,5,6]
+deep [1,2,3,4,5]
+empty []
+single [1,2,3]
+with-depth.1 [1,2,3,4]
+with-depth.2 [1,2,3,4]
+string-elements ["a","b","c","d"]

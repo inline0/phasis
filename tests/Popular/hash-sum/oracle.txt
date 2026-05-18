@@ -1,0 +1,12 @@
+string "7769969c"
+string.long "2e4ee886"
+number "382ee1a4"
+array "352dd8ea"
+obj "32179f90"
+obj.same true
+obj.diff true
+nested "b0d14fb4"
+null "9b7df12e"
+undefined "29172c1a"
+bool "01e34ba8"
+date "3024150a"

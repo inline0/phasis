@@ -1,0 +1,10 @@
+parse.http {"scheme":"https","host":"example.com","port":8080,"path":"/path","query":"q=1","fragment":"frag","reference":"uri"}
+parse.mailto {"scheme":"mailto","reference":"absolute","to":["alice@example.com"]}
+parse.urn {"scheme":"urn","reference":"absolute","nid":"isbn","nss":"0451450523"}
+parse.ipv6 {"scheme":"http","host":"2001:db8::1","port":8080,"path":"/","reference":"absolute"}
+serialize "https://phasis.dev/x"
+normalize "http://example.com/a/c"
+resolve.abs "http://a.com/b/c.html"
+resolve.parent "http://a.com/b/d"
+equal.case true
+equal.diff false

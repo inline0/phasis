@@ -1,0 +1,8 @@
+simple "/users/42"
+multi "/users/1/posts/99"
+query "/search?q=phasis&limit=10"
+hash "/page#intro"
+path "/files/a/b/c"
+missing.optional "/x/"
+encode "/hello%20world"
+reserved "/hello/world"

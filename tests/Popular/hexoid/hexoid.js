@@ -1,0 +1,1 @@
+var Hexoid=(()=>{var r=(o,t)=>()=>(t||o((t={exports:{}}).exports,t),t.exports);var a=r(f=>{for(n=256,u=[];n--;)u[n]=(n+256).toString(16).substring(1);var n,u;f.hexoid=function(o){o=o||16;var t="",i=0;return function(){if(!t||i===256){for(t="",i=(1+o)/2|0;i--;)t+=u[256*Math.random()|0];t=t.substring(i=0,o-2)}return t+u[i++]}}});return a();})();

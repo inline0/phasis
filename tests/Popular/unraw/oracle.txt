@@ -1,0 +1,11 @@
+simple "hello\nworld"
+tab "a\tb"
+hex "A"
+unicode "é"
+unicode.code-point "😀"
+backslash "\\"
+quote "\""
+noEscape "plain text"
+rt."a\nb" true
+rt."tab\there" true
+rt."café" true

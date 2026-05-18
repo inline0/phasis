@@ -1,0 +1,7 @@
+simple {"name":"phasis","version":1}
+table {"user":{"name":"alice","age":30}}
+array {"tags":["a","b","c"]}
+nested {"server":{"config":{"port":8080,"host":"localhost"}}}
+floats {"pi":3.14,"big":10000000000}
+bools {"on":true,"off":false}
+string-escapes {"s":"a\nb\tc"}

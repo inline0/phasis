@@ -1,0 +1,13 @@
+deep.same true
+deep.diff false
+deep.order true
+deep.nested.diff false
+deep.array true
+deep.array.diff false
+shallow.same-ref true
+shallow.array true
+svz.+0/-0 true
+date.same true
+date.diff false
+regex.same true
+regex.diff-flags false

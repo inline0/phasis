@@ -1,0 +1,11 @@
+simple [{"type":"word","value":"10px"}]
+rgb [{"type":"function","value":"rgb"}]
+mixed [{"type":"word","value":"10px"},{"type":"space","value":" "},{"type":"word","value":"solid"},{"type":"space","value":" "},{"type":"word","value":"red"}]
+calc [{"type":"function","value":"calc"}]
+url [{"type":"function","value":"url"}]
+string [{"type":"string","value":"hello"}]
+var [{"type":"function","value":"var"}]
+unit.px {"number":"10","unit":"px"}
+unit.em {"number":"1.5","unit":"em"}
+unit.nounit {"number":"42","unit":""}
+unit.bad false

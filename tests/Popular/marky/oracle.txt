@@ -1,0 +1,6 @@
+count 1
+hasName true
+hasDuration true
+durationNonNeg true
+count2 2
+cleared 0

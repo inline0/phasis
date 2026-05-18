@@ -1,0 +1,10 @@
+size.3 3
+get.a 1
+size.still.3 3
+has.a true
+has.b false
+has.c true
+has.d true
+after.delete.a false
+after.clear 0
+entries [["x",1],["y",2],["z",3]]
