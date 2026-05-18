@@ -359,34 +359,26 @@ class Interpreter
      */
     public function teardownInlineVmCall(\Phasis\Value\JsFunction $fn, array $restore): void
     {
-        [
-            $_thisValue,
-            $previousStrictMode,
-            $switchModulePath,
-            $previousModulePath,
-            $setCallerProp,
-            $autoUpdateCaller,
-            $autoUpdateArguments,
-            $savedCaller,
-            $savedArguments,
-            $savedCallerValue,
-            $savedArgumentsValue,
-        ] = $restore;
-        if ($switchModulePath) {
-            $this->currentModulePath = $previousModulePath;
+        // Hot path: direct-index reads instead of list destructure.
+        // The 11-slot destructure showed up as a per-call cost on
+        // ctor-heavy / proto-method (100k+ inline-call returns).
+        // Annex B / module-path slots are checked only when their
+        // gate flag (slot 2 / slot 4) is true.
+        if ($restore[2]) {
+            $this->currentModulePath = $restore[3];
         }
         array_pop($this->callerStack);
-        if ($setCallerProp) {
-            if ($autoUpdateCaller) {
+        if ($restore[4]) {
+            if ($restore[5]) {
                 if (
                     !$fn->tryUpdateDataValue(
                         "caller",
-                        $savedCallerValue ?? \Phasis\Value\JsNull::instance(),
+                        $restore[9] ?? \Phasis\Value\JsNull::instance(),
                     )
                 ) {
                     $fn->defineOwnProperty(
                         "caller",
-                        $savedCaller ?? \Phasis\Object\PropertyDescriptor::data(
+                        $restore[7] ?? \Phasis\Object\PropertyDescriptor::data(
                             \Phasis\Value\JsNull::instance(),
                             true,
                             false,
@@ -395,16 +387,16 @@ class Interpreter
                     );
                 }
             }
-            if ($autoUpdateArguments) {
+            if ($restore[6]) {
                 if (
                     !$fn->tryUpdateDataValue(
                         "arguments",
-                        $savedArgumentsValue ?? \Phasis\Value\JsNull::instance(),
+                        $restore[10] ?? \Phasis\Value\JsNull::instance(),
                     )
                 ) {
                     $fn->defineOwnProperty(
                         "arguments",
-                        $savedArguments ?? \Phasis\Object\PropertyDescriptor::data(
+                        $restore[8] ?? \Phasis\Object\PropertyDescriptor::data(
                             \Phasis\Value\JsNull::instance(),
                             true,
                             false,
@@ -414,7 +406,7 @@ class Interpreter
                 }
             }
         }
-        $this->strictMode = $previousStrictMode;
+        $this->strictMode = $restore[1];
         $this->callStack->pop();
     }
 
