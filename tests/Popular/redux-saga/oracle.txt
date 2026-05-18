@@ -1,0 +1,4 @@
+after.inc.count 10
+incremented.count 3
+incremented.last {"type":"INCREMENTED","count":10}
+sum.result {"type":"SUM_RESULT","total":15}

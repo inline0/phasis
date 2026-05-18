@@ -1,21 +1,25 @@
-// jsep — tiny JavaScript expression parser. Useful for embedding
-// expressions in templates / DSLs.
-const jsep = Jsep.default ?? Jsep;
+// jsep — tiny JS expression parser. Pure AST, no evaluation.
+const jsep = JsepBundle.default;
 const out = [];
 const log = (k, v) => out.push(k + " " + JSON.stringify(v));
 
-log("number", jsep("42"));
-log("string", jsep('"hello"'));
-log("binary", jsep("1 + 2"));
-log("compare", jsep("a > b"));
-log("member", jsep("obj.foo"));
-log("call", jsep("Math.max(1, 2, 3)"));
-log("array", jsep("[1, 2, 3]"));
-log("conditional", jsep("a ? b : c"));
-log("logical", jsep("a && b || c"));
-log("unary", jsep("!x"));
-log("precedence", jsep("1 + 2 * 3"));
-log("paren", jsep("(1 + 2) * 3"));
-log("member.deep", jsep("a.b.c.d"));
+const cases = [
+  "1 + 2",
+  "x * y",
+  "a.b.c",
+  "fn(x, y, 1)",
+  "(a + b) * (c - d)",
+  "items[3]",
+  "x ? y : z",
+  "true && false || null",
+  "!flag",
+  "a == b !== c",
+  "obj.method('hello')",
+  "arr.map(f).filter(g)",
+];
+
+for (const c of cases) {
+  log(c, jsep(c));
+}
 
 console.log(out.join("\n"));

@@ -1,0 +1,5 @@
+simple ["Id:a","Id:b","FnDecl:add","Lit:1","Lit:2","Lit:3","Id:x","Lit:2","Id:v","Class:Box","Id:fetch","Lit:\"/\"","Id:console","Id:e"]
+full.count 62
+findAt.type null
+recursive.fns ["add","<arrow>","method:constructor","method:get","<arrow>"]
+findAfter.lit 1

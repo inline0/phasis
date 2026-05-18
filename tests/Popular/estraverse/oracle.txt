@@ -1,0 +1,4 @@
+types ["Program","VariableDeclaration","VariableDeclarator","Identifier","Literal","ExpressionStatement","CallExpression","Identifier","Identifier"]
+after.rename ["renamed_x","console.log","renamed_x"]
+with.skip ["Program","VariableDeclaration","ExpressionStatement","CallExpression","Identifier","Identifier"]
+with.break ["Program","VariableDeclaration","VariableDeclarator","Identifier","Literal","ExpressionStatement","CallExpression"]

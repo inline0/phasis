@@ -1,0 +1,15 @@
+user.name "Carol"
+user.roles[0] "admin"
+book.titles ["Foundation","Dune","Programming JS","Pure PHP Engines"]
+book.count 4
+fiction.titles ["Foundation","Dune"]
+avg.price 18.11
+sum.price 72.44
+max.book undefined
+first.tech "Programming JS"
+authors.set ["Asimov","Herbert","Alice","Bob"]
+upper "CAROL"
+split ["a","b","c","d"]
+substring "Car"
+round 3.14
+abs 42

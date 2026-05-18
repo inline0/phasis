@@ -1,0 +1,11 @@
+prepend.append "> hello!"
+overwrite "function bar() { return 1; }"
+remove "function foo() {  return 1; }"
+inserts "abc XXX YYY def"
+indent "  line1\n  line2\n  line3"
+sourcemap.version 3
+sourcemap.sources ["x.js"]
+sourcemap.has.mappings true
+trim "hello"
+orig "foo bar baz"
+clone "FOO bar baz"

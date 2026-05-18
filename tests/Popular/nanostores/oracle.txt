@@ -1,0 +1,6 @@
+atom.listens [1,2,3]
+atom.final 3
+map.traces [{"name":"Bob","age":30},{"name":"Bob","age":31}]
+map.final {"name":"Bob","age":31}
+computed.traces [20,40]
+computed.final 40

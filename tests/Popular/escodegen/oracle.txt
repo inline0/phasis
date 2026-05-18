@@ -1,0 +1,5 @@
+simple "const x = 42;"
+function "function add(a, b) {\n    return a + b;\n}"
+if "if (x > 0)\n    return 'positive';\nelse\n    return 'non-positive';"
+object "{\n    a: 1,\n    b: 'two'\n}"
+compact "const x = 42;"

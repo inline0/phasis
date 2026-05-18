@@ -1,0 +1,4 @@
+snap {"count":10,"items":["a","b"],"nested":{"x":99}}
+events.count 1
+snap1.frozen 10
+snap2.fresh 999

@@ -1,0 +1,14 @@
+scalar 42
+str "hello"
+bool true
+null null
+seq [1,2,3]
+flowseq ["a","b","c"]
+map {"a":1,"b":2,"c":3}
+flowmap {"a":1,"b":2}
+nested {"name":"Phasis","version":"0.1.0","authors":["Alice","Bob"],"config":{"port":8080,"debug":true,"tags":["js","php","engine"]}}
+anchors {"defaults":{"timeout":30,"retries":3},"prod":{"<<":{"timeout":30,"retries":3},"host":"prod.example.com"}}
+multidoc.count 2
+multidoc.docs [{"foo":1},{"bar":2}]
+stringify "a: 1\nb:\n  - 1\n  - 2\n  - 3\nc:\n  x: y\n"
+roundtrip {"name":"test","items":["a","b"],"meta":{"count":5}}

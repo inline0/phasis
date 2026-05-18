@@ -1,0 +1,7 @@
+primitive.events [1,5,42]
+primitive.final 42
+derived.initial 84
+derived.7 14
+writable.read 107
+writable.afterSet.count 100
+writable.afterSet.sum 200
