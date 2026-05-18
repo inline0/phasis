@@ -69,8 +69,13 @@ final class EventLoop
         JsPromise::setPostDrainHook(null);
     }
 
-    /** Schedule a one-shot task. Returns an opaque id usable with clear(). */
-    public function setTimeout(JsFunction $cb, float $delayMs): int
+    /**
+     * Schedule a one-shot task. Returns an opaque id usable with clear().
+     *
+     * @param list<\Phasis\Value\JsValue> $callbackArgs Extra args from
+     *        `setTimeout(cb, delay, ...args)` forwarded to the callback.
+     */
+    public function setTimeout(JsFunction $cb, float $delayMs, array $callbackArgs = []): int
     {
         $this->advanceClock();
         // Per spec WindowOrWorkerGlobalScope §timers: negative or NaN
@@ -84,12 +89,18 @@ final class EventLoop
             repeating: false,
             intervalMs: 0.0,
             contextSnapshot: AsyncContextStorage::active()->snapshot(),
+            callbackArgs: $callbackArgs,
         );
         return $id;
     }
 
-    /** Schedule a repeating task. */
-    public function setInterval(JsFunction $cb, float $intervalMs): int
+    /**
+     * Schedule a repeating task.
+     *
+     * @param list<\Phasis\Value\JsValue> $callbackArgs Extra args from
+     *        `setInterval(cb, delay, ...args)` forwarded on every firing.
+     */
+    public function setInterval(JsFunction $cb, float $intervalMs, array $callbackArgs = []): int
     {
         $this->advanceClock();
         // Per HTML spec, intervals < 4ms clamp to 4ms once the same
@@ -105,6 +116,7 @@ final class EventLoop
             repeating: true,
             intervalMs: $interval,
             contextSnapshot: AsyncContextStorage::active()->snapshot(),
+            callbackArgs: $callbackArgs,
         );
         return $id;
     }
@@ -290,7 +302,7 @@ final class EventLoop
             $this->engine->getInterpreter()->callFunction(
                 $task->callback,
                 JsUndefined::instance(),
-                [],
+                $task->callbackArgs,
             );
         } catch (\Throwable $e) {
             // Per HTML spec, uncaught errors from a timer callback go

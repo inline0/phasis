@@ -1,0 +1,23 @@
+iso "2026-05-18T12:30:00.000Z"
+year 2026
+month 5
+day 18
+hour 12
+weekday 1
+ordinal 138
+daysInMonth 31
+plus.days "2026-06-17T12:30:00.000Z"
+plus.months "2026-11-18T12:30:00.000Z"
+minus.weeks "2026-05-04T12:30:00.000Z"
+fmt.short "2026-05-18"
+fmt.long "Monday, May 18, 2026"
+fmt.time "12:30:00"
+diff {"days":31,"hours":0}
+dur.iso "PT25H90M"
+dur.normalized {"hours":26,"minutes":30}
+iv.length.days 31
+iv.contains true
+fromFormat "2026-05-18"
+equals true
+lt true
+invalid {"valid":false,"reason":"unparsable"}

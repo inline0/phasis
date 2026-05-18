@@ -49,10 +49,36 @@ const sandbox = {
   URL: typeof URL === "function" ? URL : undefined,
   URLSearchParams: typeof URLSearchParams === "function" ? URLSearchParams : undefined,
   performance: typeof performance === "object" ? performance : undefined,
+  EventTarget: typeof EventTarget === "function" ? EventTarget : undefined,
+  Event: typeof Event === "function" ? Event : undefined,
+  AbortController: typeof AbortController === "function" ? AbortController : undefined,
+  AbortSignal: typeof AbortSignal === "function" ? AbortSignal : undefined,
+  // Timers — Phasis has setTimeout natively (TimerFunctions.php) and
+  // shims setImmediate to setTimeout(cb,0) at runner start. Mirror the
+  // same surface in the Node sandbox so async runners (JSZip, …) see
+  // both names regardless of which env runs first.
+  setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, clearImmediate,
   globalThis: undefined, // gets set after createContext below
 };
 vm.createContext(sandbox);
 sandbox.globalThis = sandbox;
 vm.runInContext(lib + "\n;\n" + runner, sandbox, { filename: dir + "/bundle.js" });
 
-process.stdout.write(buf);
+// Async runners (prettier, JSZip's setImmediate-driven generator
+// chain, …) keep scheduling work after vm.runInContext returns. We
+// can't poll "buf stopped growing" because libraries like JSZip
+// chain hundreds of setImmediate ticks between user-visible
+// console.log calls. Instead, let Node's event loop drain naturally
+// — once all pending immediates / timers / promises settle, Node
+// emits `beforeExit`, and that's our cue to flush the captured
+// buffer. A safety setTimeout caps total wall-clock at 30 s so a
+// runaway runner (e.g. a stuck Promise) can't hang oracle gen
+// indefinitely.
+process.on('beforeExit', () => {
+  process.stdout.write(buf);
+});
+const failsafe = setTimeout(() => {
+  process.stdout.write(buf);
+  process.exit(0);
+}, 30000);
+failsafe.unref();

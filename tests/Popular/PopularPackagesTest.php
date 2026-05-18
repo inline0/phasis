@@ -82,6 +82,11 @@ class PopularPackagesTest extends TestCase
         JS);
 
         $engine->eval($library . "\n;\n" . $runner);
+        // Some runners (prettier, etc.) are async — the body schedules
+        // its console.log via microtasks. Drain the event loop so that
+        // work completes before the byte-equal compare. No-op for
+        // synchronous runners.
+        $engine->runEventLoop();
 
         $this->assertSame(
             $oracle,

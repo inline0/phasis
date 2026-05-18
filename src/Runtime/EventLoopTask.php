@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Phasis\Runtime;
 
 use Phasis\Value\JsFunction;
+use Phasis\Value\JsValue;
 
 /**
  * One scheduled task on the EventLoop's macrotask (timer) queue.
@@ -26,6 +27,10 @@ final class EventLoopTask
 
     /**
      * @param array{0: array<int, \Phasis\Value\JsObject>, 1: array<int, \Phasis\Value\JsValue>} $contextSnapshot
+     * @param list<JsValue> $callbackArgs Extra args from
+     *        `setTimeout(cb, delay, ...args)` / `setInterval(cb, delay, ...args)`.
+     *        Per WindowOrWorkerGlobalScope §timers these are forwarded
+     *        to the callback on every firing.
      */
     public function __construct(
         public readonly int $id,
@@ -34,6 +39,7 @@ final class EventLoopTask
         public readonly bool $repeating,
         public readonly float $intervalMs,
         public readonly array $contextSnapshot,
+        public readonly array $callbackArgs = [],
     ) {
     }
 }

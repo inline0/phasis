@@ -192,9 +192,19 @@ class SetConstructor
             throw new TypeError('Set.prototype.add is not a function');
         }
 
-        // Per spec, get the iterator. Must throw TypeError if Symbol.iterator is not callable.
+        // Per spec, get the iterator. Must throw TypeError if
+        // Symbol.iterator is not callable. Strings are iterable
+        // (over their UTF-16 code points), and box automatically
+        // when iterated — auto-box to String wrapper so the spec's
+        // GetMethod walk picks up the prototype's
+        // Symbol.iterator. Without this, `new Set("abc")` throws
+        // even though V8 / browsers happily build {a, b, c}.
         $iterSym = SymbolConstructor::iterator();
-        if ($iterable instanceof JsObject) {
+        if ($iterable instanceof JsString) {
+            $boxed = TypeConversion::toObject($iterable);
+            $iteratorMethod = $boxed->getBySymbol($iterSym);
+            $iterable = $boxed;
+        } elseif ($iterable instanceof JsObject) {
             $iteratorMethod = $iterable->getBySymbol($iterSym);
         } else {
             throw new TypeError('object is not iterable');

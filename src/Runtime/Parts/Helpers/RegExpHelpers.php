@@ -2107,29 +2107,51 @@ trait RegExpHelpers
         // (or a property escape) the dash is literal per Annex B. When the
         // dash is a range operator, also validate the range endpoints are in
         // order (left <= right) and reject inverted ranges per spec.
+        //
+        // Walk the atom list with explicit index advance so that once a
+        // range `a-b` is matched we skip *both* sides. Without this, the
+        // pattern `[a-z-_]` re-uses `z` as the left side of a second range
+        // `z-_` and trips the inverted-range check, but V8/Irregexp parses
+        // it as `[a-z][-][_]` (range, literal dash, literal underscore)
+        // per Annex B grammar. base64-non-alphabet character classes shaped
+        // exactly like this show up in mqtt-packet, ulid, and a handful of
+        // other minified browser bundles.
         $rebuilt = '';
         $count = count($atoms);
-        $consumeNext = false;
-        for ($k = 0; $k < $count; $k++) {
-            if ($consumeNext) {
-                $consumeNext = false;
-                $rebuilt .= $atoms[$k]['text'];
-                continue;
-            }
+        $k = 0;
+        // Per Annex B grammar, only the most recently emitted standalone
+        // atom (not the right-side of an already-matched range) can serve
+        // as the left side of a new range. We track that explicitly so
+        // that `[a-z-_]` parses as range(a-z) + literal(-) + literal(_).
+        $prevAvailable = false;
+        while ($k < $count) {
             $atom = $atoms[$k];
             if ($atom['type'] !== 'dash') {
                 $rebuilt .= $atom['text'];
+                $prevAvailable = true;
+                $k++;
                 continue;
             }
             // Dash at start or end of class is always literal in PCRE.
             if ($k === 0 || $k === $count - 1) {
                 $rebuilt .= '-';
+                $prevAvailable = false;
+                $k++;
                 continue;
             }
             $prev = $atoms[$k - 1];
             $nextAtom = $atoms[$k + 1];
+            // If the previous atom was already consumed as the right side
+            // of a range, this dash has no left operand — emit literal.
+            if (!$prevAvailable) {
+                $rebuilt .= '\\-';
+                $k++;
+                continue;
+            }
             if ($prev['isSet'] || $nextAtom['isSet']) {
                 $rebuilt .= '\\-';
+                $prevAvailable = false;
+                $k++;
                 continue;
             }
             // Spec: when the right side of a range is itself the dash atom,
@@ -2145,10 +2167,13 @@ trait RegExpHelpers
                     }
                     // Emit explicit range so PCRE2 sees the same set.
                     $rebuilt .= '-' . $nextAtom['text'];
-                    $consumeNext = true;
+                    $prevAvailable = false;
+                    $k += 2;
                     continue;
                 }
                 $rebuilt .= '\\-';
+                $prevAvailable = false;
+                $k++;
                 continue;
             }
             // Both neighbours are single-char atoms; validate the range.
@@ -2161,7 +2186,15 @@ trait RegExpHelpers
                     );
                 }
             }
-            $rebuilt .= '-';
+            $rebuilt .= '-' . $nextAtom['text'];
+            // Skip both the dash AND the right-side atom of the range,
+            // and clear prevAvailable so the next dash sees no operand.
+            // Without this the pattern `[a-z-_]` would treat z as the
+            // left side of a second range `z-_` and trip the inverted-
+            // range check, when V8 parses it as range(a-z) + literal(-)
+            // + literal(_) per Annex B.
+            $prevAvailable = false;
+            $k += 2;
         }
 
         return $prefix . $rebuilt . ']';

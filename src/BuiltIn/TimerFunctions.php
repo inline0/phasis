@@ -156,13 +156,20 @@ final class TimerFunctions
         if (is_nan($delay) || $delay < 0.0) {
             $delay = 0.0;
         }
+        // Spec: setTimeout(cb, delay, ...args) forwards `args` to `cb`
+        // on every invocation. The `setimmediate` npm polyfill (JSZip,
+        // promise-polyfill, etc.) relies on this — it ships its task
+        // id through the third argument and looks it up in a queue on
+        // callback dispatch. Dropping args here makes those libraries
+        // silently hang because their dispatcher gets `cb(undefined)`.
+        $callbackArgs = array_slice($args, 2);
         $realm = Engine::getCurrentRealm();
         if ($realm === null) {
             return 0;
         }
         $loop = $realm->getEventLoop();
         return $repeating
-            ? $loop->setInterval($cb, $delay)
-            : $loop->setTimeout($cb, $delay);
+            ? $loop->setInterval($cb, $delay, $callbackArgs)
+            : $loop->setTimeout($cb, $delay, $callbackArgs);
     }
 }

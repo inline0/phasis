@@ -1,13 +1,13 @@
 ---
 title: Popular packages
-description: Phasis runs 100+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+description: Phasis runs 115+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, terser, @babel/parser, graphql-js, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies **104 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+Phasis verifies **115 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
 
 ## Coverage by category
 
@@ -32,8 +32,9 @@ Phasis verifies **104 widely-used libraries** byte-for-byte against Node.js (V8)
 | **Type detection / glob** | type-detect 4.1.0, picomatch 4.0.2 |
 | **Semver / config** | semver 7.6.3, compare-versions 6.1.1, semver-compare 1.0.0 |
 | **Caches / perf** | lru-cache 11.0.2, marky 1.3.0, array-flatten 3.0.0, arr-diff 4.0.0 |
+| **Heavy / stress** | terser 5.46.0, @babel/parser 7.28.5, graphql-js 16.11.0, highlight.js 11.11.1, postcss 8.5.7, moment 2.30.2, luxon 3.7.3, JSZip 3.10.1, xstate 5.23.0, chai 6.2.1, mqtt-packet 9.0.4 |
 
-Total: **104 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
+Total: **115 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
 
 ## How it works
 
@@ -83,6 +84,9 @@ Both jobs must pass before the PR merges. A test262 win that breaks lodash isn't
 - **fuse.js** — a Babel-transpiled UMD that exercises `_classCallCheck` (the `this instanceof Ctor` pattern that every pre-ES6 transpiled class uses) plus the full bitap fuzzy-match algorithm. It's the canary that surfaced two real engine bugs during the night: the hoisted-FunctionDeclaration env-sync miss in the bytecode VM, and the missing `var` recursion through `else if` bodies in `forceHoistVarNames`. Both were quietly wrong on `main` for months and would have hit any other Babel-transpiled library too.
 - **handlebars** — full-featured templating with compile-then-render. Exercises the `eval`-free runtime path through a single huge `compile()` entry, AST traversal, helper dispatch through a dynamic lookup table, and `SafeString` brand-checking that uses `instanceof` across realms. A counterpoint to mustache.js's simpler template walker.
 - **zod** — runtime schema validation. Heavy class hierarchies (`ZodString`, `ZodObject`, `ZodArray`, `ZodUnion`, …) with method chaining that returns refined sub-classes, structured error formatting where the JS-side `.issues` array shape has to match Node byte-for-byte, and discriminator/literal-tag patterns. Tests the kind of OO-heavy validation code that wraps half of modern TypeScript apps.
+- **terser / @babel/parser / postcss** — full-blown JS compilers and parsers running entirely on the embedded engine. These bundles are five-figure LOC of minified code that re-parse arbitrary input — a hair-trigger for any spec corner in the host engine. Surfaced an `import.defer` TLA dependency-graph bug and a `static $_fvenv_*` duplicate-declaration in the JsToPhp JIT (the latter only fires on bodies that read the same free variable from both arms of a conditional, which is rare in hand-written code but ubiquitous in minified bundles).
+- **JSZip / moment** — async ZIP generation and the classic mutable Date library. JSZip needs the `setimmediate` polyfill (`setTimeout(cb, 0, …args)` with arg forwarding); moment's minified UMD packs hundreds of free-variable reads through tight `&&` chains that route through the JsToPhp numeric pipeline. Together they uncovered two real engine bugs that had been quietly wrong on `main` — see the entries above.
+- **mqtt-packet** — pure-JS MQTT 3.1.1 / 5.0 packet codec. Stress-tests Buffer polyfilling, bit-shift packing, and base64-non-alphabet character classes that look like `[^+/0-9A-Za-z-_]` — the trailing `-_` tripped the Annex-B class-range rewriter (V8 parses it as "range a-z, literal dash, literal underscore"; PCRE2 demanded an explicit literal dash). Fixed by walking class atoms with explicit range-consumption rather than re-using the right-side atom as the next dash's left operand.
 
 ## Adding more
 

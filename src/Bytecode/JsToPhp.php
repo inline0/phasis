@@ -131,6 +131,29 @@ final class JsToPhp
     private array $freeVars = [];
 
     /**
+     * Per-safe-name set of free vars whose `static $_fvenv_…, $_fvver_…,
+     * $_fv_… = ...;` declaration has already been hoisted into the
+     * closure prologue. Survives captureBranch (which intentionally
+     * resets `freeVars` so each conditional arm re-emits the lazy
+     * init check), so the same `static` declaration isn't emitted
+     * twice and tripped by PHP's "Duplicate declaration of static
+     * variable" compile-time error.
+     *
+     * @var array<string, true>
+     */
+    private array $freeVarStatics = [];
+
+    /**
+     * `static $_fvenv_$safe = null, $_fvver_$safe = -1, $_fv_$safe = 0.0;`
+     * lines hoisted to the top of the closure. Each safe-name appears
+     * at most once, regardless of how many branches resolve the same
+     * free var.
+     *
+     * @var list<string>
+     */
+    private array $freeVarStaticDecls = [];
+
+    /**
      * AST nodes the eval'd closure references at run time, indexed
      * positionally. Currently only nested FunctionDeclaration nodes
      * that the closure materialises into JsFunctions via vmMakeFunction.
@@ -373,7 +396,12 @@ final class JsToPhp
         // overflow thresholds while leaving headroom below
         // typical PHP defaults. Use a static counter local to the
         // closure so we don't depend on private CallStack APIs.
-        $bodyPrologue = "static \$_jstophp_depth = 0;\n"
+        $freeVarStatics = '';
+        foreach ($compiler->freeVarStaticDecls as $decl) {
+            $freeVarStatics .= $decl . "\n";
+        }
+        $bodyPrologue = $freeVarStatics
+            . "static \$_jstophp_depth = 0;\n"
             . "if (\$_jstophp_depth >= 8192) { throw new \\Phasis\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
             . "\$_jstophp_depth++;\n"
             . "try {\n";

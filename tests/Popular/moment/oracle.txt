@@ -1,0 +1,25 @@
+iso "2026-05-18T12:30:00.000Z"
+year 2026
+month 4
+date 18
+day 1
+hour 12
+fmt.iso "2026-05-18"
+fmt.long "Monday, May 18th 2026, 12:30:00 pm"
+fmt.time "12:30:00"
+add.days "2026-06-17T12:30:00.000Z"
+subtract.weeks "2026-05-04T12:30:00.000Z"
+startOf.month "2026-05-01T00:00:00.000Z"
+endOf.month "2026-05-31T23:59:59.999Z"
+diff.days 31
+diff.hours 744
+from "a month"
+dur.hours 26.5
+dur.humanize "a day"
+parse.fmt "2026-05-18T00:00:00.000Z"
+parse.invalid false
+isBefore true
+isAfter false
+isSame true
+weekday "Monday"
+daysInMonth 31

@@ -1,0 +1,6 @@
+hello {"data":{"hello":"Hello, Phasis!"}}
+users {"data":{"users":[{"id":1,"name":"Alice"},{"id":2,"name":"Bob"}]}}
+user {"data":{"user":{"name":"Alice","role":"admin"}}}
+invalid {"errorCount":1,"message":"Cannot query field \"missingField\" on type \"Query\"."}
+parse+validate {"errCount":0}
+manual {"data":{"x":42}}

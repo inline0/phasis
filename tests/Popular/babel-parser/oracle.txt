@@ -1,0 +1,13 @@
+simple {"type":"File","body":1,"first":"VariableDeclaration"}
+arrow {"type":"File","body":1,"first":"VariableDeclaration"}
+class {"type":"File","body":1,"first":"ClassDeclaration"}
+async {"err":"Missing semicolon. (1:56)"}
+optional {"type":"File","body":1,"first":"VariableDeclaration"}
+destructure {"type":"File","body":1,"first":"VariableDeclaration"}
+template {"type":"File","body":1,"first":"VariableDeclaration"}
+decorator {"type":"File","body":1,"first":"ClassDeclaration"}
+jsx {"type":"File","body":1,"first":"VariableDeclaration"}
+import-meta {"type":"File","body":1,"first":"VariableDeclaration"}
+dynamic-import {"type":"File","body":1,"first":"VariableDeclaration"}
+expr.type "BinaryExpression"
+expr.operator "+"

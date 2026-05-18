@@ -217,8 +217,18 @@ trait JsToPhpEmitExpression
                 $php = $this->freeVar($name);
                 $envCacheVar = '$_fvenv_' . $safe;
                 $verCacheVar = '$_fvver_' . $safe;
-                $this->pendingStatements[] = 'static ' . $envCacheVar
-                    . ' = null, ' . $verCacheVar . ' = -1, ' . $php . ' = 0.0;';
+                // Hoist the `static …` declaration to the closure
+                // prologue exactly once per safe-name. Emitting it
+                // inline here would duplicate when the same free var
+                // is read from both arms of a conditional — captureBranch
+                // resets $freeVars so each arm re-enters this block,
+                // but PHP forbids redeclaring the same static variable
+                // in one function body.
+                if (!isset($this->freeVarStatics[$safe])) {
+                    $this->freeVarStatics[$safe] = true;
+                    $this->freeVarStaticDecls[] = 'static ' . $envCacheVar
+                        . ' = null, ' . $verCacheVar . ' = -1, ' . $php . ' = 0.0;';
+                }
                 $this->pendingStatements[] = '$_curVer = \\Phasis\\Runtime\\Environment::'
                     . '$globalBindingsVersion;';
                 $this->pendingStatements[] = 'if ($env !== ' . $envCacheVar

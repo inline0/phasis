@@ -1,0 +1,10 @@
+names ["README.md","data/","data/numbers.txt","empty/","nested/","nested/deep/","nested/deep/leaf.json"]
+readme "# hello\n\nphasis test."
+leaf "{\"a\":1}"
+isDir.empty true
+isDir.readme false
+zipLen 740
+magic [80,75,3,4]
+reread.names ["README.md","data/","data/numbers.txt","empty/","nested/","nested/deep/","nested/deep/leaf.json"]
+reread.readme "# hello\n\nphasis test."
+reread.leaf "{\"a\":1}"

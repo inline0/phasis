@@ -1,0 +1,13 @@
+light.initial "red"
+light.1 "green"
+light.2 "yellow"
+light.3 "red"
+fetch.initial "idle"
+fetch.loading "loading"
+fetch.failure "failure"
+fetch.retries 1
+fetch.retry.loading "loading"
+fetch.retries2 2
+fetch.success "success"
+fetch.data {"items":[1,2,3]}
+fetch.status "done"
