@@ -302,28 +302,26 @@ class Interpreter
         }
         $this->strictMode = $fn->effectiveStrictCache;
 
-        // Sloppy-this coercion. The common case — `this` already a
-        // JsObject — short-circuits on a single instanceof check
-        // before the more expensive branches; the previous shape did
-        // 3 instanceof's just to fall through.
-        if (
-            !$this->strictMode
-            && !$fn->isArrow
-            && !$thisValue instanceof \Phasis\Value\JsObject
-        ) {
-            if (
-                $thisValue instanceof \Phasis\Value\JsUndefined
-                || $thisValue instanceof \Phasis\Value\JsNull
-            ) {
+        // Sloppy-this coercion. Two common shapes dominate: `this`
+        // already a JsObject (method calls), and `this` undefined
+        // (bare function calls). Check them first so they each take
+        // one instanceof; the rare boxed-primitive coercion path
+        // takes the remaining branches.
+        if (!$this->strictMode && !$fn->isArrow) {
+            if ($thisValue instanceof \Phasis\Value\JsUndefined) {
                 $thisValue = $this->getGlobalObject();
-            } elseif (
-                $thisValue instanceof \Phasis\Value\JsNumber
-                || $thisValue instanceof \Phasis\Value\JsString
-                || $thisValue instanceof \Phasis\Value\JsBoolean
-                || $thisValue instanceof \Phasis\Value\JsSymbol
-                || $thisValue instanceof \Phasis\Value\JsBigInt
-            ) {
-                $thisValue = \Phasis\Spec\TypeConversion::toObject($thisValue);
+            } elseif (!$thisValue instanceof \Phasis\Value\JsObject) {
+                if ($thisValue instanceof \Phasis\Value\JsNull) {
+                    $thisValue = $this->getGlobalObject();
+                } elseif (
+                    $thisValue instanceof \Phasis\Value\JsNumber
+                    || $thisValue instanceof \Phasis\Value\JsString
+                    || $thisValue instanceof \Phasis\Value\JsBoolean
+                    || $thisValue instanceof \Phasis\Value\JsSymbol
+                    || $thisValue instanceof \Phasis\Value\JsBigInt
+                ) {
+                    $thisValue = \Phasis\Spec\TypeConversion::toObject($thisValue);
+                }
             }
         }
 
