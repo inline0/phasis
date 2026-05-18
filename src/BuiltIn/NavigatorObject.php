@@ -47,6 +47,12 @@ final class NavigatorObject
             PropertyDescriptor::data(new JsString(self::APP_NAME), false, true, false),
         );
 
+        // Symbol.toStringTag = "Navigator" per HTML's Navigator interface.
+        $navigator->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('Navigator'), false, false, true),
+        );
+
         $env->defineVar('navigator', $navigator);
     }
 }
