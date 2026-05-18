@@ -1,0 +1,10 @@
+schema.type "object"
+schema.props ["id","name","email"]
+valid.ok true
+valid.missing false
+valid.typeError false
+errors [{"kw":"integer","path":"/id"},{"kw":"string","path":"/name"}]
+array true
+array.empty false
+enum.a true
+enum.x false

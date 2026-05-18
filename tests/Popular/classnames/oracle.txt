@@ -1,0 +1,5 @@
+strings "foo bar"
+conditional "foo bar"
+array "foo bar baz"
+falsy "foo bar"
+dedup.not "foo foo bar"

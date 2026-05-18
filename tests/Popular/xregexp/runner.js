@@ -1,0 +1,12 @@
+const XRegExp = XrLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const r1 = XRegExp("(?<year>  [0-9]{4} ) - (?<month> [0-9]{2} ) - (?<day> [0-9]{2})", "x");
+const m1 = XRegExp.exec("Date: 2026-05-18", r1);
+log("named", { year: m1.year, month: m1.month, day: m1.day });
+const r2 = XRegExp("\\p{Letter}+");
+log("unicode", XRegExp.match("héllo 123", r2));
+log("escape", XRegExp.escape("a.b*c"));
+const r3 = XRegExp("foo", "g");
+log("matchAll", XRegExp.match("foo bar foo baz foo", r3, "all").length);
+console.log(out.join("\n"));

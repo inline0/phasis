@@ -1,0 +1,5 @@
+len 10
+type "string"
+custom.charset true
+custom.len 8
+unique100 100

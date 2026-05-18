@@ -1,0 +1,14 @@
+const Color = ColorLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const c = Color("#f00");
+log("hex", c.hex());
+log("rgb", c.rgb().array());
+log("hsl", c.hsl().object());
+log("light", c.lighten(0.3).hex());
+log("dark", c.darken(0.3).hex());
+log("alpha", c.alpha(0.5).rgb().string());
+log("mix", Color("red").mix(Color("blue"), 0.5).hex());
+log("isLight", c.isLight());
+log("contrast", c.contrast(Color("white")));
+console.log(out.join("\n"));

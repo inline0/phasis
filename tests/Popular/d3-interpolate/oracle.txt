@@ -1,0 +1,8 @@
+num.0 0
+num.0.5 50
+num.1 100
+str "30px"
+array [5,15]
+rgb "rgb(128, 0, 128)"
+object {"a":5,"b":55}
+round 3

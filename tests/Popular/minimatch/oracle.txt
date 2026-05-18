@@ -1,0 +1,7 @@
+*.js true
+*.js.fail false
+**/*.ts true
+brace true
+neg false
+dot true
+case true

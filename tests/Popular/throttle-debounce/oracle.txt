@@ -1,0 +1,4 @@
+throttle.early 1
+throttle.after 2
+debounce.early 0
+debounce.after 1

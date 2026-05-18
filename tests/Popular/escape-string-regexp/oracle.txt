@@ -1,0 +1,3 @@
+dot "a\\.b"
+special "\\[a\\x2dz\\]\\+\\?\\*"
+plain "hello world"

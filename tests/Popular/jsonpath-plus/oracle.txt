@@ -1,0 +1,5 @@
+books.titles ["A","B"]
+books.cheap [{"title":"A","price":10}]
+count [2]
+all.values 9
+first.title "A"

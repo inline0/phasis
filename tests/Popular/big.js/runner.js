@@ -1,0 +1,16 @@
+const Big = BigLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const a = new Big("0.1");
+const b = new Big("0.2");
+log("add", a.plus(b).toString());
+log("eq.0.3", a.plus(b).eq("0.3"));
+log("mul", new Big("0.1").times("0.2").toString());
+log("div", new Big("1").div("3").toFixed(10));
+const big = new Big("9999999999999999.123456789");
+log("toFixed", big.toFixed(2));
+log("scale", big.round(3, 1).toString());
+log("pow", new Big("2").pow(20).toString());
+log("compare", new Big("1.5").cmp("2.5"));
+log("neg", new Big("5").neg().toString());
+console.log(out.join("\n"));

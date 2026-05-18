@@ -1,0 +1,15 @@
+const Complex = ComplexjsLib.default.Complex;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const z1 = new Complex(3, 4);
+const z2 = new Complex(1, 2);
+log("add", z1.add(z2).toString());
+log("sub", z1.sub(z2).toString());
+log("mul", z1.mul(z2).toString());
+log("div", z1.div(z2).toString());
+log("abs", z1.abs());
+log("arg", z1.arg().toFixed(6));
+log("conjugate", z1.conjugate().toString());
+log("sqrt", z1.sqrt().toString());
+log("exp", new Complex(0, Math.PI).exp().toString());
+console.log(out.join("\n"));

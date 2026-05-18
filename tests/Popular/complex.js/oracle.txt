@@ -1,0 +1,9 @@
+add "4 + 6i"
+sub "2 + 2i"
+mul "-5 + 10i"
+div "2.2 - 0.4i"
+abs 5
+arg "0.927295"
+conjugate "3 - 4i"
+sqrt "2 + i"
+exp "-1"

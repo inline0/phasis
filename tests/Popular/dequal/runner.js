@@ -1,0 +1,14 @@
+const { dequal } = DequalLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("prim.eq", dequal(1, 1));
+log("prim.ne", dequal(1, "1"));
+log("arr.eq", dequal([1, 2, 3], [1, 2, 3]));
+log("arr.ne", dequal([1, 2], [1, 3]));
+log("obj.eq", dequal({ a: 1, b: 2 }, { b: 2, a: 1 }));
+log("nested", dequal({ a: { b: [1, 2] } }, { a: { b: [1, 2] } }));
+log("date", dequal(new Date(2026, 0, 1), new Date(2026, 0, 1)));
+log("regex", dequal(/foo/g, /foo/g));
+log("set", dequal(new Set([1, 2]), new Set([1, 2])));
+log("map", dequal(new Map([["a", 1]]), new Map([["a", 1]])));
+console.log(out.join("\n"));

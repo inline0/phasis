@@ -1,0 +1,14 @@
+const d3 = D3TimeFormatLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const date = new Date(Date.UTC(2026, 4, 18, 12, 30, 0));
+log("iso", d3.utcFormat("%Y-%m-%dT%H:%M:%S")(date));
+log("date", d3.utcFormat("%Y-%m-%d")(date));
+log("time", d3.utcFormat("%H:%M:%S")(date));
+log("weekday", d3.utcFormat("%A")(date));
+log("month", d3.utcFormat("%B")(date));
+const parsed = d3.utcParse("%Y-%m-%d")("2026-05-18");
+log("parsed", parsed ? parsed.toISOString() : null);
+const parsed2 = d3.utcParse("%d-%m-%Y %H:%M")("18-05-2026 09:15");
+log("parsed2", parsed2 ? parsed2.toISOString() : null);
+console.log(out.join("\n"));

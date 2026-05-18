@@ -1,0 +1,9 @@
+hex "#FF0000"
+rgb [255,0,0]
+hsl {"h":0,"s":100,"l":50}
+light "#FF4D4D"
+dark "#B30000"
+alpha "rgba(255, 0, 0, 0.5)"
+mix "#800080"
+isLight false
+contrast 3.9984767707539985

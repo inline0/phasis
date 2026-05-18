@@ -1,0 +1,4 @@
+map [2,4,6,8]
+filter [2,4]
+series [1,2,3]
+reduce 10

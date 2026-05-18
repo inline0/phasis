@@ -1,0 +1,14 @@
+const d3 = D3FormatLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("comma", d3.format(",")(1234567));
+log("currency", d3.format("$,.2f")(1234.5678));
+log("percent", d3.format(".1%")(0.1234));
+log("sci", d3.format(".3e")(0.000123));
+log("fixed", d3.format(".2f")(Math.PI));
+log("prefix", d3.format("$~s")(1234567));
+log("formatPrefix", d3.formatPrefix(",.0", 1e6)(1.3e6));
+log("hex", d3.format("x")(255));
+log("pad", d3.format("05d")(42));
+log("sign", d3.format("+d")(42));
+console.log(out.join("\n"));

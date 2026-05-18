@@ -1,0 +1,10 @@
+const clsx = ClsxLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("strings", clsx("a", "b", "c"));
+log("conditional", clsx("base", { active: true, disabled: false }));
+log("array", clsx(["a", "b"], { c: true }, "d"));
+log("falsy", clsx("a", null, undefined, false, 0, "", "b"));
+log("nested", clsx(["a", ["b", { c: true, d: false }]]));
+log("empty", clsx());
+console.log(out.join("\n"));

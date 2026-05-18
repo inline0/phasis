@@ -1,0 +1,17 @@
+const { Type, Value } = TypeLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const User = Type.Object({ id: Type.Integer(), name: Type.String({ minLength: 1 }), email: Type.Optional(Type.String()) });
+log("schema.type", User.type);
+log("schema.props", Object.keys(User.properties));
+log("valid.ok", Value.Check(User, { id: 1, name: "Alice" }));
+log("valid.missing", Value.Check(User, { id: 1 }));
+log("valid.typeError", Value.Check(User, { id: "no", name: "Bob" }));
+log("errors", Array.from(Value.Errors(User, { id: "no", name: "" })).map(e => ({ kw: e.schema.type, path: e.path })));
+const Tags = Type.Array(Type.String(), { minItems: 1 });
+log("array", Value.Check(Tags, ["a", "b"]));
+log("array.empty", Value.Check(Tags, []));
+const Union = Type.Union([Type.Literal("a"), Type.Literal("b"), Type.Literal("c")]);
+log("enum.a", Value.Check(Union, "a"));
+log("enum.x", Value.Check(Union, "x"));
+console.log(out.join("\n"));

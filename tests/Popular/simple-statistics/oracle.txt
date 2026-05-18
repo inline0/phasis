@@ -1,0 +1,14 @@
+mean 5.5
+median 5.5
+mode 2
+std "2.872281"
+variance 8.25
+quantile.50 5.5
+quantile.90 9.1
+min 1
+max 10
+sum 55
+product 24
+correlation 1.0000000000000002
+linreg.m 2
+linreg.b 0

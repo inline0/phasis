@@ -1,0 +1,8 @@
+linear.0 0
+linear.50 0.5
+linear.invert 50
+linear.ticks [0,20,40,60,80,100]
+log.10 33.333333333333336
+log.100 66.66666666666667
+sqrt.25 "5.000000"
+time.mid "182"

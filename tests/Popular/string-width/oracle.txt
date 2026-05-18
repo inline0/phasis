@@ -1,0 +1,5 @@
+ascii 5
+cjk 4
+emoji 2
+mixed 12
+ansi 5

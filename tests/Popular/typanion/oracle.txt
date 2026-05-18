@@ -1,0 +1,5 @@
+valid.ok true
+valid.bad false
+missing.role true
+array.ok true
+array.bad false

@@ -1,0 +1,12 @@
+const mitt = MittLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const bus = mitt();
+const seen = [];
+bus.on("foo", (p) => seen.push(["foo", p]));
+bus.on("*", (type, p) => seen.push(["wildcard", type, p]));
+bus.emit("foo", { x: 1 });
+bus.emit("bar", "hello");
+log("seen", seen);
+log("size", bus.all.size);
+console.log(out.join("\n"));

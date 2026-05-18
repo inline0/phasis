@@ -1,0 +1,2 @@
+size.before.idle 0
+order.contains.all true

@@ -1,0 +1,11 @@
+const { minimatch } = MmLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("*.js", minimatch("foo.js", "*.js"));
+log("*.js.fail", minimatch("foo.css", "*.js"));
+log("**/*.ts", minimatch("a/b/c.ts", "**/*.ts"));
+log("brace", minimatch("foo.txt", "*.{txt,md}"));
+log("neg", minimatch("foo.js", "!*.js"));
+log("dot", minimatch(".hidden", ".*", { dot: true }));
+log("case", minimatch("FOO.JS", "*.js", { nocase: true }));
+console.log(out.join("\n"));

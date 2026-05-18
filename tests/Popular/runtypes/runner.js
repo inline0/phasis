@@ -1,0 +1,12 @@
+const rt = RtLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const User = rt.Object({ id: rt.Number, name: rt.String, role: rt.Optional(rt.Union(rt.Literal("admin"), rt.Literal("user"))) });
+log("valid.ok", User.guard({ id: 1, name: "Alice", role: "admin" }));
+log("valid.missing.role", User.guard({ id: 1, name: "Alice" }));
+log("valid.bad.role", User.guard({ id: 1, name: "Alice", role: "guest" }));
+log("valid.bad.id", User.guard({ id: "no", name: "B" }));
+const Tags = rt.Array(rt.String);
+log("tags.ok", Tags.guard(["a", "b"]));
+log("tags.bad", Tags.guard([1, 2]));
+console.log(out.join("\n"));

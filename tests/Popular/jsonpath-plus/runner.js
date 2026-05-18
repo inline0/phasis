@@ -1,0 +1,10 @@
+const { JSONPath } = JppLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const data = { store: { book: [{ title: "A", price: 10 }, { title: "B", price: 20 }] }, count: 2 };
+log("books.titles", JSONPath({ path: "$.store.book[*].title", json: data }));
+log("books.cheap", JSONPath({ path: "$.store.book[?(@.price < 15)]", json: data }));
+log("count", JSONPath({ path: "$.count", json: data }));
+log("all.values", JSONPath({ path: "$..*", json: data }).length);
+log("first.title", JSONPath({ path: "$.store.book[0].title", json: data, wrap: false }));
+console.log(out.join("\n"));

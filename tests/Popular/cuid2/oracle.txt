@@ -1,0 +1,4 @@
+type "string"
+length 24
+charset true
+unique100 100

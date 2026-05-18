@@ -58,6 +58,7 @@ const sandbox = {
   // same surface in the Node sandbox so async runners (JSZip, …) see
   // both names regardless of which env runs first.
   setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, clearImmediate,
+  queueMicrotask: typeof queueMicrotask === "function" ? queueMicrotask : (cb) => Promise.resolve().then(cb),
   globalThis: undefined, // gets set after createContext below
 };
 vm.createContext(sandbox);

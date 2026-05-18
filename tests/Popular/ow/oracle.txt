@@ -1,0 +1,7 @@
+string.ok "ok"
+string.bad "Expected argument to be of type `string` but received type `number`"
+number.ok "ok"
+number.bad "Expected number to be an integer, got 3.14"
+array.min "Expected array to have a minimum length of `3`, got `2`"
+string.length "ok"
+string.short "Expected string to have a minimum length of `3`, got `hi`"

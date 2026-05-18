@@ -1,0 +1,5 @@
+hash.starts true
+hash.length 60
+verify.correct true
+verify.wrong false
+sync.verify true

@@ -1,0 +1,4 @@
+adults ["Alice","Carol"]
+admins ["Alice","Carol"]
+complex ["Bob","Dave"]
+agg [{"_id":"admin","count":2,"totalAge":65},{"_id":"user","count":2,"totalAge":53}]

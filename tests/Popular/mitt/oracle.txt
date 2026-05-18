@@ -1,0 +1,2 @@
+seen [["foo",{"x":1}],["wildcard","foo",{"x":1}],["wildcard","bar","hello"]]
+size 2

@@ -1,0 +1,10 @@
+const stringify = FjssLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("obj", stringify({ b: 2, a: 1 }));
+log("nested", stringify({ z: { y: 1, x: 2 }, a: [3, 1, 2] }));
+log("string", stringify({ s: "hello" }));
+log("null", stringify({ n: null, u: undefined }));
+log("nested.order", stringify({ b: 1, a: 2 }) === stringify({ a: 2, b: 1 }));
+log("custom.cmp", stringify({ a: 1, b: 2, c: 3 }, { cmp: (a, b) => a.key < b.key ? 1 : -1 }));
+console.log(out.join("\n"));

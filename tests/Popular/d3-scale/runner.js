@@ -1,0 +1,16 @@
+const d3 = D3ScaleLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const lin = d3.scaleLinear().domain([0, 100]).range([0, 1]);
+log("linear.0", lin(0));
+log("linear.50", lin(50));
+log("linear.invert", lin.invert(0.5));
+log("linear.ticks", lin.ticks(5));
+const log10 = d3.scaleLog().domain([1, 1000]).range([0, 100]);
+log("log.10", log10(10));
+log("log.100", log10(100));
+const sqrt = d3.scalePow().exponent(0.5).domain([0, 100]).range([0, 10]);
+log("sqrt.25", sqrt(25).toFixed(6));
+const time = d3.scaleTime().domain([new Date(2020, 0, 1), new Date(2020, 11, 31)]).range([0, 365]);
+log("time.mid", time(new Date(2020, 6, 1)).toFixed(0));
+console.log(out.join("\n"));

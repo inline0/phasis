@@ -1,0 +1,17 @@
+const d3 = D3InterpolateLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const i1 = d3.interpolate(0, 100);
+log("num.0", i1(0));
+log("num.0.5", i1(0.5));
+log("num.1", i1(1));
+const i2 = d3.interpolateString("0px", "100px");
+log("str", i2(0.3));
+const i3 = d3.interpolateArray([0, 10], [10, 20]);
+log("array", i3(0.5));
+const i4 = d3.interpolateRgb("red", "blue");
+log("rgb", i4(0.5));
+const i5 = d3.interpolateObject({ a: 0, b: 10 }, { a: 10, b: 100 });
+log("object", i5(0.5));
+log("round", d3.interpolateRound(0, 10)(0.345));
+console.log(out.join("\n"));

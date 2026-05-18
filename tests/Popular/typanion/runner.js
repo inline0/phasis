@@ -1,0 +1,11 @@
+const t = TyLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const isUser = t.isObject({ id: t.isNumber(), name: t.isString(), role: t.isOptional(t.isOneOf([t.isLiteral("admin"), t.isLiteral("user")])) });
+log("valid.ok", isUser({ id: 1, name: "Alice", role: "admin" }));
+log("valid.bad", isUser({ id: "no", name: "B" }));
+log("missing.role", isUser({ id: 1, name: "A" }));
+const isTags = t.isArray(t.isString());
+log("array.ok", isTags(["a", "b"]));
+log("array.bad", isTags([1, 2]));
+console.log(out.join("\n"));

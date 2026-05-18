@@ -1,0 +1,10 @@
+prim.eq true
+prim.ne false
+arr.eq true
+arr.ne false
+obj.eq true
+nested true
+date true
+regex true
+set true
+map true

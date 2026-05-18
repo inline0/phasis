@@ -1,0 +1,6 @@
+pubkey.length 32
+pubkey.first8 [3,161,7,191,243,206,16,190]
+sig.length 64
+sig.first8 [225,167,252,169,74,131,81,39]
+verify true
+verify.tampered false

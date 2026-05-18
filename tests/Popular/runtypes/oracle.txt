@@ -1,0 +1,6 @@
+valid.ok true
+valid.missing.role true
+valid.bad.role false
+valid.bad.id false
+tags.ok true
+tags.bad false

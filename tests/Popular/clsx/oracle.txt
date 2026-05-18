@@ -1,0 +1,6 @@
+strings "a b c"
+conditional "base active"
+array "a b c d"
+falsy "a b"
+nested "a b c"
+empty ""

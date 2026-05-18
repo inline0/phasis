@@ -1,0 +1,10 @@
+const wcmatch = WmLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+log("*.js", wcmatch("*.js")("foo.js"));
+log("*.js.fail", wcmatch("*.js")("foo.css"));
+log("**/*.ts", wcmatch("**/*.ts", "/")("a/b/c.ts"));
+log("?", wcmatch("a?c")("abc"));
+log("multi", wcmatch(["*.js", "*.ts"])("foo.ts"));
+log("escape", wcmatch("foo\\*.js")("foo*.js"));
+console.log(out.join("\n"));

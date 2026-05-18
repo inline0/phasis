@@ -1,0 +1,11 @@
+const { createId } = Cuid2Lib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const id = createId();
+log("type", typeof id);
+log("length", id.length);
+log("charset", /^[a-z0-9]+$/.test(id));
+const ids = new Set();
+for (let i = 0; i < 100; i++) ids.add(createId());
+log("unique100", ids.size);
+console.log(out.join("\n"));

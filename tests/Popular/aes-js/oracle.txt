@@ -1,0 +1,4 @@
+ctr.encrypted.first8 [249,229,118,38,187,69,119,62]
+ctr.decrypted "Phasis is a pure-PHP JS engine!!"
+cbc.encrypted.len 48
+cbc.decrypted "Phasis is a pure-PHP JS engine!!"

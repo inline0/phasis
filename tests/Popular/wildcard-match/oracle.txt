@@ -1,0 +1,6 @@
+*.js true
+*.js.fail false
+**/*.ts true
+? true
+multi true
+escape true

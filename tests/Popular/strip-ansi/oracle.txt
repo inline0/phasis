@@ -1,0 +1,3 @@
+colored "hello"
+plain "just text"
+mixed "Bold and red"

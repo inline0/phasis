@@ -1,0 +1,4 @@
+named {}
+unicode "héllo"
+escape "a\\.b\\*c"
+matchAll 3

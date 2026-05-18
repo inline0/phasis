@@ -1,0 +1,6 @@
+obj "{\"a\":1,\"b\":2}"
+nested "{\"a\":[3,1,2],\"z\":{\"x\":2,\"y\":1}}"
+string "{\"s\":\"hello\"}"
+null "{\"n\":null}"
+nested.order true
+custom.cmp "{\"c\":3,\"b\":2,\"a\":1}"

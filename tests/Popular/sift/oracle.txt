@@ -1,0 +1,4 @@
+gt ["B","C"]
+in ["A","C"]
+and ["B","C"]
+regex ["A","B"]

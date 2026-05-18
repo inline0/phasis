@@ -1,0 +1,2 @@
+resolve 42
+reject "nope"

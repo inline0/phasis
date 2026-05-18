@@ -1,0 +1,16 @@
+const ShortUniqueId = ShortuniqueidLib.default;
+const out = [];
+const log = (k, v) => out.push(k + " " + JSON.stringify(v));
+const uid = new ShortUniqueId({ length: 10 });
+const id1 = uid.rnd();
+log("len", id1.length);
+log("type", typeof id1);
+const dictionary = "abcdef0123456789".split("");
+const uid2 = new ShortUniqueId({ length: 8, dictionary });
+const id2 = uid2.rnd();
+log("custom.charset", /^[a-f0-9]+$/.test(id2));
+log("custom.len", id2.length);
+const ids = new Set();
+for (let i = 0; i < 100; i++) ids.add(uid.rnd());
+log("unique100", ids.size);
+console.log(out.join("\n"));

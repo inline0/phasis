@@ -1,0 +1,5 @@
+events [["hello","world",42],["data",{"n":1}],["data",{"n":2}],["once","boot"]]
+listenerCount.data 1
+listenerCount.startup 0
+after.remove.data 0
+eventNames ["hello"]
