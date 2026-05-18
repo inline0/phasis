@@ -1605,7 +1605,19 @@ final class VM
                         case Op::NEW_CALL:
                             $argc = $code[$pc + 1];
                             $base = $sp - $argc;
-                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            // Inline small-argc packing (mirrors CALL).
+                            // Constructor calls with 0–2 args are the
+                            // common shape (every `new Point(x, y)`,
+                            // every `new Map()`).
+                            if ($argc === 0) {
+                                $args = [];
+                            } elseif ($argc === 1) {
+                                $args = [$stack[$base]];
+                            } elseif ($argc === 2) {
+                                $args = [$stack[$base], $stack[$base + 1]];
+                            } else {
+                                $args = array_slice($stack, $base, $argc);
+                            }
                             $callee = $stack[$base - 1];
                             $sp = $base - 1;
                             // Fast path for `new Date(<number>)`. The SM
@@ -2222,23 +2234,67 @@ final class VM
                             ) {
                                 $ic = $cf->storeMemberIc[$pc] ?? null;
                                 if ($ic !== null) {
-                                    $chainOk = true;
-                                    $cursor = $obj->prototype;
-                                    foreach ($ic as $entry) {
+                                    // Unroll the most common chain
+                                    // lengths (1 = just Object.prototype,
+                                    // 2 = class instance with one user
+                                    // proto) so the foreach overhead
+                                    // doesn't dominate the hit path.
+                                    // ctor-heavy hits this with a 2-entry
+                                    // chain on every `this.x = …` /
+                                    // `this.y = …` after the first
+                                    // construction.
+                                    $icLen = count($ic);
+                                    $proto0 = $obj->prototype;
+                                    if ($icLen === 1) {
+                                        $e0 = $ic[0];
                                         if (
-                                            $cursor !== $entry[0]
-                                            || $cursor->properties->version !== $entry[1]
+                                            $proto0 === $e0[0]
+                                            && $proto0->properties->version === $e0[1]
+                                            && $proto0->prototype === null
                                         ) {
-                                            $chainOk = false;
+                                            $obj->properties->setDataSlot($name, $val);
+                                            $stack[$sp++] = $val;
+                                            $pc += 2;
                                             break;
                                         }
-                                        $cursor = $cursor->prototype;
-                                    }
-                                    if ($chainOk && $cursor === null) {
-                                        $obj->properties->setDataSlot($name, $val);
-                                        $stack[$sp++] = $val;
-                                        $pc += 2;
-                                        break;
+                                    } elseif ($icLen === 2) {
+                                        $e0 = $ic[0];
+                                        $e1 = $ic[1];
+                                        if (
+                                            $proto0 === $e0[0]
+                                            && $proto0->properties->version === $e0[1]
+                                        ) {
+                                            $proto1 = $proto0->prototype;
+                                            if (
+                                                $proto1 === $e1[0]
+                                                && $proto1->properties->version === $e1[1]
+                                                && $proto1->prototype === null
+                                            ) {
+                                                $obj->properties->setDataSlot($name, $val);
+                                                $stack[$sp++] = $val;
+                                                $pc += 2;
+                                                break;
+                                            }
+                                        }
+                                    } else {
+                                        $chainOk = true;
+                                        $cursor = $proto0;
+                                        foreach ($ic as $entry) {
+                                            if (
+                                                $cursor !== $entry[0]
+                                                || $cursor->properties->version !== $entry[1]
+                                            ) {
+                                                $chainOk = false;
+                                                break;
+                                            }
+                                            $cursor = $cursor->prototype;
+                                        }
+                                        if ($chainOk && $cursor === null) {
+                                            $obj->properties->setDataSlot($name, $val);
+                                            $stack[$sp++] = $val;
+                                            $pc += 2;
+                                            break;
+                                        }
                                     }
                                 }
                                 // IC miss. Walk the chain to see whether this
