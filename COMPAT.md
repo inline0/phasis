@@ -3,19 +3,19 @@
 Generated from a completed `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
-- Snapshot time: `2026-05-18T14:14:17+00:00`
+- Snapshot time: `2026-05-19T06:56:59+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `b6b7151` (dirty)
+- Git: `main` @ `787276f` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 50506 | 0 | 0 | 0 | 0 | 0 | 50506 | 50506 | 50506 | 100.0% |
+| 50504 | 2 | 0 | 0 | 0 | 0 | 50506 | 50506 | 50506 | 100.0% |
 
 ## Top-Level Areas
 
@@ -25,7 +25,7 @@ Generated from a completed `test262` pass. Do not edit by hand.
 | built-ins | PASS | 22729 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | harness | PASS | 116 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402 | PASS | 1566 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| language | PASS | 23384 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| language | PARTIAL | 23382 | 2 | 0 | 0 | 0 | 0 | 100.0% |
 | staging | PASS | 1632 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
 ## Group Coverage
@@ -161,7 +161,7 @@ Generated from a completed `test262` pass. Do not edit by hand.
 | language/directive-prologue | PASS | 62 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/eval-code | PASS | 347 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/export | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| language/expressions | PASS | 11023 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| language/expressions | PARTIAL | 11021 | 2 | 0 | 0 | 0 | 0 | 100.0% |
 | language/function-code | PASS | 217 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/future-reserved-words | PASS | 55 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/global-code | PASS | 42 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -196,26 +196,26 @@ Generated from a completed `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| staging/sm | NORMAL | 141.169s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
-| staging/sm | NORMAL | 140.745s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
-| staging/sm | NORMAL | 139.958s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
-| staging/sm | NORMAL | 139.389s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
-| staging/sm | NORMAL | 138.745s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
-| staging/sm | NORMAL | 121.503s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
-| staging/sm | NORMAL | 114.156s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
-| staging/sm | NORMAL | 110.764s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
-| staging/sm | NORMAL | 83.464s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
-| built-ins/decodeURIComponent | NORMAL | 82.682s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
-| built-ins/decodeURI | NORMAL | 71.348s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
-| staging/sm | NORMAL | 67.873s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
-| built-ins/decodeURI | NORMAL | 57.691s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
-| built-ins/decodeURIComponent | NORMAL | 57.504s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 57.359s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tibetan.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tifinagh.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tirhuta.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Todhri.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Toto.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 54.036s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Marchen.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Masaram_Gondi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Medefaidrin.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Meetei_Mayek.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Mende_Kikakui.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 53.792s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Symbol.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 53.741s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Sunuwar.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Syloti_Nagri.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Syriac.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tagalog.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tagbanwa.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 53.507s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tulu_Tigalari.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ugaritic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Vai.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Vithkuqi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Wancho.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 53.462s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Control.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js` |
+| staging/sm | NORMAL | 142.540s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
+| staging/sm | NORMAL | 141.143s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
+| staging/sm | NORMAL | 140.974s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
+| staging/sm | NORMAL | 139.992s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
+| staging/sm | NORMAL | 139.816s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
+| staging/sm | NORMAL | 130.513s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
+| staging/sm | NORMAL | 114.013s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
+| staging/sm | NORMAL | 109.744s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
+| staging/sm | NORMAL | 84.091s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
+| built-ins/decodeURIComponent | NORMAL | 76.203s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
+| staging/sm | NORMAL | 69.438s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
+| built-ins/decodeURI | NORMAL | 60.531s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
+| built-ins/decodeURI | NORMAL | 58.413s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
+| built-ins/decodeURIComponent | NORMAL | 58.224s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 56.356s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hiragana.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Imperial_Aramaic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inherited.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inscriptional_Pahlavi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inscriptional_Parthian.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 56.187s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khudawadi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kirat_Rai.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lao.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lepcha.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 55.844s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Deseret.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Devanagari.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dives_Akuru.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dogra.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Duployan.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 54.315s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Egyptian_Hieroglyphs.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Elbasan.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Elymaic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Ethiopic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Garay.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 53.787s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bengali.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bhaiksuki.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Brahmi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Braille.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 53.726s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gujarati.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gunjala_Gondi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gurmukhi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gurung_Khema.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Han.js` |
 
 ## Runner Caveats
 
