@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Test the full supported range. composer.json declares ^8.2 so
-        # we cover every minor that the package contract promises plus
-        # the latest 8.5 we run compat / bench on.
-        php: ['8.2', '8.3', '8.4', '8.5']
+        # composer.json declares ^8.2 for the runtime, but PHPUnit 13.1
+        # (the canonical _cp profile) requires PHP 8.4.1+, so the dev
+        # tooling matrix starts at 8.4.
+        php: ['8.4', '8.5']
 
     steps:
       - uses: actions/checkout@v5
