@@ -284,6 +284,8 @@ final class WebSocketConstructor
      * sequence of HTTP token characters (RFC 7230 §3.2.6). The list
      * must not contain case-insensitive duplicates. Both violations
      * raise a SyntaxError DOMException.
+     *
+     * @param list<string> $protocols
      */
     private static function validateProtocols(array $protocols, Environment $env): void
     {

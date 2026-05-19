@@ -195,11 +195,9 @@ final class UrlPatternConstructor
             // Defaults — every component matches.
         } elseif ($first instanceof JsString) {
             $parsed = self::parsePatternUrl($first->value, $baseUrl);
-            if ($parsed !== null) {
-                foreach ($parsed as $c => $v) {
-                    if ($v !== null && $v !== '') {
-                        $components[$c] = $v;
-                    }
+            foreach ($parsed as $c => $v) {
+                if ($v !== null && $v !== '') {
+                    $components[$c] = $v;
                 }
             }
         } elseif ($first instanceof JsObject) {
@@ -277,9 +275,9 @@ final class UrlPatternConstructor
      * parser, so we hand-split on the canonical URL structure:
      * `<scheme>://<userinfo>@<host>:<port>/<path>?<search>#<hash>`.
      *
-     * @return ?array<string, ?string>
+     * @return array<string, ?string>
      */
-    private static function parsePatternUrl(string $input, ?string $baseUrl): ?array
+    private static function parsePatternUrl(string $input, ?string $baseUrl): array
     {
         $out = [
             'protocol' => null, 'username' => null, 'password' => null,
@@ -394,6 +392,9 @@ final class UrlPatternConstructor
         }
     }
 
+    /**
+     * @return array{regex: string, names: list<string>}
+     */
     private static function compilePattern(string $source, string $separator): array
     {
         self::validatePatternSyntax($source);

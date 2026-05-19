@@ -6614,6 +6614,9 @@ trait ExpressionEvaluation
         return false;
     }
 
+    /**
+     * @param list<mixed> $params
+     */
     private function bodyUsesArguments(mixed $body, array $params = []): bool
     {
         foreach ($params as $param) {

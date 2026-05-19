@@ -54,8 +54,7 @@ jobs:
           fi
 
       - name: PHPStan
-        run: php -d memory_limit=512M vendor/bin/phpstan analyse --memory-limit=512M
-        continue-on-error: true
+        run: php -d memory_limit=2G vendor/bin/phpstan analyse --memory-limit=2G
 
       - name: PHPCS
         run: vendor/bin/phpcs -n

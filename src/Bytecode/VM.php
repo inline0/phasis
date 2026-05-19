@@ -927,9 +927,22 @@ final class VM
                         case Op::POW:
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
-                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
-                                ? JsNumber::of($l->value ** $r->value)
-                                : $this->interp->exponentiate($l, $r);
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $rv = $r->value;
+                                // Spec edge cases PHP's ** gets wrong: |base|=1 with
+                                // exponent ±∞ must be NaN, and 0 ** negative needs
+                                // signed-zero / odd-integer handling. Delegate those
+                                // to exponentiate() so the VM stays in lock-step with
+                                // the interpreter.
+                                if ((abs($lv) === 1.0 && is_infinite($rv)) || ($lv === 0.0 && $rv < 0.0)) {
+                                    $stack[$sp++] = $this->interp->exponentiate($l, $r);
+                                } else {
+                                    $stack[$sp++] = JsNumber::of($lv ** $rv);
+                                }
+                            } else {
+                                $stack[$sp++] = $this->interp->exponentiate($l, $r);
+                            }
                             $pc++;
                             break;
 
@@ -1053,7 +1066,8 @@ final class VM
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
                             if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                                $lv = $l->value; $rv = $r->value;
+                                $lv = $l->value;
+                                $rv = $r->value;
                                 // Guard NaN/Inf BEFORE the (int) cast —
                                 // PHP 8.5 deprecates casting non-finite
                                 // doubles to int.
@@ -1062,7 +1076,8 @@ final class VM
                                     && $lv >= -2147483648.0 && $lv <= 2147483647.0
                                     && $rv >= -2147483648.0 && $rv <= 2147483647.0
                                 ) {
-                                    $li = (int) $lv; $ri = (int) $rv;
+                                    $li = (int) $lv;
+                                    $ri = (int) $rv;
                                     if ((float) $li === $lv && (float) $ri === $rv) {
                                         $stack[$sp++] = JsNumber::of((float) ($li & $ri));
                                         $pc++;
@@ -1077,13 +1092,15 @@ final class VM
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
                             if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                                $lv = $l->value; $rv = $r->value;
+                                $lv = $l->value;
+                                $rv = $r->value;
                                 if (
                                     is_finite($lv) && is_finite($rv)
                                     && $lv >= -2147483648.0 && $lv <= 2147483647.0
                                     && $rv >= -2147483648.0 && $rv <= 2147483647.0
                                 ) {
-                                    $li = (int) $lv; $ri = (int) $rv;
+                                    $li = (int) $lv;
+                                    $ri = (int) $rv;
                                     if ((float) $li === $lv && (float) $ri === $rv) {
                                         $stack[$sp++] = JsNumber::of((float) ($li | $ri));
                                         $pc++;
@@ -1098,13 +1115,15 @@ final class VM
                             $r = $stack[--$sp];
                             $l = $stack[--$sp];
                             if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                                $lv = $l->value; $rv = $r->value;
+                                $lv = $l->value;
+                                $rv = $r->value;
                                 if (
                                     is_finite($lv) && is_finite($rv)
                                     && $lv >= -2147483648.0 && $lv <= 2147483647.0
                                     && $rv >= -2147483648.0 && $rv <= 2147483647.0
                                 ) {
-                                    $li = (int) $lv; $ri = (int) $rv;
+                                    $li = (int) $lv;
+                                    $ri = (int) $rv;
                                     if ((float) $li === $lv && (float) $ri === $rv) {
                                         $stack[$sp++] = JsNumber::of((float) ($li ^ $ri));
                                         $pc++;
@@ -1854,49 +1873,49 @@ final class VM
                             // builtin-fast-path ladder in one branch.
                             $kind = $method->builtinKind;
                             if ($kind !== null) {
-                            if (
-                                $kind === 'array.push'
-                                && $receiver instanceof \Phasis\Value\JsArray
-                                && $argc === 1
-                            ) {
-                                // Lean on JsArray::tryDenseWrite, which
-                                // already caches the proto-chain checks
-                                // (writable length + extensible +
-                                // no own integer-index property on
-                                // prototypes) per instance and skips the
-                                // per-iteration `getOwnPropertyDescriptor`
-                                // hash lookup on Array.prototype. False
-                                // return falls back to the spec path.
-                                $newIndex = $receiver->getLength();
-                                if ($receiver->tryDenseWrite($newIndex, $args[0])) {
-                                    $stack[$sp++] = JsNumber::of((float) ($newIndex + 1));
-                                    $pc += 2;
-                                    break;
+                                if (
+                                    $kind === 'array.push'
+                                    && $receiver instanceof \Phasis\Value\JsArray
+                                    && $argc === 1
+                                ) {
+                                    // Lean on JsArray::tryDenseWrite, which
+                                    // already caches the proto-chain checks
+                                    // (writable length + extensible +
+                                    // no own integer-index property on
+                                    // prototypes) per instance and skips the
+                                    // per-iteration `getOwnPropertyDescriptor`
+                                    // hash lookup on Array.prototype. False
+                                    // return falls back to the spec path.
+                                    $newIndex = $receiver->getLength();
+                                    if ($receiver->tryDenseWrite($newIndex, $args[0])) {
+                                        $stack[$sp++] = JsNumber::of((float) ($newIndex + 1));
+                                        $pc += 2;
+                                        break;
+                                    }
                                 }
-                            }
                             // Date.prototype hot paths used by the SM
                             // dst-offset-caching stress harness. Both
                             // helpers return null when the receiver
                             // shape does not match, in which case the
                             // dispatch falls through to the normal
                             // callFunction path.
-                            if ($kind[0] === 'd' && str_starts_with($kind, 'date.')) {
-                                if ($kind === 'date.getTimezoneOffset') {
-                                    $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateGetTimezoneOffset($receiver);
-                                    if ($fast !== null) {
-                                        $stack[$sp++] = $fast;
-                                        $pc += 2;
-                                        break;
-                                    }
-                                } elseif ($kind === 'date.setTime') {
-                                    $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateSetTime($receiver, $args);
-                                    if ($fast !== null) {
-                                        $stack[$sp++] = $fast;
-                                        $pc += 2;
-                                        break;
+                                if ($kind[0] === 'd' && str_starts_with($kind, 'date.')) {
+                                    if ($kind === 'date.getTimezoneOffset') {
+                                        $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateGetTimezoneOffset($receiver);
+                                        if ($fast !== null) {
+                                            $stack[$sp++] = $fast;
+                                            $pc += 2;
+                                            break;
+                                        }
+                                    } elseif ($kind === 'date.setTime') {
+                                        $fast = \Phasis\BuiltIn\DateConstructor::vmFastDateSetTime($receiver, $args);
+                                        if ($fast !== null) {
+                                            $stack[$sp++] = $fast;
+                                            $pc += 2;
+                                            break;
+                                        }
                                     }
                                 }
-                            }
                             // String.prototype.split inline lives in
                             // a helper so the dispatch-loop body stays
                             // small enough for PHP 8.5's tracing JIT
@@ -1904,14 +1923,14 @@ final class VM
                             // jit_max_trace_length and the entire
                             // VM->execute() runs uncompiled — way
                             // worse than the spec path).
-                            if ($kind === 'string.split' && $receiver instanceof JsString) {
-                                $inlined = $this->inlineStringSplit($receiver, $args, $argc);
-                                if ($inlined !== null) {
-                                    $stack[$sp++] = $inlined;
-                                    $pc += 2;
-                                    break;
+                                if ($kind === 'string.split' && $receiver instanceof JsString) {
+                                    $inlined = $this->inlineStringSplit($receiver, $args, $argc);
+                                    if ($inlined !== null) {
+                                        $stack[$sp++] = $inlined;
+                                        $pc += 2;
+                                        break;
+                                    }
                                 }
-                            }
                             // JSON.parse / JSON.stringify / String.
                             // fromCharCode dispatch goes straight to the
                             // native callable, skipping callFunction's
@@ -1922,38 +1941,38 @@ final class VM
                             // path because Sputnik's UTF-8 decode sweep
                             // (S15.1.3.1_A2.5_T1) fires ~1M calls per
                             // run inside its hot comparison loop.
-                            if (
-                                $kind === 'json.parse'
-                                || $kind === 'json.stringify'
-                                || $kind === 'string.fromCharCode'
-                            ) {
-                                $native = $method->getNativeCallable();
-                                if ($native !== null) {
-                                    $stack[$sp++] = $native(
+                                if (
+                                    $kind === 'json.parse'
+                                    || $kind === 'json.stringify'
+                                    || $kind === 'string.fromCharCode'
+                                ) {
+                                    $native = $method->getNativeCallable();
+                                    if ($native !== null) {
+                                        $stack[$sp++] = $native(
+                                            $receiver,
+                                            $args,
+                                            $this->interp,
+                                        );
+                                        $pc += 2;
+                                        break;
+                                    }
+                                }
+                                if (
+                                    $receiver instanceof \Phasis\Value\JsArray
+                                    && $receiver->isDenseMode()
+                                ) {
+                                    $inlined = $this->inlineDenseArrayMethod(
+                                        $kind,
                                         $receiver,
                                         $args,
-                                        $this->interp,
+                                        $argc,
                                     );
-                                    $pc += 2;
-                                    break;
+                                    if ($inlined !== null) {
+                                        $stack[$sp++] = $inlined;
+                                        $pc += 2;
+                                        break;
+                                    }
                                 }
-                            }
-                            if (
-                                $receiver instanceof \Phasis\Value\JsArray
-                                && $receiver->isDenseMode()
-                            ) {
-                                $inlined = $this->inlineDenseArrayMethod(
-                                    $kind,
-                                    $receiver,
-                                    $args,
-                                    $argc,
-                                );
-                                if ($inlined !== null) {
-                                    $stack[$sp++] = $inlined;
-                                    $pc += 2;
-                                    break;
-                                }
-                            }
                             } // end if ($kind !== null) builtin fast-path ladder
                             // Stage 4 custom callstack: extend the
                             // inline-call path to method calls too.
@@ -2455,8 +2474,7 @@ final class VM
                                     // newObj nor the returned object
                                     // carries the slot, so forceDelete is
                                     // pure overhead.
-                                    $needsDelete = $sf->callee instanceof JsFunction
-                                        && $sf->callee->bodyUsesNewTargetCache === true;
+                                    $needsDelete = $sf->callee->bodyUsesNewTargetCache === true;
                                     if ($retResult instanceof JsObject) {
                                         if ($needsDelete) {
                                             $retResult->forceDelete('[[NewTarget]]');

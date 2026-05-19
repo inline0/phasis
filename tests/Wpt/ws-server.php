@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 /**
  * Phasis WPT WebSocket test server.
  *
@@ -24,6 +22,8 @@ declare(strict_types=1);
  *
  * Run: `php tests/Wpt/ws-server.php 8888`
  */
+
+declare(strict_types=1);
 
 require __DIR__ . '/../../vendor/autoload.php';
 

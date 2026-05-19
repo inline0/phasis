@@ -167,13 +167,11 @@ final class PipeOperations
                 return;
             }
             $ready->addFulfillHandler(function (JsValue $_) use (&$pump, $reader, $writer, $dest, $preventClose, $finish, $finished): void {
-                // @phpstan-ignore-next-line if.alwaysFalse — mutated via $finish closure
                 if ($finished->value) {
                     return;
                 }
                 $readPromise = \Phasis\BuiltIn\Streams\ReadableStream::defaultReaderRead($reader);
                 $readPromise->addFulfillHandler(function (JsValue $result) use (&$pump, $writer, $dest, $preventClose, $finish, $finished): void {
-                    // @phpstan-ignore-next-line if.alwaysFalse — mutated via $finish closure
                     if ($finished->value) {
                         return;
                     }
@@ -206,7 +204,6 @@ final class PipeOperations
                     StreamHelpers::enqueueMicrotask($pump);
                 });
                 $readPromise->addRejectHandler(function (JsValue $reason) use ($dest, $finish, $finished): void {
-                    // @phpstan-ignore-next-line if.alwaysFalse — mutated via $finish closure
                     if ($finished->value) {
                         return;
                     }
@@ -215,7 +212,6 @@ final class PipeOperations
                 });
             });
             $ready->addRejectHandler(function (JsValue $reason) use ($source, $preventCancel, $finish, $finished): void {
-                // @phpstan-ignore-next-line if.alwaysFalse — mutated via $finish closure
                 if ($finished->value) {
                     return;
                 }

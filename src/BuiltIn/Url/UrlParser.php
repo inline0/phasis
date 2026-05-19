@@ -1184,7 +1184,7 @@ final class UrlParser
                 while ($pointer < $len) {
                     $ipv4Piece = null;
                     if ($numbersSeen > 0) {
-                        if ($charAt($pointer) === '.' && $numbersSeen < 4) {
+                        if ($pointer < $len && $input[$pointer] === '.' && $numbersSeen < 4) {
                             $pointer++;
                         } else {
                             return false;
@@ -1194,7 +1194,7 @@ final class UrlParser
                         return false;
                     }
                     while (self::isAsciiDigit($ordAt($pointer))) {
-                        $number = (int) $charAt($pointer);
+                        $number = $ordAt($pointer) - 48;
                         if ($ipv4Piece === null) {
                             $ipv4Piece = $number;
                         } elseif ($ipv4Piece === 0) {
