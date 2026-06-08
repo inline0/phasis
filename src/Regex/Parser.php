@@ -348,6 +348,16 @@ class Parser
             case 'B':
                 $this->pos++;
                 return new Anchor(Anchor::NON_WORD_BOUNDARY);
+            case 'G':
+                // `\G` (Oniguruma scan anchor) is not an ECMAScript construct;
+                // in non-/u mode it is an IdentityEscape (literal `G`). Only treat
+                // it as the scan anchor under /u, which is where the Oniguruma
+                // converter (the sole producer of `\G`) always operates.
+                if ($this->unicode) {
+                    $this->pos++;
+                    return new Anchor(Anchor::SCAN);
+                }
+                break;
             case 'n':
                 $this->pos++;
                 return new Literal(0x0A);

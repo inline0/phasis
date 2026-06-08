@@ -369,6 +369,8 @@ trait MatcherAtom
                 $a1 = $pos > 0 && $this->isWordCu($this->input[$pos - 1]);
                 $a2 = $pos < $this->inputLen && $this->isWordCu($this->input[$pos]);
                 return !($a1 xor $a2) ? $pos : null;
+            case Anchor::SCAN:
+                return $pos === $this->matchStart ? $pos : null;
         }
         return null;
     }

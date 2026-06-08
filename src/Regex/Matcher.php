@@ -48,6 +48,10 @@ class Matcher
     private bool $multiline;
     private bool $dotAll;
     private bool $unicode;
+    private bool $sticky;
+
+    /** Internal offset the current search began at; the `\G` anchor (Anchor::SCAN) matches only here. */
+    private int $matchStart = 0;
 
     private Pattern $pattern;
 
@@ -83,6 +87,7 @@ class Matcher
         $this->multiline = str_contains($flags, 'm');
         $this->dotAll = str_contains($flags, 's');
         $this->unicode = str_contains($flags, 'u') || str_contains($flags, 'v');
+        $this->sticky = str_contains($flags, 'y');
     }
 
     /**
@@ -117,9 +122,13 @@ class Matcher
         if ($startInternal === null) {
             return null;
         }
+        $this->matchStart = $startInternal;
         // Initialize capture array sized to groupCount + 1 (1-based).
         $captures = array_fill(0, $this->pattern->groupCount + 1, null);
-        for ($pos = $startInternal; $pos <= $this->inputLen; $pos++) {
+        // Sticky (`y`): the match may begin only at the start offset; no forward
+        // scan. This realises a leading-`\G` anchor (`PatternConverter` emits `y`).
+        $limit = $this->sticky ? $startInternal : $this->inputLen;
+        for ($pos = $startInternal; $pos <= $limit; $pos++) {
             $caps = $captures;
             $end = $this->matchNode($this->pattern->body, $pos, $caps, /*direction=*/+1);
             if ($end !== null) {
@@ -173,6 +182,7 @@ class Matcher
         if ($startInternal === null) {
             return false;
         }
+        $this->matchStart = $startInternal;
         // Linear-scan fast path: body is a bare CharClass (`/\s/`,
         // `/\d/`, etc.) without case-folding. The outer
         // matchNode→matchCharClass→charClassMatchesCu chain dispatches
@@ -185,7 +195,7 @@ class Matcher
             $negated = $body->negated;
             $rc = count($ranges);
             $input = $this->input;
-            $len = $this->inputLen;
+            $len = $this->sticky ? min($startInternal + 1, $this->inputLen) : $this->inputLen;
             for ($pos = $startInternal; $pos < $len; $pos++) {
                 $cu = $input[$pos];
                 $hit = false;
@@ -203,7 +213,8 @@ class Matcher
             return false;
         }
         $captures = array_fill(0, $this->pattern->groupCount + 1, null);
-        for ($pos = $startInternal; $pos <= $this->inputLen; $pos++) {
+        $limit = $this->sticky ? $startInternal : $this->inputLen;
+        for ($pos = $startInternal; $pos <= $limit; $pos++) {
             $caps = $captures;
             $end = $this->matchNode($this->pattern->body, $pos, $caps, /*direction=*/+1);
             if ($end !== null) {

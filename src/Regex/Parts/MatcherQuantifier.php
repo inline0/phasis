@@ -440,12 +440,28 @@ trait MatcherQuantifier
             // Caller (matchQuantifiedInSequence) array_reverses for
             // greedy and expects positions in ascending match-length
             // order. Sort by absolute distance from the iteration's
-            // start position so reversal yields longest-first.
-            usort($positions, function (array $a, array $b) use ($startPos, $direction): int {
-                $da = $direction > 0 ? $a[0] - $startPos : $startPos - $a[0];
-                $db = $direction > 0 ? $b[0] - $startPos : $startPos - $b[0];
-                return $da <=> $db;
+            // start position so reversal yields longest-first. Entries
+            // are enumerated depth-first in preference order (earlier
+            // alternation branches and greedier inner matches first), so
+            // among equal-length entries the earliest-enumerated must win.
+            // Because the caller reverses the array for greedy, break
+            // distance ties by DESCENDING enumeration index so the
+            // reversal restores preference (ascending-index) order — and
+            // keeps the capture snapshot of the preferred branch instead
+            // of leaking an abandoned branch's captures.
+            $indexed = [];
+            foreach ($positions as $i => $entry) {
+                $indexed[] = [$entry, $i];
+            }
+            usort($indexed, function (array $a, array $b) use ($startPos, $direction): int {
+                $da = $direction > 0 ? $a[0][0] - $startPos : $startPos - $a[0][0];
+                $db = $direction > 0 ? $b[0][0] - $startPos : $startPos - $b[0][0];
+                if ($da !== $db) {
+                    return $da <=> $db;
+                }
+                return $b[1] <=> $a[1];
             });
+            $positions = array_map(static fn(array $pair) => $pair[0], $indexed);
             return;
         }
         // Hot path: when the atom is a plain CharClass (e.g. `\D`, `[a-z]`)
