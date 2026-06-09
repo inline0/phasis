@@ -4043,6 +4043,13 @@ trait ExpressionEvaluation
         ) {
             $fn->defineOwnProperty('arguments', PropertyDescriptor::data(JsNull::instance(), true, false, true));
             $fn->defineOwnProperty('caller', PropertyDescriptor::data(JsNull::instance(), true, false, true));
+            // The engine's own install must not count as "observed":
+            // the observed flag tracks USER redefinition of these
+            // descriptors. Live values are produced lazily on read
+            // (JsFunction::getWithReceiver -> lazyAnnexBValue), so no
+            // per-call maintenance is needed while the descriptors
+            // keep their engine-default shape.
+            $fn->annexBDescriptorsObserved = false;
         }
     }
 
@@ -4061,14 +4068,6 @@ trait ExpressionEvaluation
         array $args,
     ): JsValue|TailCallThunk {
         $this->callStack->push($fn->getName(), 0);
-
-        // Annex B Function.caller: track caller only for non-strict, non-arrow
-        // ordinary functions. Per spec, methods, arrow functions, async
-        // functions, generators, and class constructors must not expose a
-        // 'caller' own property regardless of containing code's strict mode.
-        // Also detect body-level "use strict" directives so they suppress the
-        // own 'caller' slot just like a strict flag at definition time.
-        $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
         $this->callerStack[] = $fn;
         $fnBody = $fn->getBody();
         // Only ordinary constructable functions (e.g. 'function f(){}') track
@@ -4088,83 +4087,15 @@ trait ExpressionEvaluation
                 && !$fn->isClassConstructor()
                 && $fn->isConstructable();
         }
-        // Annex B caller/arguments maintenance only kicks in once a
-        // descriptor has actually been installed on this function;
-        // until then there's nothing to update and the per-call
-        // descriptor reads are pure overhead. See JsFunction::
-        // $annexBDescriptorsObserved.
-        $setCallerProp = $fn->setCallerPropCache && $fn->annexBDescriptorsObserved;
-        $savedCaller = null;
-        $savedArguments = null;
-        $savedCallerValue = null;
-        $savedArgumentsValue = null;
-        $callerIsStrict = false;
-        // Track whether the engine should auto-update the slot during the
-        // call. If the user redefined caller/arguments to an accessor or a
-        // non-default data shape, leave it alone — the user's definition
-        // wins.
-        $autoUpdateCaller = false;
-        $autoUpdateArguments = false;
-        if ($setCallerProp) {
-            $savedCaller = $fn->getOwnPropertyDescriptor("caller");
-            $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
-            // Engine-default slot: data, writable, non-enumerable,
-            // configurable, with value null (the install-time default) or
-            // the active-call value the engine previously wrote. If the
-            // user has assigned a different value via `o.caller = 1`,
-            // leave it alone — the forbidden-extension test verifies that
-            // user-assigned values survive across a call.
-            $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
-            $autoUpdateArguments = self::isEngineDefaultArguments($savedArguments);
-            // Snapshot the values before the entry mutation: tryUpdateDataValue
-            // mutates the live descriptor in place, so $savedCaller->value
-            // would otherwise reflect the new (active-call) value by the time
-            // we restore. We only consult these JsValues on exit, not the
-            // descriptor shape, since autoUpdate already guaranteed the
-            // shape was engine-default both at entry and across the call.
-            if ($autoUpdateCaller) {
-                $savedCallerValue = $savedCaller->value ?? JsNull::instance();
-            }
-            if ($autoUpdateArguments) {
-                $savedArgumentsValue = $savedArguments->value ?? JsNull::instance();
-            }
-
-            $callerIsStrictMode = $this->strictMode
-                || ($callerFn instanceof JsFunction && $callerFn->isStrict());
-            $callerVal = ($callerIsStrictMode || !$callerFn instanceof JsFunction)
-                ? JsNull::instance()
-                : $callerFn;
-            if ($callerIsStrictMode) {
-                $callerIsStrict = true;
-            }
-            // Per the legacy function reflection proposal, the engine
-            // auto-updates the caller / arguments slots ONLY if they
-            // currently hold the default engine shape; user-defined
-            // accessors or replaced descriptors are left alone.
-            // tryUpdateDataValue mutates the existing PropertyDescriptor's
-            // value field in place, skipping the two-allocation merge
-            // path inside defineOwnProperty. autoUpdate already verified
-            // the existing slot has the engine-default shape (writable,
-            // configurable data descriptor).
-            if ($autoUpdateCaller && !$fn->tryUpdateDataValue("caller", $callerVal)) {
-                $fn->defineOwnProperty("caller", PropertyDescriptor::data(
-                    $callerVal,
-                    true,
-                    false,
-                    true,
-                ));
-            }
-            if (
-                $autoUpdateArguments
-                && !$fn->tryUpdateDataValue("arguments", JsNull::instance())
-            ) {
-                $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
-                    JsNull::instance(),
-                    true,
-                    false,
-                    true,
-                ));
-            }
+        // Lazy Annex B caller/arguments: record the activation so a
+        // mid-call read of fn.caller / fn.arguments can materialize
+        // the live value on demand (lazyAnnexBValue). Replaces the
+        // old eager per-call descriptor writes + exit restores.
+        $pushedArgRecord = $fn->setCallerPropCache;
+        if ($pushedArgRecord) {
+            $this->annexBArgFns[] = $fn;
+            $this->annexBArgArgs[] = $args;
+            $this->annexBArgEnvs[] = null;
         }
 
         // Save and potentially update strict mode for this function body.
@@ -4235,13 +4166,7 @@ trait ExpressionEvaluation
                 $this->inTailPosition = $savedTailPos;
                 $this->teardownExecuteFunction(
                     $fn,
-                    $setCallerProp,
-                    $autoUpdateCaller,
-                    $autoUpdateArguments,
-                    $savedCaller,
-                    $savedArguments,
-                    $savedCallerValue,
-                    $savedArgumentsValue,
+                    $pushedArgRecord,
                     $previousStrictMode,
                     $previousModulePath,
                     $switchModulePath,
@@ -4252,13 +4177,7 @@ trait ExpressionEvaluation
             if ($vmReturn !== null) {
                 $this->teardownExecuteFunction(
                     $fn,
-                    $setCallerProp,
-                    $autoUpdateCaller,
-                    $autoUpdateArguments,
-                    $savedCaller,
-                    $savedArguments,
-                    $savedCallerValue,
-                    $savedArgumentsValue,
+                    $pushedArgRecord,
                     $previousStrictMode,
                     $previousModulePath,
                     $switchModulePath,
@@ -4274,6 +4193,13 @@ trait ExpressionEvaluation
 
         try {
             $fnEnv = $fn->getClosure()->createChild();
+            // Make the slow-path activation's env visible to lazy
+            // fn.arguments reads so mapped-parameter values reflect
+            // their current bindings (tree-walker writes params into
+            // the env, unlike the VM's frame slots).
+            if ($pushedArgRecord) {
+                $this->annexBArgEnvs[count($this->annexBArgEnvs) - 1] = $fnEnv;
+            }
 
             // Tag the environment with the function kind so
             // EvalDeclarationInstantiation can enforce restrictions
@@ -4421,34 +4347,22 @@ trait ExpressionEvaluation
                 // Per spec 10.2.11: non-simple parameter lists produce unmapped
                 // arguments objects (poison-pill callee), same as strict mode.
                 $unmapped = $this->strictMode || $isNonSimpleParams;
-                // Fast path: if the body never references `arguments`,
-                // doesn't `eval`, and isn't expected to be patched, skip
-                // the full arguments-object construction. The hot path on
-                // recursive functions like fib was spending real time
-                // here. We still create a placeholder undefined binding
-                // when the legacy `function.arguments` getter would
-                // otherwise capture a stale value.
-                $needsArgsObject = $setCallerProp && $autoUpdateArguments;
-                if (!$needsArgsObject) {
-                    if ($fn->bodyUsesArgumentsCache === null) {
-                        $fn->bodyUsesArgumentsCache = $this->bodyUsesArguments(
-                            $fn->getBody(),
-                            $params,
-                        );
-                    }
-                    $needsArgsObject = $fn->bodyUsesArgumentsCache;
+                // Fast path: if the body never references `arguments`
+                // and doesn't `eval`, skip the full arguments-object
+                // construction. The hot path on recursive functions
+                // like fib was spending real time here. Legacy
+                // fn.arguments reads materialize lazily from the
+                // activation record (lazyAnnexBValue), so no eager
+                // construction is needed for them anymore.
+                if ($fn->bodyUsesArgumentsCache === null) {
+                    $fn->bodyUsesArgumentsCache = $this->bodyUsesArguments(
+                        $fn->getBody(),
+                        $params,
+                    );
                 }
-                if ($needsArgsObject) {
+                if ($fn->bodyUsesArgumentsCache) {
                     $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
                     $fnEnv->defineVar('arguments', $argsObj);
-                    if ($setCallerProp && $autoUpdateArguments) {
-                        $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
-                            $argsObj,
-                            true,
-                            false,
-                            true,
-                        ));
-                    }
                 }
             }
 
@@ -4631,31 +4545,10 @@ trait ExpressionEvaluation
             return $this->evaluate($body, $fnEnv);
         } finally {
             array_pop($this->callerStack);
-            if ($setCallerProp) {
-                // Only restore engine-managed slots; user-defined accessors
-                // or replaced descriptors were never touched on entry.
-                // Restore via in-place value mutation when possible to
-                // skip the merge-and-allocate path inside defineOwnProperty.
-                if ($autoUpdateCaller) {
-                    if (!$fn->tryUpdateDataValue("caller", $savedCallerValue)) {
-                        $fn->defineOwnProperty("caller", $savedCaller ?? PropertyDescriptor::data(
-                            JsNull::instance(),
-                            true,
-                            false,
-                            true,
-                        ));
-                    }
-                }
-                if ($autoUpdateArguments) {
-                    if (!$fn->tryUpdateDataValue("arguments", $savedArgumentsValue)) {
-                        $fn->defineOwnProperty("arguments", $savedArguments ?? PropertyDescriptor::data(
-                            JsNull::instance(),
-                            true,
-                            false,
-                            true,
-                        ));
-                    }
-                }
+            if ($pushedArgRecord) {
+                array_pop($this->annexBArgFns);
+                array_pop($this->annexBArgArgs);
+                array_pop($this->annexBArgEnvs);
             }
             $this->strictMode = $previousStrictMode;
             if ($switchModulePath) {
@@ -4690,8 +4583,6 @@ trait ExpressionEvaluation
         // collapse to plain property fetches now that JsFunction
         // exposes these as public.
         $this->callStack->push($fn->name, 0);
-
-        $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
         $this->callerStack[] = $fn;
 
         if ($fn->setCallerPropCache === null) {
@@ -4707,51 +4598,13 @@ trait ExpressionEvaluation
                 && !$fn->isClassConstructor()
                 && $fn->isConstructable();
         }
-        // See JsFunction::$annexBDescriptorsObserved — skip the whole
-        // descriptor-read + isEngineDefault* block when no JS code has
-        // ever installed a caller/arguments descriptor on this fn.
-        $setCallerProp = $fn->setCallerPropCache && $fn->annexBDescriptorsObserved;
-        $savedCaller = null;
-        $savedArguments = null;
-        $savedCallerValue = null;
-        $savedArgumentsValue = null;
-        $autoUpdateCaller = false;
-        $autoUpdateArguments = false;
-        if ($setCallerProp) {
-            $savedCaller = $fn->getOwnPropertyDescriptor("caller");
-            $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
-            $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
-            $autoUpdateArguments = self::isEngineDefaultArguments($savedArguments);
-            if ($autoUpdateCaller) {
-                $savedCallerValue = $savedCaller->value ?? JsNull::instance();
-            }
-            if ($autoUpdateArguments) {
-                $savedArgumentsValue = $savedArguments->value ?? JsNull::instance();
-            }
-            $callerIsStrictMode = $this->strictMode
-                || ($callerFn instanceof JsFunction && $callerFn->isStrict());
-            $callerVal = ($callerIsStrictMode || !$callerFn instanceof JsFunction)
-                ? JsNull::instance()
-                : $callerFn;
-            if ($autoUpdateCaller && !$fn->tryUpdateDataValue("caller", $callerVal)) {
-                $fn->defineOwnProperty("caller", PropertyDescriptor::data(
-                    $callerVal,
-                    true,
-                    false,
-                    true,
-                ));
-            }
-            if (
-                $autoUpdateArguments
-                && !$fn->tryUpdateDataValue("arguments", JsNull::instance())
-            ) {
-                $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
-                    JsNull::instance(),
-                    true,
-                    false,
-                    true,
-                ));
-            }
+        // Lazy Annex B: record the activation for on-demand
+        // fn.caller / fn.arguments reads instead of eager writes.
+        $pushedArgRecord = $fn->setCallerPropCache;
+        if ($pushedArgRecord) {
+            $this->annexBArgFns[] = $fn;
+            $this->annexBArgArgs[] = $args;
+            $this->annexBArgEnvs[] = null;
         }
 
         $previousStrictMode = $this->strictMode;
@@ -4790,13 +4643,7 @@ trait ExpressionEvaluation
             $this->inTailPosition = $savedTailPos;
             $this->teardownExecuteFunction(
                 $fn,
-                $setCallerProp,
-                $autoUpdateCaller,
-                $autoUpdateArguments,
-                $savedCaller,
-                $savedArguments,
-                $savedCallerValue,
-                $savedArgumentsValue,
+                $pushedArgRecord,
                 $previousStrictMode,
                 $previousModulePath,
                 $switchModulePath,
@@ -4806,13 +4653,7 @@ trait ExpressionEvaluation
         $this->inTailPosition = $savedTailPos;
         $this->teardownExecuteFunction(
             $fn,
-            $setCallerProp,
-            $autoUpdateCaller,
-            $autoUpdateArguments,
-            $savedCaller,
-            $savedArguments,
-            $savedCallerValue,
-            $savedArgumentsValue,
+            $pushedArgRecord,
             $previousStrictMode,
             $previousModulePath,
             $switchModulePath,
@@ -4837,21 +4678,15 @@ trait ExpressionEvaluation
     }
 
     /**
-     * Restore Annex B caller / arguments slots and pop the call /
-     * caller stacks. Shared by the executeFunction VM fast path and
-     * (in spirit) the slow-path try/finally; the slow path inlines the
-     * same teardown for clarity, but the fast path needs it from two
-     * exit points (return + exception) so it lives here.
+     * Pop the call / caller stacks and the lazy Annex B activation
+     * record. Shared by the executeFunction VM fast path and
+     * executeVmFunctionDirect; the slow path inlines the same teardown
+     * in its try/finally, but the fast paths need it from two exit
+     * points (return + exception) so it lives here.
      */
     private function teardownExecuteFunction(
         JsFunction $fn,
-        bool $setCallerProp,
-        bool $autoUpdateCaller,
-        bool $autoUpdateArguments,
-        ?PropertyDescriptor $savedCaller,
-        ?PropertyDescriptor $savedArguments,
-        ?JsValue $savedCallerValue,
-        ?JsValue $savedArgumentsValue,
+        bool $pushedArgRecord,
         bool $previousStrictMode,
         ?string $previousModulePath = null,
         bool $restoreModulePath = false,
@@ -4860,27 +4695,10 @@ trait ExpressionEvaluation
             $this->currentModulePath = $previousModulePath;
         }
         array_pop($this->callerStack);
-        if ($setCallerProp) {
-            if ($autoUpdateCaller) {
-                if (!$fn->tryUpdateDataValue("caller", $savedCallerValue ?? JsNull::instance())) {
-                    $fn->defineOwnProperty("caller", $savedCaller ?? PropertyDescriptor::data(
-                        JsNull::instance(),
-                        true,
-                        false,
-                        true,
-                    ));
-                }
-            }
-            if ($autoUpdateArguments) {
-                if (!$fn->tryUpdateDataValue("arguments", $savedArgumentsValue ?? JsNull::instance())) {
-                    $fn->defineOwnProperty("arguments", $savedArguments ?? PropertyDescriptor::data(
-                        JsNull::instance(),
-                        true,
-                        false,
-                        true,
-                    ));
-                }
-            }
+        if ($pushedArgRecord) {
+            array_pop($this->annexBArgFns);
+            array_pop($this->annexBArgArgs);
+            array_pop($this->annexBArgEnvs);
         }
         $this->strictMode = $previousStrictMode;
         $this->callStack->pop();
@@ -6394,56 +6212,6 @@ trait ExpressionEvaluation
         } finally {
             $this->framePoolDepth = $depth;
         }
-    }
-
-    /**
-     * Annex B legacy `function.caller`: detect whether the descriptor
-     * still holds the engine's default shape (data, writable, non-
-     * enumerable, configurable, with null or a recognized prior caller
-     * function value). User-assigned values are left untouched on entry
-     * and exit.
-     */
-    private static function isEngineDefaultCaller(?PropertyDescriptor $d, ?JsFunction $callerFn): bool
-    {
-        if (
-            $d === null
-            || !$d->isDataDescriptor()
-            || ($d->writable ?? false) !== true
-            || ($d->enumerable ?? true) !== false
-            || ($d->configurable ?? false) !== true
-        ) {
-            return false;
-        }
-        $v = $d->value;
-        return $v instanceof JsNull
-            || ($v instanceof JsFunction && $v === $callerFn);
-    }
-
-    /**
-     * Annex B legacy `function.arguments`: detect whether the descriptor
-     * holds the engine's default shape, with either null (install-time)
-     * or a previously recorded arguments object. User-overridden values
-     * survive the call unchanged.
-     */
-    private static function isEngineDefaultArguments(?PropertyDescriptor $d): bool
-    {
-        if (
-            $d === null
-            || !$d->isDataDescriptor()
-            || ($d->writable ?? false) !== true
-            || ($d->enumerable ?? true) !== false
-            || ($d->configurable ?? false) !== true
-        ) {
-            return false;
-        }
-        $v = $d->value;
-        if ($v instanceof JsNull) {
-            return true;
-        }
-        if ($v instanceof JsObject) {
-            return $v->getOwnPropertyDescriptor('[[IsArguments]]') !== null;
-        }
-        return false;
     }
 
     /**

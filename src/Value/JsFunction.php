@@ -630,6 +630,53 @@ class JsFunction extends JsObject
     }
 
     /**
+     * Lazy Annex B fn.caller / fn.arguments: while the descriptor
+     * keeps its engine-default shape (data, writable, non-enumerable,
+     * configurable, value null), a read during an active invocation
+     * materializes the live value from the interpreter's activation
+     * records — V8's stack-walking semantics — instead of the engine
+     * eagerly writing the slot on every call.
+     */
+    private function liveAnnexBValue(string $name): ?JsValue
+    {
+        $desc = $this->properties->get($name);
+        if (
+            $desc === null
+            || $desc->get !== null
+            || $desc->set !== null
+            || $desc->writable !== true
+            || $desc->configurable !== true
+            || !$desc->value instanceof JsNull
+        ) {
+            return null;
+        }
+        $interp = $this->realm?->getInterpreter() ?? self::$interpreterInstance;
+        return $interp?->lazyAnnexBValue($this, $name);
+    }
+
+    protected function getWithReceiver(string $name, JsObject $receiver): JsValue
+    {
+        if ($name === 'caller' || $name === 'arguments') {
+            $live = $this->liveAnnexBValue($name);
+            if ($live !== null) {
+                return $live;
+            }
+        }
+        return parent::getWithReceiver($name, $receiver);
+    }
+
+    public function getOwnPropertyDescriptor(string $name): ?\Phasis\Object\PropertyDescriptor
+    {
+        if ($name === 'caller' || $name === 'arguments') {
+            $live = $this->liveAnnexBValue($name);
+            if ($live !== null) {
+                return \Phasis\Object\PropertyDescriptor::data($live, true, false, true);
+            }
+        }
+        return parent::getOwnPropertyDescriptor($name);
+    }
+
+    /**
      * Memoised: true when the function body references the `arguments`
      * Identifier (outside nested non-arrow function/class/method bodies)
      * at a textual offset earlier than the first block-scoped

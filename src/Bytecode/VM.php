@@ -1526,7 +1526,7 @@ final class VM
                             }
                             if ($inlineable) {
                                 $newCf = $callee->compiled;
-                                $restore = $this->interp->setupInlineVmCall($callee, $undef);
+                                $restore = $this->interp->setupInlineVmCall($callee, $undef, $args);
                                 $paramSlots = $newCf->paramSlots;
                                 $paramCount = count($paramSlots);
                                 $newFrame = $this->interp->borrowInlineVmFrame(
@@ -1752,7 +1752,7 @@ final class VM
                                         );
                                     }
                                     $newCf = $callee->compiled;
-                                    $restore = $this->interp->setupInlineVmCall($callee, $newObj);
+                                    $restore = $this->interp->setupInlineVmCall($callee, $newObj, $args);
                                     $paramSlots = $newCf->paramSlots;
                                     $paramCount = count($paramSlots);
                                     $newFrame = $this->interp->borrowInlineVmFrame(
@@ -2004,7 +2004,7 @@ final class VM
                             }
                             if ($methodInlineable) {
                                 $newCf = $method->compiled;
-                                $restore = $this->interp->setupInlineVmCall($method, $receiver);
+                                $restore = $this->interp->setupInlineVmCall($method, $receiver, $args);
                                 $paramSlots = $newCf->paramSlots;
                                 $paramCount = count($paramSlots);
                                 $newFrame = $this->interp->borrowInlineVmFrame(

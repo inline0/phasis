@@ -182,7 +182,7 @@ class Interpreter
      * Per-call interpreter-state setup for the VM's inline-call path
      * (custom callstack). Mirrors `executeVmFunctionDirect`'s setup
      * for any callee shape the VM elects to inline: handles the
-     * Annex B caller/arguments magic for sloppy non-arrow callees,
+     * activation recording for lazy Annex B caller/arguments reads,
      * the strictMode swap, the module-path swap, and the sloppy
      * this-binding adjustment.
      *
@@ -197,30 +197,21 @@ class Interpreter
      * (possibly adjusted) `thisValue` the VM should use as the
      * callee's `this` binding.
      *
+     * @param list<\Phasis\Value\JsValue> $args
      * @return array{
      *     0: \Phasis\Value\JsValue,
      *     1: bool,
      *     2: bool,
      *     3: ?string,
      *     4: bool,
-     *     5: bool,
-     *     6: bool,
-     *     7: ?\Phasis\Object\PropertyDescriptor,
-     *     8: ?\Phasis\Object\PropertyDescriptor,
-     *     9: ?\Phasis\Value\JsValue,
-     *     10: ?\Phasis\Value\JsValue,
      * }
      */
     public function setupInlineVmCall(
         \Phasis\Value\JsFunction $fn,
         \Phasis\Value\JsValue $thisValue,
+        array $args,
     ): array {
         $this->callStack->push($fn->name, 0);
-
-        // The previous top frame ($callerFn) is only consulted inside
-        // the Annex B `if ($setCallerProp)` block below — most calls
-        // never read it. Push first and fetch lazily so the hot path
-        // skips the empty/count/index dance entirely.
         $this->callerStack[] = $fn;
 
         if ($fn->setCallerPropCache === null) {
@@ -236,60 +227,17 @@ class Interpreter
                 && !$fn->isClassConstructor()
                 && $fn->isConstructable();
         }
-        // Annex B caller/arguments maintenance: only do the descriptor
-        // dance when the function has actually had a `caller` or
-        // `arguments` descriptor installed at some point. The flag is
-        // sticky and JsFunction::defineOwnProperty flips it. The vast
-        // majority of functions never have these descriptors written,
-        // so the per-call cost of two getOwnPropertyDescriptor lookups
-        // + two isEngineDefault* checks is pure waste — observable on
-        // ctor-heavy and fn-recurse benchmarks.
-        $setCallerProp = $fn->setCallerPropCache && $fn->annexBDescriptorsObserved;
-        $savedCaller = null;
-        $savedArguments = null;
-        $savedCallerValue = null;
-        $savedArgumentsValue = null;
-        $autoUpdateCaller = false;
-        $autoUpdateArguments = false;
-        if ($setCallerProp) {
-            // $fn was just pushed at count-1; the actual caller frame
-            // sits one slot below.
-            $stackCount = count($this->callerStack);
-            $callerFn = $stackCount >= 2 ? $this->callerStack[$stackCount - 2] : null;
-            $savedCaller = $fn->getOwnPropertyDescriptor("caller");
-            $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
-            $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
-            $autoUpdateArguments = self::isEngineDefaultArguments($savedArguments);
-            if ($autoUpdateCaller) {
-                $savedCallerValue = $savedCaller->value ?? \Phasis\Value\JsNull::instance();
-            }
-            if ($autoUpdateArguments) {
-                $savedArgumentsValue = $savedArguments->value ?? \Phasis\Value\JsNull::instance();
-            }
-            $callerIsStrictMode = $this->strictMode
-                || ($callerFn instanceof \Phasis\Value\JsFunction && $callerFn->isStrict());
-            $callerVal = ($callerIsStrictMode || !$callerFn instanceof \Phasis\Value\JsFunction)
-                ? \Phasis\Value\JsNull::instance()
-                : $callerFn;
-            if ($autoUpdateCaller && !$fn->tryUpdateDataValue("caller", $callerVal)) {
-                $fn->defineOwnProperty("caller", \Phasis\Object\PropertyDescriptor::data(
-                    $callerVal,
-                    true,
-                    false,
-                    true,
-                ));
-            }
-            if (
-                $autoUpdateArguments
-                && !$fn->tryUpdateDataValue("arguments", \Phasis\Value\JsNull::instance())
-            ) {
-                $fn->defineOwnProperty("arguments", \Phasis\Object\PropertyDescriptor::data(
-                    \Phasis\Value\JsNull::instance(),
-                    true,
-                    false,
-                    true,
-                ));
-            }
+        // Lazy Annex B: instead of writing fn.caller / fn.arguments
+        // descriptors on every call (descriptor reads + writes +
+        // restore on exit), record the activation cheaply. A read of
+        // fn.caller / fn.arguments materializes the value on demand
+        // from these records (see lazyAnnexBValue), matching V8's
+        // stack-walking semantics.
+        $pushedArgRecord = $fn->setCallerPropCache;
+        if ($pushedArgRecord) {
+            $this->annexBArgFns[] = $fn;
+            $this->annexBArgArgs[] = $args;
+            $this->annexBArgEnvs[] = null;
         }
 
         $previousStrictMode = $this->strictMode;
@@ -335,13 +283,7 @@ class Interpreter
             $previousStrictMode,
             $switchModulePath,
             $previousModulePath,
-            $setCallerProp,
-            $autoUpdateCaller,
-            $autoUpdateArguments,
-            $savedCaller,
-            $savedArguments,
-            $savedCallerValue,
-            $savedArgumentsValue,
+            $pushedArgRecord,
         ];
     }
 
@@ -354,65 +296,93 @@ class Interpreter
      *     2: bool,
      *     3: ?string,
      *     4: bool,
-     *     5: bool,
-     *     6: bool,
-     *     7: ?\Phasis\Object\PropertyDescriptor,
-     *     8: ?\Phasis\Object\PropertyDescriptor,
-     *     9: ?\Phasis\Value\JsValue,
-     *     10: ?\Phasis\Value\JsValue
      * } $restore
      */
     public function teardownInlineVmCall(\Phasis\Value\JsFunction $fn, array $restore): void
     {
         // Hot path: direct-index reads instead of list destructure.
-        // The 11-slot destructure showed up as a per-call cost on
-        // ctor-heavy / proto-method (100k+ inline-call returns).
-        // Annex B / module-path slots are checked only when their
-        // gate flag (slot 2 / slot 4) is true.
+        // Module-path restore is checked only when its gate flag
+        // (slot 2) is true.
         if ($restore[2]) {
             $this->currentModulePath = $restore[3];
         }
         array_pop($this->callerStack);
         if ($restore[4]) {
-            if ($restore[5]) {
-                if (
-                    !$fn->tryUpdateDataValue(
-                        "caller",
-                        $restore[9] ?? \Phasis\Value\JsNull::instance(),
-                    )
-                ) {
-                    $fn->defineOwnProperty(
-                        "caller",
-                        $restore[7] ?? \Phasis\Object\PropertyDescriptor::data(
-                            \Phasis\Value\JsNull::instance(),
-                            true,
-                            false,
-                            true,
-                        ),
-                    );
-                }
-            }
-            if ($restore[6]) {
-                if (
-                    !$fn->tryUpdateDataValue(
-                        "arguments",
-                        $restore[10] ?? \Phasis\Value\JsNull::instance(),
-                    )
-                ) {
-                    $fn->defineOwnProperty(
-                        "arguments",
-                        $restore[8] ?? \Phasis\Object\PropertyDescriptor::data(
-                            \Phasis\Value\JsNull::instance(),
-                            true,
-                            false,
-                            true,
-                        ),
-                    );
-                }
-            }
+            array_pop($this->annexBArgFns);
+            array_pop($this->annexBArgArgs);
+            array_pop($this->annexBArgEnvs);
         }
         $this->strictMode = $restore[1];
         $this->callStack->pop();
+    }
+
+    /**
+     * Activation records for lazy Annex B fn.arguments reads: one
+     * entry per active call of a sloppy ordinary function (the
+     * setCallerPropCache-eligible shape), aligned across the three
+     * arrays. A read of fn.arguments mid-call materializes a fresh
+     * arguments object from the topmost record for that function;
+     * when no record exists the descriptor's stored null stands.
+     * Pushed by executeFunction / executeVmFunctionDirect /
+     * setupInlineVmCall, popped by their teardowns.
+     *
+     * @var list<\Phasis\Value\JsFunction> */
+    public array $annexBArgFns = [];
+    /** @var list<list<\Phasis\Value\JsValue>> */
+    public array $annexBArgArgs = [];
+    /** @var list<?Environment> */
+    public array $annexBArgEnvs = [];
+
+    /**
+     * Compute the live Annex B `caller` / `arguments` value for a
+     * sloppy ordinary function that is currently executing. Returns
+     * null when the function has no active invocation (the stored
+     * descriptor value — null — stands) or is not eligible. Mirrors
+     * V8: the value is materialized at read time by walking the
+     * active-call records, not eagerly written per call.
+     */
+    public function lazyAnnexBValue(\Phasis\Value\JsFunction $fn, string $name): ?\Phasis\Value\JsValue
+    {
+        if ($fn->setCallerPropCache !== true) {
+            return null;
+        }
+        if ($name === 'caller') {
+            for ($i = count($this->callerStack) - 1; $i >= 0; $i--) {
+                if ($this->callerStack[$i] === $fn) {
+                    $callerFn = $i > 0 ? $this->callerStack[$i - 1] : null;
+                    if (!$callerFn instanceof \Phasis\Value\JsFunction) {
+                        return \Phasis\Value\JsNull::instance();
+                    }
+                    $callerStrict = $callerFn->effectiveStrictCache ?? $callerFn->isStrict();
+                    return $callerStrict ? \Phasis\Value\JsNull::instance() : $callerFn;
+                }
+            }
+            return null;
+        }
+        // arguments: materialize a fresh snapshot from the topmost
+        // activation record. Mapped-parameter liveness is approximated
+        // by reading the current env binding when the activation ran
+        // through the tree-walker (env recorded); VM-run bodies keep
+        // call-time values, matching the engine's pre-lazy behavior
+        // for compiled bodies.
+        for ($i = count($this->annexBArgFns) - 1; $i >= 0; $i--) {
+            if ($this->annexBArgFns[$i] === $fn) {
+                $args = $this->annexBArgArgs[$i];
+                $env = $this->annexBArgEnvs[$i];
+                if ($env !== null) {
+                    $params = $fn->getParams();
+                    $n = min(count($params), count($args));
+                    for ($p = 0; $p < $n; $p++) {
+                        $param = $params[$p];
+                        if ($param instanceof \Phasis\Ast\Expression\Identifier && $env->has($param->name)) {
+                            $args[$p] = $env->get($param->name);
+                        }
+                    }
+                }
+                return $this->makeArgumentsObject($args, $fn, false);
+            }
+        }
+        return null;
     }
 
     /**
