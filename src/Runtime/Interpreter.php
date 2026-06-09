@@ -262,10 +262,11 @@ class Interpreter
         // takes the remaining branches.
         if (!$this->strictMode && !$fn->isArrow) {
             if ($thisValue instanceof \Phasis\Value\JsUndefined) {
-                $thisValue = $this->getGlobalObject();
+                // Callee-realm global per OrdinaryCallBindThis.
+                $thisValue = $this->getFunctionGlobalObject($fn);
             } elseif (!$thisValue instanceof \Phasis\Value\JsObject) {
                 if ($thisValue instanceof \Phasis\Value\JsNull) {
-                    $thisValue = $this->getGlobalObject();
+                    $thisValue = $this->getFunctionGlobalObject($fn);
                 } elseif (
                     $thisValue instanceof \Phasis\Value\JsNumber
                     || $thisValue instanceof \Phasis\Value\JsString

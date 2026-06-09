@@ -634,6 +634,79 @@ trait CompilerBailoutAnalysis
     }
 
     /**
+     * Whether any nested function or class registered during this
+     * compile lexically references `this` (or `super`) in a position
+     * that resolves through the OUTER function's environment at run
+     * time: arrow bodies (own `this` is lexical), arrow parameter
+     * defaults, and class outer-scope positions (heritage expression,
+     * computed member keys). Non-arrow nested functions have their
+     * own `this` binding and stop the descent. When true, the outer
+     * function must keep its env `this` binding (and env allocation)
+     * so those references resolve correctly — skipping it would make
+     * the nested arrow read a stale or global `this`.
+     */
+    private function nestedFnsLexicallyReferenceThis(): bool
+    {
+        foreach ($this->nestedFns as $node) {
+            if ($node instanceof \Phasis\Ast\Expression\ArrowFunction) {
+                if (self::lexicalThisInSubtree($node)) {
+                    return true;
+                }
+            }
+            // Non-arrow nested functions bind their own this.
+        }
+        foreach ($this->classNodes as $node) {
+            if ($node instanceof Node && self::lexicalThisInSubtree($node)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Recursive scan for ThisExpression / `super` reachable without
+     * crossing a non-arrow function boundary. Field initializers and
+     * method bodies inside classes are FunctionExpression-shaped and
+     * stop the walk; computed keys and heritage expressions are plain
+     * expressions and are descended. Conservative false positives
+     * (e.g. a class field initializer expressed as a bare expression
+     * node) only cost the fast path, never correctness.
+     */
+    private static function lexicalThisInSubtree(Node $node): bool
+    {
+        if ($node instanceof \Phasis\Ast\Expression\ThisExpression) {
+            return true;
+        }
+        if ($node instanceof Identifier) {
+            // `super` parses as an Identifier; a nested arrow using
+            // super.x resolves [[HomeObject]] through the outer env.
+            return $node->name === 'super';
+        }
+        if (
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof FunctionDeclaration
+        ) {
+            return false;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if (self::lexicalThisInSubtree($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::lexicalThisInSubtree($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Walk a nested function's params + body for any Identifier
      * reference to a name in the OUTER function's local slots that
      * the nested function does not itself shadow. Returns true if

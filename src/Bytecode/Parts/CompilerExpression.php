@@ -90,7 +90,13 @@ trait CompilerExpression
             return;
         }
         if ($node instanceof ThisExpression) {
-            $this->emit(Op::LOAD_THIS);
+            // Ordinary (non-arrow, non-generator) function bodies read
+            // `this` straight from the frame: the receiver is fixed for
+            // the whole call and every dispatch path populates
+            // Frame->thisValue with the coerced value. Arrows (lexical
+            // this), generators (snapshot resume), and program bodies
+            // keep the env-chain walk.
+            $this->emit($this->thisFromFrame ? Op::LOAD_THIS_FRAME : Op::LOAD_THIS);
             return;
         }
         if ($node instanceof UpdateExpression) {

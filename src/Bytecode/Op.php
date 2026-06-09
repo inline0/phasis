@@ -33,7 +33,8 @@ final class Op
     public const LOAD_NULL = 12;   // push JsNull
     public const LOAD_TRUE = 13;   // push JsBoolean(true)
     public const LOAD_FALSE = 14;  // push JsBoolean(false)
-    public const LOAD_THIS = 15;   // push frame->thisValue
+    public const LOAD_THIS = 15;   // push this via env chain walk (arrow lexical-this, derived-ctor TDZ, generators)
+    public const LOAD_THIS_FRAME = 111; // push frame->thisValue directly (ordinary fn bodies; receiver fixed per call)
 
     // ---- Locals ---------------------------------------------------------
     public const LOAD_LOCAL = 20;  // L  — push frame->locals[L]
@@ -179,6 +180,7 @@ final class Op
             case self::LOAD_TRUE:
             case self::LOAD_FALSE:
             case self::LOAD_THIS:
+            case self::LOAD_THIS_FRAME:
             case self::ADD:
             case self::SUB:
             case self::MUL:

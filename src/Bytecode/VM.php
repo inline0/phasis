@@ -814,6 +814,14 @@ final class VM
                             $stack[$sp++] = $env->get('this');
                             $pc++;
                             break;
+                        case Op::LOAD_THIS_FRAME:
+                            // Ordinary function bodies: the receiver was
+                            // coerced (OrdinaryCallBindThis) by whichever
+                            // dispatch path populated the frame, and it
+                            // cannot change for the duration of the call.
+                            $stack[$sp++] = $thisValue;
+                            $pc++;
+                            break;
 
                         case Op::LOAD_LOCAL:
                             $stack[$sp++] = $locals[$code[$pc + 1]];
@@ -1446,11 +1454,15 @@ final class VM
                             // hot CALL path collapses to a single field fetch.
                             $eligible = $callee->vmDirectDispatchCache;
                             if ($eligible === null) {
+                                // No homeObject gate: compiled bodies are
+                                // guaranteed super-free (the compiler bails
+                                // on super call / member / assign), and
+                                // nested arrows referencing super disable
+                                // canSkipEnvAlloc via the lexical-this scan.
                                 $eligible = $callee->compiled !== null
                                     && $callee->compiled->canSkipEnvAlloc
                                     && !$callee->isClassConstructor()
                                     && !$callee->isDerivedConstructor()
-                                    && $callee->getHomeObject() === null
                                     && $callee->getNativeCallable() === null
                                     && !$callee->isAsync()
                                     && !$callee->isGenerator();
@@ -1982,11 +1994,12 @@ final class VM
                             // adjustment inside setupInlineVmCall).
                             $methodEligible = $method->vmDirectDispatchCache;
                             if ($methodEligible === null) {
+                                // No homeObject gate — see Op::CALL: compiled
+                                // bodies are super-free by construction.
                                 $methodEligible = $method->compiled !== null
                                     && $method->compiled->canSkipEnvAlloc
                                     && !$method->isClassConstructor()
                                     && !$method->isDerivedConstructor()
-                                    && $method->getHomeObject() === null
                                     && $method->getNativeCallable() === null
                                     && !$method->isAsync()
                                     && !$method->isGenerator();

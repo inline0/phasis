@@ -241,11 +241,22 @@ final class Compiler
      */
     private bool $inGenerator = false;
 
+    /**
+     * True while compiling an ordinary (non-arrow, non-generator)
+     * function body: ThisExpression lowers to LOAD_THIS_FRAME, which
+     * reads the receiver off the Frame instead of walking the env
+     * chain. Arrows need the lexical walk, generator bodies resume
+     * from snapshots whose env is authoritative, and program bodies
+     * resolve the global this binding — all three keep LOAD_THIS.
+     */
+    private bool $thisFromFrame = false;
+
     public function compile(JsFunction $fn): CompiledFunction
     {
         if ($fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
             throw new CompilerBailout('non-ordinary function kind');
         }
+        $this->thisFromFrame = !$fn->isArrow() && !$fn->isGenerator();
         // Generators get a stricter bailout: only "simple" bodies
         // (no yield* delegation, no try/catch/finally containing
         // yield, not an async generator) can be lowered to the
@@ -299,7 +310,13 @@ final class Compiler
             // single expression directly.
             $this->compileExpression($body);
             $this->emit(Op::RET);
-            $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
+            // needsThis now means "the env must carry a `this` binding":
+            // true when the body's own bytecode walks the env for this
+            // (LOAD_THIS — arrows/generators) or when a nested arrow /
+            // class outer-position lexically references this or super
+            // and will resolve it through the env chain at run time.
+            $needsEnvThis = in_array(Op::LOAD_THIS, $this->code, true)
+                || $this->nestedFnsLexicallyReferenceThis();
             $cf = new CompiledFunction(
                 code: $this->code,
                 consts: $this->consts,
@@ -308,9 +325,9 @@ final class Compiler
                 paramSlots: $this->paramSlots,
                 slotCount: max(1, count($this->localNames)),
                 nestedFns: $this->nestedFns,
-                needsThis: $needsThis,
+                needsThis: $needsEnvThis,
                 needsArgsBinding: false,
-                canSkipEnvAlloc: !$needsThis,
+                canSkipEnvAlloc: !$needsEnvThis,
             );
             $cf->callMethodDisplays = $this->callMethodDisplays;
             return $cf;
@@ -342,7 +359,10 @@ final class Compiler
         $this->emit(Op::LOAD_UNDEF);
         $this->emit(Op::RET);
 
-        $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
+        // See the expression-body site above for the needsThis /
+        // canSkipEnvAlloc semantics under frame-based this.
+        $needsEnvThis = in_array(Op::LOAD_THIS, $this->code, true)
+            || $this->nestedFnsLexicallyReferenceThis();
         $cf = new CompiledFunction(
             code: $this->code,
             consts: $this->consts,
@@ -351,9 +371,9 @@ final class Compiler
             paramSlots: $this->paramSlots,
             slotCount: max(1, count($this->localNames)),
             nestedFns: $this->nestedFns,
-            needsThis: $needsThis,
+            needsThis: $needsEnvThis,
             needsArgsBinding: false,
-            canSkipEnvAlloc: !$needsThis,
+            canSkipEnvAlloc: !$needsEnvThis,
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
@@ -379,6 +399,9 @@ final class Compiler
      */
     public function compileProgram(\Phasis\Ast\Program $program): CompiledFunction
     {
+        // Program bodies resolve `this` via the env chain (global this
+        // binding); never read the frame.
+        $this->thisFromFrame = false;
         // Detect "use strict" prologue so compileAssignment can bail
         // for non-local identifier writes. The spec requires LHS
         // reference resolution to occur BEFORE the RHS is evaluated,

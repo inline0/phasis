@@ -144,8 +144,13 @@ final class CompiledFunction
      * @param list<string>  $localNames  Slot index → name (diagnostics).
      * @param list<int>     $paramSlots  Parameter index → local slot.
      * @param list<\Phasis\Ast\Node> $nestedFns Templates for nested fns.
-     * @param bool $needsThis       True when LOAD_THIS appears anywhere
-     *        in the bytecode. Lets executeFunction skip the
+     * @param bool $needsThis       True when the env must carry a `this`
+     *        binding for this body: its own bytecode walks the env for
+     *        this (LOAD_THIS — arrows / generators), or a nested arrow
+     *        or class outer position lexically references this/super
+     *        and resolves it through the env chain at run time.
+     *        Frame-this bodies (LOAD_THIS_FRAME) with no such nested
+     *        references report false, letting executeFunction skip the
      *        defineVar('this', ...) that the tree-walker performs.
      * @param bool $needsArgsBinding True when LOAD_NAME / STORE_NAME
      *        targets a parameter name (the body referenced the param

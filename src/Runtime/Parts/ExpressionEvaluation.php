@@ -4115,20 +4115,22 @@ trait ExpressionEvaluation
         }
 
         // Hot path for VM-compiled bodies with no env-binding needs:
-        // bytecode never reads `this` via env (needsThis=false), never
-        // touches `arguments` / `new.target` / `eval` / `with` (compiler
-        // bailouts), and the compiler routes every var/let/const to a
-        // frame slot. The closure env is therefore semantically
-        // equivalent to a fresh child env for the duration of this call,
-        // so we hand it straight to the Frame and skip the per-call
-        // Environment allocation. fn-recurse on fib(22) is ~4M calls;
-        // dropping the createChild here cuts the dominant per-call cost.
+        // bytecode never reads `this` via env (LOAD_THIS_FRAME reads
+        // the frame; needsThis=false means no env binding required),
+        // never touches `arguments` / `new.target` / `eval` / `with`
+        // (compiler bailouts), and the compiler routes every
+        // var/let/const to a frame slot. The closure env is therefore
+        // semantically equivalent to a fresh child env for the duration
+        // of this call, so we hand it straight to the Frame and skip
+        // the per-call Environment allocation. No homeObject gate:
+        // compiled bodies are super-free (compiler bails on super), and
+        // nested arrows referencing super disable canSkipEnvAlloc via
+        // the lexical-this scan.
         if (
             $fn->compiled !== null
             && $fn->compiled->canSkipEnvAlloc
             && !$fn->isClassConstructor()
             && !$fn->isDerivedConstructor()
-            && $fn->getHomeObject() === null
         ) {
             if ($fn->effectiveStrictCache === null) {
                 $body = $fn->getBody();
@@ -4143,10 +4145,11 @@ trait ExpressionEvaluation
             // the coerced value anyway.
             if (!$this->strictMode && !$fn->isArrow()) {
                 if ($thisValue instanceof JsUndefined) {
-                    $thisValue = $this->getGlobalObject();
+                    // Callee-realm global per OrdinaryCallBindThis.
+                    $thisValue = $this->getFunctionGlobalObject($fn);
                 } elseif (!$thisValue instanceof JsObject) {
                     if ($thisValue instanceof JsNull) {
-                        $thisValue = $this->getGlobalObject();
+                        $thisValue = $this->getFunctionGlobalObject($fn);
                     } elseif (
                         $thisValue instanceof JsNumber
                         || $thisValue instanceof JsString
@@ -4623,7 +4626,8 @@ trait ExpressionEvaluation
         $this->strictMode = $fn->effectiveStrictCache;
         if (!$this->strictMode && !$fn->isArrow) {
             if ($thisValue instanceof JsUndefined || $thisValue instanceof JsNull) {
-                $thisValue = $this->getGlobalObject();
+                // Callee-realm global per OrdinaryCallBindThis.
+                $thisValue = $this->getFunctionGlobalObject($fn);
             } elseif (
                 !$thisValue instanceof JsObject
                 && ($thisValue instanceof JsNumber
