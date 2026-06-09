@@ -164,11 +164,47 @@ trait MatcherSequence
     }
 
     /**
+     * Memoizing wrapper: short-circuits a structural position already known to
+     * fail this attempt (sound only when $memoize — see {@see $failMemo}). The
+     * inner driver's own recursive calls route back through here, so the memo
+     * applies at every nesting level.
+     *
      * @param list<Node> $terms
      * @param array<int, ?array{0:int,1:int}> $captures
      * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
      */
     private function matchSeqWithCont(
+        array $terms,
+        int $idx,
+        int $pos,
+        array &$captures,
+        int $direction,
+        \Closure $cont,
+    ): ?int {
+        if (!$this->memoize || $idx >= count($terms)) {
+            return $this->matchSeqWithContUnmemoized($terms, $idx, $pos, $captures, $direction, $cont);
+        }
+
+        $node = $direction > 0 ? $terms[$idx] : $terms[count($terms) - 1 - $idx];
+        $key = spl_object_id($node) . ':' . $pos . ':' . $direction;
+        if (isset($this->failMemo[$key])) {
+            return null;
+        }
+
+        $result = $this->matchSeqWithContUnmemoized($terms, $idx, $pos, $captures, $direction, $cont);
+        if ($result === null) {
+            $this->failMemo[$key] = true;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param list<Node> $terms
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
+     */
+    private function matchSeqWithContUnmemoized(
         array $terms,
         int $idx,
         int $pos,
