@@ -158,9 +158,12 @@ class Matcher
      * where each capture is [start, end, value] or null if it didn't
      * participate. Returns null when no match found.
      *
+     * @param bool $anchored Attempt the match only at $startCodeUnit (no forward
+     *   scan) — used by the scanner to confirm a fast-path probe at its position.
+     *
      * @return array{index: int, end: int, captures: list<?array{0:int,1:int,2:string}>}|null
      */
-    public function match(string $inputUtf8, int $startCodeUnit): ?array
+    public function match(string $inputUtf8, int $startCodeUnit, bool $anchored = false): ?array
     {
         $this->input = $this->unicode
             ? self::utf8ToCodePoints($inputUtf8)
@@ -186,7 +189,7 @@ class Matcher
         $captures = array_fill(0, $this->pattern->groupCount + 1, null);
         // Sticky (`y`): the match may begin only at the start offset; no forward
         // scan. This realises a leading-`\G` anchor (`PatternConverter` emits `y`).
-        $limit = $this->sticky ? $startInternal : $this->inputLen;
+        $limit = ($this->sticky || $anchored) ? $startInternal : $this->inputLen;
         for ($pos = $startInternal; $pos <= $limit; $pos++) {
             $caps = $captures;
             $end = $this->matchNode($this->pattern->body, $pos, $caps, /*direction=*/+1);
