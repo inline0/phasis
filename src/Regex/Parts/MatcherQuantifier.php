@@ -39,19 +39,17 @@ trait MatcherQuantifier
         // Lazy quantifier with a varying atom needs streaming
         // iter-by-iter enumeration; otherwise enumerateQuantifierMulti
         // explodes for shapes like `((.*\n?)*?)<\/body>`.
-        if (!$q->greedy && $this->atomCanVary($q->atom)) {
-            $rest = $this->matchLazyQuantifierStreaming(
-                $q->atom,
-                $q->min,
-                $q->max,
-                $innerGroups,
-                $pos,
-                $captures,
-                $direction,
-                function (int $end, array &$caps) use ($terms, $idx, $direction): ?int {
-                    return $this->matchSequenceFrom($terms, $idx + 1, $end, $caps, $direction);
-                },
-            );
+        if ($this->atomCanVary($q->atom)) {
+            // Varying atoms must stream (greedy AND lazy): lazy to avoid the
+            // exponential enumerate-everything blowup, greedy because the spec
+            // backtracking order interleaves sequel attempts with the atom's
+            // alternatives in a way longest-end-first cannot reproduce.
+            $cont = function (int $end, array &$caps) use ($terms, $idx, $direction): ?int {
+                return $this->matchSequenceFrom($terms, $idx + 1, $end, $caps, $direction);
+            };
+            $rest = $q->greedy
+                ? $this->matchGreedyQuantifierStreaming($q->atom, $q->min, $q->max, $innerGroups, $pos, $captures, $direction, $cont)
+                : $this->matchLazyQuantifierStreaming($q->atom, $q->min, $q->max, $innerGroups, $pos, $captures, $direction, $cont);
             if ($rest !== null) {
                 return $rest;
             }
@@ -392,6 +390,83 @@ trait MatcherQuantifier
             );
             if ($rest !== null) {
                 $captures = $newCaps;
+                return $rest;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Streaming greedy-quantifier driver — the greedy mirror of
+     * {@see matchLazyQuantifierStreaming}, and the spec ordering for a greedy
+     * quantifier whose atom has alternatives: ES RepeatMatcher backtracks the
+     * most recent choice point, so the sequel at a shorter end is tried BEFORE
+     * an earlier iteration's next alternative. Materialising all ends and
+     * taking longest-first (enumerate + reverse) gets that order wrong.
+     *
+     * @param list<int> $innerGroups
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
+     */
+    private function matchGreedyQuantifierStreaming(
+        Node $atom,
+        int $min,
+        ?int $max,
+        array $innerGroups,
+        int $pos,
+        array &$captures,
+        int $direction,
+        \Closure $cont,
+    ): ?int {
+        return $this->greedyQuantifierStep($atom, $min, $max, $innerGroups, $pos, $captures, $direction, 0, $cont);
+    }
+
+    /**
+     * @param list<int> $innerGroups
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
+     */
+    private function greedyQuantifierStep(
+        Node $atom,
+        int $min,
+        ?int $max,
+        array $innerGroups,
+        int $pos,
+        array &$captures,
+        int $direction,
+        int $iterCount,
+        \Closure $cont,
+    ): ?int {
+        // Greedy: extend with another iteration before trying the sequel here.
+        // Inner-group captures reset per iteration (spec RepeatMatcher).
+        if ($max === null || $iterCount < $max) {
+            $cleared = $captures;
+            foreach ($innerGroups as $gi) {
+                $cleared[$gi] = null;
+            }
+            foreach ($this->enumerateAtomEnds($atom, $pos, $cleared, $direction) as [$newPos, $newCaps]) {
+                if ($newPos === $pos) {
+                    // A zero-width iteration only counts toward min; recursing on
+                    // the same position past min would loop forever.
+                    if ($iterCount < $min) {
+                        $rest = $this->greedyQuantifierStep($atom, $min, $max, $innerGroups, $newPos, $newCaps, $direction, $iterCount + 1, $cont);
+                        if ($rest !== null) {
+                            $captures = $newCaps;
+                            return $rest;
+                        }
+                    }
+                    continue;
+                }
+                $rest = $this->greedyQuantifierStep($atom, $min, $max, $innerGroups, $newPos, $newCaps, $direction, $iterCount + 1, $cont);
+                if ($rest !== null) {
+                    $captures = $newCaps;
+                    return $rest;
+                }
+            }
+        }
+        if ($iterCount >= $min) {
+            $rest = $cont($pos, $captures);
+            if ($rest !== null) {
                 return $rest;
             }
         }

@@ -11,6 +11,7 @@ use Phasis\Regex\Ast\Disjunction;
 use Phasis\Regex\Ast\Group;
 use Phasis\Regex\Ast\Literal;
 use Phasis\Regex\Ast\Lookaround;
+use Phasis\Regex\Ast\ModifierGroup;
 use Phasis\Regex\Ast\Node;
 use Phasis\Regex\Ast\Pattern;
 use Phasis\Regex\Ast\Quantified;
@@ -73,6 +74,7 @@ trait MatcherSequence
                 $term->body instanceof Quantified
                 || $term->body instanceof Disjunction
                 || $term->body instanceof Sequence
+                || $term->body instanceof Group
             )
         ) {
             // A capturing/non-capturing group whose body is variable-
@@ -89,6 +91,18 @@ trait MatcherSequence
                 $captures,
                 $direction,
             );
+        }
+        if (
+            $term instanceof ModifierGroup
+            && (
+                $term->body instanceof Quantified
+                || $term->body instanceof Disjunction
+                || $term->body instanceof Sequence
+                || $term->body instanceof Group
+                || $term->body instanceof ModifierGroup
+            )
+        ) {
+            return $this->matchModifierGroupInSequence($term, $terms, $idx, $pos, $captures, $direction, null);
         }
         // Single-position term: match it, then continue.
         $savedCaptures = $captures;
@@ -218,26 +232,17 @@ trait MatcherSequence
         $term = $direction > 0 ? $terms[$idx] : $terms[count($terms) - 1 - $idx];
         if ($term instanceof Quantified) {
             $innerGroups = $this->collectGroupIndices($term->atom);
-            // Lazy quantifier with a varying atom (e.g. `((.*\n?)*?)`)
-            // explodes exponentially under enumerateQuantifierMulti
-            // because the DFS materialises every reachable state
-            // before any continuation is tried. Stream iter-by-iter
-            // instead: try the rest of the sequence after each
-            // additional iteration so the lazy semantic stops at the
-            // first viable depth.
-            if (!$term->greedy && $this->atomCanVary($term->atom)) {
-                $rest = $this->matchLazyQuantifierStreaming(
-                    $term->atom,
-                    $term->min,
-                    $term->max,
-                    $innerGroups,
-                    $pos,
-                    $captures,
-                    $direction,
-                    function (int $end, array &$caps) use ($terms, $idx, $direction, $cont): ?int {
-                        return $this->matchSeqWithCont($terms, $idx + 1, $end, $caps, $direction, $cont);
-                    },
-                );
+            // Varying atoms must stream (greedy AND lazy): lazy to avoid the
+            // exponential enumerate-everything blowup, greedy because the spec
+            // backtracking order interleaves sequel attempts with the atom's
+            // alternatives in a way longest-end-first cannot reproduce.
+            if ($this->atomCanVary($term->atom)) {
+                $seqCont = function (int $end, array &$caps) use ($terms, $idx, $direction, $cont): ?int {
+                    return $this->matchSeqWithCont($terms, $idx + 1, $end, $caps, $direction, $cont);
+                };
+                $rest = $term->greedy
+                    ? $this->matchGreedyQuantifierStreaming($term->atom, $term->min, $term->max, $innerGroups, $pos, $captures, $direction, $seqCont)
+                    : $this->matchLazyQuantifierStreaming($term->atom, $term->min, $term->max, $innerGroups, $pos, $captures, $direction, $seqCont);
                 if ($rest !== null) {
                     return $rest;
                 }
@@ -309,6 +314,7 @@ trait MatcherSequence
                 $term->body instanceof Quantified
                 || $term->body instanceof Disjunction
                 || $term->body instanceof Sequence
+                || $term->body instanceof Group
             )
         ) {
             $startPos = $pos;
@@ -331,6 +337,18 @@ trait MatcherSequence
                     return $this->matchSeqWithCont($terms, $idx + 1, $end, $caps, $direction, $cont);
                 },
             );
+        }
+        if (
+            $term instanceof ModifierGroup
+            && (
+                $term->body instanceof Quantified
+                || $term->body instanceof Disjunction
+                || $term->body instanceof Sequence
+                || $term->body instanceof Group
+                || $term->body instanceof ModifierGroup
+            )
+        ) {
+            return $this->matchModifierGroupInSequence($term, $terms, $idx, $pos, $captures, $direction, $cont);
         }
         $saved = $captures;
         $end = $this->matchNode($term, $pos, $captures, $direction);
@@ -388,5 +406,83 @@ trait MatcherSequence
             $captures = $saved;
         }
         return null;
+    }
+
+    /**
+     * A scoped-flag group whose body is variable-length must participate in
+     * sequence backtracking like {@see matchGroupInSequence}, with the group's
+     * flags active while matching the body and the ambient flags restored while
+     * matching the rest of the sequence.
+     *
+     * @param list<Node> $terms
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int|null $cont
+     */
+    private function matchModifierGroupInSequence(
+        ModifierGroup $g,
+        array $terms,
+        int $idx,
+        int $pos,
+        array &$captures,
+        int $direction,
+        ?\Closure $cont,
+    ): ?int {
+        $savedI = $this->ignoreCase;
+        $savedM = $this->multiline;
+        $savedS = $this->dotAll;
+
+        $apply = function () use ($g): void {
+            if ($g->addI) {
+                $this->ignoreCase = true;
+            }
+            if ($g->addM) {
+                $this->multiline = true;
+            }
+            if ($g->addS) {
+                $this->dotAll = true;
+            }
+            if ($g->removeI) {
+                $this->ignoreCase = false;
+            }
+            if ($g->removeM) {
+                $this->multiline = false;
+            }
+            if ($g->removeS) {
+                $this->dotAll = false;
+            }
+        };
+        $restore = function () use ($savedI, $savedM, $savedS): void {
+            $this->ignoreCase = $savedI;
+            $this->multiline = $savedM;
+            $this->dotAll = $savedS;
+        };
+
+        $apply();
+        try {
+            $bodyTerms = $g->body instanceof Sequence ? $g->body->terms : [$g->body];
+            $savedAll = $captures;
+            $result = $this->matchSequenceWithContinuation(
+                $bodyTerms,
+                $pos,
+                $captures,
+                $direction,
+                function (int $end, array &$caps) use ($terms, $idx, $direction, $cont, $apply, $restore): ?int {
+                    $restore();
+                    $rest = $cont === null
+                        ? $this->matchSequenceFrom($terms, $idx + 1, $end, $caps, $direction)
+                        : $this->matchSeqWithCont($terms, $idx + 1, $end, $caps, $direction, $cont);
+                    if ($rest === null) {
+                        $apply();
+                    }
+                    return $rest;
+                },
+            );
+            if ($result === null) {
+                $captures = $savedAll;
+            }
+            return $result;
+        } finally {
+            $restore();
+        }
     }
 }
