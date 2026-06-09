@@ -77,6 +77,19 @@ class Matcher
     private int $idxToCuCacheCu = 0;
 
     /**
+     * Failure-memoization to defeat catastrophic backtracking. Keys are
+     * "<nodeId>:<pos>:<dir>" for structural positions whose match (with their
+     * AST-fixed continuation) has already failed this attempt. Sound only when
+     * {@see $memoize} is set — i.e. the pattern has no backreferences and every
+     * quantifier is `* + ?` — because then a position's failure is independent of
+     * how it was reached and of capture state. Cleared per match()/matchTest().
+     *
+     * @var array<string, true>
+     */
+    private array $failMemo = [];
+    private bool $memoize = false;
+
+    /**
      * @param Pattern $pattern Parsed AST.
      * @param string $flags Spec flags (g, i, m, s, u, v, y, d).
      */
@@ -88,6 +101,51 @@ class Matcher
         $this->dotAll = str_contains($flags, 's');
         $this->unicode = str_contains($flags, 'u') || str_contains($flags, 'v');
         $this->sticky = str_contains($flags, 'y');
+        $this->memoize = self::memoizableNode($pattern->body);
+    }
+
+    /**
+     * Whether failure-memoization is sound for this subtree: no backreferences
+     * (capture-dependent matching) and no finite counted quantifier with max > 1
+     * (whose body's continuation varies by iteration count). `* + ?` and
+     * unbounded `{n,}` are fine — their continuation is structurally fixed.
+     */
+    private static function memoizableNode(Node $node): bool
+    {
+        if ($node instanceof Backreference) {
+            return false;
+        }
+        if ($node instanceof Quantified) {
+            if ($node->max !== null && $node->max > 1) {
+                return false;
+            }
+            return self::memoizableNode($node->atom);
+        }
+        if ($node instanceof Sequence) {
+            foreach ($node->terms as $term) {
+                if (!self::memoizableNode($term)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof Disjunction) {
+            foreach ($node->alternatives as $alt) {
+                if (!self::memoizableNode($alt)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof Group || $node instanceof Lookaround || $node instanceof \Phasis\Regex\Ast\ModifierGroup) {
+            return self::memoizableNode($node->body);
+        }
+        return true;
+    }
+
+    public function isMemoizing(): bool
+    {
+        return $this->memoize;
     }
 
     /**
@@ -109,6 +167,7 @@ class Matcher
             : self::utf8ToUtf16Units($inputUtf8);
         $this->inputLen = count($this->input);
         $this->stepsUsed = 0;
+        $this->failMemo = [];
         $this->idxToCuCacheIdx = -1;
         $this->idxToCuCacheCu = 0;
         // In /u mode the caller hands us a UTF-16 code unit offset
@@ -174,6 +233,7 @@ class Matcher
             : self::utf8ToUtf16Units($inputUtf8);
         $this->inputLen = count($this->input);
         $this->stepsUsed = 0;
+        $this->failMemo = [];
         $this->idxToCuCacheIdx = -1;
         $this->idxToCuCacheCu = 0;
         $startInternal = $this->unicode
