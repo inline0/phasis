@@ -11,7 +11,7 @@
 6. **Local testing only** — no CI triggers, iterate until 100% WPT pass rate against the fetch + streams + Blob/File + FormData + AbortController + EventTarget areas
 **Author**: this session
 **Last updated**: 2026-05-14
-**Builds on**: PRD-WEB-PLATFORM-PACK.md (which shipped `URL` / `URLSearchParams` / `TextEncoder` / `TextDecoder` / `atob` / `btoa` / `structuredClone` / `performance.now` / `DOMException` — all prerequisites for fetch)
+**Builds on**: WEB-PLATFORM-PACK.md (which shipped `URL` / `URLSearchParams` / `TextEncoder` / `TextDecoder` / `atob` / `btoa` / `structuredClone` / `performance.now` / `DOMException` — all prerequisites for fetch)
 
 ## Summary
 

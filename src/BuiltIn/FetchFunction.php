@@ -123,7 +123,7 @@ final class FetchFunction
 
     /**
      * Apply the engine's fetch-policy hook, if any. Per the contract
-     * (PRD-FETCH-PACK §4):
+     * (prds/FETCH-PACK.md §4):
      *
      *  - Returning null/undefined → use the original request.
      *  - Returning a Request → use that one instead.
