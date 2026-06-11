@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Normalize release notes
+        run: |
+          gh release edit "${{ github.event.release.tag_name }}" \
+            --notes "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for the full release notes for \`${{ github.event.release.tag_name }}\`."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, bcmath, curl, intl
+          tools: composer
+
+      - run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Verify autoloader
+        run: |
+          php -r "require 'vendor/autoload.php'; class_exists('Phasis\\Engine', true) || exit(1); echo 'Autoloader OK';"
+          php bin/phasis -e 'console.log(1 + 1)' | grep -q '^2$'
+
+      - name: Create release archive
+        run: |
+          mkdir -p dist
+          rsync -a --exclude='.git' --exclude='.github' --exclude='.claude' \
+            --exclude='.compat-state' --exclude='.phpunit*' --exclude='.phpstan*' \
+            --exclude='tests' --exclude='test262' --exclude='scenarios' \
+            --exclude='bench' --exclude='docs' --exclude='prds' \
+            --exclude='CLAUDE.md' --exclude='BENCH.md' --exclude='bench.json' \
+            --exclude='compat.json' --exclude='phpunit.xml*' --exclude='phpcs.xml' \
+            --exclude='phpstan.neon*' \
+            --exclude='bin/compat-*' --exclude='bin/build-*' --exclude='bin/gen-*' \
+            --exclude='bin/test-regression' --exclude='bin/test262' \
+            --exclude='bin/verify-all' \
+            . dist/phasis/
+          cd dist && zip -r ../phasis.zip phasis/
+
+      - name: Upload release asset
+        run: gh release upload "${{ github.event.release.tag_name }}" phasis.zip --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
