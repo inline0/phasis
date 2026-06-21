@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1] - 2026-06-21
+
+### Changed
+- Regex engine: pure-ASCII subjects take a fast-path that skips UTF-16/byte offset conversion (byte, code-unit, and code-point offsets all coincide), speeding up the common case.
+- Regex engine: capturing-group indices are memoized per AST node instead of recomputed on every group match.
+
+### Added
+- `Matcher::match()` accepts an optional `$scanAnchor` that resolves the `\G` scan-anchor (`Anchor::SCAN`) independently of the attempt offset; defaults to the current behaviour, so existing calls are unaffected.
+
 ## [0.1.0] - 2026-06-11
 
 ### Added
