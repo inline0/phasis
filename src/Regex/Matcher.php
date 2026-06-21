@@ -50,6 +50,9 @@ class Matcher
     private bool $unicode;
     private bool $sticky;
 
+    /** Input is pure ASCII: code points, code units and byte offsets all coincide. */
+    private bool $ascii = false;
+
     /** Internal offset the current search began at; the `\G` anchor (Anchor::SCAN) matches only here. */
     private int $matchStart = 0;
 
@@ -160,15 +163,20 @@ class Matcher
      *
      * @param bool $anchored Attempt the match only at $startCodeUnit (no forward
      *   scan) — used by the scanner to confirm a fast-path probe at its position.
+     * @param ?int $scanAnchor Code-unit offset the `\G` scan-anchor (Anchor::SCAN)
+     *   resolves to; defaults to $startCodeUnit. The scanner's prefilter confirm
+     *   anchors the attempt at the probe offset but passes the original scan start
+     *   here, so a position-mode `\G` prefilter reproduces the true match.
      *
      * @return array{index: int, end: int, captures: list<?array{0:int,1:int,2:string}>}|null
      */
-    public function match(string $inputUtf8, int $startCodeUnit, bool $anchored = false): ?array
+    public function match(string $inputUtf8, int $startCodeUnit, bool $anchored = false, ?int $scanAnchor = null): ?array
     {
         $this->input = $this->unicode
             ? self::utf8ToCodePoints($inputUtf8)
             : self::utf8ToUtf16Units($inputUtf8);
         $this->inputLen = count($this->input);
+        $this->ascii = strlen($inputUtf8) === $this->inputLen;
         $this->stepsUsed = 0;
         $this->failMemo = [];
         $this->idxToCuCacheIdx = -1;
@@ -185,6 +193,14 @@ class Matcher
             return null;
         }
         $this->matchStart = $startInternal;
+        if ($scanAnchor !== null && $scanAnchor !== $startCodeUnit) {
+            $anchorInternal = $this->unicode
+                ? $this->utf16IndexToInternal($scanAnchor)
+                : $scanAnchor;
+            if ($anchorInternal !== null) {
+                $this->matchStart = $anchorInternal;
+            }
+        }
         // Initialize capture array sized to groupCount + 1 (1-based).
         $captures = array_fill(0, $this->pattern->groupCount + 1, null);
         // Sticky (`y`): the match may begin only at the start offset; no forward
@@ -235,6 +251,7 @@ class Matcher
             ? self::utf8ToCodePoints($inputUtf8)
             : self::utf8ToUtf16Units($inputUtf8);
         $this->inputLen = count($this->input);
+        $this->ascii = strlen($inputUtf8) === $this->inputLen;
         $this->stepsUsed = 0;
         $this->failMemo = [];
         $this->idxToCuCacheIdx = -1;
