@@ -92,7 +92,7 @@ trait MatcherUtf
      */
     private function internalIndexToUtf16(int $idx): int
     {
-        if (!$this->unicode) {
+        if ($this->ascii || !$this->unicode) {
             return $idx;
         }
         // Resume from the cached watermark when the new index is at or
@@ -126,6 +126,9 @@ trait MatcherUtf
      */
     private function sliceCapture(string $inputUtf8, int $s, int $e): string
     {
+        if ($this->ascii) {
+            return substr($inputUtf8, $s, $e - $s);
+        }
         if ($this->unicode) {
             $byteStart = $this->codeUnitToByteOffset($inputUtf8, $s);
             $byteEnd = $this->codeUnitToByteOffset($inputUtf8, $e);
@@ -174,6 +177,9 @@ trait MatcherUtf
 
     private function codeUnitToByteOffset(string $utf8, int $cu): int
     {
+        if ($this->ascii) {
+            return min($cu, strlen($utf8));
+        }
         // Walk the UTF-8 string and count UTF-16 code units (or
         // codepoints in /u mode) until we reach the target.
         $len = strlen($utf8);

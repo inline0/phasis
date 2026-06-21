@@ -411,14 +411,21 @@ trait MatcherAtom
         return false;
     }
 
+    /** @var array<int, list<int>> capturing-group indices per atom node (static per node). */
+    private array $groupIndicesCache = [];
+
     /**
      * @return list<int>
      */
     private function collectGroupIndices(Node $node): array
     {
+        $id = spl_object_id($node);
+        if (isset($this->groupIndicesCache[$id])) {
+            return $this->groupIndicesCache[$id];
+        }
         $out = [];
         $this->walkGroupIndices($node, $out);
-        return $out;
+        return $this->groupIndicesCache[$id] = $out;
     }
 
     /**
