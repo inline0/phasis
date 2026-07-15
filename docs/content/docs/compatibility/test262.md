@@ -1,6 +1,11 @@
 ---
-title: test262 coverage
-description: Phasis passes the official ECMAScript conformance suite at 100% — every test, every category, no skips.
+title: "test262 coverage"
+description: "Phasis passes the official ECMAScript conformance suite at 100% — every test, every category, no skips."
+path: "compatibility/test262"
+order: 10
+section: "Compatibility"
+meta_title: "test262 coverage"
+meta_description: "Phasis passes the official ECMAScript conformance suite at 100% — every test, every category, no skips."
 ---
 
 # test262 coverage

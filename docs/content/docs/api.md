@@ -1,6 +1,11 @@
 ---
-title: API
-description: The Phasis\Engine class is the public PHP entry point — eval, execFile, setGlobal, call, resource limits, and lifecycle.
+title: "API"
+description: "The Phasis\\Engine class is the public PHP entry point — eval, execFile, setGlobal, call, resource limits, and lifecycle."
+path: "api"
+order: 22
+section: "Documentation"
+meta_title: "API"
+meta_description: "The Phasis\\Engine class is the public PHP entry point — eval, execFile, setGlobal, call, resource limits, and lifecycle."
 ---
 
 # API

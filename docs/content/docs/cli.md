@@ -1,6 +1,11 @@
 ---
-title: CLI
-description: Complete command reference for the bin/phasis, bin/test262, and bin/wpt executables.
+title: "CLI"
+description: "Complete command reference for the bin/phasis, bin/test262, and bin/wpt executables."
+path: "cli"
+order: 21
+section: "Documentation"
+meta_title: "CLI"
+meta_description: "Complete command reference for the bin/phasis, bin/test262, and bin/wpt executables."
 ---
 
 # CLI

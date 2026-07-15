@@ -1,6 +1,11 @@
 ---
-title: Bytecode VM
-description: How Phasis compiles hot JS functions to PHP closures at runtime — and the bail-out semantics that keep the spec correct.
+title: "Bytecode VM"
+description: "How Phasis compiles hot JS functions to PHP closures at runtime — and the bail-out semantics that keep the spec correct."
+path: "advanced/bytecode-vm"
+order: 18
+section: "Advanced"
+meta_title: "Bytecode VM"
+meta_description: "How Phasis compiles hot JS functions to PHP closures at runtime — and the bail-out semantics that keep the spec correct."
 ---
 
 # Bytecode VM

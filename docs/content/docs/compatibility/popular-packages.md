@@ -1,6 +1,11 @@
 ---
-title: Popular packages
-description: Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow.
+title: "Popular packages"
+description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow."
+path: "compatibility/popular-packages"
+order: 13
+section: "Compatibility"
+meta_title: "Popular packages"
+meta_description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow."
 ---
 
 # Popular packages

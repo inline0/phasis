@@ -1,6 +1,11 @@
 ---
-title: Value conversion
-description: How PHP types map to JavaScript types and back when crossing the engine boundary.
+title: "Value conversion"
+description: "How PHP types map to JavaScript types and back when crossing the engine boundary."
+path: "interop/values"
+order: 3
+section: "Interop"
+meta_title: "Value conversion"
+meta_description: "How PHP types map to JavaScript types and back when crossing the engine boundary."
 ---
 
 # Value conversion

@@ -1,6 +1,11 @@
 ---
-title: Benchmarks
-description: How Phasis performs vs V8, what kind of workloads it handles well, and how to measure your own.
+title: "Benchmarks"
+description: "How Phasis performs vs V8, what kind of workloads it handles well, and how to measure your own."
+path: "advanced/benchmarks"
+order: 20
+section: "Advanced"
+meta_title: "Benchmarks"
+meta_description: "How Phasis performs vs V8, what kind of workloads it handles well, and how to measure your own."
 ---
 
 # Benchmarks

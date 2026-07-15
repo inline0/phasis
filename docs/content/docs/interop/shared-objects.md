@@ -1,6 +1,11 @@
 ---
-title: Shared objects
-description: Pass PHP objects into JavaScript by reference. Reads and writes go through the same instance — no serialization, no copy.
+title: "Shared objects"
+description: "Pass PHP objects into JavaScript by reference. Reads and writes go through the same instance — no serialization, no copy."
+path: "interop/shared-objects"
+order: 5
+section: "Interop"
+meta_title: "Shared objects"
+meta_description: "Pass PHP objects into JavaScript by reference. Reads and writes go through the same instance — no serialization, no copy."
 ---
 
 # Shared objects

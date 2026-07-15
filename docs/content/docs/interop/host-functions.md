@@ -1,6 +1,11 @@
 ---
-title: Host functions
-description: Expose PHP callables to JavaScript and call them directly without serialization overhead.
+title: "Host functions"
+description: "Expose PHP callables to JavaScript and call them directly without serialization overhead."
+path: "interop/host-functions"
+order: 4
+section: "Interop"
+meta_title: "Host functions"
+meta_description: "Expose PHP callables to JavaScript and call them directly without serialization overhead."
 ---
 
 # Host functions

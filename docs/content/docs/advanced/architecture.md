@@ -1,6 +1,11 @@
 ---
-title: Architecture
-description: A tour through the lexer, parser, AST, runtime, and built-in library — the four layers that turn JS text into PHP-driven execution.
+title: "Architecture"
+description: "A tour through the lexer, parser, AST, runtime, and built-in library — the four layers that turn JS text into PHP-driven execution."
+path: "advanced/architecture"
+order: 17
+section: "Advanced"
+meta_title: "Architecture"
+meta_description: "A tour through the lexer, parser, AST, runtime, and built-in library — the four layers that turn JS text into PHP-driven execution."
 ---
 
 # Architecture

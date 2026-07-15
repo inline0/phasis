@@ -1,6 +1,11 @@
 ---
-title: Getting Started
-description: Install Phasis and run your first JavaScript from PHP.
+title: "Getting Started"
+description: "Install Phasis and run your first JavaScript from PHP."
+path: "getting-started"
+order: 1
+section: "Documentation"
+meta_title: "Getting Started"
+meta_description: "Install Phasis and run your first JavaScript from PHP."
 ---
 
 # Getting Started

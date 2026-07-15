@@ -1,6 +1,11 @@
 ---
-title: Web APIs (WHATWG / W3C)
-description: The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding, structuredClone, fetch, Streams, Blob, FormData, AbortSignal, and more. 100% Web Platform Tests conformance on the imported subset.
+title: "Web APIs (WHATWG / W3C)"
+description: "The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding, structuredClone, fetch, Streams, Blob, FormData, AbortSignal, and more. 100% Web Platform Tests conformance on the imported subset."
+path: "compatibility/web-apis"
+order: 11
+section: "Compatibility"
+meta_title: "Web APIs (WHATWG / W3C)"
+meta_description: "The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding, structuredClone, fetch, Streams, Blob, FormData, AbortSignal, and more. 100% Web Platform Tests conformance on the imported subset."
 ---
 
 # Web APIs
