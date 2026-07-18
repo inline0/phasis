@@ -1,15 +1,13 @@
 ---
-title: "Phasis"
+title: "Introduction"
 description: "Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
 path: "."
 order: 0
-section: "Getting Started"
-meta_title: "Phasis"
+meta_title: "Introduction"
 meta_description: "Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
 ---
 
-# Phasis
-
+# Introduction
 Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScript in the host PHP process — without `exec('node …')`, without FFI, and without binary extensions beyond `ext-mbstring` (always shipped) and `ext-bcmath` (default on every mainstream PHP build). `ext-intl` is optional. `ext-curl` enables outbound `fetch()`.
 
 - **Embeddable** — drop a JS runtime into any PHP app, framework, or CLI tool via the `Phasis\Engine` class.
