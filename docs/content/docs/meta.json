@@ -1,4 +1,4 @@
 {
   "title": "Documentation",
-  "pages": ["index", "getting-started", "interop", "compatibility", "advanced", "cli", "api"]
+  "pages": ["index", "getting-started", "interop", "compatibility", "advanced", "cli", "api", "parser"]
 }

@@ -209,6 +209,18 @@ class Parser
         return substr($this->source, $startOffset, $endOffset - $startOffset);
     }
 
+    public static function parseSource(string $source, string $sourceType = 'script'): Program
+    {
+        if ($sourceType !== 'script' && $sourceType !== 'module') {
+            throw new \InvalidArgumentException(
+                "sourceType must be \"script\" or \"module\", got \"{$sourceType}\"",
+            );
+        }
+        $parser = new self($source);
+        $parser->setModuleMode($sourceType === 'module');
+        return $parser->parse();
+    }
+
     public function parse(): Program
     {
         // Tokenize lazily, so moduleMode set after construction affects it.

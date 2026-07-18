@@ -10,7 +10,7 @@ meta_description: "The Phasis\\Engine class is the public PHP entry point — ev
 
 # API
 
-The whole public API is one class: `Phasis\Engine`. Everything else (`JsValue`, `JsFunction`, `JsObject`, …) is engine-internal and only exposed to host functions that bridge PHP↔JS.
+The execution API is one class: `Phasis\Engine`. Everything else (`JsValue`, `JsFunction`, `JsObject`, …) is engine-internal and only exposed to host functions that bridge PHP↔JS. The one other public surface is the standalone [parser API](/docs/parser) (`Phasis\Parser\Parser` and the `Phasis\Ast` classes), which parses source without executing it.
 
 ## Construction
 
@@ -28,7 +28,7 @@ Pass `eager: true` if you specifically need the pre-lazy behavior — every buil
 ## eval
 
 ```php
-public function eval(string $source, ?string $sourceName = null): mixed
+public function eval(string $source): mixed
 ```
 
 Parses and executes `$source` in the engine's global scope. Returns the value of the last evaluated expression (or `null` if the program had no trailing expression).

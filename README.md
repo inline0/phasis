@@ -147,6 +147,7 @@ Full documentation lives at [phasis.dev](https://phasis.dev) (or in [`docs/`](./
 - [Getting Started](./docs/content/docs/getting-started.mdx) — install and run your first script
 - [CLI](./docs/content/docs/cli.mdx) — `bin/phasis` and `bin/test262`
 - [API](./docs/content/docs/api.mdx) — full `Phasis\Engine` reference
+- [Parser](./docs/content/docs/parser.md): standalone `Phasis\Parser\Parser` API, AST walker, ESTree export
 - [Interop](./docs/content/docs/interop/) — PHP↔JS values, host functions, shared objects
 - [Compatibility](./docs/content/docs/compatibility/) — test262 coverage, spec surface, limitations
 - [Advanced](./docs/content/docs/advanced/) — architecture, bytecode VM, oracle testing, benchmarks

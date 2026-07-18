@@ -26,4 +26,4 @@ jobs:
         with:
           node-version: 22
       - name: Check portable documentation
-        run: node scripts/check-docs-content.mjs --root docs/content/docs --expected-docs 23 --expected-nav 4
+        run: node scripts/check-docs-content.mjs --root docs/content/docs --expected-docs 24 --expected-nav 4
