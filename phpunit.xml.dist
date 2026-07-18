@@ -8,10 +8,13 @@
          failOnWarning="true">
     <php>
         <!-- WPT fixtures (crypto / pbkdf2 / hkdf with thousands of
-             permutations, and the larger response/fetch fixtures)
-             need more headroom than PHP's default 128M. Match what
-             bin/wpt sets so phpunit and the CLI runner agree. -->
-        <ini name="memory_limit" value="2G"/>
+             permutations, console-log-large-array, and the larger
+             response/fetch fixtures) need more headroom than PHP's
+             default 128M; the large-array console fixture alone peaks
+             near 1.8G, so a full-suite run with ~900 tests of
+             accumulated state needs 4G. Match what bin/wpt sets so
+             phpunit and the CLI runner agree. -->
+        <ini name="memory_limit" value="4G"/>
         <!-- Pin UTC so Date-touching tests (popular-package oracles
              that exercise dayjs/date-fns, WPT fixtures that touch the
              Date constructor) produce byte-identical output on every
