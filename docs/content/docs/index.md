@@ -3,7 +3,7 @@ title: "Phasis"
 description: "Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
 path: "."
 order: 0
-section: "Documentation"
+section: "Getting Started"
 meta_title: "Phasis"
 meta_description: "Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
 ---

@@ -2,7 +2,7 @@
 title: "Streams"
 description: "Phasis ships the full WHATWG Streams Standard — ReadableStream, WritableStream, TransformStream, queuing strategies, BYOB readers, tee, pipeTo/pipeThrough, async iteration. 100% on the imported WPT subset."
 path: "compatibility/streams"
-order: 12
+order: 120
 section: "Compatibility"
 meta_title: "Streams"
 meta_description: "Phasis ships the full WHATWG Streams Standard — ReadableStream, WritableStream, TransformStream, queuing strategies, BYOB readers, tee, pipeTo/pipeThrough, async iteration. 100% on the imported WPT subset."

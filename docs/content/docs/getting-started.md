@@ -2,8 +2,8 @@
 title: "Getting Started"
 description: "Install Phasis and run your first JavaScript from PHP."
 path: "getting-started"
-order: 1
-section: "Documentation"
+order: 10
+section: "Getting Started"
 meta_title: "Getting Started"
 meta_description: "Install Phasis and run your first JavaScript from PHP."
 ---

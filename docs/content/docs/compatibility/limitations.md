@@ -2,7 +2,7 @@
 title: "Known limitations"
 description: "Where Phasis intentionally diverges from V8 — performance ceilings, host integrations, and design trade-offs."
 path: "compatibility/limitations"
-order: 15
+order: 150
 section: "Compatibility"
 meta_title: "Known limitations"
 meta_description: "Where Phasis intentionally diverges from V8 — performance ceilings, host integrations, and design trade-offs."

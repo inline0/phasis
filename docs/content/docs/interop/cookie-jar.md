@@ -2,7 +2,7 @@
 title: "Cookie jar"
 description: "Phasis fetch is cookieless by default. Mount a jar via setCookieJar() to persist cookies across requests. Two methods — get(url) and set(url, header) — and any object that responds to them works."
 path: "interop/cookie-jar"
-order: 7
+order: 70
 section: "Interop"
 meta_title: "Cookie jar"
 meta_description: "Phasis fetch is cookieless by default. Mount a jar via setCookieJar() to persist cookies across requests. Two methods — get(url) and set(url, header) — and any object that responds to them works."

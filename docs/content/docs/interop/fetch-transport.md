@@ -2,7 +2,7 @@
 title: "Fetch transport"
 description: "Phasis's fetch() runs through a pluggable HTTP transport. Default is PHP's ext-curl. Embedders can swap to Guzzle, Symfony HttpClient, a mock, an allowlist, or a deny-all — and rewrite or block individual requests via the fetch policy hook."
 path: "interop/fetch-transport"
-order: 6
+order: 60
 section: "Interop"
 meta_title: "Fetch transport"
 meta_description: "Phasis's fetch() runs through a pluggable HTTP transport. Default is PHP's ext-curl. Embedders can swap to Guzzle, Symfony HttpClient, a mock, an allowlist, or a deny-all — and rewrite or block individual requests via the fetch policy hook."

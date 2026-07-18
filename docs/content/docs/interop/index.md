@@ -2,7 +2,7 @@
 title: "Overview"
 description: "How PHP and JavaScript values cross the boundary in Phasis — value conversion rules, exposing PHP callables as JS functions, and sharing mutable objects without serialization."
 path: "interop"
-order: 2
+order: 20
 section: "Interop"
 meta_title: "Overview"
 meta_description: "How PHP and JavaScript values cross the boundary in Phasis — value conversion rules, exposing PHP callables as JS functions, and sharing mutable objects without serialization."
