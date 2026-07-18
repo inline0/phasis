@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0] - 2026-07-18
+
+### Added
+- Public parser API: `Phasis\Parser\Parser::parseSource($source, $sourceType)` parses JavaScript under the `script` or `module` goal and returns the typed `Phasis\Ast\Program`, throwing `Phasis\Exceptions\SyntaxError` with line, column, and offset on invalid input. No `Engine` required.
+- `Phasis\Ast\Walker`: depth-first AST traversal with enter and leave callbacks, a parent argument, and child pruning via `Walker::SKIP`.
+- `Phasis\Ast\Serializer`: array/JSON export of the typed AST in the exact format `bin/phasis --ast` prints; the CLI now delegates to it.
+- `Phasis\Ast\EstreeSerializer`: ESTree-shaped array/JSON export (ESTree type names, synthesized `ClassBody` and specifier nodes, `start` offsets) plus a deterministic one-line-per-node `summarize()` that byte-matches the acorn popular-package oracle.
+- Parser reference page in the docs (`/docs/parser`).
+
 ## [0.1.1] - 2026-06-21
 
 ### Changed
