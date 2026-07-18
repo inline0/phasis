@@ -140,7 +140,7 @@ For each API:
 For the pack overall:
 
 6. CI gates: new `wpt.yml` workflow runs on push to `main` and PRs.
-7. Documentation: `docs/content/docs/web-platform.mdx` enumerates what's shipped and what's not.
+7. Documentation: `docs/web-platform.md` enumerates what's shipped and what's not.
 8. README compatibility section gains a "Web Platform" subsection alongside test262.
 9. Composer requirements unchanged (still `ext-mbstring + ext-bcmath`, no new extensions).
 

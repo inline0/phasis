@@ -144,13 +144,13 @@ Current microbench numbers are committed in [`BENCH.md`](./BENCH.md) after each 
 
 Full documentation lives at [phasis.dev](https://phasis.dev) (or in [`docs/`](./docs) if you're reading the repo).
 
-- [Getting Started](./docs/content/docs/getting-started.mdx) — install and run your first script
-- [CLI](./docs/content/docs/cli.mdx) — `bin/phasis` and `bin/test262`
-- [API](./docs/content/docs/api.mdx) — full `Phasis\Engine` reference
-- [Parser](./docs/content/docs/parser.md): standalone `Phasis\Parser\Parser` API, AST walker, ESTree export
-- [Interop](./docs/content/docs/interop/) — PHP↔JS values, host functions, shared objects
-- [Compatibility](./docs/content/docs/compatibility/) — test262 coverage, spec surface, limitations
-- [Advanced](./docs/content/docs/advanced/) — architecture, bytecode VM, oracle testing, benchmarks
+- [Getting Started](./docs/getting-started.md): install and run your first script
+- [CLI](./docs/cli.md): `bin/phasis` and `bin/test262`
+- [API](./docs/api.md): full `Phasis\Engine` reference
+- [Parser](./docs/parser.md): standalone `Phasis\Parser\Parser` API, AST walker, ESTree export
+- [Interop](./docs/interop/): PHP↔JS values, host functions, shared objects
+- [Compatibility](./docs/compatibility/): test262 coverage, spec surface, limitations
+- [Advanced](./docs/advanced/): architecture, bytecode VM, oracle testing, benchmarks
 
 ## License
 
