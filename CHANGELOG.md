@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.1] - 2026-07-19
+
+### Fixed
+- CSS: reformatting a selector whose pseudo-class arguments had been wrapped across lines no longer introduces a stray leading space inside the parentheses; formatting is idempotent on such selectors.
+
 ## [0.4.0] - 2026-07-19
 
 ### Added

@@ -319,7 +319,7 @@ final class CssPrinter
                 $inner .= $unit[$i];
             }
             $docs[] = $current;
-            $docs[] = Doc::group(['(', Doc::indent([Doc::softline(), $inner]), Doc::softline(), ')']);
+            $docs[] = Doc::group(['(', Doc::indent([Doc::softline(), trim($inner)]), Doc::softline(), ')']);
             $current = '';
         }
         if ($current !== '') {
