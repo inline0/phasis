@@ -121,7 +121,7 @@ final class FormatterTest extends TestCase
     public function testInvalidSourceTypeIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        Formatter::formatSource('1;', 'json');
+        Formatter::formatSource('1;', 'yaml');
     }
 
     private static function commentCount(string $source, string $type): int

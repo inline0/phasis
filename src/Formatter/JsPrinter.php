@@ -111,7 +111,29 @@ final class JsPrinter
         private readonly FormatOptions $options,
         private readonly CommentIndex $comments,
         private readonly string $source,
+        private readonly bool $jsonMode = false,
     ) {
+    }
+
+    /**
+     * Prints a parsed JSON document: the wrapped program's single expression
+     * with its comments, without a statement semicolon.
+     *
+     * @return array<int, mixed>
+     */
+    public function printJsonRoot(\Phasis\Ast\Program $program): array
+    {
+        $statement = $program->body[0];
+        if (!$statement instanceof ExpressionStatement) {
+            throw new \InvalidArgumentException('JSON source must be a single value.');
+        }
+        $doc = [$this->withComments($statement, $this->print($statement->expression, null))];
+        foreach ($this->comments->trailingFor($program) as $attached) {
+            $doc[] = Doc::hardline();
+            $doc[] = $this->commentText($attached);
+        }
+        $doc[] = Doc::hardline();
+        return $doc;
     }
 
     /** @return array<int, mixed> */
@@ -831,7 +853,7 @@ final class JsPrinter
 
     private function trailingCommaDoc(bool $es5Context): mixed
     {
-        if ($this->options->trailingComma === 'none') {
+        if ($this->jsonMode || $this->options->trailingComma === 'none') {
             return '';
         }
         if ($this->options->trailingComma === 'es5' && !$es5Context) {
@@ -846,6 +868,9 @@ final class JsPrinter
             return ['[', $this->print($key, null), ']'];
         }
         if ($key instanceof Literal && is_string($key->value) && $this->isSourceString($key)) {
+            if ($this->jsonMode) {
+                return LiteralText::makeString(substr($this->stringSourceRaw($key), 1, -1), '"');
+            }
             $content = $key->value;
             if (preg_match('/^[A-Za-z_$][A-Za-z0-9_$]*$/', $content) === 1) {
                 return $content;
@@ -1055,6 +1080,9 @@ final class JsPrinter
             return strtolower(substr($raw, 10));
         }
         if (is_string($node->value) && $this->isSourceString($node)) {
+            if ($this->jsonMode) {
+                return LiteralText::makeString(substr($this->stringSourceRaw($node), 1, -1), '"');
+            }
             return LiteralText::printString($this->stringSourceRaw($node), $this->options);
         }
         if (is_float($node->value) || is_int($node->value)) {

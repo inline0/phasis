@@ -19,12 +19,20 @@ final class Formatter
         string $sourceType = 'script',
         ?FormatOptions $options = null,
     ): string {
-        if ($sourceType !== 'script' && $sourceType !== 'module') {
+        if (!in_array($sourceType, ['script', 'module', 'json', 'css'], true)) {
             throw new \InvalidArgumentException(
-                "sourceType must be \"script\" or \"module\", got \"{$sourceType}\"",
+                "sourceType must be \"script\", \"module\", \"json\", or \"css\", got \"{$sourceType}\"",
             );
         }
         $options ??= new FormatOptions();
+
+        if ($sourceType === 'css') {
+            return Css\CssFormatter::format($source, $options);
+        }
+
+        if ($sourceType === 'json') {
+            return self::formatJson($source, $options);
+        }
 
         $parser = new Parser($source);
         $parser->setModuleMode($sourceType === 'module');
@@ -35,6 +43,26 @@ final class Formatter
         $index = CommentAttacher::attach($program, $comments, $source);
         $printer = new JsPrinter($options, $index, $source);
         $doc = $printer->printProgram($program);
+
+        return (new DocPrinter($options))->print($doc);
+    }
+
+    /**
+     * JSON documents parse as one parenthesized expression so the JS parser
+     * and printers can be reused; keys stay quoted, strings stay double
+     * quoted, and trailing commas never appear.
+     */
+    private static function formatJson(string $source, FormatOptions $options): string
+    {
+        $wrapped = '(' . $source . "\n)";
+
+        $parser = new Parser($wrapped);
+        $parser->setCollectComments(true);
+        $program = $parser->parse();
+
+        $index = CommentAttacher::attach($program, $parser->comments(), $wrapped);
+        $printer = new JsPrinter($options, $index, $wrapped, jsonMode: true);
+        $doc = $printer->printJsonRoot($program);
 
         return (new DocPrinter($options))->print($doc);
     }

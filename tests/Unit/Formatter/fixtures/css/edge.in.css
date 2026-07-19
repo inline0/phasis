@@ -1,0 +1,7 @@
+.tw{@apply rounded-glass border border-white/[0.08] bg-white/[0.04] p-1.5 sm:p-2;}
+.q{content:"He said \"hi\"";background:url(img/x.png)}
+.n{width:calc(100% - 2rem);opacity:.50;margin:1.50em;z-index:100}
+.t{color:red /* trail */;top:0} /* after rule */
+:root{--i0-shadow-lg:0 24px 80px rgb(0 0 0 / 0.45);--i0-glass-blur:blur(8px) saturate(1.5)}
+.sel:not(.a>.b),.x::before{content:''}
+@custom-variant dark (&:where([data-theme=dark] *));

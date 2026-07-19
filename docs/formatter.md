@@ -22,7 +22,7 @@ public static function formatSource(
 ): string
 ```
 
-The one-call entry point on `Phasis\Formatter\Formatter`. Parses `$source` under the given goal, reattaches comments, and prints the program against the configured print width.
+The one-call entry point on `Phasis\Formatter\Formatter`. `$sourceType` selects the language: `script` or `module` for JavaScript, `json`, or `css`. JavaScript parses under the given goal, gets its comments reattached, and prints against the configured print width.
 
 ```php
 use Phasis\Formatter\Formatter;
@@ -52,6 +52,14 @@ Layout options mirror prettier 3.x and default to prettier's defaults:
 | `trailingComma` | `'all'`    | `'all'`, `'es5'`, or `'none'`.                                 |
 | `bracketSpacing`| `true`     | Spaces inside object braces: `{ a }` versus `{a}`.             |
 | `arrowParens`   | `'always'` | `'always'` or `'avoid'` for single-parameter arrow functions.  |
+
+## CSS
+
+`formatSource($css, 'css')` formats stylesheets with prettier's stylesheet layout: one selector per line in selector lists, one declaration per line, normalized combinator and value spacing, fill-packed simple value lists, one-per-line comma lists for shadows and gradients, all-or-nothing function arguments, preserved blank lines and comments, and untouched preludes for unknown at-rules such as Tailwind's `@apply`. Long compound selectors break at descendant combinators, and overlong pseudo-class arguments wrap inside their parentheses.
+
+## JSON
+
+`formatSource($json, 'json')` reuses the JavaScript parser and printers with prettier's json rules: keys stay quoted, strings stay double quoted regardless of `singleQuote`, trailing commas never appear, and `//` comments inside the document survive.
 
 ## Layout semantics
 
