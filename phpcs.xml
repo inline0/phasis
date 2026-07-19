@@ -9,6 +9,7 @@
     <exclude-pattern>src/Regex/FoldTable.php</exclude-pattern>
     <exclude-pattern>src/BuiltIn/data/*</exclude-pattern>
     <exclude-pattern>tests/Popular/*</exclude-pattern>
+    <exclude-pattern>tests/Unit/Formatter/fixtures/*</exclude-pattern>
     <exclude-pattern>tests/Wpt/fixtures/*</exclude-pattern>
     <exclude-pattern>tests/Wpt/testharness-shim.js</exclude-pattern>
     <exclude-pattern>tests/Wpt/upstream/*</exclude-pattern>

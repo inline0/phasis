@@ -34,6 +34,16 @@ class Lexer
      */
     private ?string $sourceUrl = null;
 
+    /**
+     * When true, `//` and `/* ... *\/` comments are captured as Comment
+     * records instead of being discarded. Off by default so the engine's
+     * tokenization stays trivia-free; the formatter opts in.
+     */
+    private bool $collectComments = false;
+
+    /** @var Comment[] */
+    private array $comments = [];
+
     public function __construct(string $source)
     {
         $this->source = $source;
@@ -43,6 +53,17 @@ class Lexer
     public function setModuleMode(bool $moduleMode): void
     {
         $this->moduleMode = $moduleMode;
+    }
+
+    public function setCollectComments(bool $collectComments): void
+    {
+        $this->collectComments = $collectComments;
+    }
+
+    /** @return Comment[] Comments in source order, populated by tokenize() when collection is enabled. */
+    public function comments(): array
+    {
+        return $this->comments;
     }
 
     /**
@@ -58,6 +79,7 @@ class Lexer
     public function tokenize(): array
     {
         $this->tokens = [];
+        $this->comments = [];
         $this->pos = 0;
         $this->line = 1;
         $this->column = 0;
@@ -1273,6 +1295,11 @@ class Lexer
         // at the start of a line (or on the first line of the source).
         $lineTerminatorInPass = empty($this->tokens);
 
+        // Newline seen since the last token or collected comment. Feeds the
+        // Comment::newlineBefore flag so a formatter can tell a trailing
+        // same-line comment from a comment on its own line.
+        $newlineSinceTrivia = false;
+
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
@@ -1287,6 +1314,7 @@ class Lexer
                 if ($this->isUnicodeLineTerminator()) {
                     $this->lineTerminatorBefore = true;
                     $lineTerminatorInPass = true;
+                    $newlineSinceTrivia = true;
                     $this->pos += 3;
                     $this->line++;
                     $this->column = 0;
@@ -1303,6 +1331,7 @@ class Lexer
             if ($ch === "\n") {
                 $this->lineTerminatorBefore = true;
                 $lineTerminatorInPass = true;
+                $newlineSinceTrivia = true;
                 $this->pos++;
                 $this->line++;
                 $this->column = 0;
@@ -1311,6 +1340,7 @@ class Lexer
             if ($ch === "\r") {
                 $this->lineTerminatorBefore = true;
                 $lineTerminatorInPass = true;
+                $newlineSinceTrivia = true;
                 $this->pos++;
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->pos++;
@@ -1327,11 +1357,23 @@ class Lexer
                 && $this->pos + 1 < $this->length
                 && $this->source[$this->pos + 1] === '/';
             if ($isLineComment) {
+                $rawStart = new SourceLocation($this->line, $this->column, $this->pos);
                 $this->pos += 2;
                 $this->column += 2;
                 $commentStart = $this->pos;
                 $this->skipToEndOfLine();
                 $this->captureSourceUrlPragma($commentStart, $this->pos);
+                if ($this->collectComments) {
+                    $this->comments[] = new Comment(
+                        'line',
+                        substr($this->source, $rawStart->offset, $this->pos - $rawStart->offset),
+                        $rawStart,
+                        $this->pos,
+                        $this->line,
+                        $newlineSinceTrivia,
+                    );
+                    $newlineSinceTrivia = false;
+                }
                 continue;
             }
 
@@ -1373,6 +1415,7 @@ class Lexer
                 && $this->source[$this->pos + 1] === '*';
             if ($isBlockComment) {
                 $commentStart = new SourceLocation($this->line, $this->column, $this->pos);
+                $newlineBeforeBlock = $newlineSinceTrivia;
                 $this->pos += 2;
                 $this->column += 2;
                 $closed = false;
@@ -1389,12 +1432,14 @@ class Lexer
                     if ($this->source[$this->pos] === "\n") {
                         $this->lineTerminatorBefore = true;
                         $lineTerminatorInPass = true;
+                        $newlineSinceTrivia = true;
                         $this->pos++;
                         $this->line++;
                         $this->column = 0;
                     } elseif ($this->source[$this->pos] === "\r") {
                         $this->lineTerminatorBefore = true;
                         $lineTerminatorInPass = true;
+                        $newlineSinceTrivia = true;
                         $this->pos++;
                         if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                             $this->pos++;
@@ -1406,6 +1451,7 @@ class Lexer
                         // are line terminators per the spec (sec-line-terminators).
                         $this->lineTerminatorBefore = true;
                         $lineTerminatorInPass = true;
+                        $newlineSinceTrivia = true;
                         $this->pos += 3;
                         $this->line++;
                         $this->column = 0;
@@ -1416,6 +1462,17 @@ class Lexer
                 }
                 if (!$closed) {
                     throw new SyntaxError('Unterminated multi-line comment', $commentStart);
+                }
+                if ($this->collectComments) {
+                    $this->comments[] = new Comment(
+                        'block',
+                        substr($this->source, $commentStart->offset, $this->pos - $commentStart->offset),
+                        $commentStart,
+                        $this->pos,
+                        $this->line,
+                        $newlineBeforeBlock,
+                    );
+                    $newlineSinceTrivia = false;
                 }
                 continue;
             }

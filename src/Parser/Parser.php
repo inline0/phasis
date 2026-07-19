@@ -140,10 +140,28 @@ class Parser
     /** @var Token[]|null */
     private ?array $tokens = null;
 
+    private bool $collectComments = false;
+
+    /**
+     * Capture comments during tokenization so tooling (the formatter) can
+     * reattach them. Must be set before parse() forces tokenization.
+     */
+    public function setCollectComments(bool $collectComments): void
+    {
+        $this->collectComments = $collectComments;
+    }
+
+    /** @return \Phasis\Lexer\Comment[] Comments in source order; empty unless collection was enabled. */
+    public function comments(): array
+    {
+        return $this->lexer->comments();
+    }
+
     private function ensureTokenized(): void
     {
         if ($this->tokens === null) {
             $this->lexer->setModuleMode($this->moduleMode);
+            $this->lexer->setCollectComments($this->collectComments);
             $this->tokens = $this->lexer->tokenize();
         }
     }

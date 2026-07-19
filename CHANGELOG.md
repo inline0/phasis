@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2026-07-19
+
+### Added
+- Native JavaScript formatter: `Phasis\Formatter\Formatter::formatSource($source, $sourceType, $options)` reprints source with prettier-compatible layout semantics, entirely in PHP. `Phasis\Formatter\FormatOptions` mirrors prettier 3.x options (printWidth, tabWidth, useTabs, semi, singleQuote, trailingComma, bracketSpacing, arrowParens).
+- Prettier document model as public API: `Phasis\Formatter\Doc` (group, conditionalGroup, fill, indent, line, softline, hardline, literalline, ifBreak, indentIfBreak, lineSuffix, breakParent) and the width-fitting `Phasis\Formatter\DocPrinter`, reusable by printers for other languages.
+- Comment collection in the lexer behind an opt-in flag: `Parser::setCollectComments(true)` plus `Parser::comments()` return `Phasis\Lexer\Comment` records (kind, raw text, location, end offset, newline-before) without changing engine tokenization.
+- Comment reattachment for tooling: `Phasis\Formatter\CommentAttacher` binds comments to AST nodes as leading, trailing, or dangling attachments from start offsets plus targeted source scans.
+- Formatter conformance suite: fixtures generated with real prettier, byte-equality on prettier-formatted corpora, and invariants for idempotency, reparse equivalence, and comment preservation.
+- Formatter reference page in the docs (`/docs/formatter`).
+
 ## [0.2.0] - 2026-07-18
 
 ### Added
