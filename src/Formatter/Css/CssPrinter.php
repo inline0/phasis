@@ -276,7 +276,7 @@ final class CssPrinter
             $merged[] = $unit;
         }
         if (count($merged) <= 1) {
-            return $part;
+            return Doc::group($this->unitDoc($part));
         }
         $head = array_shift($merged);
         $tail = [];

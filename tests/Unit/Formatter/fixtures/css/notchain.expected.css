@@ -1,5 +1,0 @@
-fieldset:not(#edd_register_fields):not(#edd_profile_submit_fieldset):not(
-    #edd_purchase_submit_and_longer
-  ):not(.extra) {
-  color: red;
-}

@@ -51,6 +51,23 @@ final class CssJsonFormatterTest extends TestCase
         self::assertSame("[data-x='y'] {\n\tcolor: red;\n}\n", $out);
     }
 
+    public function testCssWrappedPseudoClassSelectorsAreIdempotent(): void
+    {
+        $options = new FormatOptions(useTabs: true, singleQuote: true);
+        $source = 'fieldset:not(#edd_register_fields):not(#edd_profile_submit_fieldset)'
+            . ":not(#edd_purchase_submit_and_longer):not(.extra) {\n\tcolor: red;\n}\n";
+
+        $first = Formatter::formatSource($source, 'css', $options);
+
+        self::assertSame(
+            "fieldset:not(#edd_register_fields):not(#edd_profile_submit_fieldset):not(\n"
+            . "\t#edd_purchase_submit_and_longer\n"
+            . "):not(.extra) {\n\tcolor: red;\n}\n",
+            $first,
+        );
+        self::assertSame($first, Formatter::formatSource($first, 'css', $options));
+    }
+
     public function testCssEmptySourceStaysEmpty(): void
     {
         self::assertSame('', Formatter::formatSource("  \n\t\n", 'css'));
