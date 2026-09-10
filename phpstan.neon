@@ -3,6 +3,6 @@ parameters:
     treatPhpDocTypesAsCertain: false
     paths:
         - src
-    tmpDir: .phpstan.cache
+    tmpDir: .phpstan
     stubFiles:
         - phpstan-stubs/Fiber.stub

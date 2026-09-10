@@ -1,7 +1,7 @@
 /vendor/
 /node_modules/
 /.phpunit.cache/
-/.phpstan.cache/
+/.phpstan/
 /.compat-state*/
 package-lock.json
 
