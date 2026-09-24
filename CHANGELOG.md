@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.2] - 2026-09-24
+
+### Fixed
+- `vendor/bin/phasis` and `vendor/bin/test262` work when phasis is installed as a dependency. The binaries only looked for the autoloader in their own `vendor/`
+- The usage message names the binary `phasis` instead of the old `php-js`
+- The Composer package no longer ships `prds/`, `scripts/` or the development scripts in `bin/`
+
+### Changed
+- Development dependencies raised to the inline0 canonical minimums, including `squizlabs/php_codesniffer` `^3.13.6` for CVE-2026-67434. Dev only, no effect on consumers
+
 ## [0.4.1] - 2026-07-19
 
 ### Fixed
