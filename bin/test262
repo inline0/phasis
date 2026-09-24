@@ -17,7 +17,19 @@ set_time_limit(1800);
 ini_set('pcre.backtrack_limit', '200000');
 ini_set('pcre.recursion_limit', '100000');
 
-require __DIR__ . '/../vendor/autoload.php';
+(static function (): void {
+    foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+        if (is_file($autoload)) {
+            require_once $autoload;
+
+            return;
+        }
+    }
+
+    fwrite(STDERR, "Could not locate the Composer autoloader. Run `composer install`.
+");
+    exit(1);
+})();
 
 use Phasis\Tests\Oracle\Test262Runner;
 
