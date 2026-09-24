@@ -27,3 +27,12 @@
 /bench                  export-ignore
 /bench.json             export-ignore
 /compat.json            export-ignore
+/prds                   export-ignore
+/scripts                export-ignore
+/composer.lock          export-ignore
+
+# Development scripts in bin/ stay out. bin/phasis and bin/test262 are the
+# binaries declared in composer.json, so they ship.
+/bin/*                  export-ignore
+/bin/phasis             -export-ignore
+/bin/test262            -export-ignore
