@@ -39,7 +39,7 @@ if (in_array('--ast', $args, true)) {
     $fileIdx = array_search('--ast', $args);
     $file = $args[$fileIdx + 1] ?? null;
     if ($file === null || !file_exists($file)) {
-        fwrite(STDERR, "Usage: php-js --ast <file.js>\n");
+        fwrite(STDERR, "Usage: phasis --ast <file.js>\n");
         exit(1);
     }
     outputAst(file_get_contents($file));
@@ -49,7 +49,7 @@ if (in_array('--ast', $args, true)) {
 // Default: execute a file
 $file = $args[0] ?? null;
 if ($file === null || !file_exists($file)) {
-    fwrite(STDERR, "Usage: php-js <file.js> | php-js -e '<expr>' | php-js --ast <file.js>\n");
+    fwrite(STDERR, "Usage: phasis <file.js> | phasis -e '<expr>' | phasis --ast <file.js>\n");
     exit(1);
 }
 
