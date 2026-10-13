@@ -2122,6 +2122,7 @@ class Engine
         $html = \Phasis\BuiltIn\Jsx\Html\HtmlModule::class;
         $loader->registerBuiltinModule('phasis', static fn (): array => $html::exports($reactModule()));
         $loader->registerBuiltinModule('phasis/jsx-runtime', static fn (): array => $html::jsxRuntimeExports($reactModule()));
+        $loader->registerBuiltinModule('phasis/jsx-precompile', static fn (): array => \Phasis\BuiltIn\Jsx\Precompile\Template::moduleExports());
     }
 
     /** Load and evaluate a module from disk, returning its namespace object. */

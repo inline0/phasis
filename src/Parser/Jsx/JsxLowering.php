@@ -6,6 +6,8 @@ namespace Phasis\Parser\Jsx;
 
 use Phasis\Ast\Declaration\ImportDeclaration;
 use Phasis\Ast\Declaration\ImportSpecifier;
+use Phasis\Ast\Declaration\VariableDeclaration;
+use Phasis\Ast\Declaration\VariableDeclarator;
 use Phasis\Ast\Expression\ArrayExpression;
 use Phasis\Ast\Expression\CallExpression;
 use Phasis\Ast\Expression\Identifier;
@@ -40,6 +42,9 @@ final class JsxLowering
     /** @var array<string, array<string, string>> import source => imported name => local name */
     private array $imports = [];
 
+    /** @var list<array{0: string, 1: ArrayExpression}> Precompiled templates: binding name, parts. */
+    private array $templates = [];
+
     /**
      * @param \Closure(string): string $uniqueName Returns a local binding name not used in the module.
      */
@@ -63,6 +68,23 @@ final class JsxLowering
         return $this->imports !== [];
     }
 
+    /**
+     * Module-level `const $$tpl_N = [...]` declarations for precompiled
+     * templates, placed after the imports.
+     *
+     * @return list<VariableDeclaration>
+     */
+    public function templateDeclarations(SourceLocation $location): array
+    {
+        $declarations = [];
+        foreach ($this->templates as [$name, $parts]) {
+            $declarations[] = new VariableDeclaration($location, 'const', [
+                new VariableDeclarator($location, new Identifier($location, $name), $parts),
+            ]);
+        }
+        return $declarations;
+    }
+
     /** @return list<ImportDeclaration> */
     public function importDeclarations(SourceLocation $location): array
     {
@@ -81,7 +103,17 @@ final class JsxLowering
     {
         $location = $node->location;
         $runtime = $this->importSource . '/jsx-runtime';
-        $children = $this->lowerChildren($node->children);
+        $react = $this->importSource === 'react';
+        if (
+            $this->mode === JsxMode::Precompile
+            && ($react || $this->importSource === 'phasis')
+            && $node instanceof JsxElement
+            && JsxPrecompiler::canTemplateChildren($node, $react)
+        ) {
+            $children = [$this->template($node, $react)];
+        } else {
+            $children = $this->lowerChildren($node->children);
+        }
 
         if ($node instanceof JsxFragment) {
             $type = $this->runtimeRef($runtime, 'Fragment', $location);
@@ -167,6 +199,61 @@ final class JsxLowering
             $arguments[] = $child;
         }
         return new CallExpression($location, $this->dottedName($this->factory, $location), $arguments);
+    }
+
+    /** `jsxTemplate($$tpl_N, ...holes)` for an element's children. */
+    private function template(JsxElement $element, bool $react): Node
+    {
+        $location = $element->location;
+        $precompiler = new JsxPrecompiler(
+            $react,
+            fn (Node $node): Node => $this->lower(
+                $node instanceof JsxElement || $node instanceof JsxFragment ? $node : throw new \LogicException('JSX node expected'),
+            ),
+            function (string $name, Node $value, ?string $tag) use ($location): Node {
+                $arguments = [new Literal($location, $name, $name), $value];
+                if ($tag !== null) {
+                    $arguments[] = new Literal($location, $tag, $tag);
+                }
+                return new CallExpression($location, $this->runtimeRef('phasis/jsx-precompile', 'jsxAttr', $location), $arguments);
+            },
+        );
+        [$parts, $holes] = $precompiler->compileChildren($element);
+        $name = ($this->uniqueName)('$$tpl_' . (count($this->templates) + 1));
+        $this->templates[] = [$name, $this->literalArray($parts, $location)];
+        return new CallExpression(
+            $location,
+            $this->runtimeRef('phasis/jsx-precompile', 'jsxTemplate', $location),
+            [new Identifier($location, $name), ...$holes],
+        );
+    }
+
+    /** @param array<int|string, mixed> $values */
+    private function literalArray(array $values, SourceLocation $location): ArrayExpression
+    {
+        return new ArrayExpression($location, array_map(fn (mixed $value): Node => $this->literal($value, $location), array_values($values)));
+    }
+
+    private function literal(mixed $value, SourceLocation $location): Node
+    {
+        if (is_array($value)) {
+            if (array_is_list($value)) {
+                return $this->literalArray($value, $location);
+            }
+            $properties = [];
+            foreach ($value as $key => $item) {
+                $properties[] = $this->property((string) $key, $this->literal($item, $location), $location);
+            }
+            return new ObjectExpression($location, $properties);
+        }
+        if ($value === null) {
+            return new Literal($location, null, 'null');
+        }
+        if (is_int($value)) {
+            return new Literal($location, $value, (string) $value);
+        }
+        $string = (string) $value;
+        return new Literal($location, $string, (string) json_encode($string, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     /**

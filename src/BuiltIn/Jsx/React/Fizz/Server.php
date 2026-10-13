@@ -22,6 +22,7 @@ declare(strict_types=1);
 namespace Phasis\BuiltIn\Jsx\React\Fizz;
 
 use Phasis\BuiltIn\Jsx\Js;
+use Phasis\BuiltIn\Jsx\Precompile\Template;
 use Phasis\BuiltIn\Jsx\React\ReactModule;
 use Phasis\BuiltIn\Jsx\React\ReactSymbols;
 use Phasis\Engine;
@@ -1056,6 +1057,10 @@ final class Server
     /** @param array<int, mixed> $keyPath */
     private static function renderSpecialElement(Request $request, Task $task, array $keyPath, JsSymbol $type, JsObject $props): void
     {
+        if ($type === Template::templateSymbol()) {
+            self::renderTemplate($request, $task, $keyPath, $props);
+            return;
+        }
         if (
             $type === ReactSymbols::$fragment
             || $type === ReactSymbols::$strictMode
@@ -1120,6 +1125,93 @@ final class Server
         throw Js::error(
             'Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: symbol.',
         );
+    }
+
+    /**
+     * A precompiled template (JsxMode::Precompile): static parts go straight
+     * into the segment, holes render at the tree position and format context
+     * React would have reached through the elements the template replaced.
+     *
+     * @param array<int, mixed> $keyPath
+     */
+    private static function renderTemplate(Request $request, Task $task, array $keyPath, JsObject $props): void
+    {
+        $template = Template::parse(Js::get($props, 'tpl'));
+        if ($template['profile'] !== 'react') {
+            throw Js::error('This JSX was precompiled for the phasis HTML profile and cannot render with React.');
+        }
+        $segment = $task->blockedSegment;
+        if ($segment === null) {
+            throw Js::error('A template needs a segment to render into. This is a bug in Phasis.');
+        }
+        $exprs = Js::elements(Js::get($props, 'exprs'));
+        $static = $request->renderState->generateStaticMarkup;
+        $prevKeyPath = $task->keyPath;
+        $task->keyPath = $keyPath;
+        foreach ($template['parts'] as $i => $part) {
+            if ($part !== '') {
+                $flags = $template['flags'][$i] ?? 0;
+                if (!$static && ($flags & Template::STARTS_WITH_TEXT) !== 0 && $segment->lastPushedText) {
+                    $segment->chunks[] = Dom::TEXT_SEPARATOR;
+                }
+                $segment->chunks[] = $part;
+                $segment->lastPushedText = !$static && ($flags & Template::ENDS_WITH_TEXT) !== 0;
+            }
+            if (!isset($exprs[$i])) {
+                continue;
+            }
+            $value = $exprs[$i];
+            $steps = $template['steps'][$i] ?? null;
+            if ($steps === null) {
+                self::pushTemplateAttribute($segment, $value);
+                continue;
+            }
+            $prevTreeContext = $task->treeContext;
+            $prevFormatContext = $task->formatContext;
+            $childIndex = -1;
+            $count = count($steps);
+            for ($k = 0; $k < $count;) {
+                $step = $steps[$k];
+                if (is_string($step)) {
+                    $task->formatContext = Dom::getChildFormatContext($task->formatContext, $step, self::emptyProps());
+                    $k++;
+                    continue;
+                }
+                $childIndex = (int) $steps[$k + 1];
+                $task->treeContext = self::pushTreeContext($task->treeContext, $step, $childIndex);
+                $k += 2;
+            }
+            try {
+                self::renderNode($request, $task, $value, $childIndex);
+            } finally {
+                $task->treeContext = $prevTreeContext;
+                $task->formatContext = $prevFormatContext;
+            }
+        }
+        $task->keyPath = $prevKeyPath;
+    }
+
+    /** A jsxAttr() hole: the attribute as React's start-tag loop would write it. */
+    private static function pushTemplateAttribute(Segment $segment, JsValue $marker): void
+    {
+        $value = Js::get($marker, 'value');
+        if (Js::isNullish($value)) {
+            return;
+        }
+        $name = Js::str(Js::get($marker, 'name'));
+        $tag = Js::get($marker, 'tag');
+        if ($tag instanceof JsString && $tag->value === 'a' && $name === 'href' && $value instanceof JsString && $value->value === '') {
+            Dom::pushStringAttribute($segment->chunks, 'href', '');
+            return;
+        }
+        Dom::pushAttribute($segment->chunks, $name, $value);
+    }
+
+    private static ?JsObject $emptyProps = null;
+
+    private static function emptyProps(): JsObject
+    {
+        return self::$emptyProps ??= new JsObject();
     }
 
     /** @param array<int, mixed> $keyPath */

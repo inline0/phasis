@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Phasis\BuiltIn\Jsx\Html;
 
 use Phasis\BuiltIn\Jsx\Js;
+use Phasis\BuiltIn\Jsx\Precompile\Template;
 use Phasis\BuiltIn\Jsx\React\Fizz\Hooks;
 use Phasis\BuiltIn\Jsx\React\Fizz\Server;
 use Phasis\BuiltIn\Jsx\React\ReactModule;
@@ -310,8 +311,14 @@ final class HtmlRenderer
      * @param list<array{0: JsObject, 1: JsValue}> $providers
      * @return string|list<string|JsValue>
      */
-    private static function renderArray(array $children, JsObject $context, array $providers, bool $isSvgMode, ?JsValue $selectValue, bool $asyncMode): string|array
-    {
+    private static function renderArray(
+        array $children,
+        JsObject $context,
+        array $providers,
+        bool $isSvgMode,
+        ?JsValue $selectValue,
+        bool $asyncMode,
+    ): string|array {
         $rendered = '';
         $parts = null;
         foreach ($children as $child) {
@@ -360,6 +367,9 @@ final class HtmlRenderer
         if ($type === ReactSymbols::$fragment || $type === ReactSymbols::$strictMode || $type === ReactSymbols::$profiler) {
             return self::render(Js::get($props, 'children'), $context, $providers, $isSvgMode, $selectValue, $asyncMode);
         }
+        if ($type === Template::templateSymbol()) {
+            return self::renderTemplate($props, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+        }
         if ($type === self::rawSymbol()) {
             $html = Js::get($props, '__html');
             return Js::isNullish($html) ? '' : Js::str($html);
@@ -381,7 +391,17 @@ final class HtmlRenderer
                 return self::render($inner, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
             }
             if ($typeof === ReactSymbols::$forwardRef) {
-                return self::renderFunction($vnode, Js::get($type, 'render'), $props, Js::get($props, 'ref'), $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+                return self::renderFunction(
+                    $vnode,
+                    Js::get($type, 'render'),
+                    $props,
+                    Js::get($props, 'ref'),
+                    $context,
+                    $providers,
+                    $isSvgMode,
+                    $selectValue,
+                    $asyncMode,
+                );
             }
             return '';
         }
@@ -389,6 +409,64 @@ final class HtmlRenderer
             return '';
         }
         return self::renderFunction($vnode, $type, $props, $context, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+    }
+
+    /**
+     * A precompiled template: static parts as they are, holes rendered in
+     * place (attributes with prts's attribute rules).
+     *
+     * @param list<array{0: JsObject, 1: JsValue}> $providers
+     * @return string|list<string|JsValue>
+     */
+    private static function renderTemplate(
+        JsObject $props,
+        JsObject $context,
+        array $providers,
+        bool $isSvgMode,
+        ?JsValue $selectValue,
+        bool $asyncMode,
+    ): string|array {
+        $template = Template::parse(Js::get($props, 'tpl'));
+        if ($template['profile'] !== 'html') {
+            throw Js::error('This JSX was precompiled for the React profile and cannot render with the phasis HTML profile.');
+        }
+        $exprs = Js::elements(Js::get($props, 'exprs'));
+        $out = '';
+        $parts = null;
+        foreach ($template['parts'] as $i => $part) {
+            $out .= $part;
+            if (!isset($exprs[$i])) {
+                continue;
+            }
+            $value = $exprs[$i];
+            if (($template['steps'][$i] ?? null) === null) {
+                $out .= self::attributeChunk(Js::str(Js::get($value, 'name')), Js::get($value, 'value'), null, false);
+                continue;
+            }
+            if ($value instanceof JsUndefined || $value instanceof JsNull || $value instanceof JsBoolean) {
+                continue;
+            }
+            $rendered = self::render($value, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            if (is_string($rendered)) {
+                $out .= $rendered;
+                continue;
+            }
+            $parts ??= [];
+            if ($out !== '') {
+                $parts[] = $out;
+            }
+            $out = '';
+            foreach ($rendered as $piece) {
+                $parts[] = $piece;
+            }
+        }
+        if ($parts === null) {
+            return $out;
+        }
+        if ($out !== '') {
+            $parts[] = $out;
+        }
+        return $parts;
     }
 
     /** @param list<array{0: JsObject, 1: JsValue}> $providers */
@@ -464,7 +542,15 @@ final class HtmlRenderer
                 throw $e;
             }
             $renderNestedChildren = null;
-            $renderNestedChildren = static function () use (&$renderNestedChildren, $rendered, $context, $providers, $isSvgMode, $selectValue, $vnode): JsValue {
+            $renderNestedChildren = static function () use (
+                &$renderNestedChildren,
+                $rendered,
+                $context,
+                $providers,
+                $isSvgMode,
+                $selectValue,
+                $vnode,
+            ): JsValue {
                 try {
                     $result = self::withDispatcher(static fn () => self::render($rendered, $context, $providers, $isSvgMode, $selectValue, true));
                     if (self::$suspended !== null && isset(self::$suspended[$vnode])) {
@@ -564,32 +650,8 @@ final class HtmlRenderer
                 case 'children':
                     $children = $v;
                     continue 2;
-                case 'key':
-                case 'ref':
-                case '__self':
-                case '__source':
-                    continue 2;
-                case 'htmlFor':
-                    if (Js::has($props, 'for')) {
-                        continue 2;
-                    }
-                    $name = 'for';
-                    break;
-                case 'className':
-                    if (Js::has($props, 'class')) {
-                        continue 2;
-                    }
-                    $name = 'class';
-                    break;
-                case 'defaultChecked':
-                    $name = 'checked';
-                    break;
-                case 'defaultSelected':
-                    $name = 'selected';
-                    break;
                 case 'defaultValue':
                 case 'value':
-                    $name = 'value';
                     if ($type === 'textarea') {
                         $children = $v;
                         continue 2;
@@ -608,42 +670,8 @@ final class HtmlRenderer
                     $innerHtml = $v->toBoolean() ? Js::get($v, '__html') : $v;
                     $html = $innerHtml->toBoolean() ? self::concatString($innerHtml) : '';
                     continue 2;
-                case 'style':
-                    if ($v instanceof JsObject && !$v instanceof JsFunction) {
-                        $css = self::styleObjToCss($v);
-                        $v = $css === '' ? JsUndefined::instance() : new JsString($css);
-                    }
-                    break;
-                case 'acceptCharset':
-                    $name = 'accept-charset';
-                    break;
-                case 'httpEquiv':
-                    $name = 'http-equiv';
-                    break;
-                default:
-                    if (preg_match(self::UNSAFE_NAME, $name) === 1) {
-                        continue 2;
-                    }
-                    if (preg_match(self::NAMESPACE_REPLACE, $name) === 1) {
-                        $name = strtolower((string) preg_replace(self::NAMESPACE_REPLACE, '$1:$2', $name));
-                    } elseif ((($name[4] ?? '') === '-' || isset(self::HTML_ENUMERATED[$name])) && !Js::isNullish($v)) {
-                        $v = new JsString(self::concatString($v));
-                    } elseif ($isSvgMode) {
-                        if (preg_match(self::SVG_CAMEL_CASE, $name) === 1) {
-                            $name = $name === 'panose1' ? 'panose-1' : strtolower((string) preg_replace('/([A-Z])/', '-$1', $name));
-                        }
-                    } elseif (preg_match(self::HTML_LOWER_CASE, $name) === 1) {
-                        $name = strtolower($name);
-                    }
             }
-            if (Js::isNullish($v) || ($v instanceof JsBoolean && !$v->value)) {
-                continue;
-            }
-            if (($v instanceof JsBoolean && $v->value) || ($v instanceof JsString && $v->value === '')) {
-                $s .= ' ' . $name;
-            } else {
-                $s .= ' ' . $name . '="' . ($v instanceof JsString ? self::encodeEntities($v->value) : self::concatString($v)) . '"';
-            }
+            $s .= self::attributeChunk($name, $v, $props, $isSvgMode);
         }
         if (preg_match(self::UNSAFE_NAME, $type) === 1) {
             throw Js::error($type . ' is not a valid HTML tag name in ' . $s . '>');
@@ -664,6 +692,84 @@ final class HtmlRenderer
             return [$s . '>', ...$html, $endTag];
         }
         return $s . '>' . $html . $endTag;
+    }
+
+    /**
+     * One attribute as prts writes it (` name`, ` name="value"` or nothing),
+     * after the element-specific cases (children, value on form fields,
+     * dangerouslySetInnerHTML) are handled. $props, when given, is checked for
+     * `for` and `class`, which win over htmlFor and className.
+     */
+    public static function attributeChunk(string $name, JsValue $v, ?JsObject $props, bool $isSvgMode): string
+    {
+        if ($v instanceof JsFunction && $name !== 'class' && $name !== 'className') {
+            return '';
+        }
+        switch ($name) {
+            case 'children':
+            case 'key':
+            case 'ref':
+            case '__self':
+            case '__source':
+            case 'dangerouslySetInnerHTML':
+                return '';
+            case 'htmlFor':
+                if ($props !== null && Js::has($props, 'for')) {
+                    return '';
+                }
+                $name = 'for';
+                break;
+            case 'className':
+                if ($props !== null && Js::has($props, 'class')) {
+                    return '';
+                }
+                $name = 'class';
+                break;
+            case 'defaultChecked':
+                $name = 'checked';
+                break;
+            case 'defaultSelected':
+                $name = 'selected';
+                break;
+            case 'defaultValue':
+            case 'value':
+                $name = 'value';
+                break;
+            case 'style':
+                if ($v instanceof JsObject && !$v instanceof JsFunction) {
+                    $css = self::styleObjToCss($v);
+                    $v = $css === '' ? JsUndefined::instance() : new JsString($css);
+                }
+                break;
+            case 'acceptCharset':
+                $name = 'accept-charset';
+                break;
+            case 'httpEquiv':
+                $name = 'http-equiv';
+                break;
+            default:
+                if (preg_match(self::UNSAFE_NAME, $name) === 1) {
+                    return '';
+                }
+                if (preg_match(self::NAMESPACE_REPLACE, $name) === 1) {
+                    $name = strtolower((string) preg_replace(self::NAMESPACE_REPLACE, '$1:$2', $name));
+                } elseif ((($name[4] ?? '') === '-' || isset(self::HTML_ENUMERATED[$name])) && !Js::isNullish($v)) {
+                    $v = new JsString(self::concatString($v));
+                } elseif ($isSvgMode) {
+                    if (preg_match(self::SVG_CAMEL_CASE, $name) === 1) {
+                        $name = $name === 'panose1' ? 'panose-1' : strtolower((string) preg_replace('/([A-Z])/', '-$1', $name));
+                    }
+                } elseif (preg_match(self::HTML_LOWER_CASE, $name) === 1) {
+                    $name = strtolower($name);
+                }
+        }
+        if (Js::isNullish($v) || ($v instanceof JsBoolean && !$v->value)) {
+            return '';
+        }
+        if (($v instanceof JsBoolean && $v->value) || ($v instanceof JsString && $v->value === '')) {
+            return ' ' . $name;
+        }
+        return ' ' . $name . '="' . ($v instanceof JsString ? self::encodeEntities($v->value) : self::concatString($v)) . '"';
     }
 
     private static function styleObjToCss(JsObject $style): string

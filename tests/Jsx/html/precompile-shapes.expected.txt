@@ -1,0 +1,4 @@
+{
+  "string": "ERROR: Use \"renderToStringAsync\" for suspenseful rendering.",
+  "async": "<div class=\"root\"><h1>Hello Ada &lt;3!</h1><p>4 items <b class=\"badge\">new</b> and more</p><section class=\"box\" data-n=\"4\" tabindex=\"4\" style=\"color:red;margin-top:4px;\"><ul><li>one</li><li>two <span>Ada &lt;3</span></li><li>tail</li></ul><hr/><br/><p for=\"x\" readonly>attrs</p></section><div class=\"wrap\"><p>wrapped <!--$s--><em>late</em><!--/$s--> text</p></div></div>"
+}

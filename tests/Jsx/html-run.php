@@ -16,4 +16,8 @@ if ($fixture === false) {
     fwrite(STDERR, "usage: html-run.php <fixture.jsx>\n");
     exit(1);
 }
-echo Phasis\Tests\Jsx\HtmlFixture::render(new Phasis\Engine(), $fixture), "\n";
+$engine = new Phasis\Engine();
+if (in_array('--precompile', $argv, true)) {
+    $engine->setJsxOptions(new Phasis\Parser\Jsx\JsxOptions(mode: Phasis\Parser\Jsx\JsxMode::Precompile));
+}
+echo Phasis\Tests\Jsx\HtmlFixture::render($engine, $fixture), "\n";

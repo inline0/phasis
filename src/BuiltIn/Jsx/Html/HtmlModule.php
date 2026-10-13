@@ -41,10 +41,11 @@ final class HtmlModule
         $exports['renderToString'] = Js::fn('renderToString', static fn (JsValue $this_, array $args): JsValue => Js::string(
             HtmlRenderer::renderToString($args[0] ?? JsUndefined::instance(), $args[1] ?? JsUndefined::instance()),
         ), 2);
-        $exports['renderToStringAsync'] = Js::fn('renderToStringAsync', static fn (JsValue $this_, array $args): JsValue => HtmlRenderer::renderToStringAsync(
+        $renderAsync = static fn (JsValue $this_, array $args): JsValue => HtmlRenderer::renderToStringAsync(
             $args[0] ?? JsUndefined::instance(),
             $args[1] ?? JsUndefined::instance(),
-        ), 2);
+        );
+        $exports['renderToStringAsync'] = Js::fn('renderToStringAsync', $renderAsync, 2);
         $exports['raw'] = Js::fn('raw', static fn (JsValue $this_, array $args): JsValue => new JsElement(
             HtmlRenderer::rawSymbol(),
             JsNull::instance(),

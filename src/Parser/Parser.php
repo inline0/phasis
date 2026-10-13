@@ -423,7 +423,11 @@ class Parser
                     $location,
                 );
             }
-            $body = [...$this->jsxLoweringInstance->importDeclarations($location), ...$body];
+            $body = [
+                ...$this->jsxLoweringInstance->importDeclarations($location),
+                ...$this->jsxLoweringInstance->templateDeclarations($location),
+                ...$body,
+            ];
         }
 
         $program = new Program($location, $body);

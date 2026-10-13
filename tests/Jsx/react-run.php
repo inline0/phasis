@@ -18,6 +18,9 @@ if ($fixture === false) {
     exit(1);
 }
 $engine = new Phasis\Engine();
+if (in_array('--precompile', $argv, true)) {
+    $engine->setJsxOptions(new Phasis\Parser\Jsx\JsxOptions(mode: Phasis\Parser\Jsx\JsxMode::Precompile));
+}
 foreach (array_slice($argv, 2) as $arg) {
     if (str_starts_with($arg, '--import-map=')) {
         $dir = rtrim(substr($arg, 13), '/') . '/';
