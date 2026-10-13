@@ -1,0 +1,5 @@
+{
+  "string": "<div><p>Hello <!-- -->Dennis</p><p>3<!-- --> items, <!-- -->6<!-- --> halves <!-- -->and<!-- --> <!-- --> done</p><span>a<!-- -->b<!-- -->c</span><span>0<!-- -->0<!-- -->1e+21<!-- -->0.30000000000000004<!-- -->12345678901234567890</span>root text<!-- --> more</div>",
+  "static": "<div><p>Hello Dennis</p><p>3 items, 6 halves and  done</p><span>abc</span><span>001e+210.3000000000000000412345678901234567890</span>root text more</div>",
+  "prerender": "<div><p>Hello <!-- -->Dennis</p><p>3<!-- --> items, <!-- -->6<!-- --> halves <!-- -->and<!-- --> <!-- --> done</p><span>a<!-- -->b<!-- -->c</span><span>0<!-- -->0<!-- -->1e+21<!-- -->0.30000000000000004<!-- -->12345678901234567890</span>root text<!-- --> more</div>"
+}

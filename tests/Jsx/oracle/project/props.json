@@ -1,0 +1,10 @@
+{
+  "post": {
+    "id": 42,
+    "title": "Rendering React in PHP",
+    "excerpt": "No Node.js, no build step: <components> & \"imports\" just work.",
+    "author": "ada lovelace",
+    "featured": true,
+    "commentCount": 3
+  }
+}

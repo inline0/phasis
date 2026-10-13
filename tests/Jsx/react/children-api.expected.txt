@@ -1,0 +1,5 @@
+{
+  "string": "<div><ul data-count=\"8\"><li data-i=\"0\">x</li><li data-i=\"1\">y</li><li>text</li><li></li><li></li><li data-i=\"5\">plain</li><li>str</li><li>5</li><li>.0:$x</li><li>.0:1:$y</li><li>.1</li></ul><span>only</span><a href=\"/b\">new<!-- -->children</a><p>1<!-- -->2</p></div>",
+  "static": "<div><ul data-count=\"8\"><li data-i=\"0\">x</li><li data-i=\"1\">y</li><li>text</li><li></li><li></li><li data-i=\"5\">plain</li><li>str</li><li>5</li><li>.0:$x</li><li>.0:1:$y</li><li>.1</li></ul><span>only</span><a href=\"/b\">newchildren</a><p>12</p></div>",
+  "prerender": "<div><ul data-count=\"8\"><li data-i=\"0\">x</li><li data-i=\"1\">y</li><li>text</li><li></li><li></li><li data-i=\"5\">plain</li><li>str</li><li>5</li><li>.0:$x</li><li>.0:1:$y</li><li>.1</li></ul><span>only</span><a href=\"/b\">new<!-- -->children</a><p>1<!-- -->2</p></div>"
+}

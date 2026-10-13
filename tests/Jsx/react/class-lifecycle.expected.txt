@@ -1,0 +1,5 @@
+{
+  "string": "<div><p>2<!-- -->/<!-- -->12</p><p>x<!-- -->8</p><p>dark</p><p>light</p><p>replaced</p></div>",
+  "static": "<div><p>2/12</p><p>x8</p><p>dark</p><p>light</p><p>replaced</p></div>",
+  "prerender": "<div><p>2<!-- -->/<!-- -->12</p><p>x<!-- -->8</p><p>dark</p><p>light</p><p>replaced</p></div>"
+}

@@ -1,0 +1,5 @@
+{
+  "string": "<!--$!--><template></template><i>fallback</i><!--/$-->",
+  "static": "<i>fallback</i>",
+  "prerender": "<!--$--><p>already resolved</p><!--/$-->"
+}

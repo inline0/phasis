@@ -1,0 +1,5 @@
+{
+  "string": "<div><script>if (a < b) { console.log(\"</\\u0073cript>\", \"<\\u0053CRIPT>\"); }</script><style>.a::after{content:\"</\\73 tyle><\\53 TYLE>\"}</style></div>",
+  "static": "<div><script>if (a < b) { console.log(\"</\\u0073cript>\", \"<\\u0053CRIPT>\"); }</script><style>.a::after{content:\"</\\73 tyle><\\53 TYLE>\"}</style></div>",
+  "prerender": "<div><script>if (a < b) { console.log(\"</\\u0073cript>\", \"<\\u0053CRIPT>\"); }</script><style>.a::after{content:\"</\\73 tyle><\\53 TYLE>\"}</style></div>"
+}

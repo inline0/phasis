@@ -1,0 +1,5 @@
+{
+  "string": "ERROR: The server render could not complete because client rendering was requested outside a Suspense boundary. See this error's cause for additional details.",
+  "static": "ERROR: The server render could not complete because client rendering was requested outside a Suspense boundary. See this error's cause for additional details.",
+  "prerender": "ERROR: The server render could not complete because client rendering was requested outside a Suspense boundary. See this error's cause for additional details."
+}

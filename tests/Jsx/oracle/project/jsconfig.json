@@ -1,0 +1,7 @@
+{
+  // Path aliases, as the client bundle's jsconfig declares them.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] }
+  }
+}

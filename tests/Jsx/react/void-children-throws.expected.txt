@@ -1,0 +1,5 @@
+{
+  "string": "ERROR: br is a self-closing tag and must neither have `children` nor use `dangerouslySetInnerHTML`.",
+  "static": "ERROR: br is a self-closing tag and must neither have `children` nor use `dangerouslySetInnerHTML`.",
+  "prerender": "ERROR: br is a self-closing tag and must neither have `children` nor use `dangerouslySetInnerHTML`."
+}

@@ -1,0 +1,5 @@
+{
+  "string": "<div><p>Hello <!-- -->a<!-- -->!</p><i>1</i><b data-ref=\"object\">fwd</b><em>green<!-- --> <!-- -->5</em><em>red<!-- --> <!-- -->6</em><s>p</s><section id=\"s\">one<!-- -->two</section><p>Hello </p></div>",
+  "static": "<div><p>Hello a!</p><i>1</i><b data-ref=\"object\">fwd</b><em>green 5</em><em>red 6</em><s>p</s><section id=\"s\">onetwo</section><p>Hello </p></div>",
+  "prerender": "<div><p>Hello <!-- -->a<!-- -->!</p><i>1</i><b data-ref=\"object\">fwd</b><em>green<!-- --> <!-- -->5</em><em>red<!-- --> <!-- -->6</em><s>p</s><section id=\"s\">one<!-- -->two</section><p>Hello </p></div>"
+}

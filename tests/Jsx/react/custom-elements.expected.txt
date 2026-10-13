@@ -1,0 +1,5 @@
+{
+  "string": "<div><my-element class=\"c\" foo=\"bar\" flag=\"\" num=\"3\" style=\"color:blue\" htmlFor=\"x\"><span>child</span></my-element><x-y><b>raw</b></x-y><font-face src=\"x\"></font-face></div>",
+  "static": "<div><my-element class=\"c\" foo=\"bar\" flag=\"\" num=\"3\" style=\"color:blue\" htmlFor=\"x\"><span>child</span></my-element><x-y><b>raw</b></x-y><font-face src=\"x\"></font-face></div>",
+  "prerender": "<div><my-element class=\"c\" foo=\"bar\" flag=\"\" num=\"3\" style=\"color:blue\" htmlFor=\"x\"><span>child</span></my-element><x-y><b>raw</b></x-y><font-face src=\"x\"></font-face></div>"
+}

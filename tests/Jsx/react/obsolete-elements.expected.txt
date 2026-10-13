@@ -1,0 +1,5 @@
+{
+  "string": "<div><col/><keygen/><menuitem label=\"m\"></menuitem><td>cell outside a table</td></div>",
+  "static": "<div><col/><keygen/><menuitem label=\"m\"></menuitem><td>cell outside a table</td></div>",
+  "prerender": "<div><col/><keygen/><menuitem label=\"m\"></menuitem><td>cell outside a table</td></div>"
+}

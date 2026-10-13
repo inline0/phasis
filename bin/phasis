@@ -22,7 +22,28 @@ use Phasis\Engine;
 use Phasis\Parser\Parser;
 
 $args = array_slice($argv, 1);
-$opts = getopt('e:', ['ast', 'repl']);
+$opts = getopt('e:', ['ast', 'repl', 'render:', 'props:']);
+
+if (isset($opts['render'])) {
+    $file = (string) $opts['render'];
+    if (!file_exists($file)) {
+        fwrite(STDERR, "Usage: phasis --render <component.jsx> [--props '<json>']\n");
+        exit(1);
+    }
+    $props = isset($opts['props']) ? json_decode((string) $opts['props'], true) : [];
+    if (!is_array($props)) {
+        fwrite(STDERR, "--props must be a JSON object\n");
+        exit(1);
+    }
+    $engine = new Engine();
+    try {
+        echo $engine->render($file, $props) . "\n";
+    } catch (\Throwable $e) {
+        fwrite(STDERR, $e->getMessage() . "\n");
+        exit(1);
+    }
+    exit(0);
+}
 
 if (isset($opts['e'])) {
     $source = $opts['e'];
@@ -42,15 +63,32 @@ if (in_array('--ast', $args, true)) {
         fwrite(STDERR, "Usage: phasis --ast <file.js>\n");
         exit(1);
     }
-    outputAst(file_get_contents($file));
+    outputAst(file_get_contents($file), $file);
     exit(0);
 }
 
 // Default: execute a file
 $file = $args[0] ?? null;
 if ($file === null || !file_exists($file)) {
-    fwrite(STDERR, "Usage: phasis <file.js> | phasis -e '<expr>' | phasis --ast <file.js>\n");
+    fwrite(STDERR, "Usage: phasis <file.js|file.mjs|file.jsx> | phasis -e '<expr>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']\n");
     exit(1);
+}
+
+$jsx = new \Phasis\Parser\Jsx\JsxOptions();
+if (str_ends_with(strtolower($file), '.mjs') || $jsx->appliesTo($file)) {
+    // Modules (.mjs, .jsx) go through the module loader so imports resolve.
+    $engine = new Engine();
+    try {
+        $engine->execFile($file);
+        $output = $engine->getConsoleOutput();
+        if ($output !== '') {
+            echo $output . "\n";
+        }
+    } catch (\Throwable $e) {
+        fwrite(STDERR, $e->getMessage() . "\n");
+        exit(1);
+    }
+    exit(0);
 }
 
 executeSource(file_get_contents($file));
@@ -70,9 +108,12 @@ function executeSource(string $source): void
     }
 }
 
-function outputAst(string $source): void
+function outputAst(string $source, ?string $file = null): void
 {
-    echo jsonIndent2(Serializer::toArray(Parser::parseSource($source))) . "\n";
+    $jsx = new \Phasis\Parser\Jsx\JsxOptions(mode: \Phasis\Parser\Jsx\JsxMode::Preserve);
+    $isJsx = $file !== null && $jsx->appliesTo($file);
+    $ast = Parser::parseSource($source, $isJsx ? 'module' : 'script', $isJsx ? $jsx : null);
+    echo jsonIndent2(Serializer::toArray($ast)) . "\n";
 }
 
 function jsonIndent2(mixed $data): string

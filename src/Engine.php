@@ -1993,6 +1993,134 @@ class Engine
         return $this->toPhp($namespace->get($name));
     }
 
+    /**
+     * Render a component module to HTML.
+     *
+     * Loads the module at $path, converts $props to JavaScript, renders the
+     * named export and runs the event loop until the render settles. The
+     * React profile follows react-dom's prerender (it waits for async
+     * components and use(promise)); the HTML profile awaits async
+     * components. The profile defaults to the module's JSX import source:
+     * `react` renders with React, `phasis` with the HTML profile.
+     *
+     * @param array<string, mixed> $props
+     */
+    public function render(string $path, array $props = [], string $export = 'default', ?RenderProfile $profile = null): string
+    {
+        $resolved = realpath($path);
+        if ($resolved === false) {
+            throw new \RuntimeException("Cannot read module: {$path}");
+        }
+        return $this->withCurrentInterpreter(function () use ($resolved, $props, $export, $profile): string {
+            $namespace = $this->interpreter->getModuleLoader()->loadModule($resolved);
+            $this->eventLoop->runUntilEmpty();
+            return $this->renderExport($resolved, $namespace, $props, $export, $profile);
+        });
+    }
+
+    /**
+     * Render a component from module source held in memory. $path anchors
+     * relative imports and decides whether the source gets JSX (by its
+     * extension); it defaults to a `.jsx` file in the working directory.
+     *
+     * @param array<string, mixed> $props
+     */
+    public function renderSource(
+        string $source,
+        array $props = [],
+        string $export = 'default',
+        ?string $path = null,
+        ?RenderProfile $profile = null,
+    ): string {
+        $modulePath = $path ?? (getcwd() ?: '/') . '/__phasis_render_' . md5($source) . '.jsx';
+        return $this->withCurrentInterpreter(function () use ($modulePath, $source, $props, $export, $profile): string {
+            $namespace = $this->interpreter->getModuleLoader()->evaluateModule($modulePath, $source);
+            $this->eventLoop->runUntilEmpty();
+            return $this->renderExport($modulePath, $namespace, $props, $export, $profile);
+        });
+    }
+
+    /** @param array<string, mixed> $props */
+    private function renderExport(string $modulePath, JsObject $namespace, array $props, string $export, ?RenderProfile $profile): string
+    {
+        $component = $namespace->get($export);
+        if ($profile === null) {
+            $source = $this->interpreter->getModuleLoader()->record($modulePath)->jsxImportSource ?? $this->jsxOptions->importSource;
+            $profile = $source === 'phasis' ? RenderProfile::Html : RenderProfile::React;
+        }
+        $jsProps = PhpToJs::convert($props);
+        if (!$jsProps instanceof JsObject || $props === []) {
+            $jsProps = new JsObject();
+        }
+        if ($profile === RenderProfile::Html) {
+            throw new \Phasis\Exceptions\RuntimeError('The HTML profile is not available yet');
+        }
+        $element = \Phasis\BuiltIn\Jsx\React\ReactModule::element($component, \Phasis\Value\JsNull::instance(), $jsProps);
+        $html = null;
+        $error = null;
+        \Phasis\BuiltIn\Jsx\React\Fizz\Server::prerender(
+            $element,
+            JsUndefined::instance(),
+            static function (\Phasis\BuiltIn\Jsx\React\Fizz\Request $request) use (&$html): void {
+                $html = \Phasis\BuiltIn\Jsx\React\Fizz\Server::flushToString($request);
+            },
+            static function (JsValue $fatal) use (&$error): void {
+                $error = $fatal;
+            },
+        );
+        $this->eventLoop->runUntilEmpty();
+        if ($error !== null) {
+            throw new \Phasis\Exceptions\JsThrowable($error);
+        }
+        if ($html === null) {
+            throw new \Phasis\Exceptions\RuntimeError('render did not settle: a promise the render waits for never resolved');
+        }
+        return self::utf8Output(\Phasis\BuiltIn\Jsx\React\ReactDomModule::normalize($html));
+    }
+
+    /** Replace lone UTF-16 surrogates with U+FFFD, as TextEncoder does for the prelude bytes. */
+    private static function utf8Output(string $html): string
+    {
+        if (!str_contains($html, "\xED")) {
+            return $html;
+        }
+        return (string) preg_replace('/\xED[\xA0-\xBF][\x80-\xBF]/', "\u{FFFD}", $html);
+    }
+
+    /**
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    private function withCurrentInterpreter(\Closure $fn): mixed
+    {
+        $previousInterpreter = self::$currentInterpreter;
+        self::$currentInterpreter = $this->interpreter;
+        try {
+            return $fn();
+        } finally {
+            self::$currentInterpreter = $previousInterpreter;
+        }
+    }
+
+    /** The native React modules, unless an import map already points them elsewhere. */
+    private function registerJsxBuiltins(\Phasis\Module\ModuleLoader $loader): void
+    {
+        $react = null;
+        $reactModule = static function () use (&$react): \Phasis\BuiltIn\Jsx\React\ReactModule {
+            return $react ??= new \Phasis\BuiltIn\Jsx\React\ReactModule();
+        };
+        // npm's React packages are CommonJS, so bundlers and Node give them a
+        // default export equal to module.exports (`import React from 'react'`).
+        $withDefault = static fn (array $exports): array => $exports + ['default' => \Phasis\BuiltIn\Jsx\Js::object($exports)];
+        $dom = \Phasis\BuiltIn\Jsx\React\ReactDomModule::class;
+        $loader->registerBuiltinModule('react', static fn (): array => $withDefault($reactModule()->exports()));
+        $loader->registerBuiltinModule('react/jsx-runtime', static fn (): array => $withDefault($reactModule()->jsxRuntimeExports()));
+        $loader->registerBuiltinModule('react-dom', static fn (): array => $withDefault($dom::reactDomExports()));
+        $loader->registerBuiltinModule('react-dom/server', static fn (): array => $withDefault($dom::serverExports()));
+        $loader->registerBuiltinModule('react-dom/static', static fn (): array => $withDefault($dom::staticExports()));
+    }
+
     /** Load and evaluate a module from disk, returning its namespace object. */
     private function importModule(string $path): JsObject
     {
@@ -2014,6 +2142,7 @@ class Engine
     private function configureModuleLoader(): void
     {
         $loader = $this->interpreter->getModuleLoader();
+        $this->registerJsxBuiltins($loader);
         $loader->setJsxOptions($this->jsxOptions);
         $loader->setModuleOptions($this->moduleOptions);
         $loader->setImportMap($this->importMap);

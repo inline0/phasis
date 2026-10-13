@@ -1,0 +1,5 @@
+{
+  "string": "<p id=\"_app-R_0_\">x</p>",
+  "static": "<p id=\"_app-R_0_\">x</p>",
+  "prerender": "<p id=\"_app-R_0_\">x</p>"
+}

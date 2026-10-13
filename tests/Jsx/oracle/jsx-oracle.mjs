@@ -24,6 +24,8 @@ const suites = {
     lower: lowerSuite,
     resolution: resolutionSuite,
     smoke: smokeSuite,
+    react: reactSuite,
+    project: projectSuite,
 };
 
 /** Where each suite's fixtures live, relative to tests/Jsx. */
@@ -109,6 +111,82 @@ async function resolutionSuite(dir) {
     return runModule(result.outputFiles[0].text);
 }
 
+/**
+ * React render oracle: esbuild compiles the fixture (React's automatic
+ * runtime, react and react-dom left external), and Node renders it with
+ * react-dom@19.3.0 through tests/Jsx/react/_driver.mjs: renderToString,
+ * renderToStaticMarkup and prerender, as JSON.
+ */
+async function reactSuite(fixture) {
+    const outDir = path.join(here, '.out');
+    fs.mkdirSync(outDir, { recursive: true });
+    const entry = `import * as mod from ${JSON.stringify(fixture)};\n`
+        + `import { run } from ${JSON.stringify(path.join(jsxDir, 'react', '_driver.mjs'))};\n`
+        + `console.log(JSON.stringify(await run(mod), null, 2));\n`;
+    const file = path.join(outDir, path.basename(fixture, '.jsx') + '.mjs');
+    await esbuild.build({
+        stdin: { contents: entry, resolveDir: here, sourcefile: 'entry.mjs' },
+        outfile: file,
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        jsx: 'automatic',
+        external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
+        logLevel: 'silent',
+    });
+    const env = { ...process.env, TZ: 'UTC', NODE_ENV: 'production' };
+    return execFileSync(process.execPath, [file], { encoding: 'utf8', env });
+}
+
+/**
+ * Goals project: the fixture app in oracle/project, bundled by esbuild the
+ * way a client build would (jsconfig aliases, CSS as empty, assets as URLs,
+ * React external), rendered with react-dom's prerender in Node. fetch() is
+ * served from project/comments.json, like the mock transport on the PHP side.
+ */
+async function projectSuite() {
+    const dir = path.join(here, 'project');
+    const assets = {
+        name: 'assets',
+        setup(build) {
+            build.onLoad({ filter: /\.svg$/ }, (args) => ({
+                contents: `export default ${JSON.stringify('/assets/' + path.basename(args.path))};`,
+                loader: 'js',
+            }));
+        },
+    };
+    const entry = `import { createElement } from 'react';\n`
+        + `import { prerender } from 'react-dom/static';\n`
+        + `import Page from ${JSON.stringify(path.join(dir, 'Page.jsx'))};\n`
+        + `import props from ${JSON.stringify(path.join(dir, 'props.json'))};\n`
+        + `import comments from ${JSON.stringify(path.join(dir, 'comments.json'))};\n`
+        + `globalThis.fetch = async () => new Response(JSON.stringify(comments), { headers: { 'content-type': 'application/json' } });\n`
+        + `const { prelude } = await prerender(createElement(Page, props));\n`
+        + `process.stdout.write(await new Response(prelude).text());\n`;
+    const file = path.join(here, '.out', 'project.mjs');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    await esbuild.build({
+        stdin: { contents: entry, resolveDir: dir, sourcefile: 'entry.mjs' },
+        outfile: file,
+        absWorkingDir: dir,
+        bundle: true,
+        format: 'esm',
+        // A client-style build: ES module entry points and conditions.
+        platform: 'neutral',
+        mainFields: ['module', 'main'],
+        conditions: ['module', 'production'],
+        resolveExtensions: ['.jsx', '.js', '.mjs', '.cjs', '.json'],
+        define: { 'process.env.NODE_ENV': '"production"' },
+        jsx: 'automatic',
+        external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
+        loader: { '.css': 'empty' },
+        plugins: [assets],
+        logLevel: 'silent',
+    });
+    const env = { ...process.env, TZ: 'UTC', NODE_ENV: 'production' };
+    return execFileSync(process.execPath, [file], { encoding: 'utf8', env, cwd: here });
+}
+
 /** Package smoke tests: Node runs the module directly against the pinned packages. */
 function smokeSuite(fixture) {
     // Phasis defaults NODE_ENV to production, as bundlers do for server builds.
@@ -170,6 +248,12 @@ async function main() {
     if (!suites[suite]) {
         console.error(`usage: jsx-oracle.mjs <${Object.keys(suites).join('|')}> [fixture ...]`);
         process.exit(1);
+    }
+    if (suite === 'project') {
+        const html = await projectSuite();
+        fs.writeFileSync(path.join(here, 'project', 'expected.html'), html + '\n');
+        console.log('project: wrote expected.html');
+        return;
     }
     const isDirectory = directorySuites.has(suite);
     const extension = suiteExtensions[suite] ?? '.jsx';

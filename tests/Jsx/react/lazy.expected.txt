@@ -1,0 +1,5 @@
+{
+  "string": "<div><!--$!--><template></template>waiting<!--/$--></div>",
+  "static": "<div>waiting</div>",
+  "prerender": "<div><!--$--><b>lazy <!-- -->x</b><!--/$--></div>"
+}

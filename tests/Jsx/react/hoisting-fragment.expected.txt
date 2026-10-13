@@ -1,0 +1,5 @@
+{
+  "string": "<link rel=\"stylesheet\" href=\"/a.css\" data-precedence=\"default\"/><style data-precedence=\"low\" data-href=\"s1\">p{color:red}</style><script async=\"\" src=\"/s.js\"></script><title>Hoisted title</title><meta name=\"description\" content=\"desc\"/><link rel=\"canonical\" href=\"https://example.com/\"/><article><p>text</p><svg><title>svg title</title></svg></article>",
+  "static": "<link rel=\"stylesheet\" href=\"/a.css\" data-precedence=\"default\"/><style data-precedence=\"low\" data-href=\"s1\">p{color:red}</style><script async=\"\" src=\"/s.js\"></script><title>Hoisted title</title><meta name=\"description\" content=\"desc\"/><link rel=\"canonical\" href=\"https://example.com/\"/><article><p>text</p><svg><title>svg title</title></svg></article>",
+  "prerender": "<link rel=\"stylesheet\" href=\"/a.css\" data-precedence=\"default\"/><style data-precedence=\"low\" data-href=\"s1\">p{color:red}</style><script async=\"\" src=\"/s.js\"></script><title>Hoisted title</title><meta name=\"description\" content=\"desc\"/><link rel=\"canonical\" href=\"https://example.com/\"/><article><p>text</p><svg><title>svg title</title></svg></article>"
+}

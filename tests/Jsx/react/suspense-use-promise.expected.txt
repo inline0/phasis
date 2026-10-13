@@ -1,0 +1,5 @@
+{
+  "string": "<div><!--$!--><template></template><i>loading a</i><!--/$--><!--$!--><template></template><i>loading b</i><!--/$--></div>",
+  "static": "<div><i>loading a</i><i>loading b</i></div>",
+  "prerender": "<div><!--$--><p>data:a</p><!--/$--><!--$--><p>data:b</p><p>data:c</p><!--/$--></div>"
+}

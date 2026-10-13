@@ -1,0 +1,5 @@
+{
+  "string": "ERROR: root boom",
+  "static": "ERROR: root boom",
+  "prerender": "ERROR: root boom"
+}

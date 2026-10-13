@@ -81,10 +81,9 @@ class ModuleLoader
     {
         $this->interpreter = $interpreter;
         $this->globalEnv = $globalEnv;
-        $builtins = &$this->builtins;
         $this->resolver = new ModuleResolver(
             new ModuleOptions(),
-            static fn (string $specifier): bool => isset($builtins[$specifier]),
+            fn (string $specifier): bool => isset($this->builtins[$specifier]),
         );
     }
 
@@ -149,6 +148,17 @@ class ModuleLoader
     public function resolver(): ModuleResolver
     {
         return $this->resolver;
+    }
+
+    /**
+     * Resolved keys of every module loaded so far: file paths, plus
+     * `builtin:` and `stub:` keys for synthetic modules.
+     *
+     * @return list<string>
+     */
+    public function loadedModules(): array
+    {
+        return array_map('strval', array_keys($this->modules));
     }
 
     /** The record of a loaded module, by resolved key. */

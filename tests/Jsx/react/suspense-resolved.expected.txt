@@ -1,0 +1,5 @@
+{
+  "string": "<div><!--$--><p>content</p><!--/$-->text<!--$-->inner text<!--/$-->tail<!--$--><!--$--><b>nested</b><!--/$--><!--/$--></div>",
+  "static": "<div><p>content</p>textinner texttail<b>nested</b></div>",
+  "prerender": "<div><!--$--><p>content</p><!--/$-->text<!--$-->inner text<!--/$-->tail<!--$--><!--$--><b>nested</b><!--/$--><!--/$--></div>"
+}
