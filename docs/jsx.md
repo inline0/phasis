@@ -144,7 +144,7 @@ jsx("div", { className: "card", children: jsxTemplate($$tpl_1, title) });
 - Dynamic attributes become `jsxAttr()` holes; inline `on*` handlers on HTML elements are dropped, since server HTML never contains them.
 - For the React profile, each template part records whether it starts or ends with text and each hole its tree position, so `<!-- -->` markers and `useId` values are exactly React's.
 
-The output is byte-identical with and without precompile; the test suite checks every React and HTML fixture both ways. The gain depends on how much of a page is static markup: on the component-heavy SSR bench page it is about 4%.
+The output is byte-identical with and without precompile; the test suite checks every React and HTML fixture both ways. The gain depends on how much of a page is static markup. The SSR bench page is mostly components, and there it renders within noise of the plain build (0.98x to 1.04x in local runs), so measure your own pages before turning it on.
 
 ## Performance
 
