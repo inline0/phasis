@@ -56,11 +56,48 @@ try {
 public function execFile(string $path): mixed
 ```
 
-Loads a file from disk and evaluates it. The path is used as the source name in stack traces. Modules (`.mjs` or files containing top-level `import`/`export`) are loaded with the ES-module loader; everything else is treated as a classic script.
+Loads a file from disk and runs it. `.mjs` files and JSX files (the `JsxOptions::$extensions`, `.jsx` by default) are loaded with the ES module loader, so their imports resolve, and `execFile()` returns `null` for them, like `evalAsModule()`. Every other file, including `.js`, is evaluated as a classic script and returns the value of its last expression; a `.js` file with top-level `import` is a syntax error. Use `getExport()` to read a module's exports.
 
 ```php
-$engine->execFile(__DIR__ . '/script.js');
+$engine->execFile(__DIR__ . '/script.js');   // classic script
+$engine->execFile(__DIR__ . '/main.mjs');    // ES module, returns null
 ```
+
+## render
+
+```php
+public function render(string $path, array $props = [], string $export = 'default', ?RenderProfile $profile = null): string
+public function renderSource(string $source, array $props = [], string $export = 'default', ?string $path = null, ?RenderProfile $profile = null): string
+```
+
+Renders a component module to HTML: loads the module, converts `$props` to JavaScript, renders the export and runs the event loop until the render settles. `RenderProfile::React` gives React 19.3's `prerender` output; `RenderProfile::Html` gives preact-render-to-string-compatible HTML. Without a profile, the module's JSX import source decides (`react` or `phasis`). Render errors rethrow as `JsThrowable`; a render that never settles throws `RuntimeError`. See [JSX](/docs/jsx) and [React](/docs/react).
+
+```php
+echo $engine->render(__DIR__ . '/components/PostCard.jsx', ['post' => $post]);
+```
+
+## getExport
+
+```php
+public function getExport(string $path, string $name = 'default'): mixed
+```
+
+Loads a module and returns one of its exports converted to PHP. See [Modules](/docs/modules#reading-exports-from-php).
+
+## Module and JSX configuration
+
+```php
+public function setJsxOptions(\Phasis\Parser\Jsx\JsxOptions $options): void
+public function setModuleOptions(\Phasis\Module\ModuleOptions $options): void
+public function setImportMap(array $imports): void                 // specifier => absolute path, or null for a stub
+public function setAssetResolver(callable $resolver): void         // fn (string $file): string
+public function setCssModuleResolver(callable $resolver): void     // fn (string $file): array<string, string>
+```
+
+- `setJsxOptions()`: how JSX compiles and which module paths get it (see [JSX](/docs/jsx)).
+- `setModuleOptions()`: resolution extensions, package conditions, `NODE_ENV`, style and asset extensions, and the parse cache (see [Modules](/docs/modules)).
+- `setImportMap()`: WHATWG import map `imports`, consulted before everything else, including the built-in React modules.
+- `setAssetResolver()` and `setCssModuleResolver()`: what asset and CSS-module imports return. Without a resolver those imports throw.
 
 ## setGlobal
 

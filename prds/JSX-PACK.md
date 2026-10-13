@@ -777,6 +777,29 @@ Total estimate: ~10,900 lines of engine code plus ~1,200 lines of oracle tooling
 10. **License.** React is MIT. Ported files keep React's copyright and license notice, and the repo lists it with third-party notices.
 11. **`Function.prototype.toString()`** on a component returns the JSX source, where Node plus a bundler shows compiled code. Documented divergence; nothing tests it.
 
+## Deviations in the implementation
+
+Recorded while implementing on `feat/jsx-pack`. Where the code and the sections above disagree, this list is what shipped.
+
+1. **Fixture layout.** JSX fixtures live in `tests/Jsx/<suite>/` (`parse`, `lower`, `resolution`, `react`, `html`) and run in a `jsx` PHPUnit suite, instead of `scenarios/jsx/` with new `scenario.json` modes. The oracle script is `tests/Jsx/oracle/jsx-oracle.mjs` (suites `parse`, `lower`, `resolution`, `smoke`, `react`, `project`, `html`), not `bin/jsx-oracle`, and `bin/oracle` is unchanged. Package smoke components live in `tests/Jsx/oracle/smoke/` and the Goals fixture project in `tests/Jsx/oracle/project/`. The `jsx.yml` workflow runs the `jsx` suite and `hydrate.mjs`; the main CI keeps running only the `unit` suite.
+2. **JSX after `}`.** The Layer 1 known gap is closed: in JSX mode `<` after a block's `}` starts JSX when it is followed by a tag name or `>`, as in Babel and esbuild (`if (a) {} <p />`). A parse fixture pins it against Babel.
+3. **Application `.js` files are always ES modules.** Format detection (`type`, then syntax detection) applies inside `node_modules` only. A `.js` file of the application is an ES module even without `import` or `export`, as in the client bundle.
+4. **Node-semantics importers.** Bundler interop applies to `.js` and JSX importers. An `.mjs` file, or a `.js` file in a `"type": "module"` package, gets `module.exports` as the default import of a CommonJS module, as in Node and as esbuild does for those files.
+5. **Default export of the React built-ins.** `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` also have a `default` export equal to their export object, so `import React from 'react'` works as it does through a bundler. The named export lists are React's own.
+6. **Barrels: 13 modules, not fewer than 10.** One `lucide-react` 1.56.0 icon statically imports 12 shared modules (`createLucideIcon`, `Icon`, the default attributes, the icon context and the string utilities among them). esbuild's metafile for a bundle of one icon lists the same 13 modules. Loading fewer would mean not evaluating modules that ES module semantics require, so acceptance criterion 4 is met as "loads exactly the icon's own import closure (13 modules), never the 1,883-icon barrel", and `JsxPackageSmokeTest` pins that closure.
+7. **Suspension uses Fizz's task model, not Fibers.** Layer 6 planned to suspend components on a PHP Fiber. The port follows React instead: a suspended component throws React's `SuspenseException`, the task records the thenable, and a ping from the event loop retries it, exactly as `ReactFizzServer` works. That also gives React's ordering of pings and microtasks, which byte-exactness of async renders depends on.
+8. **Not ported from Fizz**, all outside the synchronous and prerender paths of `Engine::render()`:
+   - resuming and postponing (`resume*` APIs, postponed state); aborting a `prerender` renders the aborted parts as client-rendered boundaries
+   - `onHeaders` and its `Link` header
+   - component stacks in the `errorInfo` passed to `onError`
+   - `SuspenseList` row coordination (React 19.3 does not export `SuspenseList`; its children render in order)
+9. **Three-way oracle and errors.** React's edge build minifies error messages in its legacy `renderToString` path. For fixtures that throw, the three-way test compares that both sides throw, not the messages; the messages are compared against Node by the React render oracle.
+10. **Real React's `prerender` prelude.** React's edge build produces the prelude on pull. A Fetch Pack `Response` built from a pull-based stream snapshots the queue and misses pulled chunks, so the exact fallback and the three-way driver read the prelude with a stream reader. The native `prerender` prelude has all of its chunks enqueued and works with `new Response(prelude).text()`.
+11. **Hydration exemptions.** Fixtures that React itself cannot hydrate (invalid nesting, deliberately throwing renders, attributes React drops on the client) export `hydrate = false` and stay in the render oracles. The hydration check fails on hydration warnings and lists React's other development warnings (deprecated lifecycles, controlled fields) without failing; fixtures with async components list the expected "async Client Component" message in `hydrateWarnings`; nodes inside client-rendered (`<!--$!-->`) boundaries and `<textarea>` text are not required to be reused, since React replaces them by design.
+12. **Template metadata.** A precompiled template carries a trailing metadata entry after its string parts: the profile, per part whether it starts or ends with text, and per hole its tree steps. The example in Layer 9 omits it.
+13. **Async components in the HTML profile** are awaited (Layer 5). preact-render-to-string 6.8.0 renders nothing for them, so the HTML oracle fixtures avoid async components and `HtmlProfileTest` covers awaiting them.
+14. **Gates run locally.** Per the release instructions for this branch, the "in CI" gates (compat matrix, CI bench, docs-content workflow) were run locally with the same commands and the tracing JIT: test262 and `./bin/compat-report`, `bench/ssr.php` and `bench/microbench.js` as medians of three runs, and the docs-content check.
+
 ## Resolved questions
 
 Signed off 2026-10-13, each as recommended:

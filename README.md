@@ -32,6 +32,11 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - **Fetch Pack**: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`
 - **Crypto**: `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (SHA family, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2)
 - **WebSocket** (RFC 6455 + replaceable transport), **XMLHttpRequest** (layered over fetch), and a real **event loop** (`setTimeout` / `setInterval` / `queueMicrotask`, plus Stage-3 `AsyncContext`)
+- **JSX Pack**: render JSX components to HTML from PHP with `Engine::render()`, no build step
+  - **Native React 19.3 server renderer** in PHP: `react`, `react-dom/server` and `react-dom/static` are built in, with HTML byte-identical to `react-dom@19.3.0` and hydratable by React on the client (hooks, context, Suspense, `useId`, async components, resource hints)
+  - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8, plus `raw()`
+  - **Bundler-style imports**: extensionless paths and `index` files, `jsconfig` aliases, `node_modules` with `package.json` `exports`, CommonJS packages, style and asset imports, import maps, and barrel pruning for `sideEffects: false` packages
+  - Optional precompile of static markup, an `opcache.preload` script, and an on-disk parse cache
 - Direct PHP↔JS interop — share objects without serialization, bind PHP callables as JS functions
 - **100 % of the official test262 suite passes** — ECMAScript conformance, every category, no skips
 - **100 % of imported Web Platform Tests pass** across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob
@@ -148,6 +153,9 @@ Full documentation lives at [phasis.dev](https://phasis.dev) (or in [`docs/`](./
 - [CLI](./docs/cli.md): `bin/phasis` and `bin/test262`
 - [API](./docs/api.md): full `Phasis\Engine` reference
 - [Parser](./docs/parser.md): standalone `Phasis\Parser\Parser` API, AST walker, ESTree export
+- [JSX](./docs/jsx.md): `.jsx` modules, `Engine::render()`, the React and HTML profiles, precompile
+- [React](./docs/react.md): the native React 19.3 server renderer and hydration
+- [Modules](./docs/modules.md): import maps, `node_modules`, CommonJS, aliases, assets, barrel pruning
 - [Interop](./docs/interop/): PHP↔JS values, host functions, shared objects
 - [Compatibility](./docs/compatibility/): test262 coverage, spec surface, limitations
 - [Advanced](./docs/advanced/): architecture, bytecode VM, oracle testing, benchmarks

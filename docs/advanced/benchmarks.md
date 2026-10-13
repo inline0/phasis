@@ -52,6 +52,31 @@ php -d xdebug.mode=off bench/run.php path/to/your-script.js
 
 For PHP-level profiling, Xdebug's profiler works against Phasis exactly like any other PHP application. Run a script under `xdebug.mode=profile` and inspect the cachegrind output to see which `Phasis\` classes dominate.
 
+## Server-side rendering
+
+`bench/ssr.php` renders `bench/ssr.jsx` (header, nav, 100 post cards, a context consumer, about 1,300 elements, importing a CommonJS package and lucide-react icons) five ways:
+
+| Variant | What runs |
+|---|---|
+| `native` | the built-in React 19.3 profile (`Engine::render`) |
+| `precompile` | native, with `JsxMode::Precompile` |
+| `real-react` | real React 19.3 (the vendored edge build) inside Phasis, through an import map |
+| `html` | the phasis HTML profile |
+| `floor` | the components alone: every component called, every element created, no HTML |
+
+```bash
+php -d xdebug.mode=off -d opcache.enable_cli=1 -d opcache.jit=tracing -d opcache.jit_buffer_size=64M bench/ssr.php
+```
+
+The targets are ratios, so they hold across machines: native renders at least 10x faster than real React in Phasis and stays within 1.5x of the floor. Local medians on PHP 8.5 with the tracing JIT: 12.6x and 1.11x. Most of the remaining time is the components themselves, interpreted as JavaScript; React's own work (elements, hooks, serialization) is PHP.
+
+For production, preload Phasis so none of its PHP is compiled per request:
+
+```ini
+opcache.preload=/path/to/vendor/phasis/phasis/preload.php
+opcache.preload_user=www-data
+```
+
 ## Roadmap
 
 What would close more of the V8 gap, in rough order of tractability:

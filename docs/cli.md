@@ -26,7 +26,7 @@ After `composer require phasis/phasis`, `bin/phasis` and `bin/test262` are linke
 ./vendor/bin/phasis script.js
 ```
 
-Executes `script.js` end-to-end. `console.log` output is written to stdout; thrown JS exceptions exit with status 1 and the message on stderr.
+Executes `script.js` end-to-end. `console.log` output is written to stdout; thrown JS exceptions exit with status 1 and the message on stderr. `.mjs` and `.jsx` files run as ES modules, so their imports resolve (see [Modules](/docs/modules)); other files run as classic scripts.
 
 ### Evaluate an expression
 
@@ -42,7 +42,15 @@ The argument is evaluated as a complete script; the last expression's result is 
 ./vendor/bin/phasis --ast script.js
 ```
 
-Prints the parse tree as indented PHP-readable output. Useful for debugging parser issues or building tooling on top of Phasis.
+Prints the parse tree as indented PHP-readable output. Useful for debugging parser issues or building tooling on top of Phasis. For `.jsx` files the tree keeps the JSX nodes (`JsxMode::Preserve`).
+
+### Render a component
+
+```bash
+./vendor/bin/phasis --render components/Card.jsx --props '{"title":"Hello"}'
+```
+
+Renders the module's default export with `Engine::render()` and prints the HTML. `--props` is a JSON object passed as the component's props. See [JSX](/docs/jsx).
 
 ### REPL
 
@@ -63,10 +71,10 @@ Pass `-` as the file argument to read source from stdin.
 ### Module mode
 
 ```bash
-./vendor/bin/phasis --module entry.mjs
+./vendor/bin/phasis entry.mjs
 ```
 
-Parses the file as an ES module: `import` / `export`, top-level `await`, and `import.meta` are all available. Relative specifiers resolve from the file's own directory.
+`.mjs` and `.jsx` files load as ES modules: `import` / `export`, top-level `await`, and `import.meta` are all available, and specifiers resolve from the file's own directory the way bundlers resolve them.
 
 ## bin/test262
 

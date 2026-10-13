@@ -1,5 +1,29 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- JSX Pack: render JSX components to HTML from PHP with no build step.
+  - JSX syntax in `.jsx` modules (`Phasis\Parser\Jsx\JsxOptions`, `JsxMode`), lowered at parse time exactly like esbuild's automatic and classic runtimes, with `@jsx*` pragmas. `JsxMode::Preserve` keeps JSX nodes (`Phasis\Ast\Jsx\*`) for tooling and `EstreeSerializer` exports them as ESTree JSX.
+  - `Engine::render()` and `Engine::renderSource()` render a component module with PHP props, choosing the profile from the JSX import source or a `Phasis\RenderProfile`.
+  - Native React 19.3: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` are built-in modules implemented in PHP, a port of React's Fizz server renderer. Output is byte-identical to `react-dom@19.3.0` (`renderToString`, `renderToStaticMarkup`, `prerender`) and hydrates with React 19.3's client.
+  - The general HTML profile: `phasis` and `phasis/jsx-runtime`, byte-identical to preact-render-to-string 6.8.0, with `raw()` and `renderToStringAsync()`.
+  - `JsxMode::Precompile`: static markup compiled to string templates, byte-identical output.
+  - Bundler-style module resolution: import maps (`Engine::setImportMap()`), extension and `index` probing, `jsconfig`/`tsconfig` path aliases, `package.json` `exports`/`imports`/`module`/`main` with conditions (`Phasis\Module\ModuleOptions`), CommonJS packages with bundler interop, `process.env.NODE_ENV`, empty style imports, asset and CSS-module resolvers (`setAssetResolver()`, `setCssModuleResolver()`), and barrel pruning for `sideEffects: false` packages.
+  - `Engine::getExport()` returns one export of a module converted to PHP.
+  - `preload.php` for `opcache.preload`, and `ModuleOptions::$parseCacheDir`, an on-disk cache of parsed modules.
+  - `bin/phasis --render <file.jsx> --props '<json>'`.
+- Docs: JSX, React and Modules pages.
+
+### Changed
+- `Engine::execFile()` runs `.mjs` and JSX files through the module loader and returns `null` for them. The docs claimed this for any file with top-level `import`; `.js` files are, and stay, classic scripts.
+- `bin/phasis` runs `.mjs` and `.jsx` files as modules, and `--ast` keeps JSX for `.jsx` files.
+
+### Fixed
+- In strict code, `try { return f(); } catch (e) { ... }` treated the call as a tail call, so an exception from `f` skipped the `catch`.
+- `Reflect.construct` did not initialize class fields of base classes, or of derived classes with an implicit constructor.
+- PHP 8.5 deprecation notices from `SplObjectStorage` in `JSON` and `DisposableStack`.
+
 ## [0.4.2] - 2026-09-24
 
 ### Fixed

@@ -7,7 +7,7 @@
  * loader and the native React and HTML renderers are compiled and linked
  * once instead of per request:
  *
- *   opcache.preload=/path/to/vendor/inline0/phasis/preload.php
+ *   opcache.preload=/path/to/vendor/phasis/phasis/preload.php
  *   opcache.preload_user=www-data   ; when PHP-FPM starts as root
  *
  * Nothing JavaScript is parsed or run here; React itself is PHP code in

@@ -15,7 +15,7 @@ Phasis exposes its JavaScript parser as a standalone PHP API. You can parse sour
 ## parseSource
 
 ```php
-public static function parseSource(string $source, string $sourceType = 'script'): Program
+public static function parseSource(string $source, string $sourceType = 'script', ?JsxOptions $jsx = null): Program
 ```
 
 The one-call entry point on `Phasis\Parser\Parser`. Parses `$source` and returns the `Phasis\Ast\Program` root node.
@@ -59,6 +59,21 @@ Most type names match [ESTree](https://github.com/estree/estree). The deviations
 | `ImportSpecifier` | `ImportSpecifier` / `ImportDefaultSpecifier` / `ImportNamespaceSpecifier` |
 
 A few shapes also differ: class bodies are a plain element array on the class node (no `ClassBody` wrapper), import/export names, statement labels, and `FunctionExpression` names are stored as strings rather than nested `Identifier` nodes, and `super` parses as an `Identifier` named `super` (there is no `Super` node class). `Phasis\Ast\EstreeSerializer` reshapes all of this to the ESTree form.
+
+## JSX
+
+Pass `JsxOptions` to parse JSX. With `JsxMode::Preserve` the AST keeps JSX nodes; with the other modes JSX is lowered to plain calls the way the engine runs it (see [JSX](/docs/jsx)).
+
+```php
+use Phasis\Parser\Jsx\JsxMode;
+use Phasis\Parser\Jsx\JsxOptions;
+
+$program = Parser::parseSource('const a = <p class="x">Hi {name}</p>;', 'module', new JsxOptions(mode: JsxMode::Preserve));
+```
+
+The JSX node classes live in `Phasis\Ast\Jsx`: `JsxElement`, `JsxFragment`, `JsxOpeningElement`, `JsxClosingElement`, `JsxOpeningFragment`, `JsxClosingFragment`, `JsxAttribute`, `JsxSpreadAttribute`, `JsxExpressionContainer`, `JsxEmptyExpression`, `JsxSpreadChild`, `JsxText` (with the decoded `value` and the `raw` source), `JsxIdentifier`, `JsxMemberExpression` and `JsxNamespacedName`. `EstreeSerializer` exports them as the standard ESTree JSX types (`JSXElement`, `JSXAttribute`, ...), matching Babel's `jsx` and `estree` plugins. JSX parses in the `script` goal too, for tooling, but lowering with the automatic runtime needs `module`.
+
+Syntax errors use Babel's wording where it has one, for example "Adjacent JSX elements must be wrapped in an enclosing tag. Did you want a JSX fragment <>...</>?".
 
 ## Syntax errors
 
