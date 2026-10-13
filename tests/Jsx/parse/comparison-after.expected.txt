@@ -1,0 +1,21 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      BinaryExpression op=<
+        Identifier name=a
+        Identifier name=b
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=y
+      BinaryExpression op=!==
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=a
+        Identifier name=z
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=w
+      BinaryExpression op=<
+        Identifier name=c
+        Identifier name=d

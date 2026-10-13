@@ -1,0 +1,10 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=p
+        JSXClosingElement
+          JSXIdentifier name=p
+        JSXText value="© 2026 — Tom & Jerry € 😀  '"

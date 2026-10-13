@@ -1,0 +1,1 @@
+x = <svg:rect width="1" />;

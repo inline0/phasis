@@ -1,0 +1,1 @@
+x = <label for="a" class="b" default />;

@@ -1,0 +1,10 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=p
+        JSXClosingElement
+          JSXIdentifier name=p
+        JSXText value="Don't // not a comment /* nor this */ a > b and c } d \"quoted\""

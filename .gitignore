@@ -8,3 +8,7 @@ package-lock.json
 # Claude Code internal state
 .claude/
 tests/Wpt/upstream/
+
+# JSX Pack oracle toolchain: lockfile is committed, dependencies are not.
+tests/Jsx/oracle/node_modules/
+!tests/Jsx/oracle/package-lock.json

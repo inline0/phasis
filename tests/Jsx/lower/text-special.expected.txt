@@ -1,0 +1,2 @@
+#1 jsx("p", {"children": "Don't // not a comment /* nor this */ a > b \"quoted\" back\\slash"})
+#2 jsxs("p", {"children": ["}", " ", "{"]})

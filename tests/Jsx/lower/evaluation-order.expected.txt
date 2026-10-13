@@ -1,0 +1,8 @@
+eval a
+eval spread
+eval b
+eval c1
+eval inner
+#1 jsx("b", {"x": "inner"})
+eval c2
+#2 jsxs(fn:A, {"a": "a", "s": "spread", "b": "b", "children": ["c1", #1, "c2"]})

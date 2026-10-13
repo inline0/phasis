@@ -1,0 +1,42 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=main
+        JSXClosingElement
+          JSXIdentifier name=main
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=header
+          JSXClosingElement
+            JSXIdentifier name=header
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=h1
+            JSXClosingElement
+              JSXIdentifier name=h1
+            JSXText value="T"
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=section
+          JSXClosingElement
+            JSXIdentifier name=section
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=article
+            JSXClosingElement
+              JSXIdentifier name=article
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=p
+              JSXClosingElement
+                JSXIdentifier name=p
+              JSXText value="a"
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=p
+              JSXClosingElement
+                JSXIdentifier name=p
+              JSXText value="b"

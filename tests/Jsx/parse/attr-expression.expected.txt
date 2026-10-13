@@ -1,0 +1,31 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=a
+          JSXAttribute
+            JSXIdentifier name=onClick
+            JSXExpressionContainer
+              ArrowFunctionExpression
+                CallExpression
+                  Identifier name=go
+                  Literal value=1
+          JSXAttribute
+            JSXIdentifier name=style
+            JSXExpressionContainer
+              ObjectExpression
+                Property kind=init
+                  Identifier name=color
+                  Literal value="red"
+                Property kind=init
+                  Identifier name=fontSize
+                  Literal value=12
+          JSXAttribute
+            JSXIdentifier name=n
+            JSXExpressionContainer
+              ConditionalExpression
+                Identifier name=a
+                Identifier name=b
+                Identifier name=c

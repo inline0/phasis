@@ -1,0 +1,23 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=Layout
+          JSXAttribute
+            JSXIdentifier name=header
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=Header
+          JSXAttribute
+            JSXIdentifier name=footer
+            JSXFragment
+              JSXOpeningFragment
+              JSXClosingFragment
+              JSXElement
+                JSXOpeningElement
+                  JSXIdentifier name=b
+                JSXClosingElement
+                  JSXIdentifier name=b
+                JSXText value="f"

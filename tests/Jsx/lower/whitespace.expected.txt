@@ -1,0 +1,8 @@
+#1 jsx("b", {"children": "bold"})
+#2 jsxs("div", {"children": ["Hello, world   ", "x", #1, "   tail"]})
+#3 jsx("p", {"children": "   leading and trailing   "})
+#4 jsx("p", {"children": " "})
+#5 jsx("p", {})
+#6 jsx("p", {"children": "a b c"})
+#7 jsxs("p", {"children": ["a", " ", "b"]})
+#8 jsxs("p", {"children": ["x", " ", "y"]})

@@ -1,0 +1,20 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=Card
+          JSXSpreadAttribute
+            Identifier name=props
+          JSXAttribute
+            JSXIdentifier name=key
+            Literal value="k"
+          JSXSpreadAttribute
+            ObjectExpression
+              Property kind=init
+                Identifier name=a
+                Identifier name=a
+              Property kind=init
+                Identifier name=b
+                Identifier name=b

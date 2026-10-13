@@ -897,6 +897,7 @@ trait ExpressionParser
             TokenType::Async => $this->parseAsyncExpression(),
             TokenType::Super => $this->parseSuperExpression(),
             TokenType::Import => $this->parseImportExpression(),
+            TokenType::JsxTagStart => $this->parseJsxRoot(),
             default => throw new ParseError('Unexpected token', $token),
         };
     }

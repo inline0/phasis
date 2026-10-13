@@ -1,0 +1,18 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=p
+        JSXClosingElement
+          JSXIdentifier name=p
+        JSXExpressionContainer
+          ConditionalExpression
+            CallExpression
+              MemberExpression
+                Literal
+                Identifier name=test
+              Identifier name=s
+            Literal value="y"
+            Literal value="n"

@@ -1,0 +1,109 @@
+Program
+  ExportDefaultDeclaration
+    FunctionDeclaration
+      Identifier name=Page
+      ObjectPattern
+        Property kind=init
+          Identifier name=posts
+          Identifier name=posts
+        Property kind=init
+          Identifier name=user
+          Identifier name=user
+      BlockStatement
+        ReturnStatement
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=Layout
+              JSXAttribute
+                JSXIdentifier name=title
+                Literal value="Blog"
+              JSXAttribute
+                JSXIdentifier name=user
+                JSXExpressionContainer
+                  Identifier name=user
+            JSXClosingElement
+              JSXIdentifier name=Layout
+            JSXText value="\n      "
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=h1
+                JSXAttribute
+                  JSXIdentifier name=className
+                  Literal value="title"
+              JSXClosingElement
+                JSXIdentifier name=h1
+              JSXText value="Posts & news"
+            JSXText value="\n      "
+            JSXExpressionContainer
+              ConditionalExpression
+                BinaryExpression op====
+                  MemberExpression
+                    Identifier name=posts
+                    Identifier name=length
+                  Literal value=0
+                JSXElement
+                  JSXOpeningElement
+                    JSXIdentifier name=p
+                  JSXClosingElement
+                    JSXIdentifier name=p
+                  JSXText value="No posts yet."
+                JSXElement
+                  JSXOpeningElement
+                    JSXIdentifier name=ul
+                    JSXAttribute
+                      JSXIdentifier name=className
+                      Literal value="posts"
+                  JSXClosingElement
+                    JSXIdentifier name=ul
+                  JSXText value="\n          "
+                  JSXExpressionContainer
+                    CallExpression
+                      MemberExpression
+                        Identifier name=posts
+                        Identifier name=map
+                      ArrowFunctionExpression
+                        Identifier name=post
+                        JSXElement
+                          JSXOpeningElement
+                            JSXIdentifier name=li
+                            JSXAttribute
+                              JSXIdentifier name=key
+                              JSXExpressionContainer
+                                MemberExpression
+                                  Identifier name=post
+                                  Identifier name=id
+                          JSXClosingElement
+                            JSXIdentifier name=li
+                          JSXText value="\n              "
+                          JSXElement
+                            JSXOpeningElement
+                              JSXIdentifier name=a
+                              JSXAttribute
+                                JSXIdentifier name=href
+                                JSXExpressionContainer
+                                  TemplateLiteral
+                                    MemberExpression
+                                      Identifier name=post
+                                      Identifier name=slug
+                                    TemplateElement
+                                    TemplateElement
+                            JSXClosingElement
+                              JSXIdentifier name=a
+                            JSXExpressionContainer
+                              MemberExpression
+                                Identifier name=post
+                                Identifier name=title
+                          JSXText value="\n              "
+                          JSXElement
+                            JSXOpeningElement
+                              JSXIdentifier name=span
+                            JSXClosingElement
+                              JSXIdentifier name=span
+                            JSXText value=" by "
+                            JSXExpressionContainer
+                              MemberExpression
+                                Identifier name=post
+                                Identifier name=author
+                          JSXText value="\n            "
+                  JSXText value="\n        "
+            JSXText value="\n    "

@@ -1,0 +1,20 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=p
+        JSXClosingElement
+          JSXIdentifier name=p
+        JSXText value="\n  Hello,\n     world   "
+        JSXExpressionContainer
+          Identifier name=name
+        JSXText value="\n  "
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=b
+          JSXClosingElement
+            JSXIdentifier name=b
+          JSXText value="bold"
+        JSXText value="   tail\n"

@@ -1,0 +1,25 @@
+Program
+  FunctionDeclaration
+    Identifier name=A
+    BlockStatement
+  ExpressionStatement
+    JSXElement
+      JSXOpeningElement
+        JSXIdentifier name=A
+  IfStatement
+    Identifier name=x
+    BlockStatement
+  ExpressionStatement
+    JSXElement
+      JSXOpeningElement
+        JSXIdentifier name=B
+  ClassDeclaration
+    Identifier name=C
+    ClassBody
+  ExpressionStatement
+    JSXFragment
+      JSXOpeningFragment
+      JSXClosingFragment
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=C

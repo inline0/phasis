@@ -1,0 +1,2 @@
+#1 jsxs("div", {"children": ["a", "b"]})
+#2 jsxs("div", {"children": ["first", "a", "b"]})

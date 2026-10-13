@@ -1,0 +1,10 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=a
+          JSXAttribute
+            JSXIdentifier name=title
+            Literal value="one\n    two"

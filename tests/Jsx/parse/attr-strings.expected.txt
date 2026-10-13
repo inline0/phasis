@@ -1,0 +1,16 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=a
+          JSXAttribute
+            JSXIdentifier name=href
+            Literal value="/x?a=1&b=2"
+          JSXAttribute
+            JSXIdentifier name=title
+            Literal value="single \"q\""
+          JSXAttribute
+            JSXIdentifier name=data-n
+            Literal value="AB<&unknown;"

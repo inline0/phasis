@@ -1,0 +1,23 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      TemplateLiteral
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=b
+          JSXClosingElement
+            JSXIdentifier name=b
+          JSXExpressionContainer
+            TemplateLiteral
+              JSXElement
+                JSXOpeningElement
+                  JSXIdentifier name=i
+                JSXClosingElement
+                  JSXIdentifier name=i
+                JSXExpressionContainer
+                  Identifier name=y
+              TemplateElement
+              TemplateElement
+        TemplateElement
+        TemplateElement

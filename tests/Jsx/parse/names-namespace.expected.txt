@@ -1,0 +1,12 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXNamespacedName
+            JSXIdentifier name=svg
+            JSXIdentifier name=rect
+          JSXAttribute
+            JSXIdentifier name=width
+            Literal value="1"

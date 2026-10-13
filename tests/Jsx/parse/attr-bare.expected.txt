@@ -1,0 +1,11 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=input
+          JSXAttribute
+            JSXIdentifier name=disabled
+          JSXAttribute
+            JSXIdentifier name=readOnly

@@ -1,0 +1,15 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=label
+          JSXAttribute
+            JSXIdentifier name=for
+            Literal value="a"
+          JSXAttribute
+            JSXIdentifier name=class
+            Literal value="b"
+          JSXAttribute
+            JSXIdentifier name=default

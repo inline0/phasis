@@ -1,0 +1,1 @@
+x = <Card {...props} key="k" {...{ a, b }} />;

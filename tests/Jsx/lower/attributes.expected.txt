@@ -1,0 +1,8 @@
+#1 jsx("a", {"href": "/a", "onClick": fn:onClick, "title": "t", "data-x": "1", "aria-label": "l"})
+#2 jsx("use", {"xlink:href": "#i", "xml:lang": "en"})
+#3 jsx("c", {})
+#4 jsx(fn:Fragment, {"children": "f"})
+#5 jsx("a", {"b": #3, "d": #4})
+#6 jsx("a", {"str": "a & b <c> \"q\" 's' AB"})
+#7 jsx("a", {"multi": "one\n    two", "back": "c:\\new"})
+#8 jsx("a", {"e": "t/a", "n": 3, "o": {"x": 1}, "arr": [1, 2]})

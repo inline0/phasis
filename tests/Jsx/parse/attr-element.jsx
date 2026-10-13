@@ -1,0 +1,1 @@
+x = <Layout header=<Header /> footer=<><b>f</b></> />;

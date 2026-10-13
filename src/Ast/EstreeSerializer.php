@@ -369,6 +369,55 @@ final class EstreeSerializer
                 'right' => self::convert($node->right),
                 'body' => self::convert($node->body),
             ]),
+            $node instanceof Jsx\JsxElement => self::entry($node, 'JSXElement', [
+                'openingElement' => self::convert($node->openingElement),
+                'closingElement' => self::optional($node->closingElement),
+                'children' => self::nodeList($node->children),
+            ]),
+            $node instanceof Jsx\JsxFragment => self::entry($node, 'JSXFragment', [
+                'openingFragment' => self::convert($node->openingFragment),
+                'closingFragment' => self::convert($node->closingFragment),
+                'children' => self::nodeList($node->children),
+            ]),
+            $node instanceof Jsx\JsxOpeningElement => self::entry($node, 'JSXOpeningElement', [
+                'name' => self::convert($node->name),
+                'attributes' => self::nodeList($node->attributes),
+                'selfClosing' => $node->selfClosing,
+            ]),
+            $node instanceof Jsx\JsxClosingElement => self::entry($node, 'JSXClosingElement', [
+                'name' => self::convert($node->name),
+            ]),
+            $node instanceof Jsx\JsxOpeningFragment => self::entry($node, 'JSXOpeningFragment', []),
+            $node instanceof Jsx\JsxClosingFragment => self::entry($node, 'JSXClosingFragment', []),
+            $node instanceof Jsx\JsxAttribute => self::entry($node, 'JSXAttribute', [
+                'name' => self::convert($node->name),
+                'value' => self::optional($node->value),
+            ]),
+            $node instanceof Jsx\JsxSpreadAttribute => self::entry($node, 'JSXSpreadAttribute', [
+                'argument' => self::convert($node->argument),
+            ]),
+            $node instanceof Jsx\JsxExpressionContainer => self::entry($node, 'JSXExpressionContainer', [
+                'expression' => self::convert($node->expression),
+            ]),
+            $node instanceof Jsx\JsxEmptyExpression => self::entry($node, 'JSXEmptyExpression', []),
+            $node instanceof Jsx\JsxSpreadChild => self::entry($node, 'JSXSpreadChild', [
+                'expression' => self::convert($node->expression),
+            ]),
+            $node instanceof Jsx\JsxText => self::entry($node, 'JSXText', [
+                'value' => $node->value,
+                'raw' => $node->raw,
+            ]),
+            $node instanceof Jsx\JsxIdentifier => self::entry($node, 'JSXIdentifier', [
+                'name' => $node->name,
+            ]),
+            $node instanceof Jsx\JsxMemberExpression => self::entry($node, 'JSXMemberExpression', [
+                'object' => self::convert($node->object),
+                'property' => self::convert($node->property),
+            ]),
+            $node instanceof Jsx\JsxNamespacedName => self::entry($node, 'JSXNamespacedName', [
+                'namespace' => self::convert($node->namespace),
+                'name' => self::convert($node->name),
+            ]),
             default => self::entry($node, $node->type(), []),
         };
     }
