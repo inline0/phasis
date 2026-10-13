@@ -7,8 +7,10 @@
 2. **Speed first**: React's server rendering is built into Phasis natively, in PHP. No React bundle is loaded or interpreted.
 3. A **general JSX renderer** ships alongside it for server-only HTML.
 4. All six open questions are resolved as recommended (see "Resolved questions").
-5. **Phase order** confirmed: React first (Phases 1 to 5), with the HTML profile (Phase 6) built alongside Phase 5.
-6. **Toolchain pin and vendored React** confirmed. `tests/Jsx/oracle/` pins the reference tools and holds the ~580 KB real React 19.3 bundle, used as the exact fallback and the three-way oracle.
+5. **Toolchain pin and vendored React** confirmed. `tests/Jsx/oracle/` pins the reference tools and holds the ~580 KB real React 19.3 bundle, used as the exact fallback and the three-way oracle.
+6. **Imports must work with no build step**, whatever bundler the client uses. Phasis resolves imports the way bundlers do, including `node_modules`, `package.json` `exports` and CommonJS packages. This is the most important requirement.
+7. **Components are mostly presentational**: data comes from PHP as props (see "Component guidelines").
+8. **Phase order**: syntax and imports first, then React (Phases 1 to 6), with the HTML profile (Phase 7) built alongside Phase 6.
 
 **Author**: this session
 **Last updated**: 2026-10-13
@@ -16,36 +18,66 @@
 
 ## Summary
 
-Render JSX components to HTML on the server, in pure PHP, fast enough for real pages, with output that React 19.3 on the client hydrates without errors. Four pieces:
+Render JSX components to HTML on the server, in pure PHP, fast enough for real pages, with output that React 19.3 on the client hydrates without errors. Five pieces:
 
 1. **Syntax**: JSX in `.jsx` modules, lowered at parse time to plain function calls. The interpreter, bytecode compiler, VM and JsToPhp emitter never see a JSX node.
-2. **Native React 19.3 SSR**: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` are built-in modules implemented in PHP. Their HTML is byte-identical to React 19.3's own server renderer. Only the application's components run as JavaScript.
-3. **General JSX renderer**: `phasis` and `phasis/jsx-runtime` for server-only templates (emails, feeds, static pages), byte-identical to `preact-render-to-string` 6.8, plus `raw()`.
-4. **Host plumbing**: built-in modules, import maps for bare specifiers, `.jsx` routing, and `Engine::render()` so PHP renders a component with PHP props in one call.
+2. **Module resolution**: imports resolve the way bundlers resolve them, with no build step. That covers missing extensions, `index` files, path aliases, `node_modules`, `package.json` `exports`, CommonJS packages, and style and asset imports.
+3. **Native React 19.3 SSR**: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` are built-in modules implemented in PHP. Their HTML is byte-identical to React 19.3's own server renderer. Only the application's components run as JavaScript.
+4. **General JSX renderer**: `phasis` and `phasis/jsx-runtime` for server-only templates (emails, feeds, static pages), byte-identical to `preact-render-to-string` 6.8, plus `raw()`.
+5. **Host plumbing**: built-in modules, import maps, `.jsx` routing, and `Engine::render()` so PHP renders a component with PHP props in one call.
 
 Both renderers share one element model (React 19's) and one render core. They differ only in how they serialize HTML.
 
 ## Goals
 
-### React page, hydrated by React 19.3 on the client
+### Components rendered from PHP, with no build step
 
-The component is the same file the client bundle imports:
+Components import what they would import in the client bundle:
 
 ```jsx
-// components/PostPage.jsx
+// components/PostCard.jsx
+import cx from 'classnames';                   // CommonJS package from node_modules
+import { MessageCircle } from 'lucide-react';  // ES module package; only this icon's module loads
+import Avatar from '@/components/Avatar';      // alias from jsconfig.json, no extension
+import './PostCard.css';                       // an empty module on the server
+
+export default function PostCard({ post }) {
+  return (
+    <article className={cx('post-card', { featured: post.featured })}>
+      <Avatar name={post.author} />
+      <h2>{post.title}</h2>
+      <p>{post.excerpt}</p>
+      <span><MessageCircle size={16} /> {post.commentCount} comments</span>
+    </article>
+  );
+}
+```
+
+```php
+use Phasis\Engine;
+
+$engine = new Engine();
+echo $engine->render(__DIR__ . '/components/PostCard.jsx', ['post' => $post]);
+```
+
+Nothing is built first. Phasis resolves each import the way the client bundler does (Layer 4).
+
+### Interactive parts, hydrated by React 19.3 on the client
+
+```jsx
+// components/CommentsToggle.jsx
 import { useId, useState } from 'react';
 
-export default function PostPage({ post }) {
+export default function CommentsToggle({ count, excerpt }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   return (
-    <article>
-      <h1>{post.title}</h1>
+    <div>
       <button aria-controls={panelId} onClick={() => setOpen(!open)}>
-        {post.commentCount} comments
+        {count} comments
       </button>
-      <section id={panelId} hidden={!open}>{post.excerpt}</section>
-    </article>
+      <section id={panelId} hidden={!open}>{excerpt}</section>
+    </div>
   );
 }
 ```
@@ -53,26 +85,22 @@ export default function PostPage({ post }) {
 PHP renders it and embeds the props, so React on the client renders the same tree:
 
 ```php
-use Phasis\Engine;
-
-$engine = new Engine();
-$props = ['post' => ['title' => $post->post_title, 'commentCount' => 3, 'excerpt' => $excerpt]];
-
-echo '<div id="root">' . $engine->render(__DIR__ . '/components/PostPage.jsx', $props) . '</div>';
-echo '<script>window.__PROPS__ = ' . json_encode($props, JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>';
+$props = ['count' => 3, 'excerpt' => $excerpt];
+echo '<div id="comments">' . $engine->render(__DIR__ . '/components/CommentsToggle.jsx', $props) . '</div>';
+echo '<script>window.__COMMENTS__ = ' . json_encode($props, JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>';
 ```
 
 The client side is standard React 19.3 tooling, not part of Phasis:
 
 ```jsx
-hydrateRoot(document.getElementById('root'), <PostPage {...window.__PROPS__} />);
+hydrateRoot(document.getElementById('comments'), <CommentsToggle {...window.__COMMENTS__} />);
 ```
 
 Two details make this hydrate cleanly. The text markers React needs (`<!-- -->`) are present, and `useId()` produces the same `_R_..._` ids React 19.3 generates on the client.
 
 ### Data loading
 
-`Engine::render()` follows React 19.3's `prerender` semantics: it waits for async components and for `use(promise)` inside `<Suspense>`.
+Components written to the guidelines get their data from PHP as props. For the cases where a component has to fetch, `Engine::render()` follows React 19.3's `prerender` semantics: it waits for async components and for `use(promise)` inside `<Suspense>`.
 
 ```jsx
 export default async function Comments({ postId }) {
@@ -82,7 +110,7 @@ export default async function Comments({ postId }) {
 }
 ```
 
-React 19.3's client hydrates async components in production. Its development build logs "is an async Client Component", because React officially supports async components only as Server Components. Keep data-fetching components in parts of the page React does not hydrate, or pass the data down as props.
+React 19.3's client hydrates async components in production. Its development build logs "is an async Client Component", because React officially supports async components only as Server Components. Keep data-fetching components in parts of the page React does not hydrate.
 
 ### Server-only templates with the general renderer
 
@@ -100,6 +128,22 @@ export default function Newsletter({ name, articleHtml }) {
 }
 ```
 
+### Optional server bundle
+
+Teams that run a bundler can also build one server file and hand that to Phasis. Any bundler works if it meets three conditions:
+
+- It outputs an ES module.
+- It leaves `react` and `react-dom` external.
+- It keeps JSX as JSX, or compiles it against `react/jsx-runtime`.
+
+Verified with esbuild, using `jsx: 'preserve'`, `external: ['react', 'react/*', 'react-dom', 'react-dom/*']` and the `empty` loader for CSS. A sample app with extensionless imports, an `@/` alias, `clsx`, a CSS import and an SVG import became one `entry-server.jsx`:
+
+- `clsx` was inlined and the CSS import was removed.
+- The SVG import was replaced by its hashed URL.
+- `import { useState } from "react"` was left for Phasis.
+
+Keeping JSX as JSX lets Phasis apply precompile. The bundle is optional: Layer 4 makes the unbundled source work.
+
 ### Exact fallback
 
 Some libraries depend on React internals that the native implementation doesn't cover. For those, a vendored ESM build of real React 19.3 can be mapped over the built-ins with an import map. It is byte-identical but roughly 15x slower (see "Why a native React renderer").
@@ -107,6 +151,27 @@ Some libraries depend on React internals that the native implementation doesn't 
 ### Tooling
 
 `Parser::parseSource($src, 'module', new JsxOptions(mode: JsxMode::Preserve))` returns the JSX AST, which can be exported as standard ESTree JSX nodes.
+
+## Component guidelines
+
+The app's components are mostly presentational: props in, HTML out. That shape is the fastest to render and the safest to hydrate.
+
+- **Load data in PHP and pass it in as props.** PHP already has the data (database, WordPress). Async components work, but they move I/O into the slower JS layer.
+- **Keep props JSON-friendly**: strings, numbers, booleans, arrays and plain objects, with dates as strings. The client must hydrate with exactly the same props.
+- **Render the same thing on server and client.**
+  - Don't touch `window`, `document` or `localStorage` during render.
+  - Avoid values that differ between server and client: `Date.now()`, `Math.random()`, and time-zone or locale-dependent formatting.
+  - Put browser-only work in `useEffect`, or behind `use(browser(reason))` inside `<Suspense>` (Layer 7).
+- **Keep interactive parts small and separate.** Only they need hydrating; purely presentational sections don't.
+- **Use plain class names or Tailwind**, not CSS modules, unless a CSS-module resolver is configured (Layer 4).
+- **Import images through the asset resolver, or use public URLs** (Layer 4).
+- **Prefer packages that declare `"sideEffects": false`** for large libraries such as icon sets. Only the modules actually used then load (Layer 4).
+
+The payoff:
+
+- There is no hook bookkeeping.
+- The markup is mostly static, and precompile turns it into string appends.
+- Identical props always give identical HTML, so PHP can cache the output keyed by the props.
 
 ## Non-goals
 
@@ -117,7 +182,8 @@ Some libraries depend on React internals that the native implementation doesn't 
 - **React Server Components**: `"use client"` / `"use server"` directives, the Flight protocol, server actions.
 - **Other React versions.** The profile design allows adding 19.x versions later; v1 ships 19.3.0 only.
 - **A props-embedding or islands helper**. App-level in v1, as in the Goals example.
-- **`node_modules` resolution, `package.json` `exports`, CommonJS `require`**. Import maps only.
+- **Bundler-specific import features**: query suffixes such as Vite's `?raw` and `?url`, SVG-as-component imports (SVGR), `import.meta.glob`, `import.meta.env`, and webpack loaders. Use plain imports, or the optional server bundle.
+- **Node's built-in modules** (`fs`, `path`, `node:*`) and packages that need them. A dependency that imports one without using it while rendering can be stubbed through the import map.
 - **Dev runtime and dev-only warnings** (`jsxDEV`, `__source`, `__self`).
 - **JSX output in the Formatter**. Follow-up; the Formatter keeps rejecting JSX until then.
 
@@ -126,7 +192,17 @@ Some libraries depend on React internals that the native implementation doesn't 
 - **JSX dies in the lexer today.** `Parser::ensureTokenized()` (`src/Parser/Parser.php:160`) tokenizes the whole file before parsing starts. `<div>Don't</div>` fails with "Unterminated string literal", and `</div>` lexes as the start of a regex (`RegExp(/div>;/)`). The regex fix-up approach (`rescanSlashAsRegExp()`) cannot recover from a lexer that has already thrown, so the lexer has to recognize JSX itself.
 - **The lexer already knows where JSX can start.** `canStartRegExp()` (`src/Lexer/Lexer.php:1820`) answers "may an expression start here?", including the paren walk-back that tells `if (...)` apart from a call. Plain JavaScript never starts an expression with `<`, so a `<` in that position followed by a name or `>` is unambiguously JSX.
 - **Only three parse sites matter.** `Engine::eval()` (`src/Engine.php:1659`), `Engine::execFile()` (`:1718`) and `ModuleLoader::linkModule()` (`src/Module/ModuleLoader.php:376`). Nothing re-parses source later; the AST is retained.
-- **Bare specifiers are rejected.** `ModuleLoader::resolve()` (`:1284`) throws for anything that isn't a relative or absolute path.
+- **Only exact relative and absolute paths resolve.** `ModuleLoader::resolve()` (`:1284`) throws for bare specifiers, and `import Card from './Card'` throws `Cannot find module './Card'`.
+- **CommonJS can't load.** Phasis has no `require` or `module.exports`. Of 15 packages common in React components:
+  - 6 ship only CommonJS: `classnames`, `dayjs`, `lodash`, `prop-types`, `react-is` and `use-sync-external-store`.
+  - 9 ship ES modules: `clsx`, `tailwind-merge`, `class-variance-authority`, `date-fns`, `lodash-es`, `lucide-react`, `react-icons`, `@heroicons/react` and `react-markdown`.
+- **Barrel files are large.** These are rough local timings.
+  - `lucide-react`: importing one icon loads an entry file with 1,883 re-exports. Parsing the entry and its icon modules (2,144 files, 1.9 MB) took about 660 ms.
+  - `react-icons/fa`: a single 1.3 MB file, about 290 ms.
+  - `date-fns`: re-exports 245 modules.
+  - `@heroicons/react/24/solid`: re-exports 324 modules.
+
+  All four declare `"sideEffects": false`.
 - **`execFile()` never loads modules.** It always parses as a script, so an `.mjs` file with an `import` throws `'import' is only valid in module code`. `docs/api.md` claims otherwise. The CLI calls `eval(file_get_contents(...))` and loses the path.
 - **AST tooling.** `Walker` and `Serializer` are reflection-based and pick up new node classes automatically. `EstreeSerializer` (`src/Ast/EstreeSerializer.php:104`) and `JsPrinter` (`src/Formatter/JsPrinter.php:1069`) dispatch explicitly.
 - **Real React 19.3 already runs inside Phasis.**
@@ -274,10 +350,102 @@ Rules behind the table:
 - **Injected imports.** Automatic mode prepends `import { jsx, jsxs, Fragment } from "react/jsx-runtime"`, importing only the names actually used. Local names are chosen so they don't appear as any identifier token in the file.
 - **Pragmas** in any comment override the options per file, as in esbuild: `@jsx`, `@jsxFrag`, `@jsxRuntime`, `@jsxImportSource`. The lexer already scans comments for `sourceURL`; pragma capture piggybacks on that scan. The module records its effective import source, which `Engine::render()` uses to pick a profile.
 
-### Layer 4: Host plumbing
+### Layer 4: Module resolution
+
+Any import that works in the client bundler works on the server, with no build step. Resolution follows bundler semantics, because that is what the client build does, and Node's rules where bundlers defer to them.
+
+```php
+final readonly class ModuleOptions
+{
+    public function __construct(
+        /** Where jsconfig.json or tsconfig.json is read; null means the nearest one above the entry module. */
+        public ?string $projectRoot = null,
+        /** @var list<string> Tried in order for paths without an extension and for index files. */
+        public array $extensions = ['.jsx', '.js', '.mjs', '.cjs', '.json'],
+        /** @var list<string> Active package.json conditions, in addition to "import" or "require" and "default". */
+        public array $conditions = ['phasis', 'module', 'production'],
+        /** The value process.env.NODE_ENV reads as. */
+        public string $nodeEnv = 'production',
+        /** @var list<string> Imports with these extensions load as empty modules. */
+        public array $styleExtensions = ['.css', '.scss', '.sass', '.less', '.styl'],
+        /** @var list<string> Imports with these extensions go through the asset resolver. */
+        public array $assetExtensions = ['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.ico', '.woff', '.woff2', '.ttf', '.mp4', '.webm'],
+    ) {
+    }
+}
+```
+
+`ModuleOptions::$extensions` decides which files resolution finds. `JsxOptions::$extensions` separately decides which of them parse with JSX.
+
+**Resolution order.** For each specifier, the first match wins:
+
+1. **Import map**: the exact key, then the longest key ending in `/` that prefixes the specifier. A `null` value stubs the module (see Stubs).
+2. **Built-in modules**: `react`, `react-dom` and the other built-ins (Layer 5). A `react` package installed in `node_modules` for the client build is never used on the server.
+3. **Package imports**: `#name` specifiers through the importing package's `package.json` `imports` field.
+4. **Path aliases**: `compilerOptions.paths` (with `baseUrl`) from `jsconfig.json` or `tsconfig.json`, following local `extends`.
+5. **Relative and absolute paths.**
+6. **Packages**: `node_modules` directories, walking up from the importing file.
+
+Anything else throws an error naming the specifier and the importing file.
+
+**Files.** A path resolves to:
+
+1. the exact file
+2. the file with each of `$extensions` appended
+3. for a directory, its `index` file with the same extensions
+
+Symlinks resolve to real paths (pnpm layouts), and module identity is the real path, as today.
+
+**Packages.**
+- `package.json` `exports` follows Node's rules:
+  - strings and subpath maps, with `*` patterns
+  - conditional objects, where the first key that is an active condition wins, in the package's own key order
+  - `null` targets, which block a subpath
+- Active conditions: `import` for ES imports or `require` for `require()`, plus `phasis`, `module`, `production` (which follows `$nodeEnv`) and `default`. `node` and `browser` are off by default, because those builds assume Node APIs or a DOM; both can be switched on.
+- Without `exports`: the `module` field, then `main`, then `index.js`. Deep imports such as `date-fns/format` use file resolution inside the package.
+- The legacy `browser` field is ignored.
+
+**Module formats.**
+- `.mjs` and JSX extensions are ES modules, `.cjs` is CommonJS, and `.json` is a JSON module (the existing loader branch).
+- For `.js`, the nearest `package.json` `type` decides. Without `type`, a file with top-level `import` or `export` is an ES module and anything else is CommonJS. That is Node 22's syntax detection. It also covers packages whose `module` field points at ES module `.js` files without `"type": "module"`.
+
+**CommonJS.**
+- **The wrapper.** Files run inside the usual wrapper with `exports`, `require`, `module`, `__filename` and `__dirname`, in sloppy mode unless they say `"use strict"`. `require.resolve` is available.
+- **`require()`.**
+  - It resolves with the `require` condition and caches by real path.
+  - On a cycle it returns the partially filled `module.exports`, as Node does.
+  - It loads JSON.
+  - For an ES module without top-level await, it returns the module namespace, as Node 22 does.
+- **Importing CommonJS from an ES module** follows bundler interop, matching the client build:
+  - The default import is `module.exports`, or `module.exports.default` when `__esModule` is set.
+  - Named imports read the matching properties of `module.exports`.
+  - A CommonJS module runs when it is first imported or required.
+- **`process.env.NODE_ENV`** reads as `$nodeEnv` (default `"production"`).
+  - CommonJS modules get a minimal `process` object.
+  - ES modules get the constant substituted at parse time, as bundlers do.
+  - There is no global `process`, so code that detects Node with `typeof process` still sees a non-Node environment.
+- **Node's built-in modules** (`fs`, `path`, `node:*`) don't exist. Importing or requiring one throws, unless the import map stubs it.
+
+**Styles and assets.**
+- **Style imports** (`$styleExtensions`) load as empty modules.
+- **CSS modules** (`*.module.css` and similar) need the class names the client bundler generates. Importing one throws an error saying so, unless `Engine::setCssModuleResolver()` supplies the class map, for example from the client build's output.
+- **Asset imports** (`$assetExtensions`) default-export a URL from `Engine::setAssetResolver()`, for example a lookup in the client build's manifest so hashed filenames match. Without a resolver they throw an error naming the file, instead of rendering a URL that won't match the client.
+- **Any other unknown extension** throws an error naming the file.
+
+**Stubs.** An import map entry with a `null` value loads as an empty module: the default export and every named import are `undefined`. This is for browser-only packages (charts, maps, editors) whose components don't render on the server, because they sit behind `use(browser(reason))` or a `typeof window` check.
+
+**Barrel pruning.** Packages that declare `"sideEffects": false` (or list the files that do have side effects) are pruned at module level, the way bundlers tree-shake them.
+- When an import names specific exports of a module that only re-exports, only the modules that provide those names are loaded. One `lucide-react` icon then loads a handful of modules instead of the whole barrel.
+- `export { X } from` is followed directly. Names reached through `export *` are found with a quick scan of each starred module's export list, which is cached and doesn't evaluate the module.
+- Namespace imports (`import * as icons`) and dynamic `import()` load the full module.
+- Single-file libraries such as `react-icons` can't be pruned. They rely on the warm engine or the parsed-module cache (Layer 10), or on the optional server bundle.
+
+**Caching.** Resolution results and `package.json` / `jsconfig.json` reads are cached per engine, next to the existing module cache.
+
+### Layer 5: Host plumbing
 
 1. **Built-in module registry.** `ModuleLoader::registerBuiltinModule(string $specifier, \Closure $factory)`. `resolve()` returns a reserved key for registered specifiers, and `linkModule()` builds a synthetic namespace from the factory, mirroring the `.json` branch at `ModuleLoader.php:352`. Registered: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server`, `react-dom/static`, `phasis`, `phasis/jsx-runtime`, and the internal `phasis/jsx-precompile`.
-2. **Import maps.** `Engine::setImportMap(array $imports)`, following the WHATWG import map `imports` table: exact keys, plus keys ending in `/` as prefixes, with absolute paths as values. Resolution order: import map, built-in registry, relative or absolute path, then the existing error. The import map wins, which is how the exact-React fallback replaces the built-ins.
+2. **Import maps.** `Engine::setImportMap(array $imports)`, following the WHATWG import map `imports` table: exact keys, plus keys ending in `/` as prefixes. Values are absolute paths, or `null` for a stub. The import map is consulted first (Layer 4), which is how the exact-React fallback replaces the built-ins.
 3. **Which sources get JSX.** Module paths ending in one of `JsxOptions::$extensions` (default `['.jsx']`). `linkModule()` passes the options to the parser for those paths, and `evalAsModule($source, $path)` follows the same rule. `.js` files opt in by adding `.js` to the list.
 4. **`execFile()`** routes `.mjs` and JSX extensions through the module loader and returns `null` for them, like `evalAsModule()`. `.js` keeps today's script behavior, and `docs/api.md` is corrected.
 5. **PHP entry points:**
@@ -286,7 +454,10 @@ Rules behind the table:
    enum RenderProfile { case React; case Html; }
 
    public function setJsxOptions(JsxOptions $options): void
+   public function setModuleOptions(ModuleOptions $options): void
    public function setImportMap(array $imports): void
+   public function setAssetResolver(callable $resolver): void      // fn (string $file): string
+   public function setCssModuleResolver(callable $resolver): void  // fn (string $file): array
    public function render(string $path, array $props = [], string $export = 'default', ?RenderProfile $profile = null): string
    public function renderSource(string $source, array $props = [], string $export = 'default', ?string $path = null, ?RenderProfile $profile = null): string
    public function getExport(string $path, string $name = 'default'): mixed
@@ -303,7 +474,7 @@ Rules behind the table:
    - `--ast` uses `Preserve` for `.jsx` files.
    - Optional: `bin/phasis --render file.jsx --props '{"id":1}'`.
 
-### Layer 5: Render core (shared)
+### Layer 6: Render core (shared)
 
 `src/BuiltIn/Jsx/` holds one PHP render core, used by both profiles.
 
@@ -335,7 +506,7 @@ Rules behind the table:
 
 **Profiles.** Profiles only decide serialization: text, attributes, markers and hoisting.
 
-### Layer 6: React 19.3 profile
+### Layer 7: React 19.3 profile
 
 Modules match React 19.3.0's export lists.
 
@@ -358,6 +529,10 @@ Output rules. The oracle is the source of truth; the following are already verif
   - A resolved boundary is `<!--$-->...<!--/$-->`.
   - A boundary that falls back to client rendering (sync `renderToString`, or an error) is `<!--$!--><template></template>fallback<!--/$-->`.
   - Sync `renderToString` throws "A component suspended while responding to synchronous input" when nothing catches the suspension. `prerender` and `Engine::render()` wait instead.
+- **Client-only components.** `use(browser(reason))` (react-dom 19.3, undocumented) asks for a component to render only in the browser.
+  - Inside a `<Suspense>`, the server renders the fallback in a client-render boundary, `<!--$!--><template data-dgst=""></template>fallback<!--/$-->`, without reporting an error, and the browser renders the real component after hydration.
+  - Outside a boundary, the render fails with React's error ("client rendering was requested outside a Suspense boundary").
+  - On the client, the call does nothing.
 - **Escaping.** `&`, `<`, `>`, `"` and `'` are escaped, with `'` as `&#x27;`.
 - **Attributes.**
   - Booleans render as `disabled=""`.
@@ -372,7 +547,7 @@ Output rules. The oracle is the source of truth; the following are already verif
 
 **Implementation approach.** Port the synchronous and prerender paths from React's MIT-licensed Fizz sources (`ReactFizzServer`, `ReactFizzHooks`, `ReactFizzConfigDOM`) rather than reverse-engineering the output. Ported files keep React's copyright notice.
 
-### Layer 7: General HTML profile
+### Layer 8: General HTML profile
 
 `phasis/jsx-runtime` exports `jsx`, `jsxs` and `Fragment`. `phasis` exports:
 
@@ -408,7 +583,7 @@ Output is byte-identical to preact-render-to-string 6.8.0. HTML spellings (`clas
 
 This profile has no hydration markers, so React cannot hydrate its output. Use it for server-only HTML.
 
-### Layer 8: Precompile mode
+### Layer 9: Precompile mode
 
 `JsxMode::Precompile` is opt-in and valid with the built-in runtimes. It turns static HTML into string arrays at parse time, as Deno's `jsx: "precompile"` does. React profile example:
 
@@ -417,31 +592,42 @@ This profile has no hydration markers, so React cannot hydrate its output. Use i
 ```
 
 ```js
-const $$tpl_1 = ['<div class="card"><h2>', '</h2><p>Static text</p></div>'];
-jsxTemplate($$tpl_1, title);
+const $$tpl_1 = ['<h2>', '</h2><p>Static text</p>'];
+jsx("div", { className: "card", children: jsxTemplate($$tpl_1, title) });
 ```
 
+- **Where it applies.** Only HTML elements nested inside another HTML element become templates. The outermost element of each JSX expression stays a real element, and so does every element passed to a component, because components may inspect or clone what they receive (`cloneElement`, `Children.map`, `asChild`-style slots).
 - **Helpers module.** Precompiled modules import `jsxTemplate` and `jsxAttr` from the internal built-in `phasis/jsx-precompile`, so `react/jsx-runtime` keeps React's exact export list.
 - **Dynamic parts.** Dynamic attributes become `jsxAttr(name, value)` holes, using the profile's serialization rules.
 - **What stays a call.** Components and elements with spread props stay `jsx()` calls inside holes.
-- **Text markers at holes.** For the React profile, each template part records whether it starts or ends with text. The `<!-- -->` markers are then emitted at holes exactly where React would put them; static text next to a hole that renders text gets a marker, and next to a hole that renders an element it doesn't.
+- **Handlers are skipped.** Inside templates, `on*` props on HTML elements are left out when their value is an arrow function or function expression, so those closures are never created. React drops them from server output anyway.
+- **Text markers at holes.** For the React profile, each template part records whether it starts or ends with text. The `<!-- -->` markers are then emitted at holes exactly where React would put them: static text next to a hole that renders text gets a marker, and static text next to a hole that renders an element doesn't.
 - **`useId` positions.** Tree positions of components inside holes are preserved, so `useId` stays identical.
 - **Correctness bar.** Output must be byte-identical with and without precompile. Static markup then costs one string append per template, instead of a `jsx()` call, an element object and a renderer visit per node.
 
-### Layer 9: Performance and preloading
+### Layer 10: Performance and preloading
 
 - **React is preloaded.** The native React implementation is PHP code in Phasis, so OPcache keeps it compiled. Phasis ships a preload script for `opcache.preload` that loads the render core and the built-in modules at server start. No React source is parsed or executed per request.
-- **Warm engine in worker servers.** On FrankenPHP worker mode, RoadRunner or Swoole, keep one `Engine` per worker. `render()` loads each component module once (the loader's module cache) and reuses it for every request. As in Node SSR servers, module-level state is shared across requests; components should keep per-request data in props or context.
-- **PHP-FPM.** Component modules are parsed once per request. An optional on-disk parsed-module cache sits behind a flag. In a local test, unserializing a cached AST was about 2.3x faster than parsing, at about 20x the source size on disk, so it is a minor lever and comes last.
-- **Precompile (Layer 8)** removes most per-node work for static markup.
+- **Warm engine in worker servers.** On FrankenPHP worker mode, RoadRunner or Swoole, keep one `Engine` per worker. `render()` loads each module once, including everything from `node_modules`, and reuses it for every request. As in Node SSR servers, module-level state is shared across requests; components should keep per-request data in props or context.
+- **PHP-FPM.** Components and the packages they import are parsed once per request, and barrel pruning (Layer 4) keeps that to the modules actually used. An optional on-disk parsed-module cache sits behind a flag. It matters most for large single-file libraries. In a local test, unserializing a cached AST was about 2.3x faster than parsing, at about 20x the source size on disk.
+- **Precompile (Layer 9)** removes most per-node work for static markup.
+- **Later: lazy function bodies.** Parsing function bodies on first call, as V8 does, would cut the load cost of large libraries further. It's a candidate after v1, to be measured in the CI bench first.
 - **Xdebug off.** Docs state that Xdebug must be off in production. In local tests Xdebug alone made Phasis about 5x slower, and its 512-frame nesting guard aborted a real-React render outright. The tracing JIT added another 1.2x to 1.4x on top of turning Xdebug off.
-- **CI bench.** `bench/ssr.jsx`, the 1,316-element page above, joins `bench.yml` (tracing JIT, per CLAUDE.md). It runs four variants: native React, real React in Phasis, components-only, and the HTML profile. Targets are expressed as ratios so they hold across machines.
+- **CI bench.** `bench/ssr.jsx`, the 1,316-element page above, joins `bench.yml` (tracing JIT, per CLAUDE.md).
+  - The page imports a CommonJS package and a `lucide-react` icon, so module loading is part of the measurement.
+  - It runs four variants: native React, real React in Phasis, components-only, and the HTML profile.
+  - Targets are expressed as ratios, so they hold across machines.
 
 ## Testing strategy
 
 Node can't run JSX, so each oracle is Node plus a pinned reference tool:
 
-- **Pinned toolchain.** The reference tools live in `tests/Jsx/oracle/package.json`, pinned to `esbuild@0.28.2`, `react@19.3.0`, `react-dom@19.3.0`, `jsdom@26.1.0`, `preact@11.0.1` and `preact-render-to-string@6.8.0`.
+- **Pinned toolchain.** The reference tools live in `tests/Jsx/oracle/package.json`, pinned to:
+  - `esbuild@0.28.2`
+  - `react@19.3.0` and `react-dom@19.3.0`
+  - `jsdom@26.1.0`
+  - `preact@11.0.1` and `preact-render-to-string@6.8.0`
+  - the 15 packages from "Current state", at the versions checked on 2026-10-13
 - **Committed outputs.** Oracle outputs are committed, so the main CI stays npm-free, the same contract as `tests/Popular`.
 - **Hydration job.** The hydration check needs Node at test time, so it runs in its own workflow (`jsx.yml`), which installs the pinned toolchain.
 
@@ -449,6 +635,8 @@ Node can't run JSX, so each oracle is Node plus a pinned reference tool:
 |---|---|---|---|
 | Parse | vendored `tests/Popular/babel-parser`, `plugins: ['jsx', 'estree']` | `JsxMode::Preserve` plus `EstreeSerializer::summarize()` | one-line-per-node summary |
 | Lowering | esbuild in automatic and classic mode, executed with a recording runtime | the same `.jsx` with the recording runtime via import map | trace of every `jsx` / `jsxs` / `createElement` / `h` call: function, type, props in key order, key |
+| Module resolution | the fixture app bundled by esbuild and run in Node | the unbundled fixture app loaded by Phasis | identical output |
+| Package smoke | small components using each of the 15 packages, rendered by React 19.3 | the same components, unbundled, through Layer 4 | byte-equal HTML |
 | React render | `react-dom@19.3.0`: `renderToString`, `renderToStaticMarkup`, `prerender` | React profile | byte-equal HTML |
 | React hydration | `react-dom@19.3.0/client` in jsdom, production and development builds | React profile output for every React fixture | zero recoverable errors, zero hydration warnings, every server node reused |
 | React three-way | none | vendored real React 19.3 (edge build) running inside Phasis | byte-equal with the native profile and with Node |
@@ -457,31 +645,50 @@ Node can't run JSX, so each oracle is Node plus a pinned reference tool:
 
 **Fixture layout.**
 
-- Fixtures live in `scenarios/jsx/<area>/<name>/`, with `scenario.json` modes `jsx-parse`, `jsx-lower`, `jsx-render-react`, `jsx-render-html` and `jsx-hydrate`.
-- `bin/oracle` dispatches these modes to a new `bin/jsx-oracle` Node script.
+- JSX fixtures live in `scenarios/jsx/<area>/<name>/`, with `scenario.json` modes `jsx-parse`, `jsx-lower`, `jsx-render-react`, `jsx-render-html` and `jsx-hydrate`.
+- Resolution fixtures live in `tests/Jsx/resolution/<name>/`: each is a small app with a committed `node_modules` of synthetic packages.
+- `bin/oracle` dispatches the new modes to a new `bin/jsx-oracle` Node script.
 - Note: `bin/oracle`'s existing `parse` mode calls `bin/parse-oracle`, which isn't in the repo, so the JSX parse oracle doesn't build on it.
 
 **Corpus areas.**
 
 - **Syntax**: names, attributes, entities, whitespace, comments, template nesting in both directions, Babel error messages.
 - **Lowering**: both runtimes, pragmas, key and spread ordering, fragments, spread children.
+- **Module resolution**:
+  - extensions and `index` files, aliases, `imports` fields
+  - `exports` conditions, patterns and blocked subpaths
+  - `type` and syntax detection
+  - CommonJS interop with and without `__esModule`, require cycles, `require()` of ES modules, JSON
+  - styles, assets with and without a resolver, CSS modules, stubs
+  - barrel pruning through `export { }` and `export *`, Node built-ins
 - **React profile**:
   - every hook, every context form, and `use()`
   - `useId` in nested, forked and list positions
   - class components, `memo`, `forwardRef`, `lazy`
-  - Suspense resolved, fallback and error; async components
+  - Suspense resolved, fallback and error; async components; `browser()` inside and outside `Suspense`
   - resource APIs, and document rendering with hoisting
   - forms, SVG and MathML, custom elements
   - `dangerouslySetInnerHTML`, `javascript:` URLs, error propagation
-- **HTML profile**: every rule in Layer 7.
+- **HTML profile**: every rule in Layer 8.
 
-**Unit tests.** `tests/Unit/Lexer/JsxLexerTest.php`, `tests/Unit/Parser/JsxParserTest.php`, `tests/Unit/Jsx/JsxLoweringTest.php`, `tests/Unit/Jsx/RenderCoreTest.php`, `tests/Unit/Jsx/ReactProfileTest.php`, `tests/Unit/Jsx/HtmlProfileTest.php`, `tests/Unit/Module/ImportMapTest.php`.
+**Unit tests.**
+- `tests/Unit/Lexer/JsxLexerTest.php`
+- `tests/Unit/Parser/JsxParserTest.php`
+- `tests/Unit/Jsx/JsxLoweringTest.php`
+- `tests/Unit/Module/ResolverTest.php`
+- `tests/Unit/Module/PackageExportsTest.php`
+- `tests/Unit/Module/CommonJsTest.php`
+- `tests/Unit/Module/BarrelPruningTest.php`
+- `tests/Unit/Module/ImportMapTest.php`
+- `tests/Unit/Jsx/RenderCoreTest.php`
+- `tests/Unit/Jsx/ReactProfileTest.php`
+- `tests/Unit/Jsx/HtmlProfileTest.php`
 
-**Plain JS must not move.** JSX only activates for JSX module paths, but the lexer's main loop changes for every source:
+**Plain JS must not move.** JSX only activates for JSX module paths, but the lexer's main loop and the module loader change for every source:
 
 - `./bin/verify-all`
-- test262 sweeps on `language/expressions/template-literal`, `language/literals/regexp`, `language/comments` and `annexB/language/comments`
-- `gh workflow run compat-matrix.yml` before Phase 1 merges
+- test262 sweeps on `language/expressions/template-literal`, `language/literals/regexp`, `language/comments`, `annexB/language/comments` and `language/module-code`
+- `gh workflow run compat-matrix.yml` before Phases 1 and 3 merge
 - the CI bench as the perf gate
 
 ## Phased delivery
@@ -490,43 +697,61 @@ Node can't run JSX, so each oracle is Node plus a pinned reference tool:
 |---|---|---:|---|
 | 1 | Lexer JSX mode, token types, `src/Ast/Jsx/` nodes, `JsxParser` trait, `Preserve` mode, `EstreeSerializer` arms | ~1,200 | parse oracle 100%, test262 sweep and compat matrix, CI bench |
 | 2 | `JsxLowering` (automatic and classic), pragmas, entity table, `JsxOptions` | ~700 | lowering oracle 100% |
-| 3 | Built-in module registry, import maps, `.jsx` routing in loader, `execFile()` and `evalAsModule()`, `getExport()`, CLI | ~400 | the exact-React fallback renders `.jsx` files via import map, byte-equal with Node |
-| 4 | Render core and React 19.3 profile, part A: `JsElement`; `react`, `react/jsx-runtime`, `react-dom/server` (sync); function components, all hooks, context, `useId`, `memo`, `forwardRef`; text, attributes, escaping, forms, SVG; `Engine::render()` | ~2,500 | React render and hydration oracles 100% on part-A fixtures |
-| 5 | React 19.3 profile, part B: Suspense, `use()`, `lazy`, async components, `prerender` and `react-dom/static`, waiting in `Engine::render()`, class components, `react-dom` resource APIs, document hoisting, error semantics | ~2,500 | full React oracles 100%, three-way agreement |
-| 6 | HTML profile: `phasis` and `phasis/jsx-runtime`, Preact-format serialization, `raw()`, `renderToStringAsync` | ~600 | HTML render oracle 100% |
-| 7 | Precompile for both profiles | ~700 | precompile oracle 100%, SSR bench improvement in CI |
-| 8 | Performance: `bench/ssr.jsx` in CI, `opcache.preload` script, worker-mode docs, optional parsed-module cache | ~300 | targets in Acceptance criteria met in CI |
-| 9 | Docs: new `docs/jsx.md` and `docs/react.md` (registered in `docs/meta.json`), `docs/api.md` (new methods, `execFile()` correction), `docs/parser.md` (JSX nodes), README feature list | n/a | docs-content workflow |
+| 3 | Module resolution, part A, and host plumbing: built-in registry, import maps with stubs, extensions and `index` files, aliases, `node_modules` with `exports`, `imports`, `module` and `main`, format detection, styles and assets, `.jsx` routing, `execFile()` and `evalAsModule()`, `getExport()`, CLI | ~1,200 | resolution oracle 100% on ES module fixtures; the exact-React fallback renders `.jsx` files byte-equal with Node |
+| 4 | Module resolution, part B: CommonJS loader and interop, `process.env.NODE_ENV`, barrel pruning | ~1,200 | full resolution oracle 100%; all 15 smoke packages work; one `lucide-react` icon loads fewer than 10 modules |
+| 5 | Render core and React 19.3 profile, part A: `JsElement`; `react`, `react/jsx-runtime`, `react-dom/server` (sync); function components, all hooks, context, `useId`, `memo`, `forwardRef`; text, attributes, escaping, forms, SVG; `Engine::render()` | ~2,500 | React render and hydration oracles 100% on part-A fixtures |
+| 6 | React 19.3 profile, part B: Suspense, `use()`, `browser()`, `lazy`, async components, `prerender` and `react-dom/static`, waiting in `Engine::render()`, class components, `react-dom` resource APIs, document hoisting, error semantics | ~2,500 | full React oracles 100%, three-way agreement |
+| 7 | HTML profile: `phasis` and `phasis/jsx-runtime`, Preact-format serialization, `raw()`, `renderToStringAsync` | ~600 | HTML render oracle 100% |
+| 8 | Precompile for both profiles | ~700 | precompile oracle 100%, SSR bench improvement in CI |
+| 9 | Performance: `bench/ssr.jsx` in CI, `opcache.preload` script, worker-mode docs, optional parsed-module cache | ~300 | targets in Acceptance criteria met in CI |
+| 10 | Docs: new `docs/jsx.md`, `docs/react.md` and `docs/modules.md` (registered in `docs/meta.json`), `docs/api.md` (new methods, `execFile()` correction), `docs/parser.md` (JSX nodes), README feature list | n/a | docs-content workflow |
 
-Total estimate: ~8,900 lines of engine code plus ~900 lines of oracle tooling and fixtures.
+Total estimate: ~10,900 lines of engine code plus ~1,200 lines of oracle tooling and fixtures.
 
-- **First milestone.** After Phase 3, React SSR works end to end through the exact-React fallback. It is correct but slow, and it serves as the three-way oracle from then on.
-- **Ordering.** Phases 1 to 3 are sequential. Phase 6 reuses the core and can run alongside Phase 5.
+- **Milestones.**
+  - After Phase 3, React SSR works end to end through the exact-React fallback. It is correct but slow, and it serves as the three-way oracle from then on.
+  - After Phase 4, components can import CommonJS packages and large icon libraries.
+- **Ordering.**
+  - Phases 3 and 4 don't depend on JSX, so imports work can start alongside Phases 1 and 2.
+  - Phase 7 reuses the core and can run alongside Phase 6.
 
 ## Acceptance criteria
 
-1. **Goals examples work end to end**: the hydrated React page, async data loading with `fetch` served by a mock transport in tests, and the general-renderer template.
-2. **React parity.** The React profile is byte-identical to `react-dom@19.3.0` (`renderToString`, `renderToStaticMarkup`, `prerender`) on 100% of React fixtures.
-3. **Hydration.** React 19.3's client hydrates 100% of React fixtures, in production and development builds, with zero recoverable errors and zero hydration warnings, reusing every server node. Fixtures that deliberately use async components only expect React's "async Client Component" development message.
-4. **HTML profile parity.** Byte-identical to preact-render-to-string 6.8.0 on 100% of HTML fixtures.
-5. **Other oracles.** Parse, lowering, three-way and precompile oracles: 100%.
-6. **Performance** (CI bench, `bench/ssr.jsx`):
+1. **Goals examples work end to end**:
+   - `PostCard` with its imports
+   - the hydrated `CommentsToggle`
+   - async data loading, with `fetch` served by a mock transport in tests
+   - the general-renderer template
+2. **Imports work with no build step.** A fixture React project renders through `Engine::render()` byte-identical to the same project bundled by esbuild and rendered by React 19.3 in Node. The project uses:
+   - extensionless imports and `index` files
+   - a `jsconfig.json` alias
+   - ES module and CommonJS packages from `node_modules`
+   - `package.json` `exports` conditions
+   - style imports, and asset imports with a resolver
+3. **Popular packages.** The 15 packages listed in "Current state" work inside components.
+4. **Barrels.** Importing one `lucide-react` icon loads fewer than 10 modules.
+5. **React parity.** The React profile is byte-identical to `react-dom@19.3.0` (`renderToString`, `renderToStaticMarkup`, `prerender`) on 100% of React fixtures.
+6. **Hydration.** React 19.3's client hydrates 100% of React fixtures, in production and development builds, with zero recoverable errors and zero hydration warnings, reusing every server node. Fixtures that deliberately use async components only expect React's "async Client Component" development message.
+7. **HTML profile parity.** Byte-identical to preact-render-to-string 6.8.0 on 100% of HTML fixtures.
+8. **Other oracles.** Parse, lowering, resolution, three-way and precompile oracles: 100%.
+9. **Performance** (CI bench, `bench/ssr.jsx`):
    - the native React profile renders at least 10x faster than real React 19.3 running in Phasis on the same page
    - it stays within 1.5x of the components-only floor
    - there is no per-engine library load
-7. **Plain JavaScript is unaffected**:
-   - test262 50,506 / 50,506
-   - WPT 100%
-   - popular packages byte-equal
-   - `./bin/verify-all` green
-   - no CI bench regression on `bench/microbench.js`
-8. **Safety.**
-   - Strings are escaped on every path.
-   - Only elements created by the runtime, or objects carrying React's element symbol, render as elements.
-   - `raw()` and `dangerouslySetInnerHTML` are the only unescaped paths.
-   - The React profile blocks `javascript:` URLs exactly like React 19.3.
-9. No new Composer requirements.
-10. Docs updated as listed in Phase 9.
+10. **Plain JavaScript is unaffected**:
+    - test262 50,506 / 50,506
+    - WPT 100%
+    - popular packages byte-equal
+    - `./bin/verify-all` green
+    - no CI bench regression on `bench/microbench.js`
+11. **Safety.**
+    - Strings are escaped on every path.
+    - Only elements created by the runtime, or objects carrying React's element symbol, render as elements.
+    - `raw()` and `dangerouslySetInnerHTML` are the only unescaped paths.
+    - The React profile blocks `javascript:` URLs exactly like React 19.3.
+    - Asset and CSS-module imports never render a guessed URL or class name: without a resolver they throw.
+12. No new Composer requirements.
+13. Docs updated as listed in Phase 10.
 
 ## Risks
 
@@ -536,14 +761,21 @@ Total estimate: ~8,900 lines of engine code plus ~900 lines of oracle tooling an
    - The profile is pinned to 19.3.0, and a client on another version breaks hydration (ids differ).
    - `react.version` reports `"19.3.0"`, so applications can assert that client and server match.
    - Supporting a newer 19.x is a profile update plus regenerated oracles.
-4. **Lexer risks.**
+4. **Resolution breadth.** Node's resolution and bundler interop have many corners: `exports` patterns and condition order, `__esModule`, require cycles, and `require()` of ES modules. Mitigation: follow bundler semantics, which is what the client build does, and pin them with the resolution oracle and the package smoke tests.
+5. **Packages that assume Node or a browser.** Some packages touch Node APIs or the DOM as soon as they load. Mitigation: errors that name the package, stubs through the import map, and the component guidelines.
+6. **Barrel pruning trusts `sideEffects`.** Pruning relies on packages declaring it truthfully, the same trust bundlers place in it. A package that lies breaks in the client bundle too.
+7. **Lexer risks.**
    - `<` ambiguity: mitigated by reusing `canStartRegExp()`, which test262 exercises fully for `/`.
    - Template and JSX nesting: the template code assumes it owns `}`, so fixtures cover both nesting directions.
    - Hot path: the one extra branch per token when JSX is off is checked in the CI bench.
-5. **Async rendering.** Fiber suspension must cooperate with the event loop and with generators, which also run on Fibers. Never-settling renders fail fast (Layer 4). Existing limits (`maxLoopIterations`, call depth, execution time) still apply inside components.
-6. **Precompile and `useId`.** Templates must preserve the tree positions React uses for ids. The precompile oracle compares output with and without precompile, ids included.
-7. **License.** React is MIT. Ported files keep React's copyright and license notice, and the repo lists it with third-party notices.
-8. **`Function.prototype.toString()`** on a component returns the JSX source, where Node plus a bundler shows compiled code. Documented divergence; nothing tests it.
+8. **Async rendering.** Fiber suspension must cooperate with the event loop and with generators, which also run on Fibers. Never-settling renders fail fast (Layer 5). Existing limits (`maxLoopIterations`, call depth, execution time) still apply inside components.
+9. **Precompile.**
+   - Templates must preserve the tree positions React uses for ids.
+   - A component that inspects the children of an HTML element it received would see a template object instead of elements.
+
+   Both are covered by running the whole React corpus with and without precompile, and precompile stays opt-in.
+10. **License.** React is MIT. Ported files keep React's copyright and license notice, and the repo lists it with third-party notices.
+11. **`Function.prototype.toString()`** on a component returns the JSX source, where Node plus a bundler shows compiled code. Documented divergence; nothing tests it.
 
 ## Resolved questions
 
@@ -558,4 +790,4 @@ Signed off 2026-10-13, each as recommended:
 
 ## Next step
 
-Phase 1: lexer JSX mode, parser, `Preserve` mode and the parse oracle.
+Phase 1 (lexer JSX mode, parser, `Preserve` mode, parse oracle) and Phase 3 (module resolution, part A) can start in parallel.
