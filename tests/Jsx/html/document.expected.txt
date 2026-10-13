@@ -1,0 +1,4 @@
+{
+  "string": "<html lang=\"en\"><head><meta charset=\"utf-8\"/><title>Hi Ada</title><style>td { padding: 0 }</style></head><body><table class=\"newsletter\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tbody><tr><td>Hello Ada</td></tr><tr><td align=\"left\" bgcolor=\"#fff\">One</td></tr><tr><td align=\"left\" bgcolor=\"#fff\">Two &amp; Three</td></tr></tbody></table></body></html>",
+  "async": "<html lang=\"en\"><head><meta charset=\"utf-8\"/><title>Hi Ada</title><style>td { padding: 0 }</style></head><body><table class=\"newsletter\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tbody><tr><td>Hello Ada</td></tr><tr><td align=\"left\" bgcolor=\"#fff\">One</td></tr><tr><td align=\"left\" bgcolor=\"#fff\">Two &amp; Three</td></tr></tbody></table></body></html>"
+}

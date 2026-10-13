@@ -1,0 +1,4 @@
+{
+  "string": "ERROR: Use \"renderToStringAsync\" for suspenseful rendering.",
+  "async": "<main><div class=\"box\"><!--$s--><span>data:a</span><!--/$s--></div><div class=\"box\"><p>sibling</p><!--$s--><span>data:b</span><!--/$s--></div></main>"
+}

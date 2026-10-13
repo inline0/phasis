@@ -1,0 +1,4 @@
+{
+  "string": "<div><br/><hr/><img src=\"/a.png\" alt/><input/><meta charset=\"utf-8\"/><link rel=\"x\"/><area/><base/><col/><command/><embed/><keygen/><param/><source/><track/><wbr/><br>text</br><img>x</img></div>",
+  "async": "<div><br/><hr/><img src=\"/a.png\" alt/><input/><meta charset=\"utf-8\"/><link rel=\"x\"/><area/><base/><col/><command/><embed/><keygen/><param/><source/><track/><wbr/><br>text</br><img>x</img></div>"
+}

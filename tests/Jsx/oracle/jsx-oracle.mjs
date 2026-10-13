@@ -26,6 +26,7 @@ const suites = {
     smoke: smokeSuite,
     react: reactSuite,
     project: projectSuite,
+    html: htmlSuite,
 };
 
 /** Where each suite's fixtures live, relative to tests/Jsx. */
@@ -132,6 +133,33 @@ async function reactSuite(fixture) {
         platform: 'node',
         jsx: 'automatic',
         external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
+        logLevel: 'silent',
+    });
+    const env = { ...process.env, TZ: 'UTC', NODE_ENV: 'production' };
+    return execFileSync(process.execPath, [file], { encoding: 'utf8', env });
+}
+
+/**
+ * HTML render oracle: the fixture compiled with `phasis` as the JSX import
+ * source, where `phasis` is the Preact-based shim in oracle/phasis-shim, and
+ * rendered by preact-render-to-string 6.8.0 through tests/Jsx/html/_driver.mjs.
+ */
+async function htmlSuite(fixture) {
+    const outDir = path.join(here, '.out', 'html');
+    fs.mkdirSync(outDir, { recursive: true });
+    const entry = `import * as mod from ${JSON.stringify(fixture)};\n`
+        + `import { run } from ${JSON.stringify(path.join(jsxDir, 'html', '_driver.mjs'))};\n`
+        + `console.log(JSON.stringify(await run(mod), null, 2));\n`;
+    const file = path.join(outDir, path.basename(fixture, '.jsx') + '.mjs');
+    await esbuild.build({
+        stdin: { contents: entry, resolveDir: here, sourcefile: 'entry.mjs' },
+        outfile: file,
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        jsx: 'automatic',
+        jsxImportSource: 'phasis',
+        alias: { phasis: path.join(here, 'phasis-shim') },
         logLevel: 'silent',
     });
     const env = { ...process.env, TZ: 'UTC', NODE_ENV: 'production' };

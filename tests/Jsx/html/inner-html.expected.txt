@@ -1,0 +1,4 @@
+{
+  "string": "<div><div><b>bold</b> & raw</div><div>fallback child</div><div>child</div><script>var a = 1 < 2;</script><script>if (a &lt; b) {}</script></div>",
+  "async": "<div><div><b>bold</b> & raw</div><div>fallback child</div><div>child</div><script>var a = 1 < 2;</script><script>if (a &lt; b) {}</script></div>"
+}

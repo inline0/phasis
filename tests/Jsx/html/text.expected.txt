@@ -1,0 +1,4 @@
+{
+  "string": "<div><p>a &lt; b &amp; &quot;c&quot; > 'd'</p><p>001e+210.30000000000000004NaN12345678901234567890</p><p>text</p><p>ab c</p>123xfrag ment</div>",
+  "async": "<div><p>a &lt; b &amp; &quot;c&quot; > 'd'</p><p>001e+210.30000000000000004NaN12345678901234567890</p><p>text</p><p>ab c</p>123xfrag ment</div>"
+}

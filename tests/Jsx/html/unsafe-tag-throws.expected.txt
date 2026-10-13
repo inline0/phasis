@@ -1,0 +1,4 @@
+{
+  "string": "ERROR: bad tag is not a valid HTML tag name in <bad tag a=\"1\">",
+  "async": "ERROR: bad tag is not a valid HTML tag name in <bad tag a=\"1\">"
+}

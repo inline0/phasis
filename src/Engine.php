@@ -2053,7 +2053,7 @@ class Engine
             $jsProps = new JsObject();
         }
         if ($profile === RenderProfile::Html) {
-            throw new \Phasis\Exceptions\RuntimeError('The HTML profile is not available yet');
+            return \Phasis\BuiltIn\Jsx\Html\HtmlRenderer::renderComponent($this, $component, $jsProps);
         }
         $element = \Phasis\BuiltIn\Jsx\React\ReactModule::element($component, \Phasis\Value\JsNull::instance(), $jsProps);
         $html = null;
@@ -2119,6 +2119,9 @@ class Engine
         $loader->registerBuiltinModule('react-dom', static fn (): array => $withDefault($dom::reactDomExports()));
         $loader->registerBuiltinModule('react-dom/server', static fn (): array => $withDefault($dom::serverExports()));
         $loader->registerBuiltinModule('react-dom/static', static fn (): array => $withDefault($dom::staticExports()));
+        $html = \Phasis\BuiltIn\Jsx\Html\HtmlModule::class;
+        $loader->registerBuiltinModule('phasis', static fn (): array => $html::exports($reactModule()));
+        $loader->registerBuiltinModule('phasis/jsx-runtime', static fn (): array => $html::jsxRuntimeExports($reactModule()));
     }
 
     /** Load and evaluate a module from disk, returning its namespace object. */
