@@ -67,6 +67,21 @@ jobs:
       - name: Run benchmark
         run: ./bin/bench-report --runs ${{ github.event.inputs.runs || '5' }}
 
+      # bench/ssr.jsx rendered five ways (native React, precompile, real
+      # React in Phasis, the HTML profile, the components-only floor), with
+      # Phasis preloaded the way a production server would run it. Exits
+      # non-zero when the PRD's ratio targets are missed.
+      - name: Run SSR benchmark
+        run: |
+          php -d opcache.preload="$PWD/preload.php" bench/ssr.php ${{ github.event.inputs.runs || '5' }} | tee ssr-bench.txt
+          {
+            echo "## SSR Benchmark"
+            echo ""
+            echo '```'
+            cat ssr-bench.txt
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
       - name: Show summary
         if: always()
         run: |

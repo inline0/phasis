@@ -18,6 +18,7 @@ final readonly class ModuleOptions
      * @param string $nodeEnv The value process.env.NODE_ENV reads as; also selects the production/development condition.
      * @param list<string> $styleExtensions Imports with these extensions load as empty modules.
      * @param list<string> $assetExtensions Imports with these extensions default-export a URL from the asset resolver.
+     * @param ?string $parseCacheDir When set, parsed module ASTs are cached in this directory across engines and requests.
      */
     public function __construct(
         public ?string $projectRoot = null,
@@ -29,6 +30,7 @@ final readonly class ModuleOptions
             '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.ico', '.bmp',
             '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp4', '.webm', '.mp3', '.wav', '.ogg',
         ],
+        public ?string $parseCacheDir = null,
     ) {
     }
 

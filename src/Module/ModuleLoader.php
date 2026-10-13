@@ -1964,15 +1964,35 @@ class ModuleLoader
 
     private function parseModule(ModuleRecord $record, string $path, string $source): \Phasis\Ast\Program
     {
-        $parser = new Parser($source);
-        $parser->setModuleMode(true);
-        $parser->setDefines(['process.env.NODE_ENV' => $this->resolver->options()->nodeEnv]);
-        if ($this->jsxOptions !== null && $this->jsxOptions->appliesTo($path)) {
-            $parser->setJsxOptions($this->jsxOptions);
-        }
-        $program = $parser->parse();
-        $record->jsxImportSource = $parser->jsxImportSource();
-        return $this->barrelPruner()->rewrite($program, $path);
+        $nodeEnv = $this->resolver->options()->nodeEnv;
+        $jsx = $this->jsxOptions !== null && $this->jsxOptions->appliesTo($path) ? $this->jsxOptions : null;
+        $parse = static function () use ($source, $nodeEnv, $jsx): array {
+            $parser = new Parser($source);
+            $parser->setModuleMode(true);
+            $parser->setDefines(['process.env.NODE_ENV' => $nodeEnv]);
+            if ($jsx !== null) {
+                $parser->setJsxOptions($jsx);
+            }
+            $program = $parser->parse();
+            return ['program' => $program, 'jsxImportSource' => $parser->jsxImportSource()];
+        };
+        $cache = $this->parseCache();
+        $parsed = $cache === null ? $parse() : $cache->remember('module', $source, ['env' => $nodeEnv, 'jsx' => $jsx], $parse);
+        $record->jsxImportSource = $parsed['jsxImportSource'];
+        return $this->barrelPruner()->rewrite($parsed['program'], $path);
+    }
+
+    private function parseCommonJs(string $source): \Phasis\Ast\Program
+    {
+        $cache = $this->parseCache();
+        $parse = fn (): \Phasis\Ast\Program => $this->commonJs()->parse($source);
+        return $cache === null ? $parse() : $cache->remember('commonjs', $source, [], $parse);
+    }
+
+    private function parseCache(): ?ParseCache
+    {
+        $dir = $this->resolver->options()->parseCacheDir;
+        return $dir === null ? null : new ParseCache($dir);
     }
 
     private function barrelPruner(): BarrelPruner
@@ -1980,16 +2000,21 @@ class ModuleLoader
         $nodeEnv = fn (): string => $this->resolver->options()->nodeEnv;
         return $this->barrelPruner ??= new BarrelPruner(
             $this->resolver,
-            static function (string $path) use ($nodeEnv): ?\Phasis\Ast\Program {
+            function (string $path) use ($nodeEnv): ?\Phasis\Ast\Program {
                 $source = @file_get_contents($path);
                 if ($source === false) {
                     return null;
                 }
-                try {
+                $env = $nodeEnv();
+                $parse = static function () use ($source, $env): \Phasis\Ast\Program {
                     $parser = new Parser($source);
                     $parser->setModuleMode(true);
-                    $parser->setDefines(['process.env.NODE_ENV' => $nodeEnv()]);
+                    $parser->setDefines(['process.env.NODE_ENV' => $env]);
                     return $parser->parse();
+                };
+                try {
+                    $cache = $this->parseCache();
+                    return $cache === null ? $parse() : $cache->remember('barrel', $source, ['env' => $env], $parse);
                 } catch (\Phasis\Exceptions\SyntaxError) {
                     return null;
                 }
@@ -2024,7 +2049,7 @@ class ModuleLoader
     private function detectFormat(ModuleRecord $record, string $path, string $source): ?\Phasis\Ast\Program
     {
         try {
-            $program = $this->commonJs()->parse($source);
+            $program = $this->parseCommonJs($source);
         } catch (\Phasis\Exceptions\SyntaxError $commonJsError) {
             try {
                 $program = $this->parseModule($record, $path, $source);
@@ -2087,7 +2112,7 @@ class ModuleLoader
         switch ($format) {
             case 'commonjs':
                 unset($this->evaluating[$path]);
-                return $this->linkCommonJs($record, $path, $this->commonJs()->parse($source));
+                return $this->linkCommonJs($record, $path, $this->parseCommonJs($source));
             case 'builtin':
                 $specifier = substr($path, strlen(ModuleResolver::BUILTIN));
                 $factory = $this->builtins[$specifier] ?? null;
