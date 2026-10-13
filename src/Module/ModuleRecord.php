@@ -12,6 +12,25 @@ use Phasis\Value\JsObject;
 class ModuleRecord
 {
     /**
+     * True for modules whose named exports aren't known statically
+     * (CommonJS, stubs). Named imports from them never fail to link;
+     * missing names read as undefined, as bundlers do.
+     */
+    public bool $permissiveExports = false;
+
+    /** A linked CommonJS module that hasn't run yet; it runs in body-evaluation order. */
+    public ?\Phasis\Ast\Program $commonJsProgram = null;
+
+    /** True until a CommonJS module has run and its exports are copied onto the namespace. */
+    public bool $namespaceOpen = false;
+
+    /** The `module` object of a CommonJS module, holding `exports`. */
+    public ?JsObject $commonJsModule = null;
+
+    /** JSX import source in effect for this module, or null when it has no JSX. */
+    public ?string $jsxImportSource = null;
+
+    /**
      * @var array<string, string> Map of star-exported name → source module
      *                            path that contributed it via `export * from`.
      */

@@ -146,9 +146,22 @@ class Engine
      */
     private EventLoop $eventLoop;
 
+    private \Phasis\Parser\Jsx\JsxOptions $jsxOptions;
+
+    private \Phasis\Module\ModuleOptions $moduleOptions;
+
+    /** @var array<string, ?string> */
+    private array $importMap = [];
+
+    private ?\Closure $assetResolver = null;
+
+    private ?\Closure $cssModuleResolver = null;
+
     public function __construct(bool $eager = false)
     {
         $this->eager = $eager;
+        $this->jsxOptions = new \Phasis\Parser\Jsx\JsxOptions();
+        $this->moduleOptions = new \Phasis\Module\ModuleOptions();
         $this->lazyRegistry = new LazyBuiltinRegistry();
         // Clear any cached intrinsic prototypes from prior Engine instances
         // so each realm gets its own wired object graph.
@@ -161,6 +174,7 @@ class Engine
         self::$currentInterpreter = $this->interpreter;
 
         $this->installBuiltins();
+        $this->configureModuleLoader();
 
         // Global 'this' should be the global object
         $objProto = $this->globalEnv->has('__ObjectPrototype__')
@@ -1717,6 +1731,12 @@ class Engine
 
     public function execFile(string $path): mixed
     {
+        // ES modules (.mjs) and JSX files go through the module loader, so
+        // their imports resolve. Like evalAsModule(), they return null.
+        if (str_ends_with(strtolower($path), '.mjs') || $this->jsxOptions->appliesTo($path)) {
+            $this->importModule($path);
+            return null;
+        }
         $source = file_get_contents($path);
         if ($source === false) {
             throw new \RuntimeException("Cannot read file: {$path}");
@@ -1906,7 +1926,103 @@ class Engine
         $this->lazyRegistry = new LazyBuiltinRegistry();
 
         $this->installBuiltins();
+        $this->configureModuleLoader();
         $this->eventLoop = new EventLoop($this);
+    }
+
+    /**
+     * JSX settings for modules. By default files ending in `.jsx` parse
+     * with JSX, using the automatic runtime with `react` as import source.
+     */
+    public function setJsxOptions(\Phasis\Parser\Jsx\JsxOptions $options): void
+    {
+        $this->jsxOptions = $options;
+        $this->configureModuleLoader();
+    }
+
+    /** How module specifiers resolve and how style and asset imports load. */
+    public function setModuleOptions(\Phasis\Module\ModuleOptions $options): void
+    {
+        $this->moduleOptions = $options;
+        $this->configureModuleLoader();
+    }
+
+    /**
+     * Map specifiers to files, following the WHATWG import map `imports`
+     * table: exact keys, plus keys ending in `/` as prefixes. Values are
+     * absolute paths, or null to load the module as an empty stub.
+     *
+     * @param array<string, ?string> $imports
+     */
+    public function setImportMap(array $imports): void
+    {
+        $this->importMap = $imports;
+        $this->configureModuleLoader();
+    }
+
+    /**
+     * Decide the URL an imported asset (image, font, ...) default-exports,
+     * for example by looking it up in the client build's manifest.
+     *
+     * @param callable(string): string $resolver Receives the asset's absolute path.
+     */
+    public function setAssetResolver(callable $resolver): void
+    {
+        $this->assetResolver = \Closure::fromCallable($resolver);
+        $this->configureModuleLoader();
+    }
+
+    /**
+     * Supply the class names of a CSS module, matching what the client
+     * bundler generates.
+     *
+     * @param callable(string): array<string, string> $resolver Receives the CSS file's absolute path.
+     */
+    public function setCssModuleResolver(callable $resolver): void
+    {
+        $this->cssModuleResolver = \Closure::fromCallable($resolver);
+        $this->configureModuleLoader();
+    }
+
+    /**
+     * Load a module and return one of its exports, converted to PHP.
+     */
+    public function getExport(string $path, string $name = 'default'): mixed
+    {
+        $namespace = $this->importModule($path);
+        return $this->toPhp($namespace->get($name));
+    }
+
+    /** Load and evaluate a module from disk, returning its namespace object. */
+    private function importModule(string $path): JsObject
+    {
+        $resolved = realpath($path);
+        if ($resolved === false) {
+            throw new \RuntimeException("Cannot read module: {$path}");
+        }
+        $previousInterpreter = self::$currentInterpreter;
+        self::$currentInterpreter = $this->interpreter;
+        try {
+            $namespace = $this->interpreter->getModuleLoader()->loadModule($resolved);
+            $this->eventLoop->runUntilEmpty();
+            return $namespace;
+        } finally {
+            self::$currentInterpreter = $previousInterpreter;
+        }
+    }
+
+    private function configureModuleLoader(): void
+    {
+        $loader = $this->interpreter->getModuleLoader();
+        $loader->setJsxOptions($this->jsxOptions);
+        $loader->setModuleOptions($this->moduleOptions);
+        $loader->setImportMap($this->importMap);
+        if ($this->assetResolver !== null) {
+            $loader->setAssetResolver($this->assetResolver);
+        }
+        if ($this->cssModuleResolver !== null) {
+            $loader->setCssModuleResolver($this->cssModuleResolver);
+        }
     }
 
     /**

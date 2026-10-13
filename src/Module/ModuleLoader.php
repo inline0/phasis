@@ -12,6 +12,7 @@ use Phasis\Ast\Declaration\VariableDeclaration;
 use Phasis\Ast\Declaration\ClassDeclaration;
 use Phasis\Ast\Node;
 use Phasis\Object\PropertyDescriptor;
+use Phasis\Parser\Jsx\JsxOptions;
 use Phasis\Parser\Parser;
 use Phasis\Runtime\Environment;
 use Phasis\Runtime\Interpreter;
@@ -59,10 +60,101 @@ class ModuleLoader
     private Interpreter $interpreter;
     private Environment $globalEnv;
 
+    private ModuleResolver $resolver;
+
+    private ?CommonJsLoader $commonJs = null;
+
+    private ?BarrelPruner $barrelPruner = null;
+
+    private ?JsxOptions $jsxOptions = null;
+
+    /** @var array<string, \Closure(): array<string, JsValue>> Built-in module export factories by specifier. */
+    private array $builtins = [];
+
+    /** @var ?\Closure(string): string */
+    private ?\Closure $assetResolver = null;
+
+    /** @var ?\Closure(string): array<string, string> */
+    private ?\Closure $cssModuleResolver = null;
+
     public function __construct(Interpreter $interpreter, Environment $globalEnv)
     {
         $this->interpreter = $interpreter;
         $this->globalEnv = $globalEnv;
+        $builtins = &$this->builtins;
+        $this->resolver = new ModuleResolver(
+            new ModuleOptions(),
+            static fn (string $specifier): bool => isset($builtins[$specifier]),
+        );
+    }
+
+    /** Parse modules whose path matches the options' extensions with JSX. */
+    public function setJsxOptions(?JsxOptions $options): void
+    {
+        $this->jsxOptions = $options;
+    }
+
+    public function jsxOptions(): ?JsxOptions
+    {
+        return $this->jsxOptions;
+    }
+
+    public function setModuleOptions(ModuleOptions $options): void
+    {
+        $this->resolver->setOptions($options);
+    }
+
+    public function moduleOptions(): ModuleOptions
+    {
+        return $this->resolver->options();
+    }
+
+    /**
+     * @param array<string, ?string> $imports
+     */
+    public function setImportMap(array $imports): void
+    {
+        $this->resolver->setImportMap($imports);
+    }
+
+    /**
+     * @param \Closure(string): string $resolver Absolute asset path => URL.
+     */
+    public function setAssetResolver(\Closure $resolver): void
+    {
+        $this->assetResolver = $resolver;
+    }
+
+    /**
+     * @param \Closure(string): array<string, string> $resolver Absolute CSS-module path => class-name map.
+     */
+    public function setCssModuleResolver(\Closure $resolver): void
+    {
+        $this->cssModuleResolver = $resolver;
+    }
+
+    /**
+     * Register a module that exists only in the engine (no file), such as
+     * `react`. The factory runs once per engine, on first import, and
+     * returns the module's exports by name.
+     *
+     * @param \Closure(): array<string, JsValue> $factory
+     */
+    public function registerBuiltinModule(string $specifier, \Closure $factory): void
+    {
+        $this->builtins[$specifier] = $factory;
+        $this->resolver->clearCache();
+    }
+
+    public function resolver(): ModuleResolver
+    {
+        return $this->resolver;
+    }
+
+    /** The record of a loaded module, by resolved key. */
+    public function record(string $resolved): ?ModuleRecord
+    {
+        return $this->modules[$resolved] ?? null;
     }
 
     /**
@@ -146,10 +238,7 @@ class ModuleLoader
      */
     private function loadModuleInternal(string $resolved, string $specifier): JsObject
     {
-        $source = @file_get_contents($resolved);
-        if ($source === false) {
-            throw new \Phasis\Exceptions\TypeError("Cannot find module '{$specifier}'");
-        }
+        $source = $this->readSource($resolved, $specifier);
 
         // Nested loads issued during linking (from finalizeExports /
         // processImports) just link and return; the outer call owns
@@ -346,23 +435,17 @@ class ModuleLoader
         $record = new ModuleRecord($absolutePath, $namespace);
         $this->modules[$absolutePath] = $record;
 
+        $format = $this->moduleFormat($absolutePath);
+
         // JSON modules: per the import attributes / json-modules proposal,
         // a .json source becomes a synthetic module whose only export is
         // `default`, holding the parsed JSON value.
-        if (str_ends_with(strtolower($absolutePath), '.json')) {
+        if ($format === 'json') {
             $parsed = \Phasis\BuiltIn\JsonObject::parseSource($source);
-            $namespace->defineOwnProperty(
-                'default',
-                PropertyDescriptor::data($parsed, false, true, false),
-            );
-            $namespace->setPrototype(null);
-            $toStringTagSym = \Phasis\BuiltIn\SymbolConstructor::toStringTag();
-            $namespace->definePropertyBySymbol(
-                $toStringTagSym,
-                PropertyDescriptor::data(new JsString('Module'), false, false, false),
-            );
-            $record->exportsFinalized = true;
-            return $namespace;
+            return $this->finishSyntheticModule($record, ['default' => $parsed], false);
+        }
+        if ($format !== 'esm' && $format !== 'detect') {
+            return $this->linkSyntheticModule($record, $absolutePath, $format, $source);
         }
 
         // Detect circular dependency.
@@ -373,9 +456,14 @@ class ModuleLoader
 
         $prevModulePath = $this->interpreter->getCurrentModulePath();
         try {
-            $parser = new Parser($source);
-            $parser->setModuleMode(true);
-            $program = $parser->parse();
+            if ($format === 'detect') {
+                $program = $this->detectFormat($record, $absolutePath, $source);
+                if ($program === null) {
+                    return $namespace;
+                }
+            } else {
+                $program = $this->parseModule($record, $absolutePath, $source);
+            }
 
             // Detect top-level await before linking dependencies. The
             // markEagerlyReachable walk needs the flag so a deferred
@@ -687,6 +775,10 @@ class ModuleLoader
         $prevModulePath = $this->interpreter->getCurrentModulePath();
         $this->interpreter->setCurrentModulePath($record->path);
         try {
+            if ($record->commonJsProgram !== null) {
+                $this->runCommonJs($record);
+                return;
+            }
             $this->interpreter->executeModuleBody(
                 $pending['program']->body,
                 $pending['moduleEnv'],
@@ -1028,6 +1120,10 @@ class ModuleLoader
                     $this->evaluateModuleBodyOnDemand($dep);
                 }
             }
+            if ($record->commonJsProgram !== null) {
+                $this->runCommonJs($record);
+                return;
+            }
             $pending = $record->pendingBody;
             $record->pendingBody = null;
             $record->bodyEvaluated = true;
@@ -1078,6 +1174,10 @@ class ModuleLoader
     private function lockDownNamespaces(): void
     {
         foreach ($this->modules as $record) {
+            if ($record->namespaceOpen) {
+                // Filled in and locked once the CommonJS module has run.
+                continue;
+            }
             $record->namespace->markAsModuleNamespace();
             $record->namespace->preventExtensions();
         }
@@ -1234,6 +1334,9 @@ class ModuleLoader
         if ($record === null) {
             return null;
         }
+        if ($record->permissiveExports) {
+            return ['module' => $modulePath, 'bindingName' => $exportName];
+        }
 
         // Indirect re-export: recurse through the source module.
         if (isset($record->indirectExports[$exportName])) {
@@ -1281,50 +1384,73 @@ class ModuleLoader
     /**
      * Resolve a module specifier to an absolute path.
      */
-    public function resolve(string $specifier, ?string $referrer = null): string
+    /**
+     * @param 'import'|'require' $kind
+     */
+    public function resolve(string $specifier, ?string $referrer = null, string $kind = 'import'): string
     {
-        // If the specifier is already an absolute path.
-        if ($specifier !== '' && $specifier[0] === '/') {
-            return $this->normalizeModulePath($specifier);
-        }
-
-        // Relative path: resolve relative to referrer.
-        if ($specifier !== '' && ($specifier[0] === '.' || str_starts_with($specifier, './'))) {
-            if ($referrer === null) {
-                throw new \Phasis\Exceptions\TypeError(
-                    "Cannot resolve relative module specifier '{$specifier}' without a referrer",
-                );
-            }
-            $base = dirname($referrer);
-            return $this->normalizeModulePath($base . '/' . $specifier);
-        }
-
-        // Bare specifiers: not supported in our simple loader.
-        throw new \Phasis\Exceptions\TypeError(
-            "Cannot resolve module specifier '{$specifier}'",
-        );
+        return $this->resolver->resolve($specifier, $referrer, $kind);
     }
 
-    private function normalizeModulePath(string $path): string
+    /**
+     * `require()` from a CommonJS module: returns `module.exports` for
+     * CommonJS, the namespace object for ES modules and built-ins.
+     */
+    public function requireModule(string $specifier, string $referrer): JsValue
     {
-        $realpath = realpath($path);
-        if ($realpath !== false) {
-            return $realpath;
-        }
-        // If realpath fails, use the path as-is after resolving . and ..
-        $parts = explode('/', $path);
-        $stack = [];
-        foreach ($parts as $part) {
-            if ($part === '' || $part === '.') {
-                continue;
+        $resolved = $this->resolve($specifier, $referrer, 'require');
+        $record = $this->modules[$resolved] ?? null;
+        if ($record === null) {
+            // require() runs in the middle of another module's evaluation,
+            // so link the new graph into the current one and evaluate it on
+            // demand instead of starting a fresh top-level load, which would
+            // take over the body queue of the run in progress.
+            $source = $this->readSource($resolved, $specifier);
+            $wasLinking = $this->linking;
+            $this->linking = true;
+            try {
+                $this->linkModule($resolved, $source);
+                if (!$wasLinking) {
+                    $this->finalizeStarReExports();
+                    $this->lockDownNamespaces();
+                    $this->validateIndirectExports();
+                }
+            } finally {
+                $this->linking = $wasLinking;
             }
-            if ($part === '..') {
-                array_pop($stack);
-            } else {
-                $stack[] = $part;
+            $record = $this->modules[$resolved];
+            if (!$wasLinking && $record->commonJsProgram === null && $record->pendingBody !== null) {
+                $this->evaluateModuleBodyOnDemand($record);
             }
         }
-        return '/' . implode('/', $stack);
+        if ($record->commonJsProgram !== null) {
+            $this->runCommonJs($record);
+        }
+        if ($record->commonJsModule !== null) {
+            return $record->commonJsModule->get('exports');
+        }
+        if (str_ends_with(strtolower($resolved), '.json')) {
+            return $record->namespace->get('default');
+        }
+        if (!$record->bodyEvaluated && $record->pendingBody !== null && !$record->bodyEvaluating) {
+            $this->evaluateModuleBodyOnDemand($record);
+        }
+        if ($record->evaluationError !== null) {
+            throw new \Phasis\Exceptions\JsThrowable($record->evaluationError);
+        }
+        return $record->namespace;
+    }
+
+    private function readSource(string $resolved, string $specifier): string
+    {
+        if (str_starts_with($resolved, ModuleResolver::BUILTIN) || str_starts_with($resolved, ModuleResolver::STUB)) {
+            return '';
+        }
+        $source = @file_get_contents($resolved);
+        if ($source === false) {
+            throw new \Phasis\Exceptions\TypeError("Cannot find module '{$specifier}'");
+        }
+        return $source;
     }
 
     /**
@@ -1453,6 +1579,19 @@ class ModuleLoader
                     'source' => $resolved,
                     'exportName' => $exportName,
                 ];
+            }
+            $sourceRecord = $this->modules[$resolved] ?? null;
+            if (
+                $exportName === 'default'
+                && $sourceRecord !== null
+                && $sourceRecord->namespaceOpen
+                && $this->isNodeModeImporter($modulePath)
+            ) {
+                $resolver = static function () use ($sourceRecord, $importedNs): JsValue {
+                    return $sourceRecord->commonJsModule?->get('exports') ?? $importedNs->get('default');
+                };
+                $moduleEnv->defineImportBinding($spec->local, $resolver);
+                continue;
             }
             $resolver = static function () use ($importedNs, $exportName): JsValue {
                 return $importedNs->get($exportName);
@@ -1762,6 +1901,232 @@ class ModuleLoader
     /**
      * Reset the module cache (useful for testing).
      */
+    /**
+     * How a resolved module loads: 'esm', 'json', 'commonjs', 'detect'
+     * (CommonJS unless it has ES module syntax), 'builtin', 'stub', 'style',
+     * 'css-module' or 'asset'.
+     */
+    private function moduleFormat(string $path): string
+    {
+        if (str_starts_with($path, ModuleResolver::BUILTIN)) {
+            return 'builtin';
+        }
+        if (str_starts_with($path, ModuleResolver::STUB)) {
+            return 'stub';
+        }
+        $lower = strtolower($path);
+        if (str_ends_with($lower, '.json')) {
+            return 'json';
+        }
+        $options = $this->resolver->options();
+        foreach ($options->styleExtensions as $extension) {
+            if (str_ends_with($lower, $extension)) {
+                return str_ends_with($lower, '.module' . $extension) ? 'css-module' : 'style';
+            }
+        }
+        foreach ($options->assetExtensions as $extension) {
+            if (str_ends_with($lower, $extension)) {
+                return 'asset';
+            }
+        }
+        if (str_ends_with($lower, '.cjs')) {
+            return 'commonjs';
+        }
+        if (str_ends_with($lower, '.mjs') || ($this->jsxOptions !== null && $this->jsxOptions->appliesTo($path))) {
+            return 'esm';
+        }
+        // Application code is ES modules, as bundlers treat it. Inside
+        // node_modules, package.json "type" decides, with Node's syntax
+        // detection when it is absent.
+        if (!str_contains($path, '/node_modules/')) {
+            return 'esm';
+        }
+        if (str_ends_with($lower, '.js')) {
+            $scope = $this->resolver->packageScope($path);
+            $type = $scope === null ? null : ($this->resolver->readPackageJson($scope)['type'] ?? null);
+            if ($type === 'module') {
+                return 'esm';
+            }
+            return 'detect';
+        }
+        return 'esm';
+    }
+
+    private function parseModule(ModuleRecord $record, string $path, string $source): \Phasis\Ast\Program
+    {
+        $parser = new Parser($source);
+        $parser->setModuleMode(true);
+        $parser->setDefines(['process.env.NODE_ENV' => $this->resolver->options()->nodeEnv]);
+        if ($this->jsxOptions !== null && $this->jsxOptions->appliesTo($path)) {
+            $parser->setJsxOptions($this->jsxOptions);
+        }
+        $program = $parser->parse();
+        $record->jsxImportSource = $parser->jsxImportSource();
+        return $this->barrelPruner()->rewrite($program, $path);
+    }
+
+    private function barrelPruner(): BarrelPruner
+    {
+        $nodeEnv = fn (): string => $this->resolver->options()->nodeEnv;
+        return $this->barrelPruner ??= new BarrelPruner(
+            $this->resolver,
+            static function (string $path) use ($nodeEnv): ?\Phasis\Ast\Program {
+                $source = @file_get_contents($path);
+                if ($source === false) {
+                    return null;
+                }
+                try {
+                    $parser = new Parser($source);
+                    $parser->setModuleMode(true);
+                    $parser->setDefines(['process.env.NODE_ENV' => $nodeEnv()]);
+                    return $parser->parse();
+                } catch (\Phasis\Exceptions\SyntaxError) {
+                    return null;
+                }
+            },
+        );
+    }
+
+    /**
+     * Whether an importer gets Node's CommonJS interop (default import is
+     * the whole `module.exports`) rather than the `__esModule` convention:
+     * true for `.mjs` files and for `.js`/`.jsx` files in a package whose
+     * package.json says "type": "module", as esbuild decides it.
+     */
+    private function isNodeModeImporter(string $path): bool
+    {
+        $lower = strtolower($path);
+        if (str_ends_with($lower, '.mjs')) {
+            return true;
+        }
+        if (!str_ends_with($lower, '.js') && !str_ends_with($lower, '.jsx')) {
+            return false;
+        }
+        $scope = $this->resolver->packageScope($path);
+        return $scope !== null && (($this->resolver->readPackageJson($scope) ?? [])['type'] ?? null) === 'module';
+    }
+
+    /**
+     * A package file without "type": CommonJS unless it only parses as an
+     * ES module. Returns the ES module program, or null after linking the
+     * file as CommonJS.
+     */
+    private function detectFormat(ModuleRecord $record, string $path, string $source): ?\Phasis\Ast\Program
+    {
+        try {
+            $program = $this->commonJs()->parse($source);
+        } catch (\Phasis\Exceptions\SyntaxError $commonJsError) {
+            try {
+                $program = $this->parseModule($record, $path, $source);
+            } catch (\Phasis\Exceptions\SyntaxError) {
+                throw $commonJsError;
+            }
+            foreach ($program->body as $node) {
+                if ($node instanceof ImportDeclaration || $node instanceof ExportDeclaration) {
+                    return $program;
+                }
+            }
+            throw $commonJsError;
+        }
+        $this->linkCommonJs($record, $path, $program);
+        return null;
+    }
+
+    private function commonJs(): CommonJsLoader
+    {
+        return $this->commonJs ??= new CommonJsLoader($this, $this->interpreter);
+    }
+
+    /**
+     * Link a CommonJS module. It runs later, in body-evaluation order like
+     * an ES module (or immediately when required), so evaluation order
+     * matches Node and bundlers. Its namespace stays open until then.
+     */
+    private function linkCommonJs(ModuleRecord $record, string $path, \Phasis\Ast\Program $program): JsObject
+    {
+        $record->commonJsProgram = $program;
+        $record->namespaceOpen = true;
+        $record->pendingBody = ['program' => $program, 'moduleEnv' => $this->globalEnv, 'prevModulePath' => null];
+        $this->bodyQueue[] = $path;
+        return $this->finishSyntheticModule($record, [], true);
+    }
+
+    private function runCommonJs(ModuleRecord $record): void
+    {
+        $program = $record->commonJsProgram;
+        if ($program === null) {
+            return;
+        }
+        $record->commonJsProgram = null;
+        $record->pendingBody = null;
+        $record->bodyEvaluated = true;
+        try {
+            $module = $this->commonJs()->run($record, $record->path, $program);
+        } catch (\Phasis\Exceptions\JsThrowable $e) {
+            $record->evaluationError = $e->jsValue;
+            throw $e;
+        }
+        CommonJsLoader::populateNamespace($record->namespace, $module->get('exports'));
+        $record->namespaceOpen = false;
+        $record->namespace->markAsModuleNamespace();
+        $record->namespace->preventExtensions();
+    }
+
+    private function linkSyntheticModule(ModuleRecord $record, string $path, string $format, string $source): JsObject
+    {
+        switch ($format) {
+            case 'commonjs':
+                unset($this->evaluating[$path]);
+                return $this->linkCommonJs($record, $path, $this->commonJs()->parse($source));
+            case 'builtin':
+                $specifier = substr($path, strlen(ModuleResolver::BUILTIN));
+                $factory = $this->builtins[$specifier] ?? null;
+                if ($factory === null) {
+                    throw new \Phasis\Exceptions\TypeError("Unknown built-in module '{$specifier}'");
+                }
+                return $this->finishSyntheticModule($record, $factory(), false);
+            case 'stub':
+            case 'style':
+                return $this->finishSyntheticModule($record, [], true);
+            case 'css-module':
+                if ($this->cssModuleResolver === null) {
+                    throw new \Phasis\Exceptions\TypeError(
+                        "CSS module '{$path}' needs the class names your client bundler generates; "
+                        . 'configure Engine::setCssModuleResolver() or use plain class names',
+                    );
+                }
+                $classes = ($this->cssModuleResolver)($path);
+                return $this->finishSyntheticModule($record, ['default' => \Phasis\Interop\PhpToJs::convert($classes)], true);
+            case 'asset':
+                if ($this->assetResolver === null) {
+                    throw new \Phasis\Exceptions\TypeError(
+                        "Importing asset '{$path}' needs a URL; configure Engine::setAssetResolver()",
+                    );
+                }
+                return $this->finishSyntheticModule($record, ['default' => new JsString(($this->assetResolver)($path))], false);
+        }
+        throw new \Phasis\Exceptions\TypeError("No loader for module '{$path}'");
+    }
+
+    /**
+     * @param array<string, JsValue> $exports
+     */
+    private function finishSyntheticModule(ModuleRecord $record, array $exports, bool $permissive): JsObject
+    {
+        $namespace = $record->namespace;
+        foreach ($exports as $name => $value) {
+            $namespace->defineOwnProperty((string) $name, PropertyDescriptor::data($value, false, true, false));
+        }
+        $namespace->setPrototype(null);
+        $namespace->definePropertyBySymbol(
+            \Phasis\BuiltIn\SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('Module'), false, false, false),
+        );
+        $record->permissiveExports = $record->permissiveExports || $permissive;
+        $record->exportsFinalized = true;
+        return $namespace;
+    }
+
     public function reset(): void
     {
         $this->modules = [];

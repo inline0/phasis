@@ -1,0 +1,26 @@
+eval Card
+eval esm-pkg
+eval alpha
+Card: "card"
+List: "list"
+util: "util"
+baseUrl: "from baseUrl"
+data: {"answer":42,"list":[1,2]}
+logo: "/assets/logo.svg"
+esm: "esm default" | "feature"
+feature: "feature"
+star: "star icon"
+cjs: {"a":"A","b":"B"} | "A" | 
+flagged: {"default":"flagged default","named":"flagged named"} | "flagged named"
+moduleField: "from module field"
+dual: "dual esm"
+cond: "phasis condition"
+prod: "production build"
+scoped: {"scoped":true}
+usesImports: "internal + feature"
+requirer: ["other",1,"feature","dual cjs"]
+cycle: {"early":"a-early","seenByB":"a-early/undefined"}
+nodeEnv: "prod mode" | "production"
+detected: "detected esm"
+barrel: "alpha"
+ns: ["a","b","default"] | true
