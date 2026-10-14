@@ -34,6 +34,9 @@ final class ModuleResolver
     /** @var array<string, ?array<string, mixed>> package.json contents by directory */
     private array $packageJson = [];
 
+    /** @var array<string, bool> */
+    private array $sideEffectFree = [];
+
     /** @var array<string, ?array{dir: string, baseUrl: ?string, paths: array<string, list<string>>}> */
     private array $aliasConfig = [];
 
@@ -71,6 +74,7 @@ final class ModuleResolver
         $this->cache = [];
         $this->packageJson = [];
         $this->aliasConfig = [];
+        $this->sideEffectFree = [];
     }
 
     /**
@@ -102,6 +106,39 @@ final class ModuleResolver
             }
             $dir = $parent;
         }
+    }
+
+    /**
+     * Whether $path is in a node_modules package whose package.json declares
+     * it free of side effects: `"sideEffects": false`, or a list of patterns
+     * it does not match. Bundlers trust the same field to tree-shake.
+     */
+    public function isSideEffectFree(string $path): bool
+    {
+        $scope = $this->packageScope($path);
+        if ($scope === null || !str_contains($path, '/node_modules/')) {
+            return false;
+        }
+        $key = $scope . "\0" . $path;
+        if (isset($this->sideEffectFree[$key])) {
+            return $this->sideEffectFree[$key];
+        }
+        $flag = ($this->readPackageJson($scope) ?? [])['sideEffects'] ?? true;
+        $result = false;
+        if ($flag === false) {
+            $result = true;
+        } elseif (is_array($flag)) {
+            $relative = substr($path, strlen($scope) + 1);
+            $result = true;
+            foreach ($flag as $pattern) {
+                $pattern = ltrim((string) $pattern, './');
+                if (fnmatch($pattern, $relative) || (!str_contains($pattern, '/') && fnmatch($pattern, basename($relative)))) {
+                    $result = false;
+                    break;
+                }
+            }
+        }
+        return $this->sideEffectFree[$key] = $result;
     }
 
     /** @return array<string, mixed>|null */

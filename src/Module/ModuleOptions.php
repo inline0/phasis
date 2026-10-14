@@ -19,6 +19,9 @@ final readonly class ModuleOptions
      * @param list<string> $styleExtensions Imports with these extensions load as empty modules.
      * @param list<string> $assetExtensions Imports with these extensions default-export a URL from the asset resolver.
      * @param ?string $parseCacheDir When set, parsed module ASTs are cached in this directory across engines and requests.
+     * @param bool $deferSideEffectFreeModules Load a module its package declares free of side effects when one of its
+     *     imported bindings is first read, instead of before the importer runs. Off by default: it changes when such a
+     *     module's top-level code runs, which a package that mislabels its side effects can observe.
      */
     public function __construct(
         public ?string $projectRoot = null,
@@ -31,6 +34,7 @@ final readonly class ModuleOptions
             '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp4', '.webm', '.mp3', '.wav', '.ogg',
         ],
         public ?string $parseCacheDir = null,
+        public bool $deferSideEffectFreeModules = false,
     ) {
     }
 

@@ -47,6 +47,7 @@ $engine->setModuleOptions(new ModuleOptions(
     styleExtensions: ['.css', '.scss', '.sass', '.less', '.styl'],
     assetExtensions: ['.svg', '.png', '.jpg', /* ... */],
     parseCacheDir: null,                           // see "Parse cache"
+    deferSideEffectFreeModules: false,             // see "Deferred loading"
 ));
 ```
 
@@ -78,6 +79,23 @@ $engine->setCssModuleResolver(fn (string $file): array => $cssModules[$file]);
 Icon sets and utility libraries often have an entry file that only re-exports hundreds of modules. When a package declares `"sideEffects": false` (or lists the files with side effects), Phasis rewrites `import { Alpha } from 'pkg'` into an import of the module that defines `Alpha`, following `export { }`, `export * from` and `export * as ns` chains. The barrel and the modules you do not use are never parsed or run, the same tree-shaking bundlers do.
 
 Importing one `lucide-react` icon loads that icon's own import closure: the icon module and its 12 shared helpers in lucide-react 1.56.0, instead of the 1,883-icon barrel. Anything Phasis cannot prove safe, such as namespace imports or a barrel with real code in it, keeps the original import.
+
+## Deferred loading
+
+Pruning drops the modules nobody imports. With `deferSideEffectFreeModules: true`, Phasis goes further for packages that declare `"sideEffects": false`: a module imported from one loads when one of its imported bindings is first read, instead of before the importing module runs. Modules a render never touches are never parsed.
+
+```php
+$engine->setModuleOptions(new ModuleOptions(deferSideEffectFreeModules: true));
+```
+
+With it, importing one `lucide-react` icon loads 4 modules instead of 13, and rendering it loads 11: the 2 helpers for icons built from a name never load.
+
+It is off by default because it changes *when* a module's top-level code runs. A package that declares `"sideEffects": false` but logs, registers something or reads global state as it loads behaves differently than in the client bundle, which runs every module up front. Turn it on for packages you trust to be truthful. These imports always load with the importer:
+
+- namespace imports (`import * as ns`) and side-effect imports (`import 'pkg/x.mjs'`)
+- application files outside `node_modules`, CommonJS modules, and modules that may use top-level `await`
+
+The path still resolves when the importer loads, so a missing module fails at the same time as before. A missing export throws its `SyntaxError` on the first read, and an error thrown while the module evaluates is thrown on every read.
 
 ## Reading exports from PHP
 

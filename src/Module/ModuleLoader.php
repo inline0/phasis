@@ -77,6 +77,15 @@ class ModuleLoader
     /** @var ?\Closure(string): array<string, string> */
     private ?\Closure $cssModuleResolver = null;
 
+    /**
+     * Import declarations whose source loads on first use, by object id,
+     * mapped to the resolved path. Set while preloading a module's
+     * requests and consumed when its bindings are installed.
+     *
+     * @var array<int, string>
+     */
+    private array $deferredLoads = [];
+
     public function __construct(Interpreter $interpreter, Environment $globalEnv)
     {
         $this->interpreter = $interpreter;
@@ -1409,30 +1418,7 @@ class ModuleLoader
     public function requireModule(string $specifier, string $referrer): JsValue
     {
         $resolved = $this->resolve($specifier, $referrer, 'require');
-        $record = $this->modules[$resolved] ?? null;
-        if ($record === null) {
-            // require() runs in the middle of another module's evaluation,
-            // so link the new graph into the current one and evaluate it on
-            // demand instead of starting a fresh top-level load, which would
-            // take over the body queue of the run in progress.
-            $source = $this->readSource($resolved, $specifier);
-            $wasLinking = $this->linking;
-            $this->linking = true;
-            try {
-                $this->linkModule($resolved, $source);
-                if (!$wasLinking) {
-                    $this->finalizeStarReExports();
-                    $this->lockDownNamespaces();
-                    $this->validateIndirectExports();
-                }
-            } finally {
-                $this->linking = $wasLinking;
-            }
-            $record = $this->modules[$resolved];
-            if (!$wasLinking && $record->commonJsProgram === null && $record->pendingBody !== null) {
-                $this->evaluateModuleBodyOnDemand($record);
-            }
-        }
+        $record = $this->modules[$resolved] ?? $this->linkMidEvaluation($resolved, $specifier);
         if ($record->commonJsProgram !== null) {
             $this->runCommonJs($record);
         }
@@ -1449,6 +1435,123 @@ class ModuleLoader
             throw new \Phasis\Exceptions\JsThrowable($record->evaluationError);
         }
         return $record->namespace;
+    }
+
+    /**
+     * Link a module that is first needed while another module is running
+     * (`require()`, or an import binding that loads on first use), and
+     * evaluate it on demand. Linking it into the current graph instead of
+     * starting a fresh top-level load keeps the body queue of the run in
+     * progress intact.
+     */
+    private function linkMidEvaluation(string $resolved, string $specifier): ModuleRecord
+    {
+        $source = $this->readSource($resolved, $specifier);
+        $wasLinking = $this->linking;
+        $this->linking = true;
+        try {
+            $this->linkModule($resolved, $source);
+            if (!$wasLinking) {
+                $this->finalizeStarReExports();
+                $this->lockDownNamespaces();
+                $this->validateIndirectExports();
+            }
+        } finally {
+            $this->linking = $wasLinking;
+        }
+        $record = $this->modules[$resolved];
+        if (!$wasLinking && $record->commonJsProgram === null && $record->pendingBody !== null) {
+            $this->evaluateModuleBodyOnDemand($record);
+        }
+        return $record;
+    }
+
+    /**
+     * The import declaration's resolved source when it can load on first
+     * use, or null when it loads with the importer.
+     *
+     * A module that its package declares free of side effects (the field
+     * bundlers trust to drop unused modules) has nothing observable to do
+     * until one of its bindings is read, so loading it then skips the
+     * parse and evaluation of modules a render never touches. Only named
+     * and default imports of not-yet-loaded ES modules qualify, and only
+     * when the source has no top-level await, which needs the importer to
+     * wait. The path still resolves now, so a missing module fails at link
+     * time as before.
+     */
+    private function deferredLoadSource(ImportDeclaration $node, string $modulePath): ?string
+    {
+        if (
+            !$this->resolver->options()->deferSideEffectFreeModules
+            || $node->phase !== 'evaluation'
+            || $node->attributes !== null
+            || $node->specifiers === []
+        ) {
+            return null;
+        }
+        foreach ($node->specifiers as $spec) {
+            if ($spec->specType === 'namespace') {
+                return null;
+            }
+        }
+        $resolved = $this->resolve($node->source, $modulePath);
+        if (
+            isset($this->modules[$resolved])
+            || !str_contains($resolved, '/node_modules/')
+            || $this->moduleFormat($resolved) !== 'esm'
+            || !$this->resolver->isSideEffectFree($resolved)
+        ) {
+            return null;
+        }
+        // A source without the word cannot contain top-level await.
+        $source = @file_get_contents($resolved);
+        if ($source === false || str_contains($source, 'await')) {
+            return null;
+        }
+        return $resolved;
+    }
+
+    /**
+     * Bind the imports of a declaration whose source loads on first use.
+     * The first read of any of its bindings links and evaluates the source;
+     * names it does not export then throw the SyntaxError linking would.
+     */
+    private function bindDeferredLoad(ImportDeclaration $node, Environment $moduleEnv, string $resolved): void
+    {
+        $namespace = null;
+        $specifier = $node->source;
+        $load = function () use (&$namespace, $resolved, $specifier): JsObject {
+            if ($namespace === null) {
+                $record = $this->modules[$resolved] ?? $this->linkMidEvaluation($resolved, $specifier);
+                if (!$record->bodyEvaluated && $record->pendingBody !== null && !$record->bodyEvaluating) {
+                    $this->evaluateModuleBodyOnDemand($record);
+                }
+                if ($record->evaluationError !== null) {
+                    throw new \Phasis\Exceptions\JsThrowable($record->evaluationError);
+                }
+                $namespace = $record->namespace;
+            }
+            return $namespace;
+        };
+        foreach ($node->specifiers as $spec) {
+            $exportName = $spec->specType === 'default' ? 'default' : ($spec->imported ?? $spec->local);
+            $checked = false;
+            $resolver = function () use ($load, $exportName, $resolved, &$checked): JsValue {
+                $namespace = $load();
+                if (!$checked) {
+                    $resolution = $this->resolveExport($resolved, $exportName, []);
+                    if ($resolution === null) {
+                        throw new \Phasis\Exceptions\SyntaxError("Module '{$resolved}' does not export '{$exportName}'");
+                    }
+                    if ($resolution === 'ambiguous') {
+                        throw new \Phasis\Exceptions\SyntaxError("Ambiguous import '{$exportName}' from '{$resolved}'");
+                    }
+                    $checked = true;
+                }
+                return $namespace->get($exportName);
+            };
+            $moduleEnv->defineImportBinding($spec->local, $resolver);
+        }
     }
 
     private function readSource(string $resolved, string $specifier): string
@@ -1485,6 +1588,13 @@ class ModuleLoader
             }
             if ($source === null) {
                 continue;
+            }
+            if ($node instanceof ImportDeclaration && !$isDefer) {
+                $deferredSource = $this->deferredLoadSource($node, $modulePath);
+                if ($deferredSource !== null) {
+                    $this->deferredLoads[spl_object_id($node)] = $deferredSource;
+                    continue;
+                }
             }
             // For deferred imports of an already-failed module, link
             // the source without re-throwing its cached evaluation
@@ -1553,6 +1663,12 @@ class ModuleLoader
         Environment $moduleEnv,
         string $modulePath,
     ): void {
+        $deferredSource = $this->deferredLoads[spl_object_id($node)] ?? null;
+        if ($deferredSource !== null) {
+            unset($this->deferredLoads[spl_object_id($node)]);
+            $this->bindDeferredLoad($node, $moduleEnv, $deferredSource);
+            return;
+        }
         $isDefer = ($node->phase) === 'defer';
         // Same rationale as preloadRequestedModules: deferred imports
         // of a previously-failed module must not propagate the cached
@@ -2169,5 +2285,6 @@ class ModuleLoader
         $this->onDemandStack = [];
         $this->bodyQueue = [];
         $this->linking = false;
+        $this->deferredLoads = [];
     }
 }

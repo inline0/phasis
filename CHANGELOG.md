@@ -12,6 +12,7 @@
   - Bundler-style module resolution: import maps (`Engine::setImportMap()`), extension and `index` probing, `jsconfig`/`tsconfig` path aliases, `package.json` `exports`/`imports`/`module`/`main` with conditions (`Phasis\Module\ModuleOptions`), CommonJS packages with bundler interop, `process.env.NODE_ENV`, empty style imports, asset and CSS-module resolvers (`setAssetResolver()`, `setCssModuleResolver()`), and barrel pruning for `sideEffects: false` packages.
   - `Engine::getExport()` returns one export of a module converted to PHP.
   - `preload.php` for `opcache.preload`, and `ModuleOptions::$parseCacheDir`, an on-disk cache of parsed modules.
+  - `ModuleOptions::$deferSideEffectFreeModules` (opt-in): modules from packages that declare `"sideEffects": false` load when one of their bindings is first read. Importing one `lucide-react` icon then loads 4 modules instead of 13.
   - `bin/phasis --render <file.jsx> --props '<json>'`.
 - `WebAssembly.Memory`, including shared memories, and the `WebAssembly.CompileError`, `LinkError` and `RuntimeError` constructors. Phasis still can't compile or run WebAssembly modules, so `compile`, `instantiate`, `Module` and the other module APIs stay absent.
 - Docs: JSX, React and Modules pages.

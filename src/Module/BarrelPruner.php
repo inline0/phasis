@@ -32,9 +32,6 @@ final class BarrelPruner
     /** @var array<string, array<string, true>> */
     private array $exportNames = [];
 
-    /** @var array<string, bool> */
-    private array $sideEffectFree = [];
-
     /**
      * @param \Closure(string): ?Program $parse Parses a module file, or returns null if it can't be read.
      */
@@ -134,7 +131,7 @@ final class BarrelPruner
 
     private function isPrunableBarrel(string $path): bool
     {
-        if (!str_starts_with($path, '/') || !$this->isSideEffectFree($path)) {
+        if (!str_starts_with($path, '/') || !$this->resolver->isSideEffectFree($path)) {
             return false;
         }
         if (!array_key_exists($path, $this->barrels)) {
@@ -280,33 +277,5 @@ final class BarrelPruner
             }
         }
         return $this->exportNames[$path] = $names;
-    }
-
-    private function isSideEffectFree(string $path): bool
-    {
-        $scope = $this->resolver->packageScope($path);
-        if ($scope === null || !str_contains($path, '/node_modules/')) {
-            return false;
-        }
-        $key = $scope . "\0" . $path;
-        if (isset($this->sideEffectFree[$key])) {
-            return $this->sideEffectFree[$key];
-        }
-        $flag = ($this->resolver->readPackageJson($scope) ?? [])['sideEffects'] ?? true;
-        $result = false;
-        if ($flag === false) {
-            $result = true;
-        } elseif (is_array($flag)) {
-            $relative = substr($path, strlen($scope) + 1);
-            $result = true;
-            foreach ($flag as $pattern) {
-                $pattern = ltrim((string) $pattern, './');
-                if (fnmatch($pattern, $relative) || (!str_contains($pattern, '/') && fnmatch($pattern, basename($relative)))) {
-                    $result = false;
-                    break;
-                }
-            }
-        }
-        return $this->sideEffectFree[$key] = $result;
     }
 }
