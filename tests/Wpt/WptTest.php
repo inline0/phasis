@@ -49,8 +49,8 @@ final class WptTest extends TestCase
         // PHP. Our impl supports the three zlib-backed formats
         // (gzip, deflate, deflate-raw). All brotli subtests across
         // the fixture set are allowlisted as a single regex.
-        'compression-bad-chunks.any.js' => ['re:/brotli/', 're:/SharedArrayBuffer|shared Uint8Array/'],
-        'decompression-bad-chunks.any.js' => ['re:/brotli/', 're:/SharedArrayBuffer|shared Uint8Array/'],
+        'compression-bad-chunks.any.js' => ['re:/brotli/'],
+        'decompression-bad-chunks.any.js' => ['re:/brotli/'],
         'decompression-buffersource.any.js' => ['re:/brotli/'],
         'decompression-correct-input.any.js' => ['re:/brotli/'],
         'decompression-empty-input.any.js' => ['re:/brotli/'],

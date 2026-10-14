@@ -145,6 +145,9 @@ final class StructuredCloneFunction
                     'ArrayBuffer in transfer list is already detached',
                 );
             }
+            if (!$entry->isDetachable()) {
+                throw self::dataCloneError('Cannot transfer object of unsupported type.');
+            }
             if ($set->offsetExists($entry)) {
                 throw self::dataCloneError(
                     'ArrayBuffer appears more than once in transfer list',

@@ -13,6 +13,7 @@
   - `Engine::getExport()` returns one export of a module converted to PHP.
   - `preload.php` for `opcache.preload`, and `ModuleOptions::$parseCacheDir`, an on-disk cache of parsed modules.
   - `bin/phasis --render <file.jsx> --props '<json>'`.
+- `WebAssembly.Memory`, including shared memories, and the `WebAssembly.CompileError`, `LinkError` and `RuntimeError` constructors. Phasis still can't compile or run WebAssembly modules, so `compile`, `instantiate`, `Module` and the other module APIs stay absent.
 - Docs: JSX, React and Modules pages.
 
 ### Changed
@@ -20,6 +21,7 @@
 - `bin/phasis` runs `.mjs` and `.jsx` files as modules, and `--ast` keeps JSX for `.jsx` files.
 
 ### Fixed
+- `CompressionStream` and `DecompressionStream` accepted chunks backed by a `SharedArrayBuffer`; `BufferSource` excludes shared buffers, so the write now rejects with a `TypeError`.
 - In strict code, `try { return f(); } catch (e) { ... }` treated the call as a tail call, so an exception from `f` skipped the `catch`.
 - `Reflect.construct` did not initialize class fields of base classes, or of derived classes with an implicit constructor.
 - PHP 8.5 deprecation notices from `SplObjectStorage` in `JSON` and `DisposableStack`.

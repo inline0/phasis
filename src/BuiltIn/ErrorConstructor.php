@@ -363,7 +363,11 @@ class ErrorConstructor
         return $values;
     }
 
-    private static function makeConstructor(string $name, JsObject $proto): \Closure
+    /**
+     * The call behavior of a NativeError-style constructor named $name whose
+     * instances inherit from $proto. Also used for the WebAssembly errors.
+     */
+    public static function makeConstructor(string $name, JsObject $proto): \Closure
     {
         return function (JsValue $this_, array $args) use ($name, $proto): JsValue {
             $message = isset($args[0]) && !$args[0] instanceof JsUndefined

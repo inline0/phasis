@@ -38,6 +38,13 @@ class JsArrayBuffer extends JsObject
     /** Whether this buffer was created as resizable (preserved across detach). */
     private bool $wasResizable = false;
 
+    /**
+     * [[ArrayBufferDetachKey]]: a buffer with a key can only be detached by
+     * its owner passing the same key. WebAssembly.Memory keys its buffers,
+     * so transfer() and structuredClone transfers reject them.
+     */
+    private ?string $detachKey = null;
+
     public function __construct(int $byteLength, ?JsObject $prototype = null, ?int $maxByteLength = null)
     {
         parent::__construct($prototype ?? self::$defaultPrototype);
@@ -62,6 +69,38 @@ class JsArrayBuffer extends JsObject
         }
 
         $this->byteLength = $byteLength;
+    }
+
+    public function setDetachKey(string $key): void
+    {
+        $this->detachKey = $key;
+    }
+
+    /** True when the buffer has no detach key, so transfers may detach it. */
+    public function isDetachable(): bool
+    {
+        return $this->detachKey === null;
+    }
+
+    /**
+     * Make this buffer a view of $source's backing store, $byteLength bytes
+     * long, growing the store in place when it is shorter. Writes through
+     * either buffer are visible in both: a shared WebAssembly.Memory hands
+     * out a new SharedArrayBuffer on every grow() over the same memory.
+     */
+    public function shareStorage(self $source, int $byteLength): void
+    {
+        $this->data = &$source->data;
+        if (strlen($this->data) < $byteLength) {
+            $this->data .= str_repeat("\0", $byteLength - strlen($this->data));
+        }
+        $this->byteLength = $byteLength;
+    }
+
+    /** Whether $byteLength bytes fit in the memory this engine allows a buffer. */
+    public static function canAllocate(int $byteLength): bool
+    {
+        return $byteLength >= 0 && $byteLength <= self::maxAllocatableByteLength();
     }
 
     public function getByteLength(): int
@@ -200,6 +239,9 @@ class JsArrayBuffer extends JsObject
                 'Cannot transfer a detached ArrayBuffer'
             );
         }
+        if ($this->detachKey !== null) {
+            throw new \Phasis\Exceptions\TypeError('ArrayBuffer is not detachable and could not be cloned.');
+        }
 
         $newLen = $newLength ?? $this->byteLength;
         if ($newLen < 0) {
@@ -244,6 +286,9 @@ class JsArrayBuffer extends JsObject
                 'Cannot transfer a detached ArrayBuffer'
             );
         }
+        if ($this->detachKey !== null) {
+            throw new \Phasis\Exceptions\TypeError('ArrayBuffer is not detachable and could not be cloned.');
+        }
 
         $newLen = $newLength ?? $this->byteLength;
         if ($newLen < 0) {
@@ -268,8 +313,12 @@ class JsArrayBuffer extends JsObject
         return $newBuffer;
     }
 
-    public function detach(): void
+    /** DetachArrayBuffer: $key must match the buffer's detach key. */
+    public function detach(?string $key = null): void
     {
+        if ($key !== $this->detachKey) {
+            throw new \Phasis\Exceptions\TypeError('ArrayBuffer is not detachable and could not be cloned.');
+        }
         $this->detached = true;
         $this->data = '';
         $this->byteLength = 0;

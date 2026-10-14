@@ -503,6 +503,7 @@ class Engine
             \Phasis\BuiltIn\TextDecoderConstructor::install($this->globalEnv);
             \Phasis\BuiltIn\UrlConstructor::install($this->globalEnv);
             \Phasis\BuiltIn\StructuredCloneFunction::install($this->globalEnv);
+            \Phasis\BuiltIn\WebAssemblyObject::install($this->globalEnv);
 
             // Fetch Pack — round 1 foundations (independent value types).
             \Phasis\BuiltIn\EventTargetConstructor::install($this->globalEnv);
@@ -1366,6 +1367,12 @@ class Engine
             // and Uint8Array views directly during read/pipe paths.
             ['EventTarget', 'ArrayBuffer'],
             static fn () => \Phasis\BuiltIn\StreamsConstructor::install($env),
+        );
+        $reg->register(
+            ['WebAssembly'],
+            // Memory hands out ArrayBuffers and SharedArrayBuffers.
+            ['ArrayBuffer', 'SharedArrayBuffer'],
+            static fn () => \Phasis\BuiltIn\WebAssemblyObject::install($env),
         );
         $reg->register(
             ['CompressionStream', 'DecompressionStream'],

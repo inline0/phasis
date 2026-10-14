@@ -33,7 +33,7 @@ class JsSharedArrayBuffer extends JsArrayBuffer
     }
 
     /** SharedArrayBuffer is never detachable per spec. */
-    public function detach(): void
+    public function detach(?string $key = null): void
     {
         throw new \Phasis\Exceptions\TypeError('Cannot detach a SharedArrayBuffer');
     }
