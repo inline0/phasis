@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0] - 2026-10-14
+
+### Added
+- PHP objects are shared by reference through `PhpBridge`, with live public properties, callable public methods, preserved identity and the original object returned when crossing back into PHP
+- JavaScript functions passed to PHP host functions become callable closures tied to their original realm and lexical environment
+
+### Fixed
+- PHP host-function exceptions, including signature and arithmetic errors, become catchable JavaScript errors with their class name and message. Callback throws retain their original JavaScript value
+- Cyclic JavaScript objects and arrays passed to host functions terminate conversion, replacing repeated references with null
+- `reset()` restores the global object, aliases, descriptors and lazy built-ins as well as eager built-ins
+- Loop limits apply to bytecode and transpiled code, including nested calls and suspended generators, and persist across engine resets
+
+### Changed
+- Unknown limit names and negative limit values throw `InvalidArgumentException` instead of being silently ignored
+- Interop and lifecycle documentation describes the supported behavior
+
 ## [0.4.2] - 2026-09-24
 
 ### Fixed
