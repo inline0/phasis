@@ -1,44 +1,70 @@
 ---
 title: "Shared objects"
-description: "Pass PHP objects into JavaScript by reference. Reads and writes go through the same instance — no serialization, no copy."
+description: "PHP objects cannot be shared with JavaScript yet. What setGlobal() does with an object today, and how to expose PHP state and methods with arrays and closures instead."
 path: "interop/shared-objects"
 order: 50
 section: "Interop"
 meta_title: "Shared objects"
-meta_description: "Pass PHP objects into JavaScript by reference. Reads and writes go through the same instance — no serialization, no copy."
+meta_description: "PHP objects cannot be shared with JavaScript yet. What setGlobal() does with an object today, and how to expose PHP state and methods with arrays and closures instead."
 ---
 
 # Shared objects
 
-When you call `setGlobal()` with a PHP object, the engine doesn't serialize it. Instead it wraps the object in a transparent proxy that forwards every JS property access and method call to the original PHP instance.
+Passing a PHP object into JavaScript by reference — reading its properties, calling its methods and seeing the changes in PHP — is **not supported yet**. It is tracked in [issue #18](https://github.com/inline0/phasis/issues/18). This page describes what happens today and the patterns that work instead.
+
+## What happens today
+
+`setGlobal()` converts its value with the rules in [Value conversion](/docs/interop/values). A PHP object that is not callable has no conversion, so the global is `undefined`:
 
 ```php
 class Counter {
     public int $value = 0;
     public function increment(): void { $this->value++; }
-    public function add(int $n): void { $this->value += $n; }
 }
 
 $counter = new Counter();
 $engine->setGlobal('counter', $counter);
 
-$engine->eval('
-    counter.increment();
-    counter.add(5);
-');
+$engine->eval('typeof counter');
+// "undefined"
 
-echo $counter->value;
-// 6
+$engine->eval('counter.increment()');
+// throws Phasis\Exceptions\TypeError:
+// Cannot read properties of undefined (reading 'increment')
 ```
 
-The PHP `$counter` instance and the JS `counter` global are the *same object*. There's no synchronization step.
+The same applies to `stdClass`, entities and models, service containers, generators and resources. Two exceptions are callable objects:
 
-## What JS can see
+- An object with `__invoke()` becomes a JS function that calls it.
+- A callable array such as `[$counter, 'increment']` becomes a JS function that calls that method.
 
-- **Public properties** are visible on the JS object.
-- **Public methods** are callable from JS with PHP→JS argument conversion.
-- **Protected and private members** are invisible from JS.
-- **Static members** are not exposed by default; you'd need to wrap the class itself.
+There is no `PhpBridge` or other wrapper class for exposing objects; `src/Interop/` contains only the value converter.
+
+## Expose methods as closures
+
+A closure can capture the object, so JS calls a function and the method runs on the original PHP instance:
+
+```php
+$counter = new Counter();
+$engine->setGlobal('increment', fn () => $counter->increment());
+$engine->setGlobal('count', fn () => $counter->value);
+
+$engine->eval('increment(); increment(); count()');
+// 2
+
+echo $counter->value;
+// 2
+```
+
+A callable array does the same without a closure:
+
+```php
+$engine->setGlobal('increment', [$counter, 'increment']);
+```
+
+## Group them in an array
+
+An associative array becomes a JS object, and closures inside it become functions. That gives JS an object-shaped API whose methods act on the PHP instance:
 
 ```php
 class User {
@@ -53,105 +79,44 @@ class User {
     }
 }
 
-$engine->setGlobal('user', new User('Ada', 36, 'topsecret'));
+$user = new User('Ada', 36, 'topsecret');
 
-$engine->eval('
-    console.log(user.name);       // "Ada"
-    console.log(user.age);        // 36
-    console.log(user.greet());    // "Hi, I'm Ada"
-    console.log(user.secret);     // undefined
-');
-```
+$engine->setGlobal('user', [
+    'name'   => $user->name,
+    'greet'  => fn () => $user->greet(),
+    'setAge' => function (int $age) use ($user): void { $user->age = $age; },
+]);
 
-## Mutating from JS
+$engine->eval('user.greet()');
+// "Hi, I'm Ada"
 
-Property writes from JS land on the PHP instance:
-
-```php
-$engine->eval('user.age = 37');
+$engine->eval('user.setAge(37)');
 echo $user->age;
 // 37
 ```
 
-PHP property type declarations are enforced — assigning a string to an `int` property throws a `TypeError` from PHP which reaches JS as a thrown `Error`.
+Only what you put in the array is visible to JS, so private state such as `$secret` stays in PHP.
 
-## Iteration
+The data fields are copies taken when `setGlobal()` runs. In the example, `user.name` is a string in JS; assigning to it changes the JS copy, not `$user->name`. Route every write through a closure.
 
-Public-property iteration works:
+## Pass data out, results back
 
-```php
-$engine->eval('
-    for (const key in user) {
-        console.log(key, user[key]);
-    }
-    // name Ada
-    // age 36
-');
-```
-
-To customize what's iterated (e.g. to expose only certain fields), implement `IteratorAggregate` on the PHP class.
-
-## Custom field maps with PhpBridge
-
-When you don't want every public property exposed — or you want different names on the JS side — wrap the object in `Phasis\Interop\PhpBridge`:
+For data-shaped objects, convert to an array on the way in and read the result on the way out:
 
 ```php
-use Phasis\Interop\PhpBridge;
+$post = ['title' => 'Draft', 'tags' => ['php']];
 
-$bridge = new PhpBridge($user, [
-    'displayName' => fn($u) => $u->name,
-    'greeting'    => fn($u) => $u->greet(),
-]);
+$engine->setGlobal('post', $post);
+$engine->eval('function edit(p) { p.title = "Edited from JS"; return p; }');
 
-$engine->setGlobal('user', $bridge);
-$engine->eval('user.displayName + " says " + user.greeting');
-// "Ada says Hi, I'm Ada"
+$post = $engine->call('edit', $post);
+echo $post['title'];
+// Edited from JS
 ```
 
-The keys of the map become JS property names; the values are PHP closures called lazily on property access.
-
-## Object identity
-
-If the same PHP instance is referenced twice by different JS expressions, JS sees `===` equality:
-
-```php
-$obj = new \stdClass();
-$engine->setGlobal('a', $obj);
-$engine->setGlobal('b', $obj);
-
-$engine->eval('a === b');
-// true
-```
-
-This holds even after passing through host-function arguments and return values, because the engine tracks PHP-side object identity across the boundary.
-
-## Common patterns
-
-**WordPress integration** — pass `$wp_post` directly:
-
-```php
-$engine->setGlobal('post', $wpPost);
-$engine->eval('post.post_title = "Edited from JS"');
-wp_update_post($wpPost);
-```
-
-**ORM entity** — pass a Doctrine / Eloquent model:
-
-```php
-$engine->setGlobal('user', User::find($id));
-$engine->eval('user.email = "new@example.com"');
-$user->save();
-```
-
-**Service container** — expose the whole container as a single object:
-
-```php
-$engine->setGlobal('app', $container);
-$engine->eval('app.cache.set("key", "value")');
-```
+`get_object_vars($object)` or a `toArray()` method gives you the array for an object. Then apply the returned array to your object, entity or model in PHP.
 
 ## Caveats
 
-- The engine holds a *strong* reference to every shared object until `reset()` or engine destruction. Don't share long-lived objects unnecessarily if you have memory pressure.
-- Cycles between PHP and JS (PHP object containing a JS function that captures the PHP object) are not collected until the engine is destroyed.
-- Magic methods (`__get`, `__set`, `__call`) are honoured — JS reads/writes/calls fall through to the magic implementations transparently.
+- Exceptions thrown inside these closures currently cannot be caught by JS `try` / `catch`; they reach the caller of `eval()` ([issue #20](https://github.com/inline0/phasis/issues/20)). See [Host functions](/docs/interop/host-functions#throwing-back-into-js).
+- A closure registered with `setGlobal()` keeps the objects it captures alive as long as the engine holds the global.

@@ -108,20 +108,19 @@ Each built-in is a static `install()` method on a class. The `Engine` calls them
 
 ## PHP↔JS bridge
 
-`src/Interop/` handles value conversion across the boundary.
+Value conversion across the boundary lives in two places:
 
-- **`PhpToJs::convert()`** — PHP value to `JsValue`.
-- **`JsToPhp::convert()`** — `JsValue` to PHP value.
-- **`HostFunction`** — wraps a PHP callable as a `JsFunction`.
-- **`PhpBridge`** — wraps a PHP object with a custom property map.
+- **`Phasis\Interop\PhpToJs::convert()`** — PHP value to `JsValue`, used by `setGlobal()`, `call()` arguments and host-function return values. A PHP callable becomes a `JsFunction` whose body calls it.
+- **`PhpToJs::toPhp()`** — `JsValue` to PHP for the arguments of a host function.
+- **`Engine::toPhp()`** (private) — `JsValue` to PHP for the results of `eval()` and `call()`.
 
-Conversion rules are documented in [Value conversion](/docs/interop/values).
+There is no object bridge: PHP objects that are not callable convert to `undefined` ([issue #18](https://github.com/inline0/phasis/issues/18)). The `JsToPhp` class in `src/Bytecode/` is unrelated to interop; it is the transpiler described below. Conversion rules are documented in [Value conversion](/docs/interop/values).
 
 ## Error handling
 
-JS `throw` becomes a PHP `Phasis\Exceptions\JsThrowable`. PHP exceptions thrown inside host functions become JS `Error` instances. The interpreter catches and re-throws across the boundary so each side sees the exception in its own idiom.
+An uncaught JS `throw` becomes a PHP `Phasis\Exceptions\JsThrowable`; errors the engine raises itself surface as `Phasis\Exceptions\TypeError`, `RangeError` or `ReferenceError`, all subclasses of `Phasis\Exceptions\RuntimeError`. Inside the engine, a JS `try` / `catch` catches `JsThrowable`, any `RuntimeError` and `Phasis\Exceptions\SyntaxError`. Other PHP exceptions, including those thrown by host functions, are not converted and propagate straight to the PHP caller ([issue #20](https://github.com/inline0/phasis/issues/20)).
 
-Resource limits (call depth, loop iterations, string length, output size, execution time) live on the `Engine`. When any limit is exceeded, the interpreter throws `Phasis\Exceptions\InternalError`.
+Two limits exist: the call-stack ceiling (`CallStack::maxDepth`, 4,096 frames, plus an 8,192-frame guard for transpiled closures) and `maxLoopIterations`, set through `Engine::setLimit()`, which only the tree-walker enforces ([issue #19](https://github.com/inline0/phasis/issues/19)). Both throw `Phasis\Exceptions\InternalError`. There are no string-length, output-size or execution-time limits.
 
 ## Bytecode VM
 

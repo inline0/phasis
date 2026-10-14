@@ -198,4 +198,4 @@ The policy hook runs **before** the transport — so even a buggy or untrusted t
 
 - [API reference — Fetch hooks](/docs/api#fetch-hooks) — short signature reference.
 - [Web APIs](/docs/compatibility/web-apis) — the full Fetch Pack surface.
-- [Sandboxing — shared objects](/docs/interop/shared-objects) — passing PHP objects to JS, including cookie jars.
+- [Cookie jar](/docs/interop/cookie-jar) — persisting cookies across fetches with a PHP or JS jar object.

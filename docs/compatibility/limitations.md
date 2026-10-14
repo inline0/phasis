@@ -40,7 +40,7 @@ The notable consequence: PCRE2 may have a different case-folding table than V8's
 
 ## Memory model
 
-PHP's reference-counting GC differs from V8's tracing collector. Cycles between PHP and JS (a PHP object held by a JS closure that's in turn referenced by the PHP object) are not collected until the `Engine` is destroyed. Use `WeakMap` / `WeakRef` for caches you don't want to keep alive.
+PHP's reference-counting GC differs from V8's tracing collector. PHP objects captured by host closures stay alive as long as the engine holds those closures, and cycles between them are not collected until the `Engine` is destroyed. Use `WeakMap` / `WeakRef` for caches you don't want to keep alive.
 
 `process.memoryUsage()` and similar V8-specific introspection APIs are not implemented.
 
@@ -53,7 +53,7 @@ The ES module loader resolves relative imports against the file system but does 
 - No file-extension inference (you must write `import './foo.mjs'`, not `import './foo'`).
 - No HTTP imports.
 
-This matches the bare ECMAScript spec but not Node's behaviour. To use npm packages, either inline-bundle them with a tool like esbuild before passing the bundle to Phasis, or register a custom module loader via `Engine::setModuleResolver()`.
+This matches the bare ECMAScript spec but not Node's behaviour. There is no hook for a custom module resolver. To use npm packages, bundle them with a tool like esbuild into a single script or module before passing it to Phasis.
 
 ## Wasm
 

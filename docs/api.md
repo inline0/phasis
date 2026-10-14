@@ -1,11 +1,11 @@
 ---
 title: "API"
-description: "The Phasis\\Engine class is the public PHP entry point — eval, execFile, setGlobal, call, resource limits, and lifecycle."
+description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, setGlobal, call, console output, resource limits, and lifecycle."
 path: "api"
 order: 220
 section: "Reference"
 meta_title: "API"
-meta_description: "The Phasis\\Engine class is the public PHP entry point — eval, execFile, setGlobal, call, resource limits, and lifecycle."
+meta_description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, setGlobal, call, console output, resource limits, and lifecycle."
 ---
 
 # API
@@ -31,7 +31,7 @@ Pass `eager: true` if you specifically need the pre-lazy behavior — every buil
 public function eval(string $source): mixed
 ```
 
-Parses and executes `$source` in the engine's global scope. Returns the value of the last evaluated expression (or `null` if the program had no trailing expression).
+Parses and executes `$source` as a classic script in the engine's global scope, then runs the event loop until it is empty. Returns the value of the last evaluated expression converted to PHP (or `null` if the program had no trailing expression). See [Value conversion](/docs/interop/values) for the rules.
 
 ```php
 $result = $engine->eval('1 + 2');           // 3
@@ -39,16 +39,38 @@ $result = $engine->eval('JSON.stringify({a: 1})');  // '{"a":1}'
 $result = $engine->eval('[1,2,3].map(x => x * 2)'); // [2, 4, 6] (PHP array)
 ```
 
-JavaScript exceptions thrown out of `eval()` surface as PHP `Phasis\Exceptions\JsThrowable`. The original `JsValue` is on the exception's `$jsValue` property.
+A Promise is not unwrapped: `eval('Promise.resolve(5)')` returns an empty array. Since the event loop has drained by the time `eval()` returns, store the settled value in a global and read it with a second `eval()`:
+
+```php
+$engine->eval('let out; (async () => { out = await Promise.resolve(9); })();');
+$engine->eval('out');   // 9
+```
+
+An explicit JS `throw` that nothing catches surfaces as `Phasis\Exceptions\JsThrowable`, whose message is `"Name: message"` and whose `$jsValue` property holds the thrown `JsValue`. Errors the engine raises itself, such as reading a property of `null` or an undefined variable, surface as `Phasis\Exceptions\TypeError`, `ReferenceError` or `RangeError` instead. All of these extend `Phasis\Exceptions\RuntimeError`; parse errors extend `Phasis\Exceptions\SyntaxError`. See [Exceptions](#exceptions).
 
 ```php
 try {
     $engine->eval('throw new Error("boom")');
 } catch (\Phasis\Exceptions\JsThrowable $e) {
     echo $e->getMessage();
-    // boom
+    // Error: boom
 }
 ```
+
+## evalAsModule
+
+```php
+public function evalAsModule(string $source, ?string $path = null): mixed
+```
+
+Evaluates `$source` as an ES module: `import` / `export`, top-level `await` and `import.meta` are available, and relative specifiers resolve against `$path` (an absolute file path). Runs the event loop like `eval()` and always returns `null`; read results through globals or the console buffer.
+
+```php
+$path = __DIR__ . '/entry.mjs';
+$engine->evalAsModule(file_get_contents($path), $path);
+```
+
+The loader resolves relative and absolute paths only; see [Known limitations](/docs/compatibility/limitations#module-loader).
 
 ## execFile
 
@@ -56,11 +78,13 @@ try {
 public function execFile(string $path): mixed
 ```
 
-Loads a file from disk and evaluates it. The path is used as the source name in stack traces. Modules (`.mjs` or files containing top-level `import`/`export`) are loaded with the ES-module loader; everything else is treated as a classic script.
+Reads a file from disk and passes its contents to `eval()`, so it runs as a classic script whatever its extension; a file with `import` / `export` fails with a SyntaxError. The file's real path becomes the base for dynamic `import()` specifiers. Use `evalAsModule()` for module files.
 
 ```php
 $engine->execFile(__DIR__ . '/script.js');
 ```
+
+If the file cannot be read, PHP emits a warning and `execFile()` throws a plain `\RuntimeException` ("Cannot read file: …").
 
 ## setGlobal
 
@@ -75,16 +99,17 @@ Binds a global variable visible to all subsequent JS evaluation. PHP values are 
 | `null` | `null` |
 | `bool` | `boolean` |
 | `int` / `float` | `number` |
-| `string` | `string` |
-| array (list) | `Array` |
-| array (assoc) | `Object` |
-| `Closure` / callable | `function` |
-| object | object (reference; mutations visible to PHP) |
+| `string` | `string` (even when it names a function, such as `'strlen'`) |
+| array (list) | `Array` (a copy) |
+| array (assoc) | `Object` (a copy) |
+| `Closure`, invokable object, `[$object, 'method']` | `function` |
+| any other object, generator or resource | `undefined` |
+
+Arrays are copied: changes JS makes to them are not visible in the PHP array. Plain PHP objects cannot be passed yet ([issue #18](https://github.com/inline0/phasis/issues/18)); see [Shared objects](/docs/interop/shared-objects) for workarounds.
 
 ```php
 $engine->setGlobal('config', ['debug' => true, 'version' => '1.0']);
 $engine->setGlobal('log', fn(string $msg) => error_log($msg));
-$engine->setGlobal('post', $wordPressPost);   // passed by reference
 ```
 
 Inside JS:
@@ -92,7 +117,6 @@ Inside JS:
 ```javascript
 console.log(config.version);   // "1.0"
 log('hello');                  // calls the PHP closure
-post.title = "Edited";          // mutates the PHP object
 ```
 
 ## call
@@ -101,11 +125,30 @@ post.title = "Edited";          // mutates the PHP object
 public function call(string $name, mixed ...$args): mixed
 ```
 
-Calls a global JS function with PHP arguments (converted as for `setGlobal`). The return value is converted back to PHP.
+Calls a global JS function with PHP arguments (converted as for `setGlobal`). The return value is converted back to PHP. Calling a name that is not defined throws `Phasis\Exceptions\ReferenceError`; calling a global that is not a function throws `Phasis\Exceptions\TypeError`.
 
 ```php
 $engine->eval('function add(a, b) { return a + b; }');
 echo $engine->call('add', 2, 3);   // 5
+```
+
+## Console output
+
+```php
+public function getConsoleOutput(): string
+public function getConsoleLines(): array
+public function clearConsole(): void
+```
+
+`console.log`, `console.info`, `console.warn`, `console.error` and `console.debug` do not print. Each call appends one formatted line to a buffer on the engine. `getConsoleLines()` returns the buffered lines as a list of strings, `getConsoleOutput()` returns them joined with `\n`, and `clearConsole()` empties the buffer. The buffer is not cleared between `eval()` calls.
+
+```php
+$engine->eval('console.log("a", 1); console.warn({ b: 2 })');
+$engine->getConsoleLines();    // ['a 1', '{ b: 2 }']
+echo $engine->getConsoleOutput();
+// a 1
+// { b: 2 }
+$engine->clearConsole();
 ```
 
 ## setLimit
@@ -114,17 +157,23 @@ echo $engine->call('add', 2, 3);   // 5
 public function setLimit(string $limit, int $value): void
 ```
 
-Runtime-tunable resource limit. Exceeding it throws `Phasis\Exceptions\InternalError` from inside JS, which the host can catch as `Phasis\Exceptions\JsThrowable`.
+Sets a runtime-tunable resource limit. There is exactly one:
 
 | Limit | Default | Description |
 |---|---|---|
-| `maxLoopIterations` | `100000` | maximum iterations per `for` / `while` / `do…while` loop |
+| `maxLoopIterations` | `100000` | maximum iterations per `for` / `while` / `do…while` loop run by the tree-walking interpreter |
 
 ```php
 $engine->setLimit('maxLoopIterations', 1_000_000);
 ```
 
-Two additional ceilings are baked into the engine and not runtime-tunable: `Phasis\Runtime\CallStack::maxDepth` (4 096 JS frames) and the JsToPhp transpiled-closure depth guard (8 192 PHP frames). Both throw "Maximum call stack size exceeded" when crossed. They sit well above any legitimate JS program — bumping them is a code change, not a config knob.
+Any other name is silently ignored; there are no limits for string length, console output or wall-clock time.
+
+The loop limit is not enforced everywhere yet. Loops that run on the bytecode VM, which covers function bodies and top-level programs the bytecode compiler accepts, are never counted, so `while (true) {}` runs until PHP stops it ([issue #19](https://github.com/inline0/phasis/issues/19)). Do not rely on it to stop untrusted code; use PHP's `max_execution_time` or a separate process.
+
+When the limit is hit, the error can be caught by a JS `try` / `catch` (as an `Error` with the message "Maximum loop iterations exceeded"). If nothing catches it, it reaches PHP as `Phasis\Exceptions\InternalError`, which extends `Phasis\Exceptions\RuntimeError`, not `JsThrowable`.
+
+Two additional ceilings are baked into the engine and not runtime-tunable: `Phasis\Runtime\CallStack::maxDepth` (4,096 JS frames) and the JsToPhp transpiled-closure depth guard (8,192 PHP frames). Both throw "Maximum call stack size exceeded" when crossed, which reaches PHP as `InternalError` too. They sit well above any legitimate JS program — bumping them is a code change, not a config knob.
 
 ## reset
 
@@ -132,15 +181,9 @@ Two additional ceilings are baked into the engine and not runtime-tunable: `Phas
 public function reset(): void
 ```
 
-Clears all user-defined globals and rebuilds the standard library. The engine instance is reusable after `reset()`.
+Clears all user-defined globals and the console buffer, and rebuilds the standard library and the event loop.
 
-## repl
-
-```php
-public function repl(): void
-```
-
-Drops into the interactive REPL on stdin/stdout. Used by `bin/phasis --repl`.
+On an engine constructed in the default lazy mode, `reset()` currently loses every lazily installed built-in: afterwards `Map`, `JSON`, `Math`, `console`, `fetch` and the rest are undefined ([issue #22](https://github.com/inline0/phasis/issues/22)). Until that is fixed, construct a new `Engine` instead, or construct with `eager: true`, where `reset()` works.
 
 ## Event loop
 
@@ -164,7 +207,7 @@ while ($engine->pendingTaskCount() > 0) {
 }
 ```
 
-A runaway `setInterval` is bounded: `runEventLoop()` caps at 100,000 cycles and throws a `RuntimeException` — the JS code's fault surfaces as a clear PHP error rather than a hang. Uncaught errors in a timer callback are emitted via `error_log()` and the loop keeps draining; one bad timer doesn't kill the program.
+A runaway `setInterval` is bounded: `runEventLoop()` caps at 100,000 cycles and throws a plain `\RuntimeException` — the JS code's fault surfaces as a clear PHP error rather than a hang. The interval stays scheduled, so every later `eval()` on the same engine throws the same error; discard the engine afterwards. Uncaught errors in a timer callback are emitted via `error_log()` and the loop keeps draining; one bad timer doesn't kill the program.
 
 ## Fetch hooks
 
@@ -246,24 +289,27 @@ Without `setCookieJar()`, `fetch` ignores both inbound `Set-Cookie` and outbound
 
 ## Exceptions
 
-| Class | When |
-|---|---|
-| `Phasis\Exceptions\JsThrowable` | uncaught JS `throw` reaches the PHP caller |
-| `Phasis\Exceptions\SyntaxError` | parse-time error |
-| `Phasis\Exceptions\RuntimeError` | host-side problem (file not found, IO error, etc.) |
-| `Phasis\Exceptions\InternalError` | resource limit exceeded |
+| Class | Extends | When |
+|---|---|---|
+| `Phasis\Exceptions\JsThrowable` | `RuntimeError` | an explicit JS `throw` that nothing caught |
+| `Phasis\Exceptions\TypeError`, `ReferenceError`, `RangeError` | `RuntimeError` | an error the engine raised itself (for example `null.x` or an undefined variable) that nothing caught |
+| `Phasis\Exceptions\InternalError` | `RuntimeError` | the loop limit or the call-stack ceiling was crossed |
+| `Phasis\Exceptions\RuntimeError` | `\RuntimeException` | base class of the above |
+| `Phasis\Parser\ParseError` | `Phasis\Exceptions\SyntaxError` (`\RuntimeException`) | the source does not parse |
+| `\RuntimeException` | | `execFile()` cannot read the file; the event loop hit its 100,000-cycle cap |
 
-`JsThrowable` is the only one your application code is likely to catch deliberately — the rest typically indicate bugs in the script being evaluated or in the host integration.
+To catch every failure of a script, catch `Phasis\Exceptions\RuntimeError` and `Phasis\Exceptions\SyntaxError`, or simply `\RuntimeException`.
+
+Exceptions thrown by your own PHP host functions are different: they currently pass through JS `try` / `catch` and reach the caller of `eval()` unchanged, with their original class ([issue #20](https://github.com/inline0/phasis/issues/20)). See [Host functions](/docs/interop/host-functions#throwing-back-into-js).
 
 ## Lifecycle
 
-`Engine` is cheap to construct (~few ms cold) and the standard library installs lazily. For most embedding scenarios a single long-lived engine per process is fine. For sandboxed multi-tenant use, construct one engine per tenant and `reset()` between requests if you want a clean slate.
+`Engine` is cheap to construct (~few ms cold) and the standard library installs lazily. For most embedding scenarios a single long-lived engine per process is fine. For multi-tenant use, give each tenant or request its own engine so globals never leak between them. Constructing a fresh engine is the reliable clean slate today (see [reset](#reset)).
 
 ```php
-$engine = new Engine();
 foreach ($requests as $req) {
-    $engine->reset();
-    $engine->setGlobal('request', $req);
+    $engine = new Engine();
+    $engine->setGlobal('request', ['path' => $req->path, 'query' => $req->query]);
     $engine->execFile($req->scriptPath);
 }
 ```

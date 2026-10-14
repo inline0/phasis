@@ -113,4 +113,4 @@ The JsToPhp transpiler is the closest the engine has to a JIT: it generates PHP 
 php bench/run.php
 ```
 
-Current numbers are committed in `BENCH.md` after each `bench` workflow run. The full test262 suite + bench run together in ~6 min on the CI matrix.
+Current numbers are committed in `BENCH.md` after each `bench` workflow run. The `bench` and test262 matrix workflows are both started by hand.

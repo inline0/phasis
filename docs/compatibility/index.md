@@ -10,11 +10,11 @@ meta_description: "How Phasis compares to V8 (Node, Chrome), SpiderMonkey, and J
 
 # Compatibility
 
-Phasis is verified against three independent oracles on every push:
+Phasis is verified against three independent oracles:
 
-1. **test262** — the official TC39 ECMAScript conformance suite. **100 %.**
+1. **test262** — the official TC39 ECMAScript conformance suite. **100 %** of the revision pinned in the repository.
 2. **Web Platform Tests** — the official WHATWG / W3C suite for non-ECMAScript Web APIs (fetch, XHR, WebSocket, Streams, Headers, Blob, encoding, URL, structured-clone, abort, hr-time, atob, crypto). **100 %** on the imported corpus.
-3. **Popular libraries** — 100+ widely-used npm packages (acorn, lodash, zod, ramda, immer, redux, date-fns, marked, fuse.js, semver, validator, …) execute byte-equal to Node.js on every push.
+3. **Popular libraries** — 204 widely-used npm packages (acorn, lodash, zod, ramda, immer, redux, date-fns, marked, fuse.js, semver, validator, …) execute byte-equal to Node.js.
 
 ## vs other engines
 
@@ -34,14 +34,14 @@ Numbers from [test262.fyi](https://test262.fyi). Phasis sits in the top tier alo
 - **[test262 coverage](/docs/compatibility/test262)** — what's tested, how the suite runs, why 100% matters.
 - **[Web APIs (WPT)](/docs/compatibility/web-apis)** — Web Platform Pack and Fetch Pack: URL, encoding, atob/btoa, structuredClone, performance, Headers, Blob, AbortSignal, EventTarget, Streams, plus crypto, WebSocket, and XMLHttpRequest.
 - **[Streams](/docs/compatibility/streams)** — full WHATWG Streams Standard: ReadableStream, WritableStream, TransformStream, BYOB, tee, pipeTo/pipeThrough, queuing strategies, async iteration.
-- **[Popular packages](/docs/compatibility/popular-packages)** — CI-gated byte-equality with Node.js for 104 npm packages across parsing, templating, validation, date/time, math, hashing, search/diff, color, URL handling, and more.
+- **[Popular packages](/docs/compatibility/popular-packages)** — CI-gated byte-equality with Node.js for 204 npm packages across parsing, templating, validation, date/time, math, hashing, search/diff, color, URL handling, and more.
 - **[Spec surface](/docs/compatibility/spec-surface)** — every ECMAScript built-in, syntactic feature, and standard-library object that Phasis ships.
 - **[Known limitations](/docs/compatibility/limitations)** — where Phasis intentionally diverges from V8: performance ceiling, multi-agent concurrency, Wasm, browser-only Web APIs.
 
 ## How it's measured
 
-- **`bin/test262`** runs the full ECMAScript suite. Results committed to [`COMPAT.md`](https://github.com/inline0/phasis/blob/main/COMPAT.md) on every successful CI run.
-- **`bin/wpt`** runs the imported Web Platform Tests fixtures.
-- **`composer test`** runs PHPUnit including the popular-library byte-equality suite under `tests/Popular/`. The same suite re-runs in CI under real Node so a stale oracle is caught the moment a vendored library bumps.
+- **test262** — `bin/test262` runs the suite locally. The full matrix runs in the `compat-matrix.yml` workflow, which is started by hand rather than on every push; a successful run commits its snapshot to [`COMPAT.md`](https://github.com/inline0/phasis/blob/main/COMPAT.md), which records when it was taken and against which commit. The suite revision is the one pinned by the `test262` git submodule.
+- **Web Platform Tests** — `bin/wpt` runs the imported fixtures. The `wpt.yml` workflow runs them on pushes to `main` and pull requests that change `src/`, the fixtures, or the Composer files.
+- **Popular libraries** — `composer test` runs PHPUnit including the popular-library byte-equality suite under `tests/Popular/`. The `popular.yml` workflow runs it under the same path filter and also regenerates every oracle under real Node, so a stale oracle is caught when a vendored library is bumped.
 
-A regression in any of the three blocks the PR.
+A WPT or popular-package regression fails the pull request that causes it. A test262 regression shows up the next time the matrix is run.
