@@ -15,7 +15,7 @@ Every call that crosses the PHP↔JS boundary — `setGlobal`, `call`, a host fu
 - **PHP → JS** when host values flow into the engine (`setGlobal()`, `call()` arguments, host-function return values).
 - **JS → PHP** when JS values flow back out. There are two paths with slightly different rules: results of `eval()` and `call()`, and the arguments JS passes to a host function.
 
-Conversion copies. Primitives map to primitives, arrays and objects are copied into new structures, and PHP callables are wrapped as JS functions. Nothing is shared by reference except the callables themselves.
+Primitives map to primitives, arrays are copied, and callables are wrapped as functions. PHP objects are shared by reference through a bridge.
 
 ## PHP → JS
 
@@ -29,7 +29,8 @@ Conversion copies. Primitives map to primitives, arrays and objects are copied i
 | list `array` (keys 0, 1, 2, … in order) | new `Array`, elements converted recursively |
 | any other `array` | new plain `Object`, values converted recursively |
 | `Closure`, invokable object, callable array such as `[$object, 'method']` | `function` that calls the PHP callable |
-| any other object, `Generator`, resource | `undefined` |
+| any other object, including `Generator` | a live PHP object bridge |
+| resource | `undefined` |
 
 Mixed-key arrays (PHP's `[0 => 'a', 'name' => 'b']`) become plain objects because Arrays in JS must have a contiguous integer index space.
 
@@ -49,7 +50,7 @@ count($list);                 // 3
 $engine->eval('list.length'); // 4
 ```
 
-PHP objects that are not callable do not convert; they arrive as `undefined` ([issue #18](https://github.com/inline0/phasis/issues/18)). Convert them to arrays first, for example with `get_object_vars()`, or expose their methods as closures. See [Shared objects](/docs/interop/shared-objects).
+PHP objects retain identity and expose public properties and methods by reference. See [Shared objects](/docs/interop/shared-objects).
 
 ## JS → PHP: `eval()` and `call()` results
 
@@ -63,6 +64,7 @@ PHP objects that are not callable do not convert; they arrive as `undefined` ([i
 | `string` | `string` (UTF-8) |
 | `bigint`, `symbol` | `null` |
 | `function` | `null` |
+| PHP object bridge | the original PHP object |
 | `Array` | list `array`, elements converted recursively |
 | `TypedArray` | list `array` of numbers |
 | any other object (plain objects, `Error`, `Date`, `Map`, `Set`, `Promise`, `ArrayBuffer`, …) | associative `array` of its own data properties, skipping accessors and function-valued properties |
@@ -93,10 +95,18 @@ Arguments JS passes to a PHP host function follow the same rules for primitives,
 |---|---|
 | `TypedArray`, `ArrayBuffer`, `DataView` | the engine's own `JsValue` object, unconverted |
 | object | associative `array` of all its own properties, including accessors (whose getters run) and function-valued properties |
-| arrow function | an `array` (usually empty) |
-| `function` declared with the `function` keyword, or any object that references itself | no conversion: the copy never terminates and PHP runs out of memory ([issue #21](https://github.com/inline0/phasis/issues/21)) |
+| function (ordinary or arrow) | `Closure` that invokes the JS function in its original realm |
+| PHP object bridge | the original PHP object |
+| cyclic object or array reference | `null` at the repeated reference |
 
-There is no way yet to receive a JS callback in a host function. Pass data, not functions, across this boundary.
+A host function can accept and retain JS callbacks:
+
+```php
+$engine->setGlobal('apply', fn (callable $callback) => $callback(3, 4));
+$engine->eval('apply((a, b) => a + b)'); // 7
+```
+
+The closure converts PHP arguments back to JS and converts the JS return value to PHP. It retains the function's lexical environment. A JS error thrown by the callback can be caught by the surrounding JS handler.
 
 ## Numbers and precision
 

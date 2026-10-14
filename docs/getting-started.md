@@ -107,7 +107,7 @@ PHP closures are wrapped as JS functions. Their arguments are converted from JS 
 
 ## PHP objects
 
-PHP objects cannot be shared with JavaScript yet. `setGlobal()` with a plain PHP object binds `undefined` (tracked in [issue #18](https://github.com/inline0/phasis/issues/18)). Pass data as arrays, which are copied into JS, and expose behaviour as closures:
+PHP objects expose public properties and methods by reference. PHP and JS observe the same instance:
 
 ```php
 class Counter {
@@ -116,9 +116,9 @@ class Counter {
 }
 
 $counter = new Counter();
-$engine->setGlobal('increment', fn () => $counter->increment());
+$engine->setGlobal('counter', $counter);
 
-$engine->eval('increment(); increment();');
+$engine->eval('counter.increment(); counter.increment();');
 
 echo $counter->value;
 // 2
@@ -133,7 +133,7 @@ $engine = new Engine();
 $engine->setLimit('maxLoopIterations', 100_000);
 ```
 
-`maxLoopIterations` (default 100,000) is the only runtime-tunable limit, and today it only applies to code the tree-walking interpreter runs. Loops the bytecode VM runs (function bodies, and most top-level code) are not counted, so a limit alone does not stop `while (true) {}` ([issue #19](https://github.com/inline0/phasis/issues/19)). When the limit is hit, the error is catchable in JS; uncaught, it reaches PHP as `Phasis\Exceptions\InternalError`, a subclass of `Phasis\Exceptions\RuntimeError`.
+`maxLoopIterations` (default 100,000) applies to loops in the tree-walking interpreter, bytecode VM and transpiled closures. Exceeding it raises a catchable JS error. Uncaught limit errors extend `Phasis\Exceptions\RuntimeError` on the PHP side.
 
 The engine also has a fixed 4,096-frame call-stack ceiling (and an 8,192-frame guard for transpiled closures); crossing it throws "Maximum call stack size exceeded", again as `InternalError`. There is no wall-clock limit, so run untrusted code under PHP's own `max_execution_time` or in a separate process. See [API: setLimit](/docs/api#setlimit).
 

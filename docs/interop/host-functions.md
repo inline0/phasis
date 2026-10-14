@@ -46,36 +46,30 @@ echo $engine->eval('format("%s is %d years old", "Ada", 36)');
 
 ## Type juggling
 
-Arguments are converted to PHP using the JS→PHP rules. The engine calls your callable from code that declares `strict_types=1`, so PHP checks scalar parameter types strictly and does not coerce: a JS number passed to a `string` parameter is a `TypeError`. Like any PHP exception from a host function, it reaches the caller of `eval()` rather than JS (see below).
+Arguments are converted to PHP using the JS→PHP rules. The engine calls your callable from code that declares `strict_types=1`, so PHP checks scalar parameter types strictly and does not coerce: a JS number passed to a `string` parameter is a `TypeError`. It becomes a JS error that JS code can catch (see below).
 
 ```php
 $engine->setGlobal('len', fn(string $s): int => strlen($s));
 
-$engine->eval('len(42)');  // PHP TypeError: Argument #1 ($s) must be of type string, int given
+$engine->eval('try { len(42); } catch (e) { e.name; }'); // "TypeError"
 ```
 
 Either coerce manually inside the closure (`(string) $value`) or use union types (`int|string`).
 
 ## Throwing back into JS
 
-Ordinary PHP exceptions thrown inside a host function are **not** converted into JS errors today. They pass through every JS `try` / `catch` and `.catch()` handler and reach the PHP code that called `eval()` or `call()`, with their original class ([issue #20](https://github.com/inline0/phasis/issues/20)). That includes `\Exception`, `\RuntimeException`, `\DivisionByZeroError`, and the `\TypeError` and `\ArgumentCountError` PHP raises for bad arguments.
+PHP throwables from a host function become catchable JavaScript errors, including exceptions and PHP's `TypeError`, `ArgumentCountError` and `DivisionByZeroError`. The error preserves the PHP class's short name and message. PHP `TypeError` instances use the JS `TypeError` prototype; other ordinary PHP exceptions use `Error`.
 
 ```php
 $engine->setGlobal('divide', function (int $a, int $b): int {
-    if ($b === 0) {
-        throw new \DivisionByZeroError('cannot divide by zero');
-    }
     return intdiv($a, $b);
 });
 
-try {
-    $engine->eval('
-        try { divide(10, 0); } catch (e) { /* never runs */ }
-    ');
-} catch (\DivisionByZeroError $e) {
-    echo $e->getMessage();  // cannot divide by zero
-}
+$engine->eval('try { divide(10, 0); } catch (e) { console.log(e.name, e.message); }');
+// DivisionByZeroError Division by zero
 ```
+
+An uncaught host error reaches PHP as `Phasis\Exceptions\JsThrowable`, carrying the JS error in `$jsValue`. JavaScript throws from callbacks retain their original JS value.
 
 To raise an error that JS code can catch, throw one of the engine's own error classes: `Phasis\Exceptions\TypeError`, `RangeError` or `ReferenceError` arrive in JS as the matching JS error type, and any other `Phasis\Exceptions\RuntimeError` arrives as a plain `Error`, each with your message.
 
@@ -121,11 +115,11 @@ $engine->setGlobal('range', fn(int $a, int $b): array => range($a, $b));
 $engine->eval('range(1, 5).reduce((a, b) => a + b)');  // 15
 ```
 
-Returning a PHP object, including a PHP promise from ReactPHP, Amp or Guzzle, gives JS `undefined` (see [Value conversion](/docs/interop/values)).
+Returning a PHP object creates a live [object bridge](/docs/interop/shared-objects), exposing its public properties and methods.
 
 ## Async host functions
 
-Host functions are synchronous. A PHP promise or other thenable object is not awaited: it converts to `undefined`, so `await hostFn()` resolves to `undefined`. Do the work synchronously and return the result; JS code can still `await` the call, which wraps the value in a resolved promise:
+Host functions run synchronously. Returning a PHP promise creates an object bridge; the engine does not drive a PHP event loop. JavaScript can assimilate a public `then(resolve, reject)` method, whose callbacks arrive as PHP callables, but asynchronous PHP work must be driven by the host application. A synchronous result can also be awaited, which wraps it in a resolved JS promise:
 
 ```php
 $engine->setGlobal('loadBody', function (string $url): string {
@@ -145,6 +139,6 @@ For HTTP specifically, the built-in `fetch()` already returns a real JS promise 
 
 ## Performance notes
 
-Each host-function call crosses the PHP↔JS boundary once for arguments and once for the return value. Both conversions copy, so they are O(size of value) — primitives are constant-time, arrays and objects cost proportionally to their size.
+Each host-function call crosses the PHP↔JS boundary once for arguments and once for the return value. Array and plain JS object conversion copies their contents and costs proportionally to their size. Primitives and PHP object bridges cross without copying an object graph.
 
 For hot inner loops, prefer one call that does more work over many small calls, and avoid passing large arrays back and forth when only a few fields change.

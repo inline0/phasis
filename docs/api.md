@@ -103,9 +103,10 @@ Binds a global variable visible to all subsequent JS evaluation. PHP values are 
 | array (list) | `Array` (a copy) |
 | array (assoc) | `Object` (a copy) |
 | `Closure`, invokable object, `[$object, 'method']` | `function` |
-| any other object, generator or resource | `undefined` |
+| any other object, including generators | live PHP object bridge |
+| resource | `undefined` |
 
-Arrays are copied: changes JS makes to them are not visible in the PHP array. Plain PHP objects cannot be passed yet ([issue #18](https://github.com/inline0/phasis/issues/18)); see [Shared objects](/docs/interop/shared-objects) for workarounds.
+Arrays are copied: changes JS makes to them are not visible in the PHP array. PHP objects are shared by reference through public properties and methods; see [Shared objects](/docs/interop/shared-objects).
 
 ```php
 $engine->setGlobal('config', ['debug' => true, 'version' => '1.0']);
@@ -161,19 +162,15 @@ Sets a runtime-tunable resource limit. There is exactly one:
 
 | Limit | Default | Description |
 |---|---|---|
-| `maxLoopIterations` | `100000` | maximum iterations per `for` / `while` / `do…while` loop run by the tree-walking interpreter |
+| `maxLoopIterations` | `100000` | maximum iterations per `for` / `while` / `do…while` loop across the interpreter, bytecode VM and transpiled closures |
 
 ```php
 $engine->setLimit('maxLoopIterations', 1_000_000);
 ```
 
-Any other name is silently ignored; there are no limits for string length, console output or wall-clock time.
+Unknown limit names and negative values throw `\InvalidArgumentException`. Zero permits loops whose bodies never run. Limits persist across `reset()`. There are no limits for string length, console output or wall-clock time.
 
-The loop limit is not enforced everywhere yet. Loops that run on the bytecode VM, which covers function bodies and top-level programs the bytecode compiler accepts, are never counted, so `while (true) {}` runs until PHP stops it ([issue #19](https://github.com/inline0/phasis/issues/19)). Do not rely on it to stop untrusted code; use PHP's `max_execution_time` or a separate process.
-
-When the limit is hit, the error can be caught by a JS `try` / `catch` (as an `Error` with the message "Maximum loop iterations exceeded"). If nothing catches it, it reaches PHP as `Phasis\Exceptions\InternalError`, which extends `Phasis\Exceptions\RuntimeError`, not `JsThrowable`.
-
-Two additional ceilings are baked into the engine and not runtime-tunable: `Phasis\Runtime\CallStack::maxDepth` (4,096 JS frames) and the JsToPhp transpiled-closure depth guard (8,192 PHP frames). Both throw "Maximum call stack size exceeded" when crossed, which reaches PHP as `InternalError` too. They sit well above any legitimate JS program — bumping them is a code change, not a config knob.
+The loop budget is per loop entry. Nested loops and repeated calls receive their own counters; suspended bytecode generators retain their counters across resumes. Exceeding the budget raises "Maximum loop iterations exceeded", which can be caught by JS `try` / `catch`. An uncaught error reaches PHP as `Phasis\Exceptions\InternalError` or, after a JS handler rethrows it, `Phasis\Exceptions\JsThrowable`; both extend `Phasis\Exceptions\RuntimeError`.
 
 ## reset
 
@@ -183,7 +180,7 @@ public function reset(): void
 
 Clears all user-defined globals and the console buffer, and rebuilds the standard library and the event loop.
 
-On an engine constructed in the default lazy mode, `reset()` currently loses every lazily installed built-in: afterwards `Map`, `JSON`, `Math`, `console`, `fetch` and the rest are undefined ([issue #22](https://github.com/inline0/phasis/issues/22)). Until that is fixed, construct a new `Engine` instead, or construct with `eager: true`, where `reset()` works.
+Both lazy and eager engines rebuild their global object, standard built-ins and aliases, so the same engine is reusable after reset.
 
 ## Event loop
 
@@ -300,7 +297,7 @@ Without `setCookieJar()`, `fetch` ignores both inbound `Set-Cookie` and outbound
 
 To catch every failure of a script, catch `Phasis\Exceptions\RuntimeError` and `Phasis\Exceptions\SyntaxError`, or simply `\RuntimeException`.
 
-Exceptions thrown by your own PHP host functions are different: they currently pass through JS `try` / `catch` and reach the caller of `eval()` unchanged, with their original class ([issue #20](https://github.com/inline0/phasis/issues/20)). See [Host functions](/docs/interop/host-functions#throwing-back-into-js).
+PHP host-function exceptions become catchable JS errors with their class name and message. If uncaught, they reach PHP as `Phasis\Exceptions\JsThrowable`. See [Host functions](/docs/interop/host-functions#throwing-back-into-js).
 
 ## Lifecycle
 

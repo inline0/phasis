@@ -14,7 +14,7 @@ Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScrip
 - **Spec-compliant** — passes the official test262 suite at 100 %, every category, no skips.
 - **Web APIs** — full **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException), full **Fetch Pack** (fetch, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget, full WHATWG Streams, navigator), plus `crypto` + `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, and a real event loop. 100 % of imported Web Platform Tests pass.
 - **Modern surface** — arrow functions, classes, async/await, Promises, generators, Symbol, BigInt, Proxy, Reflect, Temporal, Intl, TypedArrays, full module support.
-- **PHP↔JS interop** — pass PHP scalars and arrays into JS (arrays are copied), bind PHP closures as JS functions, and call JS functions from PHP. PHP objects cannot be shared with JS yet; see [Shared objects](/docs/interop/shared-objects).
+- **PHP↔JS interop** — pass PHP scalars and arrays into JS (arrays are copied), bind PHP closures as JS functions, and call JS functions from PHP. PHP objects expose public properties and methods by reference, while JS callbacks become callable PHP closures; see [Shared objects](/docs/interop/shared-objects).
 
 ## Why Phasis exists
 

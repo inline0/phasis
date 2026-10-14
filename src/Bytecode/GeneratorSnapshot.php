@@ -42,6 +42,9 @@ final class GeneratorSnapshot
     /** @var list<JsValue> */
     public array $locals;
 
+    /** @var array<int, int> */
+    public array $loopCounts = [];
+
     public Environment $env;
 
     public JsValue $thisValue;

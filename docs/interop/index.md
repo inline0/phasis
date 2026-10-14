@@ -10,7 +10,7 @@ meta_description: "How PHP and JavaScript values cross the boundary in Phasis �
 
 # Interop
 
-Phasis runs in the same PHP process as your application, so values cross between PHP and JavaScript without JSON, pipes or a second runtime. They cross by **conversion**: scalars map to JS primitives, PHP arrays are copied into new JS arrays and objects, and JS results are copied back into PHP arrays. A change JS makes to a converted array is not visible in the PHP array. PHP callables are the exception that stays live: they become JS functions that call straight into PHP.
+Phasis runs in the same PHP process as your application, so values cross between PHP and JavaScript without JSON, pipes or a second runtime. They cross by **conversion**: scalars map to JS primitives, PHP arrays are copied into new JS arrays and objects, and JS results are copied back into PHP arrays. A change JS makes to a converted array is not visible in the PHP array. PHP callables become JS functions that call straight into PHP, while PHP objects retain their identity through live property and method bridges.
 
 This section covers the rules.
 
@@ -18,7 +18,7 @@ This section covers the rules.
 
 - **[Values](/docs/interop/values)** — the conversion tables in both directions: numbers, strings, booleans, null/undefined, arrays, objects, and the values that do not convert.
 - **[Host functions](/docs/interop/host-functions)** — bind PHP `callable` as JS function via `$engine->setGlobal()`. Argument conversion, return values, and how exceptions behave.
-- **[Shared objects](/docs/interop/shared-objects)** — what happens when you pass a PHP object to JS today (it arrives as `undefined`), and how to expose PHP state and behaviour with arrays and closures instead.
+- **[Shared objects](/docs/interop/shared-objects)** — share PHP objects by reference, with live public properties, callable methods and preserved identity.
 - **[Fetch transport](/docs/interop/fetch-transport)** — swap the default `ext-curl` HTTP backend for Guzzle, Symfony HttpClient, a mock, or a deny-all. Plus the policy hook for allowlisting, header injection, and per-tenant binding.
 - **[Cookie jar](/docs/interop/cookie-jar)** — mount a `get(url)`/`set(url, header)` jar to persist cookies across fetches. In-memory, Symfony BrowserKit, or a JS-side `Map`.
 - **[AbortController patterns](/docs/interop/abort-patterns)** — timeout, race, propagation, `AbortSignal.any` / `.timeout`, and how a custom PHP transport polls the signal mid-transfer.

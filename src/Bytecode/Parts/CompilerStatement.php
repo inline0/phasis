@@ -445,6 +445,8 @@ trait CompilerStatement
                 $this->emit(Op::POP);
             }
         }
+        $loopId = $this->loopCount++;
+        $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
         // Test. Try the fused JUMP_IF_LOCAL_GE_CONST shortcut first
         // for the canonical `for (let i = 0; i < N; i++)` pattern.
@@ -457,6 +459,7 @@ trait CompilerStatement
                 $jmpExit = $this->emitJump(Op::JUMP_IF_FALSE);
             }
         }
+        $this->emit(Op::LOOP_TICK, $loopId);
         // Body.
         $this->loopStack[] = [
             'continue' => -1, // patched after body via patchContinues
@@ -504,9 +507,12 @@ trait CompilerStatement
 
     private function compileWhile(WhileStatement $node): void
     {
+        $loopId = $this->loopCount++;
+        $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
         $this->compileExpression($node->test);
         $jmpExit = $this->emitJump(Op::JUMP_IF_FALSE);
+        $this->emit(Op::LOOP_TICK, $loopId);
         $this->loopStack[] = ['continue' => -1, 'breaks' => [], 'continues' => []];
         $this->compileStatement($node->body);
         $continueTarget = count($this->code);
@@ -528,7 +534,10 @@ trait CompilerStatement
 
     private function compileDoWhile(DoWhileStatement $node): void
     {
+        $loopId = $this->loopCount++;
+        $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
+        $this->emit(Op::LOOP_TICK, $loopId);
         $this->loopStack[] = ['continue' => -1, 'breaks' => [], 'continues' => []];
         $this->compileStatement($node->body);
         $continueTarget = count($this->code);

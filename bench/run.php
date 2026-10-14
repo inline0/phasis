@@ -9,7 +9,6 @@ $src = file_get_contents($file);
 
 $engine = new \Phasis\Engine();
 $engine->setLimit('maxLoopIterations', 10_000_000);
-$engine->setLimit('maxCallDepth', 1000);
 
 $t0 = hrtime(true);
 $engine->eval($src);

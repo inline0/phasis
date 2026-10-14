@@ -96,6 +96,15 @@ trait JsToPhpEmitStatement
         }
     }
 
+    private function emitLoopTick(string $counter): void
+    {
+        $this->emitLine('if (++' . $counter . ' > $interp->getMaxLoopIterations()) {');
+        $this->indentLevel++;
+        $this->emitLine('throw new \\Phasis\\Exceptions\\InternalError("Maximum loop iterations exceeded");');
+        $this->indentLevel--;
+        $this->emitLine('}');
+    }
+
     private function emitStatement(Node $node): void
     {
         if ($node instanceof EmptyStatement) {
@@ -266,6 +275,8 @@ trait JsToPhpEmitStatement
             return;
         }
         if ($node instanceof ForStatement) {
+            $loopCounter = $this->newTemp('loop');
+            $this->emitLine($loopCounter . ' = 0;');
             if ($node->init !== null) {
                 if ($node->init instanceof VariableDeclaration) {
                     $this->emitStatement($node->init);
@@ -299,6 +310,7 @@ trait JsToPhpEmitStatement
                 // Cheap path: clean test + update, emit a plain `while`.
                 $this->emitLine('while (' . $test . ') {');
                 $this->indentLevel++;
+                $this->emitLoopTick($loopCounter);
                 $this->emitStatement($node->body);
                 if ($update !== null) {
                     $this->emitLine($update . ';');
@@ -314,6 +326,7 @@ trait JsToPhpEmitStatement
                     $this->emitLine($line);
                 }
                 $this->emitLine('if (!(' . $test . ')) { break; }');
+                $this->emitLoopTick($loopCounter);
                 $this->emitStatement($node->body);
                 if ($update !== null) {
                     foreach ($updatePending as $line) {
@@ -327,6 +340,8 @@ trait JsToPhpEmitStatement
             return;
         }
         if ($node instanceof WhileStatement) {
+            $loopCounter = $this->newTemp('loop');
+            $this->emitLine($loopCounter . ' = 0;');
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
             $test = $this->emitExpression($node->test);
@@ -335,6 +350,7 @@ trait JsToPhpEmitStatement
             if ($testPending === []) {
                 $this->emitLine('while (' . $test . ') {');
                 $this->indentLevel++;
+                $this->emitLoopTick($loopCounter);
                 $this->emitStatement($node->body);
                 $this->indentLevel--;
                 $this->emitLine('}');
@@ -348,6 +364,7 @@ trait JsToPhpEmitStatement
                     $this->emitLine($line);
                 }
                 $this->emitLine('if (!(' . $test . ')) { break; }');
+                $this->emitLoopTick($loopCounter);
                 $this->emitStatement($node->body);
                 $this->indentLevel--;
                 $this->emitLine('}');
@@ -355,6 +372,8 @@ trait JsToPhpEmitStatement
             return;
         }
         if ($node instanceof DoWhileStatement) {
+            $loopCounter = $this->newTemp('loop');
+            $this->emitLine($loopCounter . ' = 0;');
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
             $test = $this->emitExpression($node->test);
@@ -362,6 +381,7 @@ trait JsToPhpEmitStatement
             $this->pendingStatements = $savedPending;
             $this->emitLine('do {');
             $this->indentLevel++;
+            $this->emitLoopTick($loopCounter);
             $this->emitStatement($node->body);
             if ($testPending !== []) {
                 foreach ($testPending as $line) {

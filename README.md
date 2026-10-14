@@ -141,7 +141,7 @@ Full documentation lives at [phasis.dev](https://phasis.dev) (or in [`docs/`](./
 - [API](./docs/api.md): full `Phasis\Engine` reference
 - [Parser](./docs/parser.md): standalone `Phasis\Parser\Parser` API, AST walker, ESTree export
 - [Formatter](./docs/formatter.md): prettier-compatible formatting for JavaScript, JSON and CSS
-- [Interop](./docs/interop/): PHP↔JS values, host functions, what happens to PHP objects today
+- [Interop](./docs/interop/): PHP↔JS values, host functions, shared PHP objects
 - [Compatibility](./docs/compatibility/): test262 coverage, spec surface, limitations
 - [Advanced](./docs/advanced/): architecture, bytecode VM, oracle testing, benchmarks
 

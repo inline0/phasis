@@ -142,4 +142,4 @@ Errors from the script print their message to stderr. Invalid arguments and miss
 
 ## Resource limits
 
-`bin/phasis` runs with the engine defaults and has no flags for limits: a 4,096-frame JS call-stack ceiling, an 8,192-frame guard for transpiled closures, and the default `maxLoopIterations` of 100,000, which only applies to code the tree-walking interpreter runs (see [API: setLimit](/docs/api#setlimit)). There is no time limit; wrap the command in `timeout` if a script may not terminate.
+`bin/phasis` runs with the engine defaults and has no flags for limits: a 4,096-frame JS call-stack ceiling, an 8,192-frame guard for transpiled closures, and the default `maxLoopIterations` of 100,000, which applies across the interpreter, bytecode VM and transpiled closures (see [API: setLimit](/docs/api#setlimit)). There is no time limit; wrap the command in `timeout` if a script may not terminate.

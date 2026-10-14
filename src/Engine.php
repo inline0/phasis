@@ -134,6 +134,9 @@ class Engine
      */
     private bool $eager;
 
+    /** @var array<string, int> */
+    private array $limits = [];
+
     /** Tracks names whose accessor placeholders are still in place. */
     private LazyBuiltinRegistry $lazyRegistry;
 
@@ -162,6 +165,18 @@ class Engine
 
         $this->installBuiltins();
 
+        $this->initializeGlobalObject();
+
+        // Event loop must be constructed AFTER the post-drain hook
+        // surface on JsPromise is clean (Engine never calls
+        // `setPostDrainHook` before this point). Constructing the
+        // loop also installs the hook — every microtask drain from
+        // now on rolls into a timer-fire pass.
+        $this->eventLoop = new EventLoop($this);
+    }
+
+    private function initializeGlobalObject(): void
+    {
         // Global 'this' should be the global object
         $objProto = $this->globalEnv->has('__ObjectPrototype__')
             ? $this->globalEnv->get('__ObjectPrototype__')
@@ -264,13 +279,6 @@ class Engine
         if (!$this->eager) {
             $this->installLazyAccessors($globalObj);
         }
-
-        // Event loop must be constructed AFTER the post-drain hook
-        // surface on JsPromise is clean (Engine never calls
-        // `setPostDrainHook` before this point). Constructing the
-        // loop also installs the hook — every microtask drain from
-        // now on rolls into a timer-fire pass.
-        $this->eventLoop = new EventLoop($this);
     }
 
     /**
@@ -1739,8 +1747,19 @@ class Engine
 
     public function setGlobal(string $name, mixed $value): void
     {
-        $jsValue = PhpToJs::convert($value);
+        $jsValue = $this->fromPhp($value);
         $this->globalEnv->defineVar($name, $jsValue);
+    }
+
+    private function fromPhp(mixed $value): JsValue
+    {
+        $previous = self::$currentInterpreter;
+        self::$currentInterpreter = $this->interpreter;
+        try {
+            return PhpToJs::convert($value);
+        } finally {
+            self::$currentInterpreter = $previous;
+        }
     }
 
     /**
@@ -1759,7 +1778,7 @@ class Engine
             throw new Exceptions\TypeError("{$name} is not a function");
         }
 
-        $jsArgs = array_map(fn($a) => PhpToJs::convert($a), $args);
+        $jsArgs = array_map(fn($a) => $this->fromPhp($a), $args);
         $result = $this->interpreter->callFunction($fn, JsUndefined::instance(), $jsArgs);
         return $this->toPhp($result);
     }
@@ -1903,9 +1922,13 @@ class Engine
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
         $this->interpreter->setRealm($this);
         self::$currentInterpreter = $this->interpreter;
+        foreach ($this->limits as $name => $value) {
+            $this->setLimit($name, $value);
+        }
         $this->lazyRegistry = new LazyBuiltinRegistry();
 
         $this->installBuiltins();
+        $this->initializeGlobalObject();
         $this->eventLoop = new EventLoop($this);
     }
 
@@ -1978,14 +2001,22 @@ class Engine
 
     public function setLimit(string $name, int $value): void
     {
-        if ($name === 'maxLoopIterations') {
-            $this->interpreter->setMaxLoopIterations($value);
+        if ($value < 0) {
+            throw new \InvalidArgumentException('Limit must be non-negative');
         }
+        match ($name) {
+            'maxLoopIterations' => $this->interpreter->setMaxLoopIterations($value),
+            default => throw new \InvalidArgumentException('Unknown limit: ' . $name),
+        };
+        $this->limits[$name] = $value;
     }
 
     /** @param array<int, true> $seen Object-id set used to break self-referential graphs (globalThis). */
     private function toPhp(JsValue $value, array $seen = []): mixed
     {
+        if ($value instanceof \Phasis\Interop\PhpBridge) {
+            return $value->getHostObject();
+        }
         if ($value instanceof JsUndefined || $value instanceof \Phasis\Value\JsNull) {
             return null;
         }
