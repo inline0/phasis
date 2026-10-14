@@ -125,6 +125,8 @@ final class InteropRegressionTest extends TestCase
         $second->eval('1');
         $first->setGlobal('alias', $object);
         self::assertTrue($first->eval('object === alias'));
+        self::assertTrue($first->eval('object instanceof Object'));
+        self::assertTrue($first->eval('Object.getPrototypeOf(object) === Object.prototype'));
         $first->setGlobal('boom', static function (): never {
             throw new \TypeError('host');
         });

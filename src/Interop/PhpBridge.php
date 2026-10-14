@@ -27,7 +27,8 @@ final class PhpBridge extends JsObject
         private readonly object $host,
         private readonly ?Interpreter $interpreter,
     ) {
-        parent::__construct();
+        $prototype = $interpreter?->getRealm()?->getGlobalEnv()->get('__ObjectPrototype__');
+        parent::__construct($prototype instanceof JsObject ? $prototype : null);
         $reflection = new \ReflectionObject($host);
         foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
             if (!$property->isStatic() && $property->isDefault()) {
