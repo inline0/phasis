@@ -68,7 +68,9 @@ For PHP-level profiling, Xdebug's profiler works against Phasis exactly like any
 php -d xdebug.mode=off -d opcache.enable_cli=1 -d opcache.jit=tracing -d opcache.jit_buffer_size=64M bench/ssr.php
 ```
 
-The targets are ratios, so they hold across machines: native renders at least 10x faster than real React in Phasis and stays within 1.5x of the floor. Local medians on PHP 8.5 with the tracing JIT: 12.6x and 1.11x. Most of the remaining time is the components themselves, interpreted as JavaScript; React's own work (elements, hooks, serialization) is PHP.
+The targets are ratios, so they hold across machines: native renders at least 10x faster than real React in Phasis, stays within 1.5x of the floor, and precompile renders faster than native. Local medians on PHP 8.5 with the tracing JIT: 12.7x, 1.07x and 1.04x. Most of the remaining time is the components themselves, interpreted as JavaScript (the 125 lucide icons alone take about two thirds of a render); React's own work (elements, hooks, serialization) is PHP.
+
+Precompile's gain on this component-heavy page is a few percent, less than the drift between variants timed one after the other. So the script times it in a paired run: a native and a precompiled engine render back to back in alternating order, and the reported ratio is the median of the per-round ratios.
 
 For production, preload Phasis so none of its PHP is compiled per request:
 

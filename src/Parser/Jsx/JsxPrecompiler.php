@@ -71,16 +71,16 @@ final class JsxPrecompiler
     private array $holes = [];
     /** @var list<?list<string|int>> Per hole: tree steps (tags and fork pairs), or null for an attribute hole. */
     private array $steps = [];
+    /** @var list<?list<string>> Per hole: null for a child, or the attribute name (and the tag, for an `a` href). */
+    private array $attributes = [];
     private bool $text = false;
 
     /**
      * @param \Closure(Node): Node $lowerElement Lowers a JSX element or fragment the normal way.
-     * @param \Closure(string, Node, ?string): Node $attributeHole Builds a `jsxAttr(name, value)` call.
      */
     public function __construct(
         private readonly bool $react,
         private readonly \Closure $lowerElement,
-        private readonly \Closure $attributeHole,
     ) {
     }
 
@@ -156,7 +156,7 @@ final class JsxPrecompiler
     {
         $this->emitList($element->children, []);
         $this->closePart();
-        $meta = ['p' => $this->react ? 'react' : 'html', 'f' => $this->flags, 's' => $this->steps];
+        $meta = ['p' => $this->react ? 'react' : 'html', 'f' => $this->flags, 's' => $this->steps, 'a' => $this->attributes];
         return [[...$this->parts, $meta], $this->holes];
     }
 
@@ -272,8 +272,11 @@ final class JsxPrecompiler
             $holeValue = $value;
         }
         $this->closePart();
-        $this->holes[] = ($this->attributeHole)($name, $holeValue, $tag === 'a' && $name === 'href' ? 'a' : null);
+        // The attribute's name is static, so it lives in the template's
+        // metadata and the hole is just the value.
+        $this->holes[] = $holeValue;
         $this->steps[] = null;
+        $this->attributes[] = $tag === 'a' && $name === 'href' ? [$name, 'a'] : [$name];
     }
 
     private function staticAttribute(string $tag, string $name, JsBoolean|JsString $value): string
@@ -296,6 +299,7 @@ final class JsxPrecompiler
         $this->closePart();
         $this->holes[] = $value;
         $this->steps[] = $steps;
+        $this->attributes[] = null;
     }
 
     private function closePart(): void

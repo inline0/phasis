@@ -1163,7 +1163,12 @@ final class Server
             $value = $exprs[$i];
             $steps = $template['steps'][$i] ?? null;
             if ($steps === null) {
-                self::pushTemplateAttribute($segment, $value);
+                $attribute = $template['attributes'][$i] ?? null;
+                if ($attribute === null) {
+                    self::pushTemplateAttribute($segment, $value);
+                } else {
+                    self::pushTemplateAttributeValue($segment, $attribute[0], $attribute[1], $value);
+                }
                 continue;
             }
             $prevTreeContext = $task->treeContext;
@@ -1191,16 +1196,25 @@ final class Server
         $task->keyPath = $prevKeyPath;
     }
 
-    /** A jsxAttr() hole: the attribute as React's start-tag loop would write it. */
+    /** A jsxAttr() marker hole, from a template compiled before attribute names moved to its metadata. */
     private static function pushTemplateAttribute(Segment $segment, JsValue $marker): void
     {
-        $value = Js::get($marker, 'value');
+        $tag = Js::get($marker, 'tag');
+        self::pushTemplateAttributeValue(
+            $segment,
+            Js::str(Js::get($marker, 'name')),
+            $tag instanceof JsString && $tag->value === 'a',
+            Js::get($marker, 'value'),
+        );
+    }
+
+    /** An attribute hole: the attribute as React's start-tag loop would write it. */
+    private static function pushTemplateAttributeValue(Segment $segment, string $name, bool $anchorHref, JsValue $value): void
+    {
         if (Js::isNullish($value)) {
             return;
         }
-        $name = Js::str(Js::get($marker, 'name'));
-        $tag = Js::get($marker, 'tag');
-        if ($tag instanceof JsString && $tag->value === 'a' && $name === 'href' && $value instanceof JsString && $value->value === '') {
+        if ($anchorHref && $value instanceof JsString && $value->value === '') {
             Dom::pushStringAttribute($segment->chunks, 'href', '');
             return;
         }

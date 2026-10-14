@@ -51,8 +51,36 @@ final class JsxPrecompileTest extends TestCase
                 $sources[$node->source] = array_map(static fn ($s): ?string => $s->imported, $node->specifiers);
             }
         }
-        $this->assertEqualsCanonicalizing(['jsxTemplate', 'jsxAttr'], $sources['phasis/jsx-precompile']);
+        // Attribute names live in the template's metadata, so dynamic attributes need no helper.
+        $this->assertSame(['jsxTemplate'], $sources['phasis/jsx-precompile']);
         $this->assertSame(['<p class="a"', '>t</p>'], self::templateParts('x = <div><p className="a" id={y}>t</p></div>;'));
+    }
+
+    public function testAttributeHolesCarryTheirNameInTheMetadata(): void
+    {
+        $engine = new \Phasis\Engine();
+        $engine->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile));
+        $html = $engine->renderSource(
+            "export default ({ href, id }) => <div><a href={href} id={id}>x</a><a href={''}>y</a></div>;",
+            ['href' => '/a?b=1&c=2', 'id' => null],
+        );
+        $this->assertSame('<div><a href="/a?b=1&amp;c=2">x</a><a href="">y</a></div>', $html);
+    }
+
+    public function testMarkerHolesFromOlderTemplatesStillRender(): void
+    {
+        // Templates compiled before attribute names moved into the metadata
+        // (still possible from a parse cache) pass jsxAttr() markers.
+        $engine = new \Phasis\Engine();
+        $html = $engine->renderSource(
+            "import { jsxTemplate, jsxAttr } from 'phasis/jsx-precompile';\nimport { jsx } from 'react/jsx-runtime';\n"
+            . "const tpl = ['<p', '>t</p>', { p: 'react', f: [0, 0], s: [null] }];\n"
+            . "export default () => jsx('div', { children: jsxTemplate(tpl, jsxAttr('className', 'a')) });",
+            [],
+            'default',
+            getcwd() . '/__old_template.mjs',
+        );
+        $this->assertSame('<div><p class="a">t</p></div>', $html);
     }
 
     public function testHandlersAndComponentsStayOutOfTheStaticParts(): void

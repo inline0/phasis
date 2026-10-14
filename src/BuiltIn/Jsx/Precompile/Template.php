@@ -22,8 +22,10 @@ use Phasis\Value\JsValue;
  * renderers expand, jsxAttr() marks a dynamic attribute hole.
  *
  * A template is `[part, ..., part, meta]`: the static strings and a trailing
- * `{p, f, s}` object with the profile it was compiled for, per-part text
- * flags, and per-hole tree steps (see JsxPrecompiler).
+ * `{p, f, s, a}` object with the profile it was compiled for, per-part text
+ * flags, per-hole tree steps, and per-hole attribute names (see
+ * JsxPrecompiler). Templates compiled before `a` existed pass attribute
+ * holes as jsxAttr() markers instead; parse caches can still hold them.
  */
 final class Template
 {
@@ -71,7 +73,13 @@ final class Template
     }
 
     /**
-     * @return array{profile: string, parts: list<string>, flags: list<int>, steps: list<?list<string|int>>}
+     * @return array{
+     *     profile: string,
+     *     parts: list<string>,
+     *     flags: list<int>,
+     *     steps: list<?list<string|int>>,
+     *     attributes: list<?array{0: string, 1: bool}>,
+     * }
      */
     public static function parse(JsValue $tpl): array
     {
@@ -105,11 +113,18 @@ final class Template
             }
             $steps[] = $list;
         }
+        // Per attribute hole: its name, and whether it is an `a` element's href.
+        $attributes = [];
+        foreach (Js::elements(Js::get($meta ?? JsUndefined::instance(), 'a')) as $attribute) {
+            $entry = Js::isNullish($attribute) ? [] : Js::elements($attribute);
+            $attributes[] = $entry === [] ? null : [Js::str($entry[0]), isset($entry[1])];
+        }
         $parsed = [
             'profile' => Js::str(Js::get($meta ?? JsUndefined::instance(), 'p')),
             'parts' => $parts,
             'flags' => $flags,
             'steps' => $steps,
+            'attributes' => $attributes,
         ];
         $tpl->setInternalProperty('[[PhasisTemplate]]', $parsed);
         return $parsed;

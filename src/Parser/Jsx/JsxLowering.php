@@ -210,13 +210,6 @@ final class JsxLowering
             fn (Node $node): Node => $this->lower(
                 $node instanceof JsxElement || $node instanceof JsxFragment ? $node : throw new \LogicException('JSX node expected'),
             ),
-            function (string $name, Node $value, ?string $tag) use ($location): Node {
-                $arguments = [new Literal($location, $name, $name), $value];
-                if ($tag !== null) {
-                    $arguments[] = new Literal($location, $tag, $tag);
-                }
-                return new CallExpression($location, $this->runtimeRef('phasis/jsx-precompile', 'jsxAttr', $location), $arguments);
-            },
         );
         [$parts, $holes] = $precompiler->compileChildren($element);
         $name = ($this->uniqueName)('$$tpl_' . (count($this->templates) + 1));

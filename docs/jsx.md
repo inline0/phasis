@@ -141,10 +141,10 @@ jsx("div", { className: "card", children: jsxTemplate($$tpl_1, title) });
 
 - The outermost element of each JSX expression stays a real element, and so does every element passed to a component, because components may inspect what they receive.
 - Components, spread props and elements React special-cases (form fields, `img`, `link`, `script`, tables, SVG) stay real elements inside holes.
-- Dynamic attributes become `jsxAttr()` holes; inline `on*` handlers on HTML elements are dropped, since server HTML never contains them.
+- Dynamic attributes become holes, with their names in the template's metadata; inline `on*` handlers on HTML elements are dropped, since server HTML never contains them.
 - For the React profile, each template part records whether it starts or ends with text and each hole its tree position, so `<!-- -->` markers and `useId` values are exactly React's.
 
-The output is byte-identical with and without precompile; the test suite checks every React and HTML fixture both ways. The gain depends on how much of a page is static markup. The SSR bench page is mostly components, and there it renders within noise of the plain build (0.98x to 1.04x in local runs), so measure your own pages before turning it on.
+The output is byte-identical with and without precompile; the test suite checks every React and HTML fixture both ways. The gain depends on how much of a page is static markup rather than component code: the SSR bench page, where component JavaScript dominates, renders about 4% faster (1.01x to 1.05x in paired local runs), and a page of the same post cards without icons or tag components about 12% faster.
 
 ## Performance
 

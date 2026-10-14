@@ -14,7 +14,15 @@
  * (after a warm-up engine has loaded Phasis's own PHP classes); render is
  * the median of warm renders on that engine. Targets (PRD Layer 10, as ratios so they
  * hold across machines): native renders at least 10x faster than real
- * React and within 1.5x of the floor.
+ * React and within 1.5x of the floor, and precompile renders faster than
+ * native.
+ *
+ * Precompile's gain on this component-heavy page is a few percent, smaller
+ * than the drift between variants measured one after the other, so the
+ * precompile-vs-native ratio comes from a paired run: one engine of each,
+ * rendering back to back in alternating order. Each round's two renders
+ * share the machine's state (clock speed, thermal throttling), so the
+ * ratio is the median of the per-round ratios.
  *
  *   php -d opcache.enable_cli=1 -d opcache.jit=tracing -d opcache.jit_buffer_size=64M bench/ssr.php [runs]
  */
@@ -214,15 +222,65 @@ $results['floor'] = measure(
     $runs,
 );
 
+/**
+ * Two engines rendering back to back, each going first in every other
+ * round so neither benefits from its position.
+ *
+ * @param \Closure(): Engine $makeA
+ * @param \Closure(): Engine $makeB
+ * @param \Closure(Engine): string $render
+ * @return array{0: float, 1: float, 2: float} [median ms of A, median ms of B, median per-round A/B ratio]
+ */
+function measurePaired(Closure $makeA, Closure $makeB, Closure $render, int $rounds): array
+{
+    $a = $makeA();
+    $b = $makeB();
+    for ($i = 0; $i < 3; $i++) {
+        $render($a);
+        $render($b);
+    }
+    $times = [[], []];
+    for ($i = 0; $i < $rounds; $i++) {
+        foreach ($i % 2 === 0 ? [0, 1] : [1, 0] as $which) {
+            $t = hrtime(true);
+            $render($which === 0 ? $a : $b);
+            $times[$which][] = (hrtime(true) - $t) / 1e6;
+        }
+    }
+    $ratios = [];
+    for ($i = 0; $i < $rounds; $i++) {
+        $ratios[] = $times[0][$i] / $times[1][$i];
+    }
+    sort($ratios);
+    sort($times[0]);
+    sort($times[1]);
+    $middle = intdiv($rounds, 2);
+    return [$times[0][$middle], $times[1][$middle], $ratios[$middle]];
+}
+
+[$pairedNative, $pairedPrecompile, $precompileGain] = measurePaired(
+    static fn (): Engine => new Engine(),
+    static function (): Engine {
+        $e = new Engine();
+        $e->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile));
+        return $e;
+    },
+    static fn (Engine $e): string => $e->render(PAGE, $props),
+    max(21, $runs * 3),
+);
+
 printf("%-11s %10s %10s %8s\n", 'variant', 'load ms', 'render ms', 'bytes');
 foreach ($results as $name => [$load, $render, $bytes]) {
     printf("%-11s %10.1f %10.1f %8d\n", $name, $load, $render, $bytes);
 }
 $speedup = $results['real-react'][1] / $results['native'][1];
 $floorRatio = $results['native'][1] / $results['floor'][1];
-$precompileGain = $results['native'][1] / $results['precompile'][1];
 printf("\nnative vs real React: %.1fx faster (target >= 10x)\n", $speedup);
 printf("native vs floor:      %.2fx (target <= 1.5x)\n", $floorRatio);
-printf("precompile vs native: %.2fx faster\n", $precompileGain);
-$native = $results['native'];
-exit($speedup >= 10 && $floorRatio <= 1.5 ? 0 : 1);
+printf(
+    "precompile vs native: %.2fx faster, paired: %.1f vs %.1f ms (target > 1x)\n",
+    $precompileGain,
+    $pairedPrecompile,
+    $pairedNative,
+);
+exit($speedup >= 10 && $floorRatio <= 1.5 && $precompileGain > 1 ? 0 : 1);

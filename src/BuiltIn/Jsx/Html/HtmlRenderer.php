@@ -440,7 +440,10 @@ final class HtmlRenderer
             }
             $value = $exprs[$i];
             if (($template['steps'][$i] ?? null) === null) {
-                $out .= self::attributeChunk(Js::str(Js::get($value, 'name')), Js::get($value, 'value'), null, false);
+                $attribute = $template['attributes'][$i] ?? null;
+                $out .= $attribute === null
+                    ? self::attributeChunk(Js::str(Js::get($value, 'name')), Js::get($value, 'value'), null, false)
+                    : self::attributeChunk($attribute[0], $value, null, false);
                 continue;
             }
             if ($value instanceof JsUndefined || $value instanceof JsNull || $value instanceof JsBoolean) {
