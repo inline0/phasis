@@ -6,6 +6,7 @@
 - Ship only the runtime CLI in Composer archives; the test262 CLI remains available in source checkouts.
 
 ### Added
+- Current Temporal era identifiers and era years for all supported era-bearing calendars, including single-era calendars
 - Unicode 17 property tables generated from the pinned test262 fixtures, including Beria Erfe script aliases and updated Tangut/Telugu membership, independent of host ICU
 - Standard `Error.prototype.stack` accessor with captured traces, receiver checks, cross-realm behavior and string-only overrides
 - A reproducible Prettier 3.9.10 oracle for native JavaScript, JSON and CSS formatting

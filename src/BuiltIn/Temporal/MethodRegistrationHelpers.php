@@ -298,7 +298,7 @@ trait MethodRegistrationHelpers
     /**
      * Japanese imperial era table: each entry is [era, startY, startM, startD,
      * baseISOYear]. The last era continues forward; eras before meiji fall
-     * back to japanese-inverse (BCE-style).
+     * back to the Gregorian BCE/CE eras.
      *
      * @return list<array{0: string, 1: int, 2: int, 3: int, 4: int}>
      */
@@ -348,77 +348,21 @@ trait MethodRegistrationHelpers
 
     private static function deriveEra(string $cal, int $isoYear, int $isoMonth = 1, int $isoDay = 1): ?string
     {
-        switch ($cal) {
-            case 'gregory':
-                return $isoYear >= 1 ? 'gregory' : 'gregory-inverse';
-            case 'roc':
-                return $isoYear >= 1912 ? 'roc' : 'roc-inverse';
-            case 'japanese':
-                $era = self::japaneseEraFor($isoYear, $isoMonth, $isoDay);
-                if ($era !== null) {
-                    return $era[0];
-                }
-                return $isoYear >= 1 ? 'japanese' : 'japanese-inverse';
-            case 'coptic':
-                $eraIdx = self::icuEraIndexForIso($cal, $isoYear, $isoMonth, $isoDay);
-                if ($eraIdx === 1) {
-                    return 'coptic';
-                }
-                if ($eraIdx === 0) {
-                    return 'coptic-inverse';
-                }
-                return null;
-            case 'ethiopic':
-                // Pure-PHP: ethiopic (Amete Mihret) for canonical year >= 1,
-                // ethioaa (Amete Alem) for canonical year < 1. ICU 70 disagrees
-                // with the spec on the boundary so don't use it.
-                $e = self::isoToEthiopicDate($isoYear, $isoMonth, $isoDay);
-                return $e['year'] >= 1 ? 'ethiopic' : 'ethioaa';
-            case 'ethioaa':
-            case 'ethiopic-amete-alem':
-                // Ethiopic Amete Alem has only one era (always positive
-                // counting from BC 5500); Temporal exposes era /
-                // eraYear as undefined for these single-era calendars.
-                return null;
-        }
-        return null;
-    }
-
-    /**
-     * Look up the ICU era index for an ISO date in the given calendar.
-     * Used by deriveEra to flip coptic-inverse / ethioaa for ISO dates
-     * predating the calendar's positive epoch.
-     */
-    private static function icuEraIndexForIso(string $cal, int $isoYear, int $isoMonth, int $isoDay): ?int
-    {
-        if (!extension_loaded('intl')) {
-            return null;
-        }
-        $icuName = $cal === 'ethioaa' ? 'ethiopic-amete-alem' : $cal;
-        try {
-            $icuCal = \IntlCalendar::createInstance(
-                'UTC',
-                "@calendar={$icuName}",
-            );
-            $sec = self::isoToUnixSeconds($isoYear, $isoMonth, $isoDay);
-            $icuCal->setTime($sec * 1000.0);
-            return (int) $icuCal->get(\IntlCalendar::FIELD_ERA);
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * Convert an ISO calendar date to Unix epoch seconds at midnight UTC.
-     * Avoids gmmktime which is locale-quirk for negative years.
-     */
-    private static function isoToUnixSeconds(int $year, int $month, int $day): int
-    {
-        $a = (14 - $month) > 0 ? intdiv(14 - $month, 12) : -intdiv($month - 14, 12);
-        $y = $year + 4800 - $a;
-        $m = $month + 12 * $a - 3;
-        $jdn = $day + intdiv(153 * $m + 2, 5) + 365 * $y + intdiv($y, 4) - intdiv($y, 100) + intdiv($y, 400) - 32045;
-        return ($jdn - 2440588) * 86400;
+        return match ($cal) {
+            'gregory' => $isoYear >= 1 ? 'ce' : 'bce',
+            'japanese' => self::japaneseEraFor($isoYear, $isoMonth, $isoDay)[0]
+                ?? ($isoYear >= 1 ? 'ce' : 'bce'),
+            'roc' => $isoYear >= 1912 ? 'roc' : 'broc',
+            'buddhist' => 'be',
+            'coptic', 'hebrew' => 'am',
+            'ethiopic' => self::isoToEthiopicDate($isoYear, $isoMonth, $isoDay)['year'] >= 1 ? 'am' : 'aa',
+            'ethioaa', 'ethiopic-amete-alem' => 'aa',
+            'indian' => 'shaka',
+            'persian' => 'ap',
+            'islamic-civil', 'islamic-tbla', 'islamic-umalqura' =>
+                self::isoToCalendarParts($cal, $isoYear, $isoMonth, $isoDay)['year'] >= 1 ? 'ah' : 'bh',
+            default => null,
+        };
     }
 
     /**
@@ -428,58 +372,21 @@ trait MethodRegistrationHelpers
     {
         switch ($cal) {
             case 'gregory':
-                return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
-            case 'roc':
-                return $isoYear >= 1912
-                    ? ($isoYear - 1911)
-                    : (1912 - $isoYear);
+                return $isoYear >= 1 ? $isoYear : 1 - $isoYear;
             case 'japanese':
                 $era = self::japaneseEraFor($isoYear, $isoMonth, $isoDay);
-                if ($era !== null) {
-                    return $isoYear - $era[4] + 1;
-                }
-                return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
-            case 'coptic':
-                $year = self::icuYearForIso($cal, $isoYear, $isoMonth, $isoDay);
-                return $year;
+                return $era !== null ? $isoYear - $era[4] + 1 : ($isoYear >= 1 ? $isoYear : 1 - $isoYear);
+            case 'roc':
+                return $isoYear >= 1912 ? $isoYear - 1911 : 1912 - $isoYear;
             case 'ethiopic':
-                $e = self::isoToEthiopicDate($isoYear, $isoMonth, $isoDay);
-                if ($e['year'] >= 1) {
-                    return $e['year'];
+                $year = self::isoToEthiopicDate($isoYear, $isoMonth, $isoDay)['year'];
+                return $year >= 1 ? $year : $year + self::ETHIOAA_YEAR_OFFSET;
+            default:
+                if (self::deriveEra($cal, $isoYear, $isoMonth, $isoDay) === null) {
+                    return null;
                 }
-                // Pre-EE 1: era flips to ethioaa; eraYear is the AA year
-                // (AA year = ethiopic year + 5500).
-                return $e['year'] + self::ETHIOAA_YEAR_OFFSET;
-            case 'ethioaa':
-            case 'ethiopic-amete-alem':
-                // Ethiopic Amete Alem: era / eraYear are undefined.
-                return null;
-        }
-        return null;
-    }
-
-    /**
-     * Look up the ICU YEAR field (not extended year) for an ISO date.
-     * For coptic/ethiopic/ethioaa the YEAR field already counts within
-     * the active era (era 0 yields a positive year flipping at the
-     * inverse epoch boundary).
-     */
-    private static function icuYearForIso(string $cal, int $isoYear, int $isoMonth, int $isoDay): ?int
-    {
-        if (!extension_loaded('intl')) {
-            return null;
-        }
-        $icuName = $cal === 'ethioaa' ? 'ethiopic-amete-alem' : $cal;
-        try {
-            $icuCal = \IntlCalendar::createInstance(
-                'UTC',
-                "@calendar={$icuName}",
-            );
-            $sec = self::isoToUnixSeconds($isoYear, $isoMonth, $isoDay);
-            $icuCal->setTime($sec * 1000.0);
-            return (int) $icuCal->get(\IntlCalendar::FIELD_YEAR);
-        } catch (\Throwable) {
-            return null;
+                $year = self::isoToCalendarParts($cal, $isoYear, $isoMonth, $isoDay)['year'];
+                return str_starts_with($cal, 'islamic-') && $year <= 0 ? 1 - $year : $year;
         }
     }
 
