@@ -526,7 +526,7 @@ trait ExpressionParser
         // Tagged template literal
         if ($this->check(TokenType::NoSubstitutionTemplate) || $this->check(TokenType::TemplateHead)) {
             // Per §13.3.7.1: tagged templates cannot follow an optional chain.
-            if (self::memberExpressionIsOptional($left)) {
+            if (self::endsInOptionalChain($left)) {
                 throw new ParseError(
                     'Tagged template literal cannot follow an optional chain',
                     $this->current(),
@@ -765,7 +765,7 @@ trait ExpressionParser
                 $this->check(TokenType::NoSubstitutionTemplate)
                 || $this->check(TokenType::TemplateHead)
             ) {
-                if (self::memberExpressionIsOptional($expr)) {
+                if (self::endsInOptionalChain($expr)) {
                     throw new ParseError(
                         'Tagged template literal cannot follow an optional chain',
                         $this->current(),
@@ -2562,6 +2562,9 @@ trait ExpressionParser
 
         // Mark the expression as parenthesized so IsIdentifierRef returns false.
         $this->parenthesized->offsetSet($expr, null);
+        if ($expr instanceof MemberExpression || $expr instanceof CallExpression) {
+            $expr->parenthesized = true;
+        }
 
         return $expr;
     }

@@ -194,17 +194,34 @@ trait ExpressionEvaluation
             default => throw new InternalError('Unknown expression type: ' . $node->type()),
         };
 
-        // Unwrap optional chain sentinel for non-chain consumers.
-        // MemberExpression and CallExpression handle JsOptionalUndefined internally.
-        if (
-            $result instanceof JsOptionalUndefined
-            && !($node instanceof MemberExpression)
-            && !($node instanceof CallExpression)
-        ) {
+        // A short-circuited optional chain yields JsOptionalUndefined so the
+        // rest of the chain can skip itself (see evaluateChainLink). Every
+        // other consumer gets plain undefined: otherwise the sentinel lands
+        // in bindings, arguments and return values, where code compiled by
+        // the VM compares it by identity (`a?.b === undefined` was false).
+        if ($result instanceof JsOptionalUndefined) {
             return JsUndefined::instance();
         }
 
         return $result;
+    }
+
+    /**
+     * Evaluate the object or callee of a member or call expression. Inside an
+     * optional chain (`a?.b.c()`) a short-circuit must propagate to the end
+     * of the chain, so a member or call operand keeps the JsOptionalUndefined
+     * sentinel that evaluate() turns into undefined for everyone else.
+     */
+    private function evaluateChainLink(Node $node, Environment $env): JsValue
+    {
+        // Parentheses end a chain: `(a?.b).c` reads `.c` from undefined.
+        if ($node instanceof MemberExpression && !$node->parenthesized) {
+            return $this->evalMemberExpression($node, $env);
+        }
+        if ($node instanceof CallExpression && !$node->parenthesized) {
+            return $this->evalCallExpression($node, $env);
+        }
+        return $this->evaluate($node, $env);
     }
 
     private function evalLiteral(Literal $node): JsValue
@@ -842,7 +859,7 @@ trait ExpressionEvaluation
         }
 
         if ($argument instanceof MemberExpression) {
-            $obj = $this->evaluate($argument->object, $env);
+            $obj = $this->evaluateChainLink($argument->object, $env);
             // Optional chain short-circuit: `delete a?.b` where a is null
             // or undefined produces an undefined Reference; delete on a
             // non-Reference returns true per §13.5.1.2 step 3.
@@ -1389,6 +1406,7 @@ trait ExpressionEvaluation
                         $this->initializeInstanceFields($superCtor, $currentThis, $env);
                     }
                     $result = $this->callFunction($superCtor, $currentThis, $args);
+                    $this->initializeDefaultDerivedSuperFields($superCtor, $result, $currentThis);
                 }
             } finally {
                 if ($currentThis instanceof JsObject && !$superHadNT) {
@@ -1520,16 +1538,19 @@ trait ExpressionEvaluation
         $isMethodCall = false;
 
         if ($node->callee instanceof MemberExpression) {
-            $rawObj = $this->evaluate($node->callee->object, $env);
+            $rawObj = $this->evaluateChainLink($node->callee->object, $env);
 
-            // Optional chain short-circuit: the base of the callee was
-            // null/undefined via ?., so skip the call entirely.
-            if ($rawObj instanceof JsOptionalUndefined) {
-                return $rawObj;
-            }
-
-            // Optional call: obj?.method() where obj evaluates to null/undefined
-            if ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined)) {
+            $shortCircuits = $rawObj instanceof JsOptionalUndefined
+                || ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined));
+            if ($shortCircuits) {
+                if ($node->callee->parenthesized) {
+                    // `(a?.b)()`: the parentheses end the chain, so the callee
+                    // is undefined and the call itself fails, after its
+                    // arguments are evaluated.
+                    $this->evaluateArguments($node->arguments, $env);
+                    throw new TypeError('(intermediate value) is not a function');
+                }
+                // `a?.b()`, `a?.b.c()`: the whole chain short-circuits.
                 return JsOptionalUndefined::instance();
             }
 
@@ -1636,6 +1657,13 @@ trait ExpressionEvaluation
                 }
             }
 
+            if ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined) {
+                // V8's wording, as the VM's method-call path reports it.
+                throw new TypeError(
+                    'Cannot read properties of ' . ($rawObj instanceof JsNull ? 'null' : 'undefined')
+                    . " (reading '" . ($isSymbolCallKey ? $rawCallKey->display() : $key) . "')",
+                );
+            }
             $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
             $callee = $isSymbolCallKey ? $obj->getBySymbol($rawCallKey) : $obj->get($key);
             $thisValue = $obj;
@@ -1652,7 +1680,7 @@ trait ExpressionEvaluation
                     $thisValue = $resolvedWithBase;
                 }
             } else {
-                $callee = $this->evaluate($node->callee, $env);
+                $callee = $this->evaluateChainLink($node->callee, $env);
             }
         }
 
@@ -3572,6 +3600,32 @@ trait ExpressionEvaluation
         $getter->forceDelete('prototype');
         $setter->forceDelete('prototype');
         return [$getter, $setter];
+    }
+
+    /**
+     * After super() returns from an implicit derived constructor, run that
+     * class's field initializers on the instance.
+     *
+     * Per spec the implicit `constructor(...args) { super(...args); }`
+     * initializes its class's fields once its own super() returns. Phasis
+     * implements it as a native callable with no super() site of its own,
+     * so the caller does it: `new` for the class it constructs, and this
+     * for an implicit derived constructor reached as someone's super
+     * (`class B extends A { x = 1 }`, `class C extends B {}`, `new C()`).
+     */
+    public function initializeDefaultDerivedSuperFields(JsFunction $superCtor, JsValue $result, JsValue $thisVal): void
+    {
+        if (
+            !$superCtor->isDerivedConstructor()
+            || !$superCtor->isNative()
+            || ($superCtor->getPrivateMethodEntries() === [] && $superCtor->getInstanceFieldInitializers() === [])
+        ) {
+            return;
+        }
+        $instance = $result instanceof JsObject ? $result : $thisVal;
+        if ($instance instanceof JsObject) {
+            $this->initializeInstanceFields($superCtor, $instance, $superCtor->getPrivateEnv() ?? $this->getGlobalEnv());
+        }
     }
 
     public function initializeInstanceFields(JsFunction $ctor, JsObject $instance, Environment $env): void
@@ -6830,7 +6884,13 @@ trait ExpressionEvaluation
             return $superBase->getWithValueReceiver($key, $superThisRead);
         }
 
-        $obj = $this->evaluate($node->object, $env);
+        // evaluateChainLink() inlined: this is the hottest member path.
+        $object = $node->object;
+        $obj = $object instanceof MemberExpression && !$object->parenthesized
+            ? $this->evalMemberExpression($object, $env)
+            : ($object instanceof CallExpression && !$object->parenthesized
+                ? $this->evalCallExpression($object, $env)
+                : $this->evaluate($object, $env));
 
         // Propagate optional chain short-circuit through the chain.
         if ($obj instanceof JsOptionalUndefined) {

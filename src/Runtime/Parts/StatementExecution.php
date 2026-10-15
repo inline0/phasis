@@ -744,7 +744,9 @@ trait StatementExecution
                                 $activeSuper->getPrivateEnv() ?? $self->getGlobalEnv(),
                             );
                         }
-                        return $self->callFunction($activeSuper, $thisVal, $args);
+                        $result = $self->callFunction($activeSuper, $thisVal, $args);
+                        $self->initializeDefaultDerivedSuperFields($activeSuper, $result, $thisVal);
+                        return $result;
                     },
                 )->setConstructable();
                 $ref->fn = $constructor;

@@ -1,18 +1,18 @@
 ---
 title: "Popular packages"
-description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
+description: "Phasis runs 205+ real-world JS libraries — acorn, lodash, zod, effect, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
 path: "compatibility/popular-packages"
 order: 130
 section: "Compatibility"
 meta_title: "Popular packages"
-meta_description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
+meta_description: "Phasis runs 205+ real-world JS libraries — acorn, lodash, zod, effect, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies **204 widely-used libraries** byte-for-byte against Node.js (V8). They live under `tests/Popular/` in the repo, and CI runs them whenever the engine source or the suite changes.
+Phasis verifies **205 widely-used libraries** byte-for-byte against Node.js (V8). They live under `tests/Popular/` in the repo, and CI runs them whenever the engine source or the suite changes.
 
 ## Coverage by category
 
@@ -20,7 +20,7 @@ Phasis verifies **204 widely-used libraries** byte-for-byte against Node.js (V8)
 |---|---|
 | **Parsers / AST** | acorn 8.16.0, chevrotain 11.0.3, parse5 7.2.1, parsimmon 1.18.1, jsep 1.4.0, postcss-value-parser 4.2.0, acorn-walk 8.3.4, estraverse 5.3.0, escodegen 2.1.0, css-tree 3.0.4, sax 1.4.1, nearley 2.20.1 |
 | **Templating / Markdown / HTML** | mustache 4.2.0, handlebars 4.7.9, marked 18.0.3, markdown-it 14.1.0 (+ markdown-it-emoji), markdown-table 3.0.4, showdown 2.1.0, cheerio 1.1.2, htmlparser2 11.0.0 |
-| **Utility / Functional** | lodash 4.18.1, ramda 0.31.3, remeda 2.17.4, es-toolkit 1.27.0, immutable 5.1.3, immer 10.1.1, redux 5.0.1, deepmerge 4.3.1, dot-object 2.1.5, lodash.merge 4.6.2, lodash.clonedeep 4.5.0, extend 3.0.2, extend-shallow 3.0.2, mixin-deep 2.0.1, merge-options 3.0.4 |
+| **Utility / Functional** | lodash 4.18.1, ramda 0.31.3, effect 4.0.5, remeda 2.17.4, es-toolkit 1.27.0, immutable 5.1.3, immer 10.1.1, redux 5.0.1, deepmerge 4.3.1, dot-object 2.1.5, lodash.merge 4.6.2, lodash.clonedeep 4.5.0, extend 3.0.2, extend-shallow 3.0.2, mixin-deep 2.0.1, merge-options 3.0.4 |
 | **Object access** | dequal 2.0.3, clsx 2.1.1, classnames 2.5.1, get-value 4.0.1, set-value 4.1.0, object.omit 3.0.0, object.pick 1.3.0, is-plain-obj 4.1.0, kind-of 6.0.3 |
 | **Validation / Schema** | zod 4.4.3, yup 1.4.0, valibot 1.1.0, superstruct 2.0.2, validator 13.12.0, email-validator 2.0.4, ajv 8.17.1, @sinclair/typebox 0.34.42, runtypes 6.7.0, typanion 3.14.0, ow 2.0.0 |
 | **Date / time** | dayjs 1.11.20, date-fns 4.1.0, timeago.js 4.0.2, luxon 3.7.3, moment 2.30.2 |
@@ -47,7 +47,7 @@ Phasis verifies **204 widely-used libraries** byte-for-byte against Node.js (V8)
 | **Syntax highlighting** | highlight.js 11.11.1 |
 | **Testing / assertion** | chai 6.2.1 |
 
-Total: **204 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
+Total: **205 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
 
 ## How it works
 
@@ -97,6 +97,7 @@ Both must pass before the PR merges. A test262 win that breaks lodash isn't acce
 - **fuse.js** — a Babel-transpiled UMD that exercises `_classCallCheck` (the `this instanceof Ctor` pattern that every pre-ES6 transpiled class uses) plus the full bitap fuzzy-match algorithm. The kind of shape every Babel-transpiled library shares, so anything that breaks Fuse breaks half the npm ecosystem.
 - **handlebars** — full-featured templating with compile-then-render. Exercises the `eval`-free runtime path through a single huge `compile()` entry, AST traversal, helper dispatch through a dynamic lookup table, and `SafeString` brand-checking that uses `instanceof` across realms. A counterpoint to mustache.js's simpler template walker.
 - **zod** — runtime schema validation. Heavy class hierarchies (`ZodString`, `ZodObject`, `ZodArray`, `ZodUnion`, …) with method chaining that returns refined sub-classes, structured error formatting where the JS-side `.issues` array shape has to match Node byte-for-byte, and discriminator/literal-tag patterns. Tests the kind of OO-heavy validation code that wraps half of modern TypeScript apps.
+- **effect** — Effect 4, the typed effect system for TypeScript, as an esbuild IIFE bundle (the package ships ES modules only). Its fiber runtime drives generators through `Effect.gen` and `yield*`, typed errors are `Error` subclasses built by a class factory (`Data.TaggedError`), and the runner covers Schema decoding, services and layers, `Ref`, `Queue`, `Stream`, `Schedule` retries, racing, timeouts and fibers. Adding it found two engine bugs: class fields on a class with an implicit constructor were skipped when a subclass constructed it, and a short-circuited optional chain stored in a binding did not compare equal to `undefined` from compiled code.
 - **typescript** — the *actual* TypeScript compiler running on the embedded engine. 9 MB of minified compiler that re-parses arbitrary TS, walks the AST, and emits JS — the heaviest pure-JS payload imaginable. If Phasis can transpile generics, async/await, enums, and class hierarchies byte-for-byte equal to `tsc`, the language semantics are sound.
 - **prettier** — opinionated JS formatter. Formatting JS *with* JS means every spec corner the engine has gets touched by the same control flow that formats your code — a uniquely demanding workload.
 - **svelte/compiler** — Svelte's standalone compiler. Parses `.svelte` source, walks the AST, emits JS for both client and SSR targets.
