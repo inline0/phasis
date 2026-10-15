@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.1] - 2026-10-15
 
 ### Fixed
 - Class fields of a class with an implicit constructor were not initialized when a subclass constructed it (`class B extends A { x = 1 }`, `class C extends B {}`, `new C().x` was `undefined`). Effect's `Data.TaggedError` classes lost their `_tag`, so `Effect.catchTag` never matched
