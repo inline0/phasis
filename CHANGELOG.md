@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.8.0] - 2026-10-16
 
 - Route ordinary Unicode `/v` property patterns through bundled tables on older hosts; keep set and string operations on their existing lowering path.
 - Ship only the runtime CLI in Composer archives; the test262 CLI remains available in source checkouts.
