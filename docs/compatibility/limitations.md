@@ -40,7 +40,7 @@ The notable consequence: PCRE2 may have a different case-folding table than V8's
 
 ## Memory model
 
-PHP's reference-counting GC differs from V8's tracing collector. Cycles between PHP and JS (a PHP object held by a JS closure that's in turn referenced by the PHP object) are not collected until the `Engine` is destroyed. Use `WeakMap` / `WeakRef` for caches you don't want to keep alive.
+PHP's reference-counting GC differs from V8's tracing collector. PHP objects captured by host closures stay alive as long as the engine holds those closures, and cycles between them are not collected until the `Engine` is destroyed. Use `WeakMap` / `WeakRef` for caches you don't want to keep alive.
 
 `process.memoryUsage()` and similar V8-specific introspection APIs are not implemented.
 

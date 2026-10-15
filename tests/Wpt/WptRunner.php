@@ -59,6 +59,7 @@ final class WptRunner
         $this->results = [];
 
         $engine = new Engine(eager: true);
+        $engine->setLimit('maxLoopIterations', 2_000_000);
 
         // Stub WebSocket transport for the WPT fixtures we currently
         // import. They cover constructor validation, property

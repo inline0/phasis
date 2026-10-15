@@ -211,7 +211,7 @@ trait DisposalSupport
             return $e->jsValue;
         }
         $ctorName = match (true) {
-            $e instanceof TypeError => 'TypeError',
+            $e instanceof TypeError || $e instanceof \TypeError => 'TypeError',
             $e instanceof \Phasis\Exceptions\RangeError => 'RangeError',
             $e instanceof \Phasis\Exceptions\ReferenceError => 'ReferenceError',
             $e instanceof \Phasis\Exceptions\SyntaxError => 'SyntaxError',

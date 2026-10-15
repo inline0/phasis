@@ -1,31 +1,47 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.0] - 2026-10-15
 
 ### Added
-- JSX Pack: render JSX components to HTML from PHP with no build step.
-  - JSX syntax in `.jsx` modules (`Phasis\Parser\Jsx\JsxOptions`, `JsxMode`), lowered at parse time exactly like esbuild's automatic and classic runtimes, with `@jsx*` pragmas. `JsxMode::Preserve` keeps JSX nodes (`Phasis\Ast\Jsx\*`) for tooling and `EstreeSerializer` exports them as ESTree JSX.
-  - `Engine::render()` and `Engine::renderSource()` render a component module with PHP props, choosing the profile from the JSX import source or a `Phasis\RenderProfile`.
-  - Native React 19.3: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` are built-in modules implemented in PHP, a port of React's Fizz server renderer. Output is byte-identical to `react-dom@19.3.0` (`renderToString`, `renderToStaticMarkup`, `prerender`) and hydrates with React 19.3's client.
-  - The general HTML profile: `phasis` and `phasis/jsx-runtime`, byte-identical to preact-render-to-string 6.8.0, with `raw()` and `renderToStringAsync()`.
-  - `JsxMode::Precompile`: static markup compiled to string templates, byte-identical output.
-  - Bundler-style module resolution: import maps (`Engine::setImportMap()`), extension and `index` probing, `jsconfig`/`tsconfig` path aliases, `package.json` `exports`/`imports`/`module`/`main` with conditions (`Phasis\Module\ModuleOptions`), CommonJS packages with bundler interop, `process.env.NODE_ENV`, empty style imports, asset and CSS-module resolvers (`setAssetResolver()`, `setCssModuleResolver()`), and barrel pruning for `sideEffects: false` packages.
-  - `Engine::getExport()` returns one export of a module converted to PHP.
-  - `preload.php` for `opcache.preload`, and `ModuleOptions::$parseCacheDir`, an on-disk cache of parsed modules.
-  - `ModuleOptions::$deferSideEffectFreeModules` (opt-in): modules from packages that declare `"sideEffects": false` load when one of their bindings is first read. Importing one `lucide-react` icon then loads 4 modules instead of 13.
-  - `bin/phasis --render <file.jsx> --props '<json>'`.
-- `WebAssembly.Memory`, including shared memories, and the `WebAssembly.CompileError`, `LinkError` and `RuntimeError` constructors. Phasis still can't compile or run WebAssembly modules, so `compile`, `instantiate`, `Module` and the other module APIs stay absent.
-- Docs: JSX, React and Modules pages.
+- JSX Pack: render JSX components to HTML from PHP with no build step
+  - JSX syntax in `.jsx` modules (`Phasis\Parser\Jsx\JsxOptions`, `JsxMode`), lowered at parse time exactly like esbuild's automatic and classic runtimes, with `@jsx*` pragmas. `JsxMode::Preserve` keeps JSX nodes (`Phasis\Ast\Jsx\*`) for tooling and `EstreeSerializer` exports them as ESTree JSX
+  - `Engine::render()` and `Engine::renderSource()` render a component module with PHP props, choosing the profile from the JSX import source or a `Phasis\RenderProfile`
+  - Native React 19.3: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` are built-in modules implemented in PHP, a port of React's Fizz server renderer. Output is byte-identical to `react-dom@19.3.0` (`renderToString`, `renderToStaticMarkup`, `prerender`) and hydrates with React 19.3's client
+  - The general HTML profile: `phasis` and `phasis/jsx-runtime`, byte-identical to preact-render-to-string 6.8.0, with `raw()` and `renderToStringAsync()`
+  - `JsxMode::Precompile`: static markup compiled to string templates, byte-identical output
+  - Bundler-style module resolution: import maps (`Engine::setImportMap()`), extension and `index` probing, `jsconfig`/`tsconfig` path aliases, `package.json` `exports`/`imports`/`module`/`main` with conditions (`Phasis\Module\ModuleOptions`), CommonJS packages with bundler interop, `process.env.NODE_ENV`, empty style imports, asset and CSS-module resolvers (`setAssetResolver()`, `setCssModuleResolver()`), and barrel pruning for `sideEffects: false` packages
+  - `Engine::getExport()` returns one export of a module converted to PHP
+  - `preload.php` for `opcache.preload`, and `ModuleOptions::$parseCacheDir`, an on-disk cache of parsed modules
+  - `ModuleOptions::$deferSideEffectFreeModules` (opt-in): modules from packages that declare `"sideEffects": false` load when one of their bindings is first read. Importing one `lucide-react` icon then loads 4 modules instead of 13
+  - `bin/phasis --render <file.jsx> --props '<json>'`
+- `WebAssembly.Memory`, including shared memories, and the `WebAssembly.CompileError`, `LinkError` and `RuntimeError` constructors. Phasis still can't compile or run WebAssembly modules, so `compile`, `instantiate`, `Module` and the other module APIs stay absent
+- Docs: JSX, React and Modules pages
 
 ### Changed
-- `Engine::execFile()` runs `.mjs` and JSX files through the module loader and returns `null` for them. The docs claimed this for any file with top-level `import`; `.js` files are, and stay, classic scripts.
-- `bin/phasis` runs `.mjs` and `.jsx` files as modules, and `--ast` keeps JSX for `.jsx` files.
+- `Engine::execFile()` runs `.mjs` and JSX files through the module loader and returns `null` for them. The docs claimed this for any file with top-level `import`; `.js` files are, and stay, classic scripts
+- `bin/phasis` runs `.mjs` and `.jsx` files as modules, and `--ast` keeps JSX for `.jsx` files
 
 ### Fixed
-- `CompressionStream` and `DecompressionStream` accepted chunks backed by a `SharedArrayBuffer`; `BufferSource` excludes shared buffers, so the write now rejects with a `TypeError`.
-- In strict code, `try { return f(); } catch (e) { ... }` treated the call as a tail call, so an exception from `f` skipped the `catch`.
-- `Reflect.construct` did not initialize class fields of base classes, or of derived classes with an implicit constructor.
-- PHP 8.5 deprecation notices from `SplObjectStorage` in `JSON` and `DisposableStack`.
+- `CompressionStream` and `DecompressionStream` accepted chunks backed by a `SharedArrayBuffer`; `BufferSource` excludes shared buffers, so the write now rejects with a `TypeError`
+- In strict code, `try { return f(); } catch (e) { ... }` treated the call as a tail call, so an exception from `f` skipped the `catch`
+- `Reflect.construct` did not initialize class fields of base classes, or of derived classes with an implicit constructor
+- PHP 8.5 deprecation notices from `SplObjectStorage` in `JSON` and `DisposableStack`
+
+## [0.5.0] - 2026-10-14
+
+### Added
+- PHP objects are shared by reference through `PhpBridge`, with live public properties, callable public methods, preserved identity and the original object returned when crossing back into PHP
+- JavaScript functions passed to PHP host functions become callable closures tied to their original realm and lexical environment
+
+### Fixed
+- PHP host-function exceptions, including signature and arithmetic errors, become catchable JavaScript errors with their class name and message. Callback throws retain their original JavaScript value
+- Cyclic JavaScript objects and arrays passed to host functions terminate conversion, replacing repeated references with null
+- `reset()` restores the global object, aliases, descriptors and lazy built-ins as well as eager built-ins
+- Loop limits apply to bytecode and transpiled code, including nested calls and suspended generators, and persist across engine resets
+
+### Changed
+- Unknown limit names and negative limit values throw `InvalidArgumentException` instead of being silently ignored
+- Interop and lifecycle documentation describes the supported behavior
 
 ## [0.4.2] - 2026-09-24
 

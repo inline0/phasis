@@ -46,6 +46,7 @@ Phasis targets the current ECMAScript specification (ES2024+) and tracks TC39 pr
 | Regular expressions (`/u`, `/v`, `/d`, named groups, lookbehind) | ✅ |
 | Automatic semicolon insertion (ASI) | ✅ |
 | Hashbang grammar (`#!/usr/bin/env phasis`) | ✅ |
+| Proper tail calls in strict mode (ES2015, required by the spec) | ✅ |
 
 ## Standard library
 
@@ -141,19 +142,20 @@ Beyond pure ECMAScript, Phasis ships several layered packs of Web APIs that real
 | Pack | Globals | WPT |
 |---|---|---|
 | **Web Platform** | `URL`, `URLSearchParams`, `URLPattern`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `console`, `setTimeout` / `setInterval` / `queueMicrotask`, `reportError`, `self` (alias of `globalThis`), `DOMException` | 100 % |
-| **Fetch** | `fetch`, `Request`, `Response`, `Headers`, `Body` mixin, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `CompressionStream` / `DecompressionStream` (zlib + optional brotli via `ext-brotli`), `navigator` | 100 %* |
+| **Fetch** | `fetch`, `Request`, `Response`, `Headers`, `Body` mixin, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `CompressionStream` / `DecompressionStream` (zlib + optional brotli via `ext-brotli`), `navigator` | 100 %¹ |
 | **Crypto** | `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA P-256/384/521, ECDH, HKDF, PBKDF2) | 100 % |
 | **WebSocket** | `WebSocket` (constructor + RFC 6455 frame codec, replaceable transport via `setWebSocketTransport`) | 100 % |
 | **XHR** | `XMLHttpRequest` + `XMLHttpRequestUpload` + `ProgressEvent` (layered over the fetch transport, so policy hooks apply) | 100 % |
 | **Event loop** | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, `AsyncContext` (Stage 3) | n/a (oracle-tested) |
 
-All imported Web Platform Tests pass — see [Web APIs](/docs/compatibility/web-apis) for the conformance breakdown.
+¹ Excluding allowlisted subtests in the compression fixtures: the brotli cases, which need `ext-brotli`, and the cases that pass `SharedArrayBuffer`-backed input (`EXPECTED_FAILURES` in `tests/Wpt/WptTest.php`).
+
+All other imported Web Platform Tests pass — see [Web APIs](/docs/compatibility/web-apis) for the conformance breakdown.
 
 ## What's not yet implemented
 
 - **SharedArrayBuffer worker semantics** beyond a single agent — multi-thread atomic notification across real OS threads requires `pcntl` and isn't on the roadmap. Single-agent atomics work.
 - **`Intl.Segmenter` with grapheme clusters that need ICU 76+** — depends on the host PHP's `intl` extension version.
-- **`Tail call optimization`** — proper tail calls (PTC) are optional in the spec; we don't implement them.
 
 ## Versioning
 

@@ -526,6 +526,11 @@ class Interpreter
         $this->maxLoopIterations = $limit;
     }
 
+    public function getMaxLoopIterations(): int
+    {
+        return $this->maxLoopIterations;
+    }
+
     /** Mark this interpreter as running eval code (indirect eval). */
     public function setEvalContext(bool $isEval): void
     {

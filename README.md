@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/inline0/phasis/actions/workflows/compat-matrix.yml"><img src="https://github.com/inline0/phasis/actions/workflows/compat-matrix.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/inline0/phasis/actions/workflows/ci.yml"><img src="https://github.com/inline0/phasis/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://packagist.org/packages/phasis/phasis"><img src="https://img.shields.io/packagist/v/phasis/phasis.svg" alt="Packagist"></a>
   <a href="https://github.com/inline0/phasis/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license"></a>
 </p>
@@ -20,7 +20,7 @@
 
 ## What is Phasis?
 
-Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`, no FFI, no binary extensions beyond `ext-mbstring` (always shipped) and `ext-bcmath` (shipped by default on every mainstream PHP build for BigInt arithmetic and integer-precision number handling). `ext-intl` is optional — Phasis runs without it, but the Intl.* APIs (Collator, NumberFormat, DateTimeFormat, …) and non-ISO Temporal calendars require it. The whole engine ships as a Composer package and runs anywhere PHP 8.2+ runs.
+Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`, no FFI, no custom binary extension. It needs PHP 8.2+ with three standard extensions: `ext-mbstring`, `ext-bcmath` (BigInt arithmetic and integer-precision number handling) and `ext-curl` (the default `fetch()` transport). `bcmath` is not enabled in every PHP build: the official `php` Docker images, for example, need `docker-php-ext-install bcmath`. `ext-intl` is optional — Phasis runs without it, but the Intl.* APIs (Collator, NumberFormat, DateTimeFormat, …) and non-ISO Temporal calendars require it. `ext-openssl` is optional too and enables `crypto.subtle` AES encryption. The whole engine ships as a Composer package.
 
 **The problem:** PHP applications that need to run user-supplied JavaScript — templating engines, SSR shims, validation rules, content sandboxes, headless test runners — usually shell out to Node.js or skip the feature. Either path adds operational complexity: a second runtime, a serialization boundary, a network of subprocess pipes, and a hostile deployment story for shared hosting.
 
@@ -37,9 +37,9 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
   - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8, plus `raw()`
   - **Bundler-style imports**: extensionless paths and `index` files, `jsconfig` aliases, `node_modules` with `package.json` `exports`, CommonJS packages, style and asset imports, import maps, and barrel pruning for `sideEffects: false` packages
   - Optional precompile of static markup, an `opcache.preload` script, and an on-disk parse cache
-- Direct PHP↔JS interop — share objects without serialization, bind PHP callables as JS functions
-- **100 % of the official test262 suite passes** — ECMAScript conformance, every category, no skips
-- **100 % of imported Web Platform Tests pass** across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob
+- PHP↔JS interop — pass PHP scalars and arrays into JS, bind PHP callables as JS functions, call JS functions from PHP
+- **100 % of the official test262 suite passes** — ECMAScript conformance, every category, no skips (snapshot in [`COMPAT.md`](./COMPAT.md))
+- **100 % of imported Web Platform Tests pass** across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob (the brotli subtests need `ext-brotli`)
 
 ## Quick Start
 
@@ -58,20 +58,17 @@ $engine->eval('1 + 2 * 3');                  // 7
 // Run a file
 $engine->execFile('/path/to/script.js');
 
-// Bridge a PHP value into JS
+// Bridge a PHP value into JS (arrays are copied)
 $engine->setGlobal('config', ['debug' => true]);
-$engine->eval('console.log(config.debug)');  // true
+$engine->eval('config.debug');               // true
+
+// console.log is buffered, not printed
+$engine->eval('console.log("hi")');
+echo $engine->getConsoleOutput();            // hi
 
 // Expose a PHP closure as a JS function
 $engine->setGlobal('greet', fn(string $name) => "Hello, $name");
 $engine->eval('greet("world")');             // "Hello, world"
-
-// Share a PHP object by reference
-class Counter { public int $value = 0; }
-$counter = new Counter();
-$engine->setGlobal('counter', $counter);
-$engine->eval('counter.value++');
-echo $counter->value;                         // 1
 
 // Call JS functions from PHP
 $engine->eval('function add(a, b) { return a + b; }');
@@ -80,25 +77,20 @@ echo $engine->call('add', 2, 3);              // 5
 
 ## CLI
 
-Phasis ships two CLI binaries:
+`bin/phasis` runs scripts from the command line:
 
 ```bash
-# Run a JavaScript file
+# Run a JavaScript file (classic script; console.log output goes to stdout)
 ./vendor/bin/phasis script.js
 
-# Evaluate an expression
-./vendor/bin/phasis -e '[1, 2, 3].map(x => x * x)'
+# Evaluate source; print with console.log
+./vendor/bin/phasis -e 'console.log([1, 2, 3].map(x => x * x).join(","))'
 
-# Interactive REPL
-./vendor/bin/phasis --repl
-
-# Dump the AST
+# Dump the AST as JSON
 ./vendor/bin/phasis --ast script.js
-
-# Run the official test262 conformance suite
-./vendor/bin/test262 --category built-ins/Array
-./vendor/bin/test262 --jobs 4
 ```
+
+`bin/test262`, the conformance runner, needs the `test262` submodule and the dev autoloader, so run it from a clone of this repository (see Testing below).
 
 ## Testing
 
@@ -120,11 +112,11 @@ composer cs
 # Full quality gate (PHPStan + PHPCS + PHPUnit + oracle)
 ./bin/verify-all
 
-# test262 conformance sample
+# test262 conformance sample (needs: git submodule update --init test262)
 ./bin/test262 --category built-ins/Array --jobs 4
 ```
 
-The complete test262 matrix runs in CI on every push. Compliance numbers are committed to `COMPAT.md` after each run.
+CI runs PHPStan, PHPCS, the unit suite and the oracle regression on every push to `main` and every pull request; the Web Platform Tests and popular-package suites run when `src/` or their fixtures change. The full test262 matrix (`compat-matrix.yml`) is started by hand, not on every push; it runs against the test262 revision pinned by the submodule and commits the result to `COMPAT.md`, which records the snapshot time.
 
 ## Compatibility
 
@@ -137,7 +129,7 @@ The complete test262 matrix runs in CI on every push. Compliance numbers are com
 | Hermes (React Native) | ~95 % |
 | **Phasis** | **100 %** |
 
-Every test in the official suite passes, every category. See [`COMPAT.md`](./COMPAT.md) for the latest snapshot.
+Every test in the pinned test262 revision passes, every category. See [`COMPAT.md`](./COMPAT.md) for the latest snapshot. Other engines' numbers are from [test262.fyi](https://test262.fyi).
 
 ## Performance
 
@@ -150,13 +142,14 @@ Current microbench numbers are committed in [`BENCH.md`](./BENCH.md) after each 
 Full documentation lives at [phasis.dev](https://phasis.dev) (or in [`docs/`](./docs) if you're reading the repo).
 
 - [Getting Started](./docs/getting-started.md): install and run your first script
-- [CLI](./docs/cli.md): `bin/phasis` and `bin/test262`
+- [CLI](./docs/cli.md): `bin/phasis`, `bin/test262` and `bin/wpt`
 - [API](./docs/api.md): full `Phasis\Engine` reference
 - [Parser](./docs/parser.md): standalone `Phasis\Parser\Parser` API, AST walker, ESTree export
 - [JSX](./docs/jsx.md): `.jsx` modules, `Engine::render()`, the React and HTML profiles, precompile
 - [React](./docs/react.md): the native React 19.3 server renderer and hydration
 - [Modules](./docs/modules.md): import maps, `node_modules`, CommonJS, aliases, assets, barrel pruning
-- [Interop](./docs/interop/): PHP↔JS values, host functions, shared objects
+- [Formatter](./docs/formatter.md): prettier-compatible formatting for JavaScript, JSON and CSS
+- [Interop](./docs/interop/): PHP↔JS values, host functions, shared PHP objects
 - [Compatibility](./docs/compatibility/): test262 coverage, spec surface, limitations
 - [Advanced](./docs/advanced/): architecture, bytecode VM, oracle testing, benchmarks
 

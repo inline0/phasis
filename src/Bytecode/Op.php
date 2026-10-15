@@ -165,6 +165,9 @@ final class Op
     // ---- Throw -----------------------------------------------------------
     public const THROW = 110;          // pop value, raise as JsThrowable.
 
+    public const LOOP_INIT = 120;
+    public const LOOP_TICK = 121;
+
     // ---- Sentinel / bailout placeholder -------------------------------
     public const NOP = 0;
 
@@ -239,6 +242,8 @@ final class Op
             case self::CALL_METHOD:
             case self::MAKE_FUNCTION:
             case self::MAKE_CLASS:
+            case self::LOOP_INIT:
+            case self::LOOP_TICK:
                 return 1;
             // 3-operand opcodes
             case self::JUMP_IF_LOCAL_GE_CONST:

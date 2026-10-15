@@ -1,157 +1,60 @@
 ---
 title: "Shared objects"
-description: "Pass PHP objects into JavaScript by reference. Reads and writes go through the same instance — no serialization, no copy."
+description: "Share PHP objects with JavaScript by reference through public properties and methods."
 path: "interop/shared-objects"
 order: 50
 section: "Interop"
 meta_title: "Shared objects"
-meta_description: "Pass PHP objects into JavaScript by reference. Reads and writes go through the same instance — no serialization, no copy."
+meta_description: "Share PHP objects with JavaScript by reference through public properties and methods."
 ---
 
 # Shared objects
 
-When you call `setGlobal()` with a PHP object, the engine doesn't serialize it. Instead it wraps the object in a transparent proxy that forwards every JS property access and method call to the original PHP instance.
+PHP objects passed to `setGlobal()`, returned by a host function, or supplied to `call()` are exposed by reference through `Phasis\Interop\PhpBridge`. Public properties stay live in both directions, and public methods run on the original PHP instance.
+
+## Properties and methods
 
 ```php
 class Counter {
     public int $value = 0;
     public function increment(): void { $this->value++; }
-    public function add(int $n): void { $this->value += $n; }
 }
 
 $counter = new Counter();
 $engine->setGlobal('counter', $counter);
 
-$engine->eval('
-    counter.increment();
-    counter.add(5);
-');
+$engine->eval('counter.increment(); counter.value'); // 1
+$counter->value;                                    // 1
+$engine->eval('counter.value = 5');
+$counter->value;                                    // 5
 
-echo $counter->value;
-// 6
+$counter->value = 8;
+$engine->eval('counter.value');                     // 8
 ```
 
-The PHP `$counter` instance and the JS `counter` global are the *same object*. There's no synchronization step.
+PHP property types and `readonly` restrictions still apply. Invalid typed writes raise a catchable JS error; readonly properties expose a getter without a setter. Private and protected members and magic methods are not exposed. Public methods are non-enumerable; public properties appear in `Object.keys()`.
 
-## What JS can see
+Properties added to a `stdClass` in PHP become visible on the next JS access. Adding a property to its JS bridge also adds it to the original `stdClass`. Arrays held in PHP properties follow the normal copy conversion: assign an edited array back to the property to update PHP.
 
-- **Public properties** are visible on the JS object.
-- **Public methods** are callable from JS with PHP→JS argument conversion.
-- **Protected and private members** are invisible from JS.
-- **Static members** are not exposed by default; you'd need to wrap the class itself.
+## Identity and round trips
+
+The same PHP object has the same bridge within an engine:
 
 ```php
-class User {
-    public function __construct(
-        public string $name,
-        public int $age,
-        private string $secret,
-    ) {}
+$engine->setGlobal('alias', $counter);
+$engine->eval('alias === counter');                 // true
 
-    public function greet(): string {
-        return "Hi, I'm $this->name";
-    }
-}
-
-$engine->setGlobal('user', new User('Ada', 36, 'topsecret'));
-
-$engine->eval('
-    console.log(user.name);       // "Ada"
-    console.log(user.age);        // 36
-    console.log(user.greet());    // "Hi, I'm Ada"
-    console.log(user.secret);     // undefined
-');
+$engine->setGlobal('same', fn (Counter $value) => $value === $counter);
+$engine->eval('same(counter)');                    // true
+$engine->eval('counter') === $counter;             // true
 ```
 
-## Mutating from JS
+Distinct PHP objects get distinct bridges. Self-referencing properties retain object identity without copying the graph. The bridge keeps its PHP object alive while JavaScript retains it; the identity cache uses weak references.
 
-Property writes from JS land on the PHP instance:
+## Callables and resources
 
-```php
-$engine->eval('user.age = 37');
-echo $user->age;
-// 37
-```
+Invokable objects continue to become JS functions. Callable arrays such as `[$counter, 'increment']` also become functions. Resources have no JS representation and convert to `undefined`.
 
-PHP property type declarations are enforced — assigning a string to an `int` property throws a `TypeError` from PHP which reaches JS as a thrown `Error`.
+A PHP `Generator` is exposed as an object with public methods, rather than automatically becoming a JavaScript iterable. PHP promises are also host objects; see [Host functions](/docs/interop/host-functions#async-host-functions).
 
-## Iteration
-
-Public-property iteration works:
-
-```php
-$engine->eval('
-    for (const key in user) {
-        console.log(key, user[key]);
-    }
-    // name Ada
-    // age 36
-');
-```
-
-To customize what's iterated (e.g. to expose only certain fields), implement `IteratorAggregate` on the PHP class.
-
-## Custom field maps with PhpBridge
-
-When you don't want every public property exposed — or you want different names on the JS side — wrap the object in `Phasis\Interop\PhpBridge`:
-
-```php
-use Phasis\Interop\PhpBridge;
-
-$bridge = new PhpBridge($user, [
-    'displayName' => fn($u) => $u->name,
-    'greeting'    => fn($u) => $u->greet(),
-]);
-
-$engine->setGlobal('user', $bridge);
-$engine->eval('user.displayName + " says " + user.greeting');
-// "Ada says Hi, I'm Ada"
-```
-
-The keys of the map become JS property names; the values are PHP closures called lazily on property access.
-
-## Object identity
-
-If the same PHP instance is referenced twice by different JS expressions, JS sees `===` equality:
-
-```php
-$obj = new \stdClass();
-$engine->setGlobal('a', $obj);
-$engine->setGlobal('b', $obj);
-
-$engine->eval('a === b');
-// true
-```
-
-This holds even after passing through host-function arguments and return values, because the engine tracks PHP-side object identity across the boundary.
-
-## Common patterns
-
-**WordPress integration** — pass `$wp_post` directly:
-
-```php
-$engine->setGlobal('post', $wpPost);
-$engine->eval('post.post_title = "Edited from JS"');
-wp_update_post($wpPost);
-```
-
-**ORM entity** — pass a Doctrine / Eloquent model:
-
-```php
-$engine->setGlobal('user', User::find($id));
-$engine->eval('user.email = "new@example.com"');
-$user->save();
-```
-
-**Service container** — expose the whole container as a single object:
-
-```php
-$engine->setGlobal('app', $container);
-$engine->eval('app.cache.set("key", "value")');
-```
-
-## Caveats
-
-- The engine holds a *strong* reference to every shared object until `reset()` or engine destruction. Don't share long-lived objects unnecessarily if you have memory pressure.
-- Cycles between PHP and JS (PHP object containing a JS function that captures the PHP object) are not collected until the engine is destroyed.
-- Magic methods (`__get`, `__set`, `__call`) are honoured — JS reads/writes/calls fall through to the magic implementations transparently.
+For an API exposing selected members, pass an associative array of data and closures. Those data fields are copies, while the closures can act on the original object.

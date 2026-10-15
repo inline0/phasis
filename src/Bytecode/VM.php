@@ -685,6 +685,7 @@ final class VM
         ?JsValue $resumeValue = null,
         bool $resumeThrow = false,
     ): JsValue|YieldResult {
+        $loopCounts = $resumeFrom->loopCounts ?? [];
         $code = $cf->code;
         $consts = $cf->consts;
         $names = $cf->names;
@@ -776,6 +777,16 @@ final class VM
                 while (true) {
                     $op = $code[$pc];
                     switch ($op) {
+                        case Op::LOOP_INIT:
+                            $loopCounts[$code[$pc + 1]] = 0;
+                            $pc += 2;
+                            break;
+                        case Op::LOOP_TICK:
+                            if (++$loopCounts[$code[$pc + 1]] > $this->interp->getMaxLoopIterations()) {
+                                throw new InternalError('Maximum loop iterations exceeded');
+                            }
+                            $pc += 2;
+                            break;
                         case Op::POP:
                             $sp--;
                             $pc++;
@@ -1570,6 +1581,7 @@ final class VM
                                 $sf->stack = $stack;
                                 $sf->sp = $sp;
                                 $sf->locals = $locals;
+                                $sf->loopCounts = $loopCounts;
                                 $sf->env = $env;
                                 $sf->thisValue = $thisValue;
                                 $sf->strict = $strict;
@@ -1588,6 +1600,7 @@ final class VM
                                 $stack = $newFrame->stack;
                                 $sp = $newFrame->sp;
                                 $locals = $newFrame->locals;
+                                $loopCounts = [];
                                 $env = $newFrame->env;
                                 $thisValue = $newFrame->thisValue;
                                 $strict = $this->interp->isStrictMode();
@@ -1793,6 +1806,7 @@ final class VM
                                     $sf->stack = $stack;
                                     $sf->sp = $sp;
                                     $sf->locals = $locals;
+                                    $sf->loopCounts = $loopCounts;
                                     $sf->env = $env;
                                     $sf->thisValue = $thisValue;
                                     $sf->strict = $strict;
@@ -1812,6 +1826,7 @@ final class VM
                                     $stack = $newFrame->stack;
                                     $sp = $newFrame->sp;
                                     $locals = $newFrame->locals;
+                                    $loopCounts = [];
                                     $env = $newFrame->env;
                                     $thisValue = $newFrame->thisValue;
                                     $strict = $this->interp->isStrictMode();
@@ -2046,6 +2061,7 @@ final class VM
                                 $sf->stack = $stack;
                                 $sf->sp = $sp;
                                 $sf->locals = $locals;
+                                $sf->loopCounts = $loopCounts;
                                 $sf->env = $env;
                                 $sf->thisValue = $thisValue;
                                 $sf->strict = $strict;
@@ -2063,6 +2079,7 @@ final class VM
                                 $stack = $newFrame->stack;
                                 $sp = $newFrame->sp;
                                 $locals = $newFrame->locals;
+                                $loopCounts = [];
                                 $env = $newFrame->env;
                                 $thisValue = $newFrame->thisValue;
                                 $strict = $this->interp->isStrictMode();
@@ -2514,6 +2531,7 @@ final class VM
                                 $stack = $sf->stack;
                                 $sp = $sf->sp;
                                 $locals = $sf->locals;
+                                $loopCounts = $sf->loopCounts;
                                 $env = $sf->env;
                                 $thisValue = $sf->thisValue;
                                 $strict = $sf->strict;
@@ -2551,6 +2569,7 @@ final class VM
                                 $resumeFrom->stack = $stack;
                                 $resumeFrom->sp = $sp;
                                 $resumeFrom->locals = $locals;
+                                $resumeFrom->loopCounts = $loopCounts;
                                 $resumeFrom->env = $env;
                                 $resumeFrom->thisValue = $thisValue;
                                 $resumeFrom->strict = $strict;
@@ -2567,6 +2586,7 @@ final class VM
                                     $strict,
                                 );
                             }
+                            $snap->loopCounts = $loopCounts;
                             return new YieldResult($yieldedValue, $snap);
 
                         default:
@@ -2625,6 +2645,7 @@ final class VM
                     $stack = $sf->stack;
                     $sp = $sf->sp;
                     $locals = $sf->locals;
+                    $loopCounts = $sf->loopCounts;
                     $env = $sf->env;
                     $thisValue = $sf->thisValue;
                     $strict = $sf->strict;

@@ -136,6 +136,8 @@ final class Compiler
      */
     private array $loopStack = [];
 
+    private int $loopCount = 0;
+
     /**
      * Exception-handler entries collected while compiling. Emitted
      * onto CompiledFunction at the end so the VM can find the

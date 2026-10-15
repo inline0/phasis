@@ -108,20 +108,19 @@ Each built-in is a static `install()` method on a class. The `Engine` calls them
 
 ## PHP↔JS bridge
 
-`src/Interop/` handles value conversion across the boundary.
+Value conversion across the boundary lives in two places:
 
-- **`PhpToJs::convert()`** — PHP value to `JsValue`.
-- **`JsToPhp::convert()`** — `JsValue` to PHP value.
-- **`HostFunction`** — wraps a PHP callable as a `JsFunction`.
-- **`PhpBridge`** — wraps a PHP object with a custom property map.
+- **`Phasis\Interop\PhpToJs::convert()`** — PHP value to `JsValue`, used by `setGlobal()`, `call()` arguments and host-function return values. A PHP callable becomes a `JsFunction` whose body calls it.
+- **`PhpToJs::toPhp()`** — `JsValue` to PHP for the arguments of a host function.
+- **`Engine::toPhp()`** (private) — `JsValue` to PHP for the results of `eval()` and `call()`.
 
-Conversion rules are documented in [Value conversion](/docs/interop/values).
+`PhpToJs` converts host scalars and arrays and wraps callables as JS functions. `PhpBridge` exposes non-callable PHP objects by reference through their public properties and methods, preserving identity within a realm. JS function arguments become PHP closures tied to their function realm, and cycle detection terminates object and array conversion. `JsToPhp` in `src/Bytecode/` is the transpiler described below. See [Value conversion](/docs/interop/values).
 
 ## Error handling
 
-JS `throw` becomes a PHP `Phasis\Exceptions\JsThrowable`. PHP exceptions thrown inside host functions become JS `Error` instances. The interpreter catches and re-throws across the boundary so each side sees the exception in its own idiom.
+An uncaught JS `throw` becomes a PHP `Phasis\Exceptions\JsThrowable`; engine errors extend `Phasis\Exceptions\RuntimeError`. JavaScript handlers catch those values and parse errors. PHP host-function throwables are converted at the interop boundary into catchable JS errors, preserving the PHP class name and message; callback throws retain their original JS value.
 
-Resource limits (call depth, loop iterations, string length, output size, execution time) live on the `Engine`. When any limit is exceeded, the interpreter throws `Phasis\Exceptions\InternalError`.
+Two limits exist: the fixed call-stack ceiling (`CallStack::maxDepth`, 4,096 frames, plus an 8,192-frame guard for transpiled closures), and `maxLoopIterations`, set through `Engine::setLimit()` and enforced across the tree-walker, bytecode VM and transpiled closures. Loop counters are local to each loop entry and survive generator suspension. There are no string-length, output-size or execution-time limits.
 
 ## Bytecode VM
 

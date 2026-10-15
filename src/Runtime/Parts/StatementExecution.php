@@ -1380,15 +1380,14 @@ trait StatementExecution
         $v = JsUndefined::instance();
         $iterations = 0;
         while (true) {
-            if (++$iterations > $this->maxLoopIterations) {
-                throw new InternalError('Maximum loop iterations exceeded');
-            }
-
             if ($node->test !== null) {
                 $test = $this->evaluate($node->test, $iterEnv);
                 if (!TypeConversion::toBoolean($test)) {
                     break;
                 }
+            }
+            if (++$iterations > $this->maxLoopIterations) {
+                throw new InternalError('Maximum loop iterations exceeded');
             }
 
             // For non-let/const loops, create a child for the body so block

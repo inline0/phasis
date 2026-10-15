@@ -1,18 +1,18 @@
 ---
 title: "Popular packages"
-description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow."
+description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
 path: "compatibility/popular-packages"
 order: 130
 section: "Compatibility"
 meta_title: "Popular packages"
-meta_description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified on every push via the popular.yml CI workflow."
+meta_description: "Phasis runs 204+ real-world JS libraries — acorn, lodash, zod, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
 ---
 
 # Popular packages
 
 Spec conformance doesn't guarantee real libraries work. JS engines that pass 99 % of test262 still routinely break on production code because libraries depend on a long tail of "spec corners" — Proxy traps in specific orders, `Function.prototype.toString` shape, regex behavior on tricky inputs, the exact way `Object.keys` ordering interacts with computed property names.
 
-Phasis verifies **204 widely-used libraries** byte-for-byte against Node.js (V8) on every push. They live under `tests/Popular/` in the repo.
+Phasis verifies **204 widely-used libraries** byte-for-byte against Node.js (V8). They live under `tests/Popular/` in the repo, and CI runs them whenever the engine source or the suite changes.
 
 ## Coverage by category
 
@@ -78,12 +78,12 @@ node tests/Popular/gen-oracle.js tests/Popular/<lib>
 
 Workflow: [`.github/workflows/popular.yml`](https://github.com/inline0/phasis/blob/main/.github/workflows/popular.yml).
 
-Runs on every push to `main` and on every PR. Two jobs:
+Runs on pushes and pull requests to `main` that change `src/`, `tests/Popular/`, `phpunit.xml.dist`, the Composer files or the workflow itself, and on manual dispatch. Two steps:
 
 1. **Phasis side** — runs the PHPUnit `popular` testsuite, which executes each library through Phasis and diffs against the committed oracle. Fails if a single byte differs.
 2. **Node re-verify** — runs `node tests/Popular/gen-oracle.js …` against each library and asserts the freshly regenerated oracle matches what's checked in. Detects "vendored library was bumped without updating the oracle" drift.
 
-Both jobs must pass before the PR merges. A test262 win that breaks lodash isn't acceptable; a lodash win that breaks test262 isn't either.
+Both must pass before the PR merges. A test262 win that breaks lodash isn't acceptable; a lodash win that breaks test262 isn't either.
 
 ## Why these libraries
 
@@ -121,6 +121,6 @@ node tests/Popular/gen-oracle.js tests/Popular/<name>   # one-time, generates or
 git add tests/Popular/<name>
 ```
 
-The PHPUnit suite auto-discovers it on the next run. CI picks it up on the next push.
+The PHPUnit suite auto-discovers it on the next run, and CI picks it up because the change touches `tests/Popular/`.
 
 Strong candidates worth adding: `chevrotain` (parser combinator, exercises closures + regex), `nanoid` (crypto/randomness boundary), `date-fns` (timezone surface beyond dayjs).

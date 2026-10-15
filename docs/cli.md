@@ -12,13 +12,19 @@ meta_description: "Complete command reference for the bin/phasis, bin/test262, a
 
 Phasis ships three main executables in `bin/`:
 
-- **`bin/phasis`** — run JavaScript files, evaluate expressions, dump ASTs, open a REPL.
+- **`bin/phasis`** — run JavaScript files, evaluate source passed on the command line, dump ASTs, render JSX components.
 - **`bin/test262`** — run the official ECMAScript conformance suite against Phasis.
 - **`bin/wpt`** — run the Web Platform Tests fixtures against Phasis (URL, encoding, fetch, headers, Blob, AbortSignal, streams, …).
 
-After `composer require phasis/phasis`, `bin/phasis` and `bin/test262` are linked from `vendor/bin/`. `bin/wpt` is dev-only — run it from a checkout of the Phasis source repo.
+After `composer require phasis/phasis`, `bin/phasis` and `bin/test262` are linked from `vendor/bin/`. Only `bin/phasis` works from there: `bin/test262` needs the `test262` git submodule and the test classes, which the Composer package does not include, and `bin/wpt` is not shipped at all. Run both from a clone of the Phasis repository.
 
 ## bin/phasis
+
+```
+phasis <file.js|file.mjs|file.jsx> | phasis -e '<source>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']
+```
+
+These four forms are the whole interface. There is no REPL, no stdin input and no module flag: the file extension decides.
 
 ### Run a file
 
@@ -26,23 +32,27 @@ After `composer require phasis/phasis`, `bin/phasis` and `bin/test262` are linke
 ./vendor/bin/phasis script.js
 ```
 
-Executes `script.js` end-to-end. `console.log` output is written to stdout; thrown JS exceptions exit with status 1 and the message on stderr. `.mjs` and `.jsx` files run as ES modules, so their imports resolve (see [Modules](/docs/modules)); other files run as classic scripts.
+Executes `script.js` as a classic script. When it finishes, everything the script wrote with `console.log` (and `console.error`, `console.warn`, …) is printed to stdout in one go. If the script throws, the error message goes to stderr and the exit status is 1.
 
-### Evaluate an expression
+`.mjs` files and JSX files (`.jsx`) run as ES modules through the module loader, so `import` / `export`, top-level `await` and `import.meta` work and specifiers resolve the way bundlers resolve them (see [Modules](/docs/modules)). Every other file, including `.js`, is parsed as a classic script, so a `.js` file with `import` / `export` or top-level `await` fails with a SyntaxError.
+
+### Evaluate source
 
 ```bash
-./vendor/bin/phasis -e 'Math.PI * 2'
+./vendor/bin/phasis -e 'console.log(Math.PI * 2)'
+# 6.283185307179586
 ```
 
-The argument is evaluated as a complete script; the last expression's result is printed.
+The argument is evaluated as a complete script. Only `console` output is printed; the value of the last expression is not, so `phasis -e '1 + 2'` prints nothing.
 
 ### Dump the AST
 
 ```bash
 ./vendor/bin/phasis --ast script.js
+./vendor/bin/phasis -e 'a + b' --ast
 ```
 
-Prints the parse tree as indented PHP-readable output. Useful for debugging parser issues or building tooling on top of Phasis. For `.jsx` files the tree keeps the JSX nodes (`JsxMode::Preserve`).
+Prints the parse tree as JSON (indented by two spaces). Useful for debugging parser issues or building tooling on top of Phasis. For `.jsx` files the tree keeps the JSX nodes (`JsxMode::Preserve`). For programmatic access, use the [parser API](/docs/parser).
 
 ### Render a component
 
@@ -52,49 +62,27 @@ Prints the parse tree as indented PHP-readable output. Useful for debugging pars
 
 Renders the module's default export with `Engine::render()` and prints the HTML. `--props` is a JSON object passed as the component's props. See [JSX](/docs/jsx).
 
-### REPL
-
-```bash
-./vendor/bin/phasis --repl
-```
-
-Interactive prompt that evaluates each entered line in a persistent `Engine`. Multi-line input is supported via continuation when the line ends inside an open block.
-
-### Read from stdin
-
-```bash
-echo 'console.log(2 + 2)' | ./vendor/bin/phasis -
-```
-
-Pass `-` as the file argument to read source from stdin.
-
-### Module mode
-
-```bash
-./vendor/bin/phasis entry.mjs
-```
-
-`.mjs` and `.jsx` files load as ES modules: `import` / `export`, top-level `await`, and `import.meta` are all available, and specifiers resolve from the file's own directory the way bundlers resolve them.
-
 ## bin/test262
 
-`bin/test262` is the runner used by Phasis's own CI to measure compliance against the [official test262 suite](https://github.com/tc39/test262). It's useful as a regression harness when contributing changes.
+`bin/test262` runs the [official test262 suite](https://github.com/tc39/test262) against Phasis. It's useful as a regression harness when contributing changes. The full-suite snapshot in `COMPAT.md` is produced by the related `bin/compat-report`, which the manually started CI matrix runs in shards.
 
 ### Run a single category
 
 ```bash
-./vendor/bin/test262 --category built-ins/Array
+./bin/test262 --category built-ins/Array
 ```
 
 ### Run the full suite
 
 ```bash
-./vendor/bin/test262 --jobs 4
+./bin/test262 --jobs 4
 ```
 
-### Skip-features list
+### Configuration
 
-The runner reads `config/support.php` from the project root to decide which test262 features to skip (e.g. `tail-call-optimization` is intentionally unsupported).
+The runner reads `config/support.php` from the project root. Its `test262_skipped_features` list is empty: no test262 feature is skipped, including `tail-call-optimization`. The file also lists the categories and the tests that must run in isolation.
+
+The suite itself is the `test262` git submodule; run `git submodule update --init test262` after cloning. Without it the runner exits with "test262 suite not found".
 
 ### Other useful flags
 
@@ -107,7 +95,7 @@ The runner reads `config/support.php` from the project root to decide which test
 | `--json` | emit machine-readable summary on stdout |
 | `--no-progress` | suppress the progress line |
 
-See the [Compatibility section](/docs/compatibility) for the latest CI numbers.
+See the [Compatibility section](/docs/compatibility) for the latest snapshot.
 
 ## bin/wpt
 
@@ -151,24 +139,15 @@ Machine-readable pass/fail summary for CI pipelines or scripted analysis.
 
 ## Exit codes
 
+`bin/phasis` exits with one of two codes:
+
 | Code | Meaning |
 |---|---|
-| `0` | success — script ran to completion |
-| `1` | uncaught JS exception |
-| `2` | syntax / parse error |
-| `64` | invalid CLI arguments |
-| `65` | input file not found |
+| `0` | success — the script ran to completion (also after `--ast`) |
+| `1` | anything else: an uncaught JS exception, a syntax error, a missing file or invalid arguments |
 
-Exit codes match what most JS runtimes use, so existing scripts can swap `node` for `phasis` without changing error handling.
+Errors from the script print their message to stderr. Invalid arguments and missing files print the usage line to stderr.
 
 ## Resource limits
 
-`bin/phasis` runs with the engine defaults: the bytecode VM's call-stack ceiling (4 096 JS frames) and the JsToPhp transpiled-closure ceiling (8 192 PHP frames) are baked in. To set a per-script loop budget, use the embedded API:
-
-```php
-$engine = new Phasis\Engine();
-$engine->setLimit('maxLoopIterations', 1_000_000);
-$engine->execFile('script.js');
-```
-
-See [API reference](/docs/api#setlimit) for the full surface.
+`bin/phasis` runs with the engine defaults and has no flags for limits: a 4,096-frame JS call-stack ceiling, an 8,192-frame guard for transpiled closures, and the default `maxLoopIterations` of 100,000, which applies across the interpreter, bytecode VM and transpiled closures (see [API: setLimit](/docs/api#setlimit)). There is no time limit; wrap the command in `timeout` if a script may not terminate.
