@@ -1533,21 +1533,44 @@ trait StatementParser
         return false;
     }
 
+    /**
+     * True when $node is an OptionalExpression: a member or call chain with
+     * an optional link. Parentheses end a chain, so the walk stops at a
+     * parenthesized operand (`(a?.b).c` is a plain member expression);
+     * $node's own parentheses do not change what it is (`(a?.b)` is still
+     * an optional chain, so `(a?.b) = 1` stays an early error).
+     */
     private static function memberExpressionIsOptional(Node $node): bool
     {
         if ($node instanceof MemberExpression) {
             if ($node->optional) {
                 return true;
             }
-            return self::memberExpressionIsOptional($node->object);
-        }
-        if ($node instanceof CallExpression) {
+            $inner = $node->object;
+        } elseif ($node instanceof CallExpression) {
             if ($node->optional) {
                 return true;
             }
-            return self::memberExpressionIsOptional($node->callee);
+            $inner = $node->callee;
+        } else {
+            return false;
         }
-        return false;
+        if (($inner instanceof MemberExpression || $inner instanceof CallExpression) && $inner->parenthesized) {
+            return false;
+        }
+        return self::memberExpressionIsOptional($inner);
+    }
+
+    /**
+     * True when an optional chain is still open at $node, so a tagged
+     * template cannot follow it. A parenthesized chain is closed.
+     */
+    private static function endsInOptionalChain(Node $node): bool
+    {
+        if (($node instanceof MemberExpression || $node instanceof CallExpression) && $node->parenthesized) {
+            return false;
+        }
+        return self::memberExpressionIsOptional($node);
     }
 
     /**
@@ -1920,6 +1943,11 @@ trait StatementParser
             throw new \Phasis\Exceptions\SyntaxError(
                 'Invalid destructuring assignment target: MetaProperty',
             );
+        }
+        // Per §13.15.1: an OptionalExpression is never an assignment target,
+        // parenthesized or not (`[a?.b] = []`, `[(a?.b)] = []`).
+        if ($node instanceof MemberExpression && self::memberExpressionIsOptional($node)) {
+            throw new \Phasis\Exceptions\SyntaxError('Invalid destructuring assignment target');
         }
         // Other nodes like Identifier, MemberExpression, etc. are valid
         // assignment targets at the leaf level. Anything else (literals,

@@ -1,0 +1,37 @@
+(n?.b).c => TypeError
+(n?.b) => undefined
+(n?.b.c).d => TypeError
+(n?.b)?.c => undefined
+((n?.b)).c => TypeError
+(n?.b)[0] => TypeError
+(n?.b)() => TypeError
+(n?.()) => undefined
+(n?.()).x => TypeError
+(n?.b).c() => TypeError
+(u?.b).c => TypeError
+(o?.b).c => 1
+(o?.b).f() => true
+(o?.g)() => true
+(o?.b?.f)() => true
+(o.b?.c).toFixed(1) => 1.0
+delete (n?.b).c => TypeError
+delete (n?.b) => true
+typeof (n?.b).c => TypeError
+(n?.b)`x` => TypeError
+new (n?.b)() => TypeError
+(n?.b) ?? 5 => 5
+n?.b.c (no parens) => undefined
+n?.b() (no parens) => undefined
+(n?.[0]).x => TypeError
+(o?.s).length => 3
+(o.missing?.x).y => TypeError
+x = (n?.b), x?.c => undefined
+{"b":{"c":5,"d":6,"e":7,"f":8}}
+2
+(a?.b) = 1 SyntaxError
+[a?.b] = [] SyntaxError
+[(a?.b)] = [] SyntaxError
+({x: a?.b} = {}) SyntaxError
+a?.b`x` SyntaxError
+(a?.b)++ SyntaxError
+function

@@ -214,10 +214,11 @@ trait ExpressionEvaluation
      */
     private function evaluateChainLink(Node $node, Environment $env): JsValue
     {
-        if ($node instanceof MemberExpression) {
+        // Parentheses end a chain: `(a?.b).c` reads `.c` from undefined.
+        if ($node instanceof MemberExpression && !$node->parenthesized) {
             return $this->evalMemberExpression($node, $env);
         }
-        if ($node instanceof CallExpression) {
+        if ($node instanceof CallExpression && !$node->parenthesized) {
             return $this->evalCallExpression($node, $env);
         }
         return $this->evaluate($node, $env);
@@ -1539,14 +1540,17 @@ trait ExpressionEvaluation
         if ($node->callee instanceof MemberExpression) {
             $rawObj = $this->evaluateChainLink($node->callee->object, $env);
 
-            // Optional chain short-circuit: the base of the callee was
-            // null/undefined via ?., so skip the call entirely.
-            if ($rawObj instanceof JsOptionalUndefined) {
-                return $rawObj;
-            }
-
-            // Optional call: obj?.method() where obj evaluates to null/undefined
-            if ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined)) {
+            $shortCircuits = $rawObj instanceof JsOptionalUndefined
+                || ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined));
+            if ($shortCircuits) {
+                if ($node->callee->parenthesized) {
+                    // `(a?.b)()`: the parentheses end the chain, so the callee
+                    // is undefined and the call itself fails, after its
+                    // arguments are evaluated.
+                    $this->evaluateArguments($node->arguments, $env);
+                    throw new TypeError('(intermediate value) is not a function');
+                }
+                // `a?.b()`, `a?.b.c()`: the whole chain short-circuits.
                 return JsOptionalUndefined::instance();
             }
 
@@ -1653,6 +1657,13 @@ trait ExpressionEvaluation
                 }
             }
 
+            if ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined) {
+                // V8's wording, as the VM's method-call path reports it.
+                throw new TypeError(
+                    'Cannot read properties of ' . ($rawObj instanceof JsNull ? 'null' : 'undefined')
+                    . " (reading '" . ($isSymbolCallKey ? $rawCallKey->display() : $key) . "')",
+                );
+            }
             $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
             $callee = $isSymbolCallKey ? $obj->getBySymbol($rawCallKey) : $obj->get($key);
             $thisValue = $obj;
@@ -6875,9 +6886,11 @@ trait ExpressionEvaluation
 
         // evaluateChainLink() inlined: this is the hottest member path.
         $object = $node->object;
-        $obj = $object instanceof MemberExpression
+        $obj = $object instanceof MemberExpression && !$object->parenthesized
             ? $this->evalMemberExpression($object, $env)
-            : ($object instanceof CallExpression ? $this->evalCallExpression($object, $env) : $this->evaluate($object, $env));
+            : ($object instanceof CallExpression && !$object->parenthesized
+                ? $this->evalCallExpression($object, $env)
+                : $this->evaluate($object, $env));
 
         // Propagate optional chain short-circuit through the chain.
         if ($obj instanceof JsOptionalUndefined) {

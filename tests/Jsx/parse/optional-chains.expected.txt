@@ -1,0 +1,105 @@
+Program
+  ExpressionStatement
+    ChainExpression
+      MemberExpression
+        Identifier name=a
+        Identifier name=b
+  ExpressionStatement
+    ChainExpression
+      MemberExpression
+        MemberExpression
+          MemberExpression
+            Identifier name=a
+            Identifier name=b
+          Identifier name=c
+        Identifier name=d
+  ExpressionStatement
+    ChainExpression
+      CallExpression
+        MemberExpression
+          Identifier name=a
+          Identifier name=b
+  ExpressionStatement
+    ChainExpression
+      CallExpression
+        MemberExpression
+          Identifier name=a
+          Identifier name=b
+  ExpressionStatement
+    ChainExpression
+      MemberExpression
+        MemberExpression
+          Identifier name=a
+          Literal value=0
+        Identifier name=c
+  ExpressionStatement
+    MemberExpression
+      ChainExpression
+        MemberExpression
+          Identifier name=a
+          Identifier name=b
+      Identifier name=c
+  ExpressionStatement
+    CallExpression
+      ChainExpression
+        MemberExpression
+          Identifier name=a
+          Identifier name=b
+  ExpressionStatement
+    ChainExpression
+      MemberExpression
+        ChainExpression
+          MemberExpression
+            MemberExpression
+              Identifier name=a
+              Identifier name=b
+            Identifier name=c
+        Identifier name=d
+  ExpressionStatement
+    MemberExpression
+      ChainExpression
+        MemberExpression
+          Identifier name=a
+          Identifier name=b
+      Identifier name=c
+  ExpressionStatement
+    AssignmentExpression op==
+      MemberExpression
+        ChainExpression
+          MemberExpression
+            Identifier name=a
+            Identifier name=b
+        Identifier name=c
+      Literal value=1
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      TaggedTemplateExpression
+        ChainExpression
+          MemberExpression
+            Identifier name=a
+            Identifier name=b
+        TemplateLiteral
+          TemplateElement
+  ExpressionStatement
+    JSXElement
+      JSXOpeningElement
+        JSXIdentifier name=C
+        JSXAttribute
+          JSXIdentifier name=value
+          JSXExpressionContainer
+            ChainExpression
+              MemberExpression
+                Identifier name=a
+                Identifier name=b
+        JSXAttribute
+          JSXIdentifier name=onClick
+          JSXExpressionContainer
+            ArrowFunctionExpression
+              CallExpression
+                MemberExpression
+                  ChainExpression
+                    MemberExpression
+                      Identifier name=a
+                      Identifier name=b
+                  Identifier name=c

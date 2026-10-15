@@ -101,6 +101,11 @@ final class EstreeSerializer
      */
     private static function convert(Node $node): array
     {
+        if (($node instanceof MemberExpression || $node instanceof CallExpression) && self::isOptionalChain($node)) {
+            // ESTree wraps each optional chain in a ChainExpression at its end:
+            // the outermost link, or where parentheses close it.
+            return self::entry($node, 'ChainExpression', ['expression' => self::convertChainLink($node)]);
+        }
         return match (true) {
             $node instanceof Program => self::entry($node, 'Program', [
                 'body' => self::nodeList($node->body),
@@ -171,21 +176,12 @@ final class EstreeSerializer
                 'consequent' => self::convert($node->consequent),
                 'alternate' => self::convert($node->alternate),
             ]),
-            $node instanceof CallExpression => self::entry($node, 'CallExpression', [
-                'callee' => self::convert($node->callee),
-                'arguments' => self::nodeList($node->arguments),
-                'optional' => $node->optional,
-            ]),
+            $node instanceof CallExpression => self::convertChainLink($node),
             $node instanceof NewExpression => self::entry($node, 'NewExpression', [
                 'callee' => self::convert($node->callee),
                 'arguments' => self::nodeList($node->arguments),
             ]),
-            $node instanceof MemberExpression => self::entry($node, 'MemberExpression', [
-                'object' => self::convert($node->object),
-                'property' => self::convert($node->property),
-                'computed' => $node->computed,
-                'optional' => $node->optional,
-            ]),
+            $node instanceof MemberExpression => self::convertChainLink($node),
             $node instanceof MetaProperty => self::entry($node, 'MetaProperty', [
                 'meta' => self::identifier($node->meta),
                 'property' => self::identifier($node->property),
@@ -420,6 +416,53 @@ final class EstreeSerializer
             ]),
             default => self::entry($node, $node->type(), []),
         };
+    }
+
+    /**
+     * A member or call expression without the ChainExpression wrapper, with
+     * its object or callee continuing the same chain unless parenthesized.
+     *
+     * @return array<string, mixed>
+     */
+    private static function convertChainLink(MemberExpression|CallExpression $node): array
+    {
+        if ($node instanceof CallExpression) {
+            return self::entry($node, 'CallExpression', [
+                'callee' => self::convertChainOperand($node->callee),
+                'arguments' => self::nodeList($node->arguments),
+                'optional' => $node->optional,
+            ]);
+        }
+        return self::entry($node, 'MemberExpression', [
+            'object' => self::convertChainOperand($node->object),
+            'property' => self::convert($node->property),
+            'computed' => $node->computed,
+            'optional' => $node->optional,
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private static function convertChainOperand(Node $node): array
+    {
+        if (($node instanceof MemberExpression || $node instanceof CallExpression) && !$node->parenthesized) {
+            return self::convertChainLink($node);
+        }
+        return self::convert($node);
+    }
+
+    /** Whether $node is an optional chain: a link up to the next parentheses is optional. */
+    private static function isOptionalChain(MemberExpression|CallExpression $node): bool
+    {
+        while (true) {
+            if ($node->optional) {
+                return true;
+            }
+            $inner = $node instanceof MemberExpression ? $node->object : $node->callee;
+            if (!($inner instanceof MemberExpression || $inner instanceof CallExpression) || $inner->parenthesized) {
+                return false;
+            }
+            $node = $inner;
+        }
     }
 
     /**
