@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Class fields of a class with an implicit constructor were not initialized when a subclass constructed it (`class B extends A { x = 1 }`, `class C extends B {}`, `new C().x` was `undefined`). Effect's `Data.TaggedError` classes lost their `_tag`, so `Effect.catchTag` never matched
+- A short-circuited optional chain stored in a binding, passed as an argument or returned (`const v = a?.b`) was not strictly equal to `undefined` when read from code compiled by the bytecode VM, so `v === undefined` was `false`
+
+### Added
+- Effect 4 (`effect` 4.0.5) in the popular-packages suite, byte-equal with Node: 205 libraries
+
 ## [0.6.0] - 2026-10-15
 
 ### Added
