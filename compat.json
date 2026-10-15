@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-10-15T21:23:32+00:00",
-    "updatedAt": "2026-10-15T21:23:32+00:00",
+    "generatedAt": "2026-10-15T22:07:28+00:00",
+    "updatedAt": "2026-10-15T22:07:28+00:00",
     "complete": true,
     "git": {
         "branch": "feat/upstream-refresh-20261015",
-        "commit": "46ce6012",
+        "commit": "79f728d5",
         "isDirty": true
     },
     "environment": {
@@ -19,7 +19,7 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "d29ab7cbe0328ec16582f13797dad97040b27f0f"
+        "fingerprint": "fbaa719a23e01b1ceee1d3f3dfaffda40a2d07b6"
     },
     "discovery": {
         "groupCount": 161,
@@ -198,8 +198,8 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 51997,
-            "fail": 1619,
+            "pass": 52069,
+            "fail": 1547,
             "skip": 0,
             "blocked": 0,
             "pending": 0,
@@ -207,7 +207,7 @@
             "attempted": 53616,
             "known": 53616,
             "total": 53616,
-            "passRate": 97
+            "passRate": 97.1
         },
         "areas": [
             {
@@ -255,8 +255,8 @@
             {
                 "name": "intl402",
                 "status": "partial",
-                "pass": 2338,
-                "fail": 1044,
+                "pass": 2410,
+                "fail": 972,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -264,7 +264,7 @@
                 "attempted": 3382,
                 "known": 3382,
                 "total": 3382,
-                "passRate": 69.1
+                "passRate": 71.3
             },
             {
                 "name": "language",
@@ -2115,8 +2115,8 @@
                 "name": "intl402/Temporal",
                 "area": "intl402",
                 "status": "partial",
-                "pass": 1087,
-                "fail": 942,
+                "pass": 1159,
+                "fail": 870,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2124,7 +2124,7 @@
                 "attempted": 2029,
                 "known": 2029,
                 "total": 2029,
-                "passRate": 53.6
+                "passRate": 57.1
             },
             {
                 "name": "intl402/TypedArray",
@@ -5066,36 +5066,12 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: output for hourCycle: h24 should include 24:00:00 Expected SameValue(\u00abfalse\u00bb, \u00abtrue\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDate/from/calendar-invalid-era-with-era-year.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: xyz is not a valid era in calendar buddhist Expected a RangeError but got a TypeError"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/from/calendar-invalid-era.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: xyz is not a valid era in calendar buddhist Expected a RangeError to be thrown but no exception was thrown at all"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/from/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: AA 0 is not remapped: eraYear result: Expected SameValue(\u00ab5500\u00bb, \u00ab0\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/from/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/from/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDate/from/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\RangeError: Invalid date components for calendar 'islamic-umalqura'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/from/era-boundary-japanese.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: Meiji 1 resolves to CE 1868 before era start date: era result: Expected SameValue(\u00ab\"meiji\"\u00bb, \u00ab\"ce\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/from/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: BROC 0 resolves to ROC 1: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/from/extreme-dates.js",
@@ -5118,16 +5094,12 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: early pre-Meiji date: era result: Expected SameValue(\u00ab\"meiji\"\u00bb, \u00ab\"ce\"\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDate/from/non-positive-single-era-year.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDate/from/roundtrip-from-iso.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: ISO date 0001-01-01 (islamic-umalqura) - created from year and month: eraYear result: Expected SameValue(\u00ab1301\u00bb, \u00ab641\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/from/roundtrip-from-property-bag.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\RangeError: Invalid date components for calendar 'islamic-umalqura'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/from/roundtrip-from-string.js",
@@ -5158,24 +5130,8 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: common-year Mehr rejects with 31 Expected a RangeError to be thrown but no exception was thrown at all"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/add/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to last year of Amete Alem era lands in year 1 of incarnation era: eraYear result: Expected SameValue(\u00ab5501\u00bb, \u00ab1\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/add/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/add/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/add/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/add/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BROC lands in 1 BROC (counts backwards): era result: Expected SameValue(\u00ab\"roc\"\u00bb, \u00ab\"broc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\RangeError: Invalid date components for calendar 'islamic-umalqura'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/add/leap-month-chinese-numerical-months.js",
@@ -5295,23 +5251,19 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/since/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: -1y backwards  from 5500 AA to 1 AM: years result: Expected SameValue(\u00ab5499\u00bb, \u00ab-1\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: 1y  from 5500 AA to 1 AM: years result: Expected SameValue(\u00ab0\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/since/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab8\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/since/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab8\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/since/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/since/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from BROC 5 to ROC 5 (no year 0): years result: Expected SameValue(\u00ab0\u00bb, \u00ab-9\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\RangeError: Invalid date components for calendar 'islamic-umalqura'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/since/intercalary-month-coptic.js",
@@ -5422,24 +5374,8 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: common-year Mehr rejects with 31 Expected a RangeError to be thrown but no exception was thrown at all"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/subtract/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to last year of Amete Alem era lands in year 1 of incarnation era: eraYear result: Expected SameValue(\u00ab5501\u00bb, \u00ab1\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/subtract/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/subtract/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/subtract/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/subtract/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BROC lands in 1 BROC (counts backwards): era result: Expected SameValue(\u00ab\"roc\"\u00bb, \u00ab\"broc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\RangeError: Invalid date components for calendar 'islamic-umalqura'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/subtract/leap-month-chinese-numerical-months.js",
@@ -5547,23 +5483,19 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/until/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 1y  from 5500 AA to 1 AM: years result: Expected SameValue(\u00ab-5499\u00bb, \u00ab1\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: -1y backwards  from 5500 AA to 1 AM: years result: Expected SameValue(\u00ab0\u00bb, \u00ab-1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/until/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-8\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/until/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-8\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/until/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDate/prototype/until/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from BROC 5 to ROC 5 (no year 0): years result: Expected SameValue(\u00ab0\u00bb, \u00ab9\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\RangeError: Invalid date components for calendar 'islamic-umalqura'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/until/intercalary-month-coptic.js",
@@ -5731,7 +5663,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/year/arithmetic-year.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\RangeError: Invalid date components for calendar 'islamic-umalqura'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDate/prototype/year/epoch-year.js",
@@ -5742,44 +5674,16 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: gregory does not provide week numbers Expected SameValue(\u00ab2024\u00bb, \u00abundefined\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/calendar-invalid-era-with-era-year.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: xyz is not a valid era in calendar buddhist Expected a RangeError but got a TypeError"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/calendar-invalid-era.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: xyz is not a valid era in calendar buddhist Expected a RangeError to be thrown but no exception was thrown at all"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/from/constrain-day-hebrew.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: Kislev constrains to 29 in deficient year: eraYear result: Expected SameValue(\u00ab9541\u00bb, \u00ab5781\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/from/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: AH 0 resolves to BH 1: eraYear result: Expected SameValue(\u00ab642\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/from/era-boundary-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Reiwa 1 resolves to Heisei 31 before era start date: era result: Expected SameValue(\u00ab\"ce\"\u00bb, \u00ab\"heisei\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: ROC 0 resolves to BROC 1: eraYear result: Expected SameValue(\u00ab1912\u00bb, \u00ab1\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/era-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 0002-01-01T12:34:00[u-ca=japanese]: era result: Expected SameValue(\u00ab\"ce\"\u00bb, \u00ab\"reiwa\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: Meiji 1 resolves to CE 1868 before era start date: era result: Expected SameValue(\u00ab\"meiji\"\u00bb, \u00ab\"ce\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/from/extreme-dates.js",
@@ -5798,12 +5702,8 @@
                 "message": "Phasis\\Exceptions\\RangeError: monthCode 'M05L' leap-month suffix is not valid for calendar 'iso8601'"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/from/non-positive-single-era-year.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/from/roundtrip-from-property-bag.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: ISO date 0001-01-01 (islamic-umalqura) - created from year and month: eraYear result: Expected SameValue(\u00ab1301\u00bb, \u00ab641\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/from/roundtrip-from-string.js",
@@ -5828,10 +5728,6 @@
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/basic-persian.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: add 2mo 3w with result in the next year: day result: Expected SameValue(\u00ab22\u00bb, \u00ab21\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 1y: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/constrain-day-chinese.js",
@@ -5866,32 +5762,8 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: common-year Mehr rejects with 31 Expected a RangeError to be thrown but no exception was thrown at all"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/constrain-day-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: common-year Feb constrains to 28: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/era-boundary-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to Heisei 30 March (before May 1) lands in Heisei 31 March: era result: Expected SameValue(\u00ab\"ce\"\u00bb, \u00ab\"heisei\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BROC lands in 1 BROC (counts backwards): eraYear result: Expected SameValue(\u00ab1909\u00bb, \u00ab1\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): eraYear result: Expected SameValue(\u00ab642\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/leap-month-chinese-numerical-months.js",
@@ -5950,28 +5822,12 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: add 1y to leap day and reject Expected a RangeError to be thrown but no exception was thrown at all"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/leap-year-roc.js",
-                "message": "Phasis\\Exceptions\\RangeError: Invalid day: 29"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/proleptic-buddhist.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: add 3 days to 2125-10-04: day result: Expected SameValue(\u00ab17\u00bb, \u00ab7\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/add/proleptic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 3 days to -329-10-04: eraYear result: Expected SameValue(\u00ab2241\u00bb, \u00ab330\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/daysInMonth/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 0061-02-01T12:34:00[u-ca=roc] Expected SameValue(\u00ab28\u00bb, \u00ab29\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/daysInYear/basic-chinese.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab355\u00bb, \u00ab354\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/daysInYear/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab366\u00bb, \u00ab365\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/inLeapYear/basic-chinese.js",
@@ -6012,10 +5868,6 @@
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/inLeapYear/basic-persian.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00abfalse\u00bb, \u00abtrue\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/inLeapYear/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00abtrue\u00bb, \u00abfalse\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/inLeapYear/chinese-calendar-dates.js",
@@ -6082,10 +5934,6 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: 1 month in same year: months result: Expected SameValue(\u00ab0\u00bb, \u00ab-1\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 10 years: days result: Expected SameValue(\u00ab-6\u00bb, \u00ab-5\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/chinese-calendar-dates.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: months: months result: Expected SameValue(\u00ab5\u00bb, \u00ab6\u00bb) to be true"
             },
@@ -6095,27 +5943,19 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -1y backwards  from 5500 AA to 1 AM: years result: Expected SameValue(\u00ab0\u00bb, \u00ab-1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-8\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-8\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/era-boundary-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: -2y backwards from Heisei 30 March to Reiwa 2 March: years result: Expected SameValue(\u00ab28\u00bb, \u00ab-2\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from BROC 5 to ROC 5 (no year 0): years result: Expected SameValue(\u00ab0\u00bb, \u00ab-9\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-630\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/intercalary-month-coptic.js",
@@ -6144,10 +5984,6 @@
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/leap-year-persian.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: 2 months in same year across Feb 28: days result: Expected SameValue(\u00ab-1\u00bb, \u00ab0\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/leap-year-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 60 years, 28 days in leap year: days result: Expected SameValue(\u00ab-27\u00bb, \u00ab-28\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/leap-year-since.js",
@@ -6202,10 +6038,6 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: Shahrivar 30th to Mehr 30th is one month (years): days result: Expected SameValue(\u00ab-1\u00bb, \u00ab0\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/since/wrapping-at-end-of-month-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Jan 29th to Feb 29th is one month (years): months result: Expected SameValue(\u00ab0\u00bb, \u00ab-1\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/basic-coptic.js",
                 "message": "Phasis\\Exceptions\\RangeError: monthCode 'M13' is not valid for calendar 'iso8601'"
             },
@@ -6224,10 +6056,6 @@
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/basic-persian.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: add 2mo 3w with result in the next year: day result: Expected SameValue(\u00ab22\u00bb, \u00ab21\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 1y: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/constrain-day-chinese.js",
@@ -6262,32 +6090,8 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: common-year Mehr rejects with 31 Expected a RangeError to be thrown but no exception was thrown at all"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/constrain-day-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: common-year Feb constrains to 28: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/era-boundary-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to Heisei 30 March (before May 1) lands in Heisei 31 March: era result: Expected SameValue(\u00ab\"ce\"\u00bb, \u00ab\"heisei\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BROC lands in 1 BROC (counts backwards): eraYear result: Expected SameValue(\u00ab1909\u00bb, \u00ab1\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): eraYear result: Expected SameValue(\u00ab642\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/leap-month-chinese-numerical-months.js",
@@ -6346,16 +6150,8 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: add 1y to leap day and reject Expected a RangeError to be thrown but no exception was thrown at all"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/leap-year-roc.js",
-                "message": "Phasis\\Exceptions\\RangeError: Invalid day: 29"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/proleptic-buddhist.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: add 3 days to 2125-10-04: day result: Expected SameValue(\u00ab17\u00bb, \u00ab7\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/subtract/proleptic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 3 days to -329-10-04: eraYear result: Expected SameValue(\u00ab2241\u00bb, \u00ab330\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/toLocaleString/era.js",
@@ -6414,10 +6210,6 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: 1 month in same year: months result: Expected SameValue(\u00ab0\u00bb, \u00ab1\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 10 years: days result: Expected SameValue(\u00ab6\u00bb, \u00ab5\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/chinese-calendar-dates.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: months: months result: Expected SameValue(\u00ab5\u00bb, \u00ab6\u00bb) to be true"
             },
@@ -6427,27 +6219,19 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 1y  from 5500 AA to 1 AM: years result: Expected SameValue(\u00ab0\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab8\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab8\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/era-boundary-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 2y from Heisei 30 March to Reiwa 2 March: years result: Expected SameValue(\u00ab-28\u00bb, \u00ab2\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from BROC 5 to ROC 5 (no year 0): years result: Expected SameValue(\u00ab0\u00bb, \u00ab9\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab630\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/intercalary-month-coptic.js",
@@ -6476,10 +6260,6 @@
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/leap-year-persian.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: 2 months in same year across Feb 28: days result: Expected SameValue(\u00ab1\u00bb, \u00ab0\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/leap-year-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 60 years, 28 days in leap year: days result: Expected SameValue(\u00ab27\u00bb, \u00ab28\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/leap-year-until.js",
@@ -6534,16 +6314,8 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: Shahrivar 30th to Mehr 30th is one month (years): days result: Expected SameValue(\u00ab1\u00bb, \u00ab0\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/until/wrapping-at-end-of-month-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Jan 29th to Feb 29th is one month (years): months result: Expected SameValue(\u00ab0\u00bb, \u00ab1\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/weekOfYear/non-iso-week-of-year.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: gregory does not provide week numbers Expected SameValue(\u00ab1\u00bb, \u00abundefined\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/basic-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/basic-islamic-umalqura.js",
@@ -6551,7 +6323,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: year2000 after setting year: eraYear result: Expected SameValue(\u00ab1782\u00bb, \u00ab130\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: year2000 after setting year: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/calendarresolvefields-error-ordering-gregory.js",
@@ -6612,10 +6384,6 @@
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/constrain-day-persian.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: common-year Mehr constrains to 30: month result: Expected SameValue(\u00ab8\u00bb, \u00ab7\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/constrain-day-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: common-year Feb constrains to 28: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/dangi-calendar-leap-dates.js",
@@ -6715,7 +6483,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/mutually-exclusive-fields-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: check that all fields are as expected: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\TypeError: at least one property required"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/with/wrapping-at-end-of-month-buddhist.js",
@@ -6743,7 +6511,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/year/arithmetic-year.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\RangeError: monthCode 'M13' is not valid for calendar 'iso8601'"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainDateTime/prototype/year/epoch-year.js",
@@ -6846,36 +6614,24 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: M01 in common year: referenceISODay result: Expected SameValue(\u00ab26\u00bb, \u00ab1\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/from/canonicalize-era-codes-non-gregorian.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: ce should canonicalize to bce Expected SameValue(\u00ab\"ce\"\u00bb, \u00ab\"bce\"\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: AM 0 resolves to AA 5500: referenceISODay result: Expected SameValue(\u00ab28\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: AH 0 resolves to BH 1: referenceISODay result: Expected SameValue(\u00ab30\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: AH 0 resolves to BH 1: referenceISODay result: Expected SameValue(\u00ab29\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: AH 0 resolves to BH 1: eraYear result: Expected SameValue(\u00ab642\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/era-boundary-japanese.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: Meiji 1 resolves to CE 1868 before era start date: era result: Expected SameValue(\u00ab\"meiji\"\u00bb, \u00ab\"ce\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/from/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: BROC 0 resolves to ROC 1: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/from/era-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 0001-01-01[u-ca=japanese] (BCE): era result: Expected SameValue(\u00ab\"ce\"\u00bb, \u00ab\"bce\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/extreme-dates.js",
@@ -6907,7 +6663,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/non-positive-single-era-year.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: era year -1 is not remapped: referenceISODay result: Expected SameValue(\u00ab26\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/reference-day-chinese.js",
@@ -6915,7 +6671,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/from/roundtrip-from-property-bag.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: month containing ISO date 2000-01-01 (chinese) - created from year and month: referenceISODay result: Expected SameValue(\u00ab8\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/basic-chinese.js",
@@ -6962,28 +6718,20 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: add 1y: month result: Expected SameValue(\u00ab6\u00bb, \u00ab7\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 1y: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to last year of Amete Alem era lands in year 1 of incarnation era: era result: Expected SameValue(\u00ab\"aa\"\u00bb, \u00ab\"am\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): month result: Expected SameValue(\u00ab5\u00bb, \u00ab6\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): month result: Expected SameValue(\u00ab5\u00bb, \u00ab6\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BROC lands in 1 BROC (counts backwards): era result: Expected SameValue(\u00ab\"roc\"\u00bb, \u00ab\"broc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): eraYear result: Expected SameValue(\u00ab642\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/leap-month-chinese-numerical-months.js",
@@ -7055,7 +6803,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/add/leap-year-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 1y to Feb: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\RangeError: Day 29 out of range for month"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/daysInMonth/basic-coptic.js",
@@ -7070,16 +6818,8 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: 1971-08-07[u-ca=ethiopic] Expected SameValue(\u00ab30\u00bb, \u00ab6\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/daysInMonth/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 0061-02-01[u-ca=roc] Expected SameValue(\u00ab28\u00bb, \u00ab29\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/daysInYear/basic-chinese.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab355\u00bb, \u00ab354\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/daysInYear/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab366\u00bb, \u00ab365\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/inLeapYear/basic-chinese.js",
@@ -7120,10 +6860,6 @@
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/inLeapYear/basic-persian.js",
                 "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00abfalse\u00bb, \u00abtrue\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/inLeapYear/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00abtrue\u00bb, \u00abfalse\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/inLeapYear/chinese-calendar-dates.js",
@@ -7191,27 +6927,19 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/since/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -13mo backwards  from 5500 AA to 1 AM: months result: Expected SameValue(\u00ab-12\u00bb, \u00ab-13\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/since/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-8\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/since/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-8\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/since/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/since/era-boundary-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: -1y backwards from 1 BCE to 1 CE: years result: Expected SameValue(\u00ab0\u00bb, \u00ab-1\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/since/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from BROC 5 to ROC 5 (no year 0): years result: Expected SameValue(\u00ab0\u00bb, \u00ab-9\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: -9y backwards  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab-630\u00bb, \u00ab-9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/since/intercalary-month-coptic.js",
@@ -7282,28 +7010,20 @@
                 "message": "Phasis\\Exceptions\\JsThrowable: add 1y: month result: Expected SameValue(\u00ab6\u00bb, \u00ab7\u00bb) to be true"
             },
             {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 1y: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
-            },
-            {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to last year of Amete Alem era lands in year 1 of incarnation era: era result: Expected SameValue(\u00ab\"aa\"\u00bb, \u00ab\"am\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): month result: Expected SameValue(\u00ab5\u00bb, \u00ab6\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): month result: Expected SameValue(\u00ab5\u00bb, \u00ab6\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BROC lands in 1 BROC (counts backwards): era result: Expected SameValue(\u00ab\"roc\"\u00bb, \u00ab\"broc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: Adding 1 year to 2 BH lands in 1 BH (counts backwards): eraYear result: Expected SameValue(\u00ab642\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/leap-month-chinese-numerical-months.js",
@@ -7375,7 +7095,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/subtract/leap-year-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: add 1y in leap year: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\RangeError: Day 31 out of range for month"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/toLocaleString/datestyle-and-timestyle.js",
@@ -7431,27 +7151,19 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/until/era-boundary-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 13mo  from 5500 AA to 1 AM: months result: Expected SameValue(\u00ab12\u00bb, \u00ab13\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/until/era-boundary-islamic-civil.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab8\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/until/era-boundary-islamic-tbla.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab8\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/until/era-boundary-islamic-umalqura.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/until/era-boundary-japanese.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 1y from 1 BCE to 1 CE: years result: Expected SameValue(\u00ab0\u00bb, \u00ab1\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/until/era-boundary-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from BROC 5 to ROC 5 (no year 0): years result: Expected SameValue(\u00ab0\u00bb, \u00ab9\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: 9y  from 5 BH to 5 AH (no year 0): years result: Expected SameValue(\u00ab630\u00bb, \u00ab9\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/until/intercalary-month-coptic.js",
@@ -7487,7 +7199,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/with/basic-ethiopic.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\JsThrowable: year2000 after setting month: referenceISODay result: Expected SameValue(\u00ab12\u00bb, \u00ab1\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/with/basic-hebrew.js",
@@ -7515,7 +7227,7 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/with/basic-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: year2000 after setting year: eraYear result: Expected SameValue(\u00ab1782\u00bb, \u00ab130\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\JsThrowable: year2000 after setting year: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/with/calendarresolvefields-error-ordering-gregory.js",
@@ -7607,11 +7319,11 @@
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/with/mutually-exclusive-fields-roc.js",
-                "message": "Phasis\\Exceptions\\JsThrowable: check that all fields are as expected: era result: Expected SameValue(\u00ab\"broc\"\u00bb, \u00ab\"roc\"\u00bb) to be true"
+                "message": "Phasis\\Exceptions\\TypeError: At least one temporal property must be provided"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/year/arithmetic-year.js",
-                "message": "Phasis\\Exceptions\\TypeError: missing required property: year"
+                "message": "Phasis\\Exceptions\\RangeError: monthCode 'M13' is not valid for ISO 8601 calendar"
             },
             {
                 "path": "test262/test/intl402/Temporal/PlainYearMonth/prototype/year/epoch-year.js",
@@ -9195,16 +8907,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 118.074,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 117.766,
+                "durationSec": 65.477,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
@@ -9213,25 +8916,16 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 117.687,
+                "durationSec": 65.217,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
+                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
                 ]
             },
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 116.662,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 115.25,
+                "durationSec": 65.04,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
@@ -9240,109 +8934,47 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 103.187,
+                "durationSec": 64.754,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 64.623,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 58.248,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 92.779,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 90.102,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 80.911,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 75.234,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 62.34,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 59.39,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 59.187,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js"
-                ]
-            },
-            {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 58.986,
+                "durationSec": 54.921,
                 "filesCount": 5,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Common.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Coptic.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cuneiform.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypriot.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypro_Minoan.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 57.607,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Enclosing_Mark.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Final_Punctuation.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Format.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 55.745,
+                "durationSec": 54.79,
                 "filesCount": 5,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js",
@@ -9355,20 +8987,7 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 55.589,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Control.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 55.021,
+                "durationSec": 54.651,
                 "filesCount": 5,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Number.js",
@@ -9381,7 +9000,20 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 54.58,
+                "durationSec": 54.512,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Control.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 53.836,
                 "filesCount": 5,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js",
@@ -9394,14 +9026,114 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 54.276,
+                "durationSec": 53.476,
                 "filesCount": 5,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Space_Separator.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Spacing_Mark.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Surrogate.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 53.018,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Common.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Coptic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cuneiform.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypriot.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypro_Minoan.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 52.63,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inscriptional_Parthian.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Javanese.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kaithi.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kannada.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Katakana.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 52.042,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 51.949,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Common.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Coptic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cuneiform.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypriot.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypro_Minoan.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 51.687,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Duployan.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Egyptian_Hieroglyphs.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Elbasan.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Elymaic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ethiopic.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 51.336,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khojki.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khudawadi.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Kirat_Rai.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Lao.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Latin.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 51.049,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Avestan.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Balinese.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bamum.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bassa_Vah.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Batak.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 50.998,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Braille.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Buginese.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Buhid.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Canadian_Aboriginal.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Carian.js"
                 ]
             }
         ]
