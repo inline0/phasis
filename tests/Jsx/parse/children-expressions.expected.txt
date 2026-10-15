@@ -1,0 +1,31 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=ul
+        JSXClosingElement
+          JSXIdentifier name=ul
+        JSXExpressionContainer
+          CallExpression
+            MemberExpression
+              Identifier name=items
+              Identifier name=map
+            ArrowFunctionExpression
+              Identifier name=i
+              JSXElement
+                JSXOpeningElement
+                  JSXIdentifier name=li
+                  JSXAttribute
+                    JSXIdentifier name=key
+                    JSXExpressionContainer
+                      MemberExpression
+                        Identifier name=i
+                        Identifier name=id
+                JSXClosingElement
+                  JSXIdentifier name=li
+                JSXExpressionContainer
+                  MemberExpression
+                    Identifier name=i
+                    Identifier name=name

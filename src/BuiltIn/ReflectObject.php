@@ -448,8 +448,23 @@ class ReflectObject
                     '[[NewTarget]]',
                     PropertyDescriptor::data($ntValue, false, false, false),
                 );
+                // Class fields, as `new` initializes them: a base class
+                // before its body runs, a derived class with an implicit
+                // constructor after super() has produced `this`.
+                $interpreter = \Phasis\Engine::getCurrentInterpreter();
+                if ($interpreter !== null && $target->isClassConstructor() && !$target->isDerivedConstructor()) {
+                    $interpreter->initializeInstanceFields($target, $newObj, $target->getPrivateEnv() ?? $interpreter->getGlobalEnv());
+                }
                 $result = $target->call($newObj, $callArgs);
                 $finalObj = ($result instanceof JsObject && $result !== $newObj) ? $result : $newObj;
+                if (
+                    $interpreter !== null
+                    && $target->isDerivedConstructor()
+                    && $target->isNative()
+                    && ($target->getPrivateMethodEntries() !== [] || $target->getInstanceFieldInitializers() !== [])
+                ) {
+                    $interpreter->initializeInstanceFields($target, $finalObj, $target->getPrivateEnv() ?? $interpreter->getGlobalEnv());
+                }
                 // For native targets where newTarget !== target, apply
                 // newTarget.prototype after the body. Native [[Construct]]
                 // implementations rely on [[NewTarget]] for this lookup;

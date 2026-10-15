@@ -1,0 +1,1 @@
+x = <p>Don't // not a comment /* nor this */ a > b and c } d "quoted"</p>;

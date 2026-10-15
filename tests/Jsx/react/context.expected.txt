@@ -1,0 +1,5 @@
+{
+  "string": "<div><p>light<!-- -->:<!-- -->anon</p><p>dark<!-- -->:<!-- -->anon</p><p>nested<!-- -->:<!-- -->anon</p><b>dark</b><p>dark<!-- -->:<!-- -->Dennis</p><p>light<!-- -->:<!-- -->anon</p>light</div>",
+  "static": "<div><p>light:anon</p><p>dark:anon</p><p>nested:anon</p><b>dark</b><p>dark:Dennis</p><p>light:anon</p>light</div>",
+  "prerender": "<div><p>light<!-- -->:<!-- -->anon</p><p>dark<!-- -->:<!-- -->anon</p><p>nested<!-- -->:<!-- -->anon</p><b>dark</b><p>dark<!-- -->:<!-- -->Dennis</p><p>light<!-- -->:<!-- -->anon</p>light</div>"
+}

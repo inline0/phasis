@@ -1,0 +1,10 @@
+{
+  // Comments and trailing commas are allowed, as in tsconfig.json.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "~utils": ["src/utils/index.js"],
+    },
+  },
+}

@@ -1,0 +1,27 @@
+Program
+  VariableDeclaration kind=const
+    VariableDeclarator
+      Identifier name=f
+      ArrowFunctionExpression
+        AssignmentPattern
+          Identifier name=a
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=A
+        AssignmentPattern
+          ObjectPattern
+            Property kind=init
+              Identifier name=b
+              Identifier name=b
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=B
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=C
+          JSXClosingElement
+            JSXIdentifier name=C
+          JSXExpressionContainer
+            Identifier name=a
+          JSXExpressionContainer
+            Identifier name=b

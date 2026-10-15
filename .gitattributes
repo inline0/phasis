@@ -36,3 +36,6 @@
 /bin/*                  export-ignore
 /bin/phasis             -export-ignore
 /bin/test262            -export-ignore
+
+# JSX fixtures that test CRLF handling must keep their line endings.
+/tests/Jsx/**/*crlf*      -text

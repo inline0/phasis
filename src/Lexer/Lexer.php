@@ -8,6 +8,8 @@ use Phasis\Exceptions\SyntaxError;
 
 class Lexer
 {
+    use JsxScanning;
+
     private string $source;
     private int $length;
     private int $pos = 0;
@@ -80,6 +82,8 @@ class Lexer
     {
         $this->tokens = [];
         $this->comments = [];
+        $this->jsxStack = [];
+        $this->jsxPragmas = [];
         $this->pos = 0;
         $this->line = 1;
         $this->column = 0;
@@ -115,11 +119,25 @@ class Lexer
         $tokenCountChecked = 0;
 
         while ($this->pos < $this->length) {
+            // Inside a JSX tag or between JSX children, the JSX scanner owns
+            // the source: whitespace and `//` are significant there.
+            if ($this->jsxStack !== [] && $this->jsxStack[count($this->jsxStack) - 1]['kind'] !== 'expr') {
+                $this->tokens[] = $this->readJsxToken();
+                continue;
+            }
+
             $this->lineTerminatorBefore = false;
             $this->skipWhitespaceAndComments();
 
             if ($this->pos >= $this->length) {
                 break;
+            }
+            if ($this->jsxStack !== [] && $this->source[$this->pos] === '}') {
+                $closing = $this->closeJsxExpression();
+                if ($closing !== null) {
+                    $this->tokens[] = $closing;
+                    continue;
+                }
             }
             // Only sample every 65k tokens. count() on a 4M-element
             // array is cheap, but doing this guard on the inner loop
@@ -148,6 +166,7 @@ class Lexer
             if (
                 $this->source[$this->pos] === '{'
                 && $this->templateDepth === 0
+                && $this->jsxStack === []
                 && $this->canCoalesceEmptyBlock()
             ) {
                 $savedPos = $this->pos;
@@ -190,6 +209,9 @@ class Lexer
                 if ($token->type === TokenType::TemplateHead) {
                     $this->templateDepth++;
                     $this->templateBraceDepth[] = 0;
+                }
+                if ($this->jsxStack !== []) {
+                    $this->trackJsxExpressionBrace($token);
                 }
                 // Track brace depth inside template expressions.
                 if ($this->templateDepth > 0) {
@@ -263,6 +285,13 @@ class Lexer
         // RegExp literal: / at start of expression context
         if ($ch === '/' && $this->canStartRegExp()) {
             return $this->readRegExp($start);
+        }
+
+        // JSX element: `<` where an expression may start, followed by a name
+        // or by `>` for a fragment. Plain JavaScript never starts an
+        // expression with `<`, so this cannot change the meaning of valid JS.
+        if ($ch === '<' && $this->jsx && $this->jsxCanStartElement()) {
+            return $this->startJsxElement($start);
         }
 
         // Private identifier (#name) for class private fields/methods.
@@ -1363,6 +1392,9 @@ class Lexer
                 $commentStart = $this->pos;
                 $this->skipToEndOfLine();
                 $this->captureSourceUrlPragma($commentStart, $this->pos);
+                if ($this->jsx) {
+                    $this->captureJsxPragmas(substr($this->source, $commentStart, $this->pos - $commentStart));
+                }
                 if ($this->collectComments) {
                     $this->comments[] = new Comment(
                         'line',
@@ -1462,6 +1494,9 @@ class Lexer
                 }
                 if (!$closed) {
                     throw new SyntaxError('Unterminated multi-line comment', $commentStart);
+                }
+                if ($this->jsx) {
+                    $this->captureJsxPragmas(substr($this->source, $commentStart->offset, $this->pos - $commentStart->offset));
                 }
                 if ($this->collectComments) {
                     $this->comments[] = new Comment(
@@ -1877,6 +1912,7 @@ class Lexer
             || $prev->type === TokenType::Super
             // Contextual keywords that can be used as identifiers in expression context.
             || $prev->type === TokenType::Of
+            || $prev->type === TokenType::JsxTagEnd
         ) {
             return false;
         }

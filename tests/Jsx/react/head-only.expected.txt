@@ -1,0 +1,5 @@
+{
+  "string": "<head><title>t</title></head><body><p>no html element</p></body>",
+  "static": "<head><title>t</title></head><body><p>no html element</p></body>",
+  "prerender": "<head><title>t</title></head><body><p>no html element</p></body>"
+}

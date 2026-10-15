@@ -1,0 +1,1 @@
+x = <C data={{ a: { b: [1, 2] } }} f={function () { return { c: 1 }; }} />;

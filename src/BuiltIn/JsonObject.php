@@ -1121,7 +1121,7 @@ class JsonObject
             if ($value instanceof \Phasis\Value\JsProxy && $value->isRevoked()) {
                 throw new \Phasis\Exceptions\TypeError('Cannot perform \'get\' on a proxy that has been revoked');
             }
-            if ($stack->contains($value)) {
+            if ($stack->offsetExists($value)) {
                 throw new \Phasis\Exceptions\TypeError('Converting circular structure to JSON');
             }
             if (self::jsIsArray($value)) {
@@ -1145,7 +1145,7 @@ class JsonObject
         string $indent,
         \SplObjectStorage $stack,
     ): string {
-        $stack->attach($value);
+        $stack->offsetSet($value);
         $stepback = $indent;
         $indent .= $gap;
         $keys = $propertyList ?? self::enumerableOwnPropertyNames($value);
@@ -1167,7 +1167,7 @@ class JsonObject
             }
         }
 
-        $stack->detach($value);
+        $stack->offsetUnset($value);
 
         if ($partial === []) {
             return '{}';
@@ -1193,7 +1193,7 @@ class JsonObject
         string $indent,
         \SplObjectStorage $stack,
     ): string {
-        $stack->attach($value);
+        $stack->offsetSet($value);
         $stepback = $indent;
         $indent .= $gap;
         $len = self::arrayLikeLength($value);
@@ -1204,7 +1204,7 @@ class JsonObject
             $partial[] = $strP ?? 'null';
         }
 
-        $stack->detach($value);
+        $stack->offsetUnset($value);
 
         if ($partial === []) {
             return '[]';

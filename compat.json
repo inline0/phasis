@@ -1,25 +1,25 @@
 {
-    "generatedAt": "2026-10-14T17:39:02+00:00",
-    "updatedAt": "2026-10-14T17:39:02+00:00",
+    "generatedAt": "2026-10-15T06:21:36+00:00",
+    "updatedAt": "2026-10-15T06:21:36+00:00",
     "complete": true,
     "git": {
-        "branch": "main",
-        "commit": "b9cd1c8",
+        "branch": "feat/jsx-pack",
+        "commit": "458e63e",
         "isDirty": true
     },
     "environment": {
-        "phpVersion": "8.5.11",
-        "nodeVersion": "v22.23.3"
+        "phpVersion": "8.5.6",
+        "nodeVersion": "v22.17.0"
     },
     "mode": {
         "match": null,
-        "jobs": 4,
-        "chunkSize": 25,
+        "jobs": 8,
+        "chunkSize": 250,
         "timeoutSec": 300
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "a9c7b195429261f205cbd5842f26c05fb0cb5e20"
+        "fingerprint": "03005f5f69b78d9b89c9aa392b528925172752d4"
     },
     "discovery": {
         "groupCount": 159,
@@ -2683,9 +2683,61 @@
         "blockedChunks": [],
         "slowChunks": [
             {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 249.218,
+                "filesCount": 125,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/ASCII.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/ASCII_Hex_Digit.js",
+                    "...",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Glagolitic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Gothic.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 244.438,
+                "filesCount": 125,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Grantha.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Greek.js",
+                    "...",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Warang_Citi.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Yezidi.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 204.415,
+                "filesCount": 104,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Yi.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Zanabazar_Square.js",
+                    "...",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nag_Mundari.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Nandinagari.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 151.806,
+                "filesCount": 105,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_New_Tai_Lue.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Newa.js",
+                    "...",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_ZWJ_Sequence-negative-u.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_ZWJ_Sequence.js"
+                ]
+            },
+            {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 70.569,
+                "durationSec": 46.146,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
@@ -2694,16 +2746,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 68.679,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 67.809,
+                "durationSec": 45.935,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
@@ -2712,34 +2755,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 67.306,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 67.103,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 66.091,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 60.14,
+                "durationSec": 45.499,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
@@ -2748,162 +2764,138 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 56.933,
+                "durationSec": 44.407,
+                "filesCount": 250,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Proxy/regress-bug1062349.js",
+                    "test262/test/staging/sm/Proxy/regress-bug950407.js",
+                    "...",
+                    "test262/test/staging/sm/TypedArray/object-defineproperty.js",
+                    "test262/test/staging/sm/TypedArray/of.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 43.7,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 43.384,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 40.998,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 39.099,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
                 ]
             },
             {
-                "group": "built-ins/RegExp/property-escapes/generated",
+                "group": "intl402",
                 "kind": "normal",
-                "durationSec": 55.316,
-                "filesCount": 5,
+                "durationSec": 39.069,
+                "filesCount": 22,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Control.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 54.95,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Paragraph_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Private_Use.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Punctuation.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 54.799,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Space_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Spacing_Mark.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Surrogate.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 54.679,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter_Number.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Line_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Lowercase_Letter.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 54.55,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 54.235,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js",
+                    "test262/test/intl402/constructors-string-and-single-element-array.js",
+                    "test262/test/intl402/constructors-taint-Object-prototype-2.js",
                     "...",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 53.996,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Number.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Open_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Number.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 53.276,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Enclosing_Mark.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Final_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Format.js"
+                    "test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js",
+                    "test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js"
                 ]
             },
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 53.097,
+                "durationSec": 36.203,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
                 ]
             },
             {
-                "group": "built-ins/RegExp/property-escapes/generated",
+                "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 51.391,
-                "filesCount": 5,
+                "durationSec": 34.24,
+                "filesCount": 250,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Georgian.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Glagolitic.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Gothic.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Grantha.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Greek.js"
+                    "test262/test/staging/sm/TypedArray/prototype-constructor-identity.js",
+                    "test262/test/staging/sm/TypedArray/seal-and-freeze.js",
+                    "...",
+                    "test262/test/staging/sm/extensions/extension-methods-reject-null-undefined-this.js",
+                    "test262/test/staging/sm/extensions/for-loop-with-lexical-declaration-and-nested-function-statement.js"
                 ]
             },
             {
-                "group": "built-ins/RegExp/property-escapes/generated",
+                "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 51.103,
-                "filesCount": 5,
+                "durationSec": 33.876,
+                "filesCount": 250,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Adlam.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ahom.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Anatolian_Hieroglyphs.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Armenian.js"
+                    "test262/test/staging/sm/extensions/function-caller-skips-eval-frames.js",
+                    "test262/test/staging/sm/extensions/function-properties.js",
+                    "...",
+                    "test262/test/staging/sm/regress/regress-554955-6.js",
+                    "test262/test/staging/sm/regress/regress-559402-1.js"
                 ]
             },
             {
-                "group": "built-ins/RegExp/property-escapes/generated",
+                "group": "language/literals",
                 "kind": "normal",
-                "durationSec": 51.097,
-                "filesCount": 5,
+                "durationSec": 27.326,
+                "filesCount": 250,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Kayah_Li.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Kharoshthi.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khitan_Small_Script.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khmer.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khojki.js"
+                    "test262/test/language/literals/bigint/binary-invalid-digit.js",
+                    "test262/test/language/literals/bigint/exponent-part.js",
+                    "...",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 25.231,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 21.972,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
+                ]
+            },
+            {
+                "group": "built-ins/decodeURIComponent",
+                "kind": "normal",
+                "durationSec": 21.224,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
                 ]
             }
         ]

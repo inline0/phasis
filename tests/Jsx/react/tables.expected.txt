@@ -1,0 +1,5 @@
+{
+  "string": "<table><colgroup><col span=\"2\"/></colgroup><thead><tr><th>h</th></tr></thead><tbody><tr><td>1</td><!--$!--><template></template><td>…</td><!--/$--></tr></tbody></table>",
+  "static": "<table><colgroup><col span=\"2\"/></colgroup><thead><tr><th>h</th></tr></thead><tbody><tr><td>1</td><td>…</td></tr></tbody></table>",
+  "prerender": "<table><colgroup><col span=\"2\"/></colgroup><thead><tr><th>h</th></tr></thead><tbody><tr><td>1</td><!--$--><td>cell</td><!--/$--></tr></tbody></table>"
+}

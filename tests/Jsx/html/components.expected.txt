@@ -1,0 +1,4 @@
+{
+  "string": "<main><section><h2>Hello &lt;World></h2><ul><li>a</li><li>b</li><li>c</li></ul></section><b>one</b><i>two</i><p>keyed fragment</p>just text &amp; more42<p class=\"ce\">created element</p></main>",
+  "async": "<main><section><h2>Hello &lt;World></h2><ul><li>a</li><li>b</li><li>c</li></ul></section><b>one</b><i>two</i><p>keyed fragment</p>just text &amp; more42<p class=\"ce\">created element</p></main>"
+}

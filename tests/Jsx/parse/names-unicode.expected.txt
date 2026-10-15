@@ -1,0 +1,10 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=Größe
+          JSXAttribute
+            JSXIdentifier name=wert
+            Literal value="ä"

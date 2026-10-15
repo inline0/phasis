@@ -1,0 +1,5 @@
+{
+  "string": "ERROR: Can only set one of `children` or `props.dangerouslySetInnerHTML`.",
+  "static": "ERROR: Can only set one of `children` or `props.dangerouslySetInnerHTML`.",
+  "prerender": "ERROR: Can only set one of `children` or `props.dangerouslySetInnerHTML`."
+}

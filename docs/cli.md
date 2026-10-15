@@ -12,7 +12,7 @@ meta_description: "Complete command reference for the bin/phasis, bin/test262, a
 
 Phasis ships three main executables in `bin/`:
 
-- **`bin/phasis`** — run JavaScript files, evaluate source passed on the command line, dump ASTs.
+- **`bin/phasis`** — run JavaScript files, evaluate source passed on the command line, dump ASTs, render JSX components.
 - **`bin/test262`** — run the official ECMAScript conformance suite against Phasis.
 - **`bin/wpt`** — run the Web Platform Tests fixtures against Phasis (URL, encoding, fetch, headers, Blob, AbortSignal, streams, …).
 
@@ -21,10 +21,10 @@ After `composer require phasis/phasis`, `bin/phasis` and `bin/test262` are linke
 ## bin/phasis
 
 ```
-phasis <file.js> | phasis -e '<source>' | phasis --ast <file.js>
+phasis <file.js|file.mjs|file.jsx> | phasis -e '<source>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']
 ```
 
-These three forms are the whole interface. There is no REPL, no stdin input and no module flag.
+These four forms are the whole interface. There is no REPL, no stdin input and no module flag: the file extension decides.
 
 ### Run a file
 
@@ -34,7 +34,7 @@ These three forms are the whole interface. There is no REPL, no stdin input and 
 
 Executes `script.js` as a classic script. When it finishes, everything the script wrote with `console.log` (and `console.error`, `console.warn`, …) is printed to stdout in one go. If the script throws, the error message goes to stderr and the exit status is 1.
 
-The file is always parsed as a classic script, so a file with `import` / `export` or top-level `await` fails with a SyntaxError. To run an ES module, use `Engine::evalAsModule()` from PHP (see the [API reference](/docs/api#evalasmodule)) or bundle the code first.
+`.mjs` files and JSX files (`.jsx`) run as ES modules through the module loader, so `import` / `export`, top-level `await` and `import.meta` work and specifiers resolve the way bundlers resolve them (see [Modules](/docs/modules)). Every other file, including `.js`, is parsed as a classic script, so a `.js` file with `import` / `export` or top-level `await` fails with a SyntaxError.
 
 ### Evaluate source
 
@@ -52,7 +52,15 @@ The argument is evaluated as a complete script. Only `console` output is printed
 ./vendor/bin/phasis -e 'a + b' --ast
 ```
 
-Prints the parse tree as JSON (indented by two spaces). Useful for debugging parser issues or building tooling on top of Phasis. For programmatic access, use the [parser API](/docs/parser).
+Prints the parse tree as JSON (indented by two spaces). Useful for debugging parser issues or building tooling on top of Phasis. For `.jsx` files the tree keeps the JSX nodes (`JsxMode::Preserve`). For programmatic access, use the [parser API](/docs/parser).
+
+### Render a component
+
+```bash
+./vendor/bin/phasis --render components/Card.jsx --props '{"title":"Hello"}'
+```
+
+Renders the module's default export with `Engine::render()` and prints the HTML. `--props` is a JSON object passed as the component's props. See [JSX](/docs/jsx).
 
 ## bin/test262
 

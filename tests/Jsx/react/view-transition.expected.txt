@@ -1,0 +1,5 @@
+{
+  "string": "<link rel=\"preload\" as=\"image\" href=\"/h.png\"/><div><p>auto named</p><img src=\"/h.png\"/><!--$--><b>c</b><!--/$--></div>",
+  "static": "<link rel=\"preload\" as=\"image\" href=\"/h.png\"/><div><p>auto named</p><img src=\"/h.png\"/><b>c</b></div>",
+  "prerender": "<link rel=\"preload\" as=\"image\" href=\"/h.png\"/><div><p vt-update=\"auto\">auto named</p><img src=\"/h.png\" vt-name=\"hero\" vt-update=\"none\" vt-share=\"auto\"/><!--$--><b vt-name=\"_R_3_\" vt-update=\"x\" vt-share=\"x\">c</b><!--/$--></div>"
+}

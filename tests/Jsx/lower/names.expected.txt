@@ -1,0 +1,7 @@
+#1 jsx("my-el", {})
+#2 jsx(fn:Baz, {})
+#3 jsx(fn:_x, {})
+#4 jsx(fn:$y, {})
+#5 jsx("svg:rect", {})
+#6 jsx(fn:Ünï, {})
+#7 jsx(fn:Comp, {})

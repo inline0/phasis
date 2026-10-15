@@ -1,0 +1,71 @@
+Program
+  FunctionDeclaration
+    Identifier name=f
+    BlockStatement
+      IfStatement
+        Identifier name=a
+        ReturnStatement
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=A
+      VariableDeclaration kind=const
+        VariableDeclarator
+          Identifier name=b
+          ConditionalExpression
+            Identifier name=c
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=B
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=C
+      VariableDeclaration kind=const
+        VariableDeclarator
+          Identifier name=d
+          ArrayExpression
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=D
+                JSXAttribute
+                  JSXIdentifier name=key
+                  Literal value="1"
+            JSXElement
+              JSXOpeningElement
+                JSXIdentifier name=E
+                JSXAttribute
+                  JSXIdentifier name=key
+                  Literal value="2"
+      ReturnStatement
+        LogicalExpression op=&&
+          Identifier name=e
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=F
+            JSXClosingElement
+              JSXIdentifier name=F
+            JSXExpressionContainer
+              LogicalExpression op=||
+                Identifier name=g
+                JSXElement
+                  JSXOpeningElement
+                    JSXIdentifier name=G
+  VariableDeclaration kind=const
+    VariableDeclarator
+      Identifier name=h
+      ArrowFunctionExpression
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=H
+  VariableDeclaration kind=const
+    VariableDeclarator
+      Identifier name=i
+      ObjectExpression
+        Property kind=init
+          Identifier name=j
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=I
+  ExportDefaultDeclaration
+    JSXElement
+      JSXOpeningElement
+        JSXIdentifier name=J

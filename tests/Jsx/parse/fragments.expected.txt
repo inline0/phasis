@@ -1,0 +1,17 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXFragment
+        JSXOpeningFragment
+        JSXClosingFragment
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=A
+        JSXFragment
+          JSXOpeningFragment
+          JSXClosingFragment
+          JSXText value="nested"
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=B

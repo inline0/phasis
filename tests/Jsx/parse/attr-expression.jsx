@@ -1,0 +1,1 @@
+x = <a onClick={() => go(1)} style={{ color: "red", fontSize: 12 }} n={a ? b : c} />;

@@ -1,0 +1,1 @@
+x = <my-element data-x="1" aria-label="y" />;

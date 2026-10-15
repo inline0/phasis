@@ -1,0 +1,2 @@
+#1 jsx("div", (custom proto){})
+#2 jsx("div", {})

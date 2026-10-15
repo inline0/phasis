@@ -1,0 +1,9 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      BinaryExpression op=/
+        JSXElement
+          JSXOpeningElement
+            JSXIdentifier name=a
+        Literal value=2

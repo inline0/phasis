@@ -1,0 +1,4 @@
+{
+  "string": "<form><textarea>a &amp; &lt;b></textarea><textarea>ignored child</textarea><select><option value=\"a\">A</option><option selected value=\"b\">B</option><option value=\"b\">B2</option></select><select><option selected value=\"2\">loose equality</option><option selected value=\"2\">number</option></select><select><option>none</option></select></form>",
+  "async": "<form><textarea>a &amp; &lt;b></textarea><textarea>ignored child</textarea><select><option value=\"a\">A</option><option selected value=\"b\">B</option><option value=\"b\">B2</option></select><select><option selected value=\"2\">loose equality</option><option selected value=\"2\">number</option></select><select><option>none</option></select></form>"
+}

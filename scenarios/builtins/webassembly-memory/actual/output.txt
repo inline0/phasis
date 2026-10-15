@@ -1,0 +1,49 @@
+object [object WebAssembly] {"w":true,"e":false,"c":true,"v":"object","g":"undefined"} {"w":true,"e":false,"c":true,"v":"function","g":"undefined"} {"w":false,"e":false,"c":true,"v":"string","g":"undefined"}
+constructor,grow,buffer 1 Memory
+{"w":true,"e":true,"c":true,"v":"function","g":"undefined"} {"e":true,"c":true,"v":"undefined","g":"function"} {"w":false,"e":false,"c":true,"v":"string","g":"undefined"} {"w":false,"e":false,"c":false,"v":"object","g":"undefined"} {"w":true,"e":false,"c":true,"v":"function","g":"undefined"}
+1 grow get buffer grow,buffer
+SharedArrayBuffer 65536 true false true false 65536
+1 65536 false 131072
+7
+9 65536
+ArrayBuffer false false 65536
+1 true 0 false 4
+true 0 131072 4
+desc0 TypeError: WebAssembly.Memory(): Argument 0 must be a memory descriptor
+desc1 TypeError: WebAssembly.Memory(): Property 'initial' is required
+desc2 TypeError: WebAssembly.Memory(): Property 'initial' must be non-negative
+desc3 RangeError: WebAssembly.Memory(): Property 'maximum': value 0 is below the lower bound 1
+desc4 TypeError: WebAssembly.Memory(): If shared is true, maximum property should be defined.
+desc5 RangeError: WebAssembly.Memory(): Property 'initial': value 65537 is above the upper bound 65536
+desc6 RangeError: WebAssembly.Memory(): Property 'maximum': value 65537 is above the upper bound 65536
+desc7 TypeError: WebAssembly.Memory(): Property 'initial' must be convertible to a valid number
+desc8 ok ArrayBuffer 65536
+desc9 TypeError: WebAssembly.Memory(): Property 'initial' must be in the unsigned long range
+desc10 TypeError: WebAssembly.Memory(): Property 'initial' must be convertible to a valid number
+desc11 TypeError: WebAssembly.Memory(): Property 'maximum' must be non-negative
+desc12 ok ArrayBuffer 65536
+desc13 ok SharedArrayBuffer 65536
+desc14 ok ArrayBuffer 0
+desc15 TypeError: WebAssembly.Memory(): Argument 0 must be a memory descriptor
+call TypeError: WebAssembly.Memory(): WebAssembly.Memory must be invoked with 'new'
+grow -1 TypeError: WebAssembly.Memory.grow(): Argument 0 must be non-negative
+grow NaN TypeError: WebAssembly.Memory.grow(): Argument 0 must be convertible to a valid number
+grow undefined TypeError: WebAssembly.Memory.grow(): Argument 0 must be convertible to a valid number
+grow 1 ok 1
+grow 4294967296 TypeError: WebAssembly.Memory.grow(): Argument 0 must be in the unsigned long range
+grow 70000 RangeError: WebAssembly.Memory.grow(): Unable to grow instance memory
+max RangeError: WebAssembly.Memory.grow(): Maximum memory size exceeded
+transfer TypeError: ArrayBuffer is not detachable and could not be cloned.
+transferFixed TypeError: ArrayBuffer is not detachable and could not be cloned.
+clone-transfer DataCloneError false
+clone ok 131072
+recv-buffer TypeError: WebAssembly.Memory.buffer: Receiver is not a WebAssembly.Memory
+recv-grow TypeError: WebAssembly.Memory.grow(): Receiver is not a WebAssembly.Memory
+resizable ok false false
+sloppy-set ok undefined
+strict-set TypeError: Cannot add property x, object is not extensible
+tag ok [object WebAssembly.Memory]
+CompileError {"w":true,"e":false,"c":true,"v":"function","g":"undefined"} 1 CompileError true true CompileError "" CompileError: m x 1 true [object Error]
+LinkError {"w":true,"e":false,"c":true,"v":"function","g":"undefined"} 1 LinkError true true LinkError "" LinkError: m x 1 true [object Error]
+RuntimeError {"w":true,"e":false,"c":true,"v":"function","g":"undefined"} 1 RuntimeError true true RuntimeError "" RuntimeError: m x 1 true [object Error]
+true true 65536

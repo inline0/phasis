@@ -1,0 +1,9 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXMemberExpression
+            JSXIdentifier name=this
+            JSXIdentifier name=Comp

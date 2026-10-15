@@ -1,0 +1,17 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=use
+          JSXAttribute
+            JSXNamespacedName
+              JSXIdentifier name=xlink
+              JSXIdentifier name=href
+            Literal value="#icon"
+          JSXAttribute
+            JSXNamespacedName
+              JSXIdentifier name=xml
+              JSXIdentifier name=lang
+            Literal value="en"

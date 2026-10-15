@@ -1,0 +1,5 @@
+{
+  "string": "<ul><li>lazy</li><li>2</li><li>10</li><li>7</li><li>lazy2</li><li>function</li><li>5</li><li>initial</li><li>only</li><li>false</li><li>function</li><li>server</li><li>optimistic</li><li>action-state</li><li>function</li><li>false</li><li>function</li><li>0</li><li>function</li></ul>",
+  "static": "<ul><li>lazy</li><li>2</li><li>10</li><li>7</li><li>lazy2</li><li>function</li><li>5</li><li>initial</li><li>only</li><li>false</li><li>function</li><li>server</li><li>optimistic</li><li>action-state</li><li>function</li><li>false</li><li>function</li><li>0</li><li>function</li></ul>",
+  "prerender": "<ul><li>lazy</li><li>2</li><li>10</li><li>7</li><li>lazy2</li><li>function</li><li>5</li><li>initial</li><li>only</li><li>false</li><li>function</li><li>server</li><li>optimistic</li><li>action-state</li><li>function</li><li>false</li><li>function</li><li>0</li><li>function</li></ul>"
+}

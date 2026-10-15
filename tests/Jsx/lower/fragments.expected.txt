@@ -1,0 +1,7 @@
+#1 jsx("br", {})
+#2 jsx(fn:Fragment, {"children": #1})
+#3 jsx(fn:Fragment, {})
+#4 jsx(fn:A, {})
+#5 jsxs(fn:Fragment, {"children": [#4, "text", 1]})
+#6 jsx(fn:Fragment, {"children": "x"})
+#7 jsx("div", {"children": #6})

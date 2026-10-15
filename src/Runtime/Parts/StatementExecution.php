@@ -2932,10 +2932,11 @@ trait StatementExecution
         // shape: `s.length -= a` in the finally pre-mutated the path
         // stack so the visitor saw the parent node instead of the
         // pushed child and recursed forever on the same root.
+        // The try Block itself is never in tail position (§15.10.2
+        // HasCallInTailPosition): a catch clause must still see the call's
+        // exception, so `try { return f(); } catch (e) {}` cannot thunk f.
         $savedTailPosForTry = $this->inTailPosition;
-        if ($node->finalizer !== null) {
-            $this->inTailPosition = false;
-        }
+        $this->inTailPosition = false;
         try {
             $completion = $this->execBlockStatement($node->block, $env);
             $this->inTailPosition = $savedTailPosForTry;
@@ -2989,7 +2990,13 @@ trait StatementExecution
             $this->skipAnnexBHoisting = true;
             $this->hoistDeclarations($node->handler->body->body, $bodyEnv);
             $this->skipAnnexBHoisting = $savedSkip;
-            $completion = $this->executeBody($node->handler->body->body, $bodyEnv);
+            // The Catch block is in tail position only without a Finally.
+            $this->inTailPosition = $node->finalizer === null && $savedTailPosForTry;
+            try {
+                $completion = $this->executeBody($node->handler->body->body, $bodyEnv);
+            } finally {
+                $this->inTailPosition = $savedTailPosForTry;
+            }
         }
 
         if ($node->finalizer !== null) {

@@ -1,0 +1,5 @@
+{
+  "string": "<section><h2>Comments</h2><!--$!--><template></template><p>Loading comments</p><!--/$--></section>",
+  "static": "<section><h2>Comments</h2><p>Loading comments</p></section>",
+  "prerender": "<section><h2>Comments</h2><!--$--><ul><li>First p1</li><li>Second</li></ul><!--/$--></section>"
+}

@@ -1,0 +1,5 @@
+{
+  "string": "<div><!--&--><p>shown</p><!--/&--><!--&--><p>default</p><!--/&-->text</div>",
+  "static": "<div><p>shown</p><p>default</p>text</div>",
+  "prerender": "<div><!--&--><p>shown</p><!--/&--><!--&--><p>default</p><!--/&-->text</div>"
+}

@@ -1,0 +1,5 @@
+{
+  "string": "<div><button aria-controls=\"_R_0_\">3<!-- --> comments</button><section id=\"_R_0_\" hidden=\"\">Short excerpt</section></div>",
+  "static": "<div><button aria-controls=\"_R_0_\">3 comments</button><section id=\"_R_0_\" hidden=\"\">Short excerpt</section></div>",
+  "prerender": "<div><button aria-controls=\"_R_0_\">3<!-- --> comments</button><section id=\"_R_0_\" hidden=\"\">Short excerpt</section></div>"
+}

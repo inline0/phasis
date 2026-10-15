@@ -1,0 +1,5 @@
+{
+  "string": "<ul><li>first</li><li>a</li><li>b</li><li>c</li><li>a<!-- -->1</li><li>a<!-- -->2</li><li>b<!-- -->1</li><li>b<!-- -->2</li><li>c<!-- -->1</li><li>c<!-- -->2</li>1<!-- -->2<!-- -->3<!-- -->4<!-- -->5<!-- -->s1<!-- -->s2<!-- -->g1<b>g2</b></ul>",
+  "static": "<ul><li>first</li><li>a</li><li>b</li><li>c</li><li>a1</li><li>a2</li><li>b1</li><li>b2</li><li>c1</li><li>c2</li>12345s1s2g1<b>g2</b></ul>",
+  "prerender": "<ul><li>first</li><li>a</li><li>b</li><li>c</li><li>a<!-- -->1</li><li>a<!-- -->2</li><li>b<!-- -->1</li><li>b<!-- -->2</li><li>c<!-- -->1</li><li>c<!-- -->2</li>1<!-- -->2<!-- -->3<!-- -->4<!-- -->5<!-- -->s1<!-- -->s2<!-- -->g1<b>g2</b></ul>"
+}

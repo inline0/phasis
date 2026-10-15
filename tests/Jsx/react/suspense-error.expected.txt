@@ -1,0 +1,5 @@
+{
+  "string": "<div><!--$!--><template></template><p>fallback shown</p><!--/$--><p>after</p></div>",
+  "static": "<div><p>fallback shown</p><p>after</p></div>",
+  "prerender": "<div><!--$!--><template></template><p>fallback shown</p><!--/$--><p>after</p></div>"
+}

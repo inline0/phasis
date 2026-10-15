@@ -1,0 +1,29 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=C
+          JSXAttribute
+            JSXIdentifier name=data
+            JSXExpressionContainer
+              ObjectExpression
+                Property kind=init
+                  Identifier name=a
+                  ObjectExpression
+                    Property kind=init
+                      Identifier name=b
+                      ArrayExpression
+                        Literal value=1
+                        Literal value=2
+          JSXAttribute
+            JSXIdentifier name=f
+            JSXExpressionContainer
+              FunctionExpression
+                BlockStatement
+                  ReturnStatement
+                    ObjectExpression
+                      Property kind=init
+                        Identifier name=c
+                        Literal value=1

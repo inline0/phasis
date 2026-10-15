@@ -1,0 +1,5 @@
+{
+  "string": "<div><div><b>bold</b> & <i>it</i></div><span></span><script>var a = 1;</script><style>a{color:red}</style><script>if (a < b) { console.log(\"ok\"); }</script><style>.a::after{content:\"x\"}</style><noscript><img src=\"/n.png\"/></noscript></div>",
+  "static": "<div><div><b>bold</b> & <i>it</i></div><span></span><script>var a = 1;</script><style>a{color:red}</style><script>if (a < b) { console.log(\"ok\"); }</script><style>.a::after{content:\"x\"}</style><noscript><img src=\"/n.png\"/></noscript></div>",
+  "prerender": "<div><div><b>bold</b> & <i>it</i></div><span></span><script>var a = 1;</script><style>a{color:red}</style><script>if (a < b) { console.log(\"ok\"); }</script><style>.a::after{content:\"x\"}</style><noscript><img src=\"/n.png\"/></noscript></div>"
+}

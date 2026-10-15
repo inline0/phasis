@@ -1,0 +1,91 @@
+name: JSX Pack
+
+# Runs the JSX Pack suites: the committed oracle outputs (parse, lowering,
+# resolution, package smoke, React render, three-way, HTML, precompile,
+# Goals examples) through PHPUnit, then the hydration check, which needs
+# Node at test time: React 19.3's client hydrates the HTML Phasis renders
+# for every React fixture in jsdom, production and development builds.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/Jsx/**'
+      - 'phpunit.xml.dist'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/jsx.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/Jsx/**'
+      - 'phpunit.xml.dist'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/jsx.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: jsx-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jsx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, bcmath, intl, curl
+          ini-values: opcache.enable_cli=1, opcache.jit=tracing, opcache.jit_buffer_size=64M
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-php8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.5-
+
+      - name: Install dependencies
+        run: |
+          for i in 1 2 3; do
+            composer install --no-interaction --prefer-dist && break
+            echo "composer install attempt $i failed; sleeping 10s..."
+            sleep 10
+          done
+          if [ ! -f vendor/autoload.php ]; then
+            echo "vendor/autoload.php missing after 3 install attempts; failing"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/Jsx/oracle/package-lock.json
+
+      - name: Install the pinned oracle toolchain
+        working-directory: tests/Jsx/oracle
+        run: npm ci --no-audit --no-fund
+
+      # The package smoke and Goals tests load packages from the pinned
+      # toolchain's node_modules, so install it first.
+      - name: Run JSX suites
+        run: php -d memory_limit=1G vendor/bin/phpunit --testsuite jsx
+
+      - name: Hydrate every React fixture
+        env:
+          TZ: UTC
+        run: node tests/Jsx/oracle/hydrate.mjs

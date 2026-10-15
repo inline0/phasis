@@ -1,0 +1,11 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXMemberExpression
+            JSXMemberExpression
+              JSXIdentifier name=UI
+              JSXIdentifier name=Layout
+            JSXIdentifier name=Header

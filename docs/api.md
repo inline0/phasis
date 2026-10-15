@@ -1,11 +1,11 @@
 ---
 title: "API"
-description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, setGlobal, call, console output, resource limits, and lifecycle."
+description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, render, setGlobal, call, console output, resource limits, and lifecycle."
 path: "api"
 order: 220
 section: "Reference"
 meta_title: "API"
-meta_description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, setGlobal, call, console output, resource limits, and lifecycle."
+meta_description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, render, setGlobal, call, console output, resource limits, and lifecycle."
 ---
 
 # API
@@ -70,7 +70,7 @@ $path = __DIR__ . '/entry.mjs';
 $engine->evalAsModule(file_get_contents($path), $path);
 ```
 
-The loader resolves relative and absolute paths only; see [Known limitations](/docs/compatibility/limitations#module-loader).
+Specifiers resolve the way bundlers resolve them: import maps, extensions and `index` files, aliases and `node_modules` packages, including CommonJS (see [Modules](/docs/modules)).
 
 ## execFile
 
@@ -78,13 +78,49 @@ The loader resolves relative and absolute paths only; see [Known limitations](/d
 public function execFile(string $path): mixed
 ```
 
-Reads a file from disk and passes its contents to `eval()`, so it runs as a classic script whatever its extension; a file with `import` / `export` fails with a SyntaxError. The file's real path becomes the base for dynamic `import()` specifiers. Use `evalAsModule()` for module files.
+Loads a file from disk and runs it. `.mjs` files and JSX files (the `JsxOptions::$extensions`, `.jsx` by default) are loaded with the ES module loader, so their imports resolve, and `execFile()` returns `null` for them, like `evalAsModule()`. Every other file, including `.js`, passes its contents to `eval()` as a classic script and returns the value of its last expression; a `.js` file with `import` / `export` fails with a SyntaxError, and its real path becomes the base for dynamic `import()` specifiers. Use `getExport()` to read a module's exports.
 
 ```php
 $engine->execFile(__DIR__ . '/script.js');
 ```
 
 If the file cannot be read, PHP emits a warning and `execFile()` throws a plain `\RuntimeException` ("Cannot read file: …").
+
+## render
+
+```php
+public function render(string $path, array $props = [], string $export = 'default', ?RenderProfile $profile = null): string
+public function renderSource(string $source, array $props = [], string $export = 'default', ?string $path = null, ?RenderProfile $profile = null): string
+```
+
+Renders a component module to HTML: loads the module, converts `$props` to JavaScript, renders the export and runs the event loop until the render settles. `RenderProfile::React` gives React 19.3's `prerender` output; `RenderProfile::Html` gives preact-render-to-string-compatible HTML. Without a profile, the module's JSX import source decides (`react` or `phasis`). Render errors rethrow as `JsThrowable`; a render that never settles throws `RuntimeError`. See [JSX](/docs/jsx) and [React](/docs/react).
+
+```php
+echo $engine->render(__DIR__ . '/components/PostCard.jsx', ['post' => $post]);
+```
+
+## getExport
+
+```php
+public function getExport(string $path, string $name = 'default'): mixed
+```
+
+Loads a module and returns one of its exports converted to PHP. See [Modules](/docs/modules#reading-exports-from-php).
+
+## Module and JSX configuration
+
+```php
+public function setJsxOptions(\Phasis\Parser\Jsx\JsxOptions $options): void
+public function setModuleOptions(\Phasis\Module\ModuleOptions $options): void
+public function setImportMap(array $imports): void                 // specifier => absolute path, or null for a stub
+public function setAssetResolver(callable $resolver): void         // fn (string $file): string
+public function setCssModuleResolver(callable $resolver): void     // fn (string $file): array<string, string>
+```
+
+- `setJsxOptions()`: how JSX compiles and which module paths get it (see [JSX](/docs/jsx)).
+- `setModuleOptions()`: resolution extensions, package conditions, `NODE_ENV`, style and asset extensions, and the parse cache (see [Modules](/docs/modules)).
+- `setImportMap()`: WHATWG import map `imports`, consulted before everything else, including the built-in React modules.
+- `setAssetResolver()` and `setCssModuleResolver()`: what asset and CSS-module imports return. Without a resolver those imports throw.
 
 ## setGlobal
 

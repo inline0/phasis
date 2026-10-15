@@ -1,0 +1,5 @@
+{
+  "string": "<div><video muted=\"\" src=\"/v.mp4\"></video><div ok-name=\"3\"></div></div>",
+  "static": "<div><video muted=\"\" src=\"/v.mp4\"></video><div ok-name=\"3\"></div></div>",
+  "prerender": "<div><video muted=\"\" src=\"/v.mp4\"></video><div ok-name=\"3\"></div></div>"
+}

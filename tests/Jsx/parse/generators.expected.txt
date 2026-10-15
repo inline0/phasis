@@ -1,0 +1,17 @@
+Program
+  FunctionDeclaration
+    Identifier name=g
+    BlockStatement
+      ExpressionStatement
+        YieldExpression
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=A
+  FunctionDeclaration
+    Identifier name=h
+    BlockStatement
+      ReturnStatement
+        AwaitExpression
+          JSXElement
+            JSXOpeningElement
+              JSXIdentifier name=B

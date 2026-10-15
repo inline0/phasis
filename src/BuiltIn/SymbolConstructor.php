@@ -303,6 +303,12 @@ class SymbolConstructor
         $env->defineVar('__SymbolPrototype__', $proto);
     }
 
+    /** `Symbol.for(key)` from PHP: the registry symbol for $key. */
+    public static function registered(string $key): JsSymbol
+    {
+        return self::$registry[$key] ??= new JsSymbol($key);
+    }
+
     private static function symbolFor(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {

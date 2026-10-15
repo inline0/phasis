@@ -46,18 +46,15 @@ PHP's reference-counting GC differs from V8's tracing collector. PHP objects cap
 
 ## Module loader
 
-The ES module loader resolves relative imports against the file system but does not understand bundler conventions:
+The ES module loader resolves imports the way bundlers do: extension and `index` probing, `jsconfig.json` aliases, `node_modules` with `package.json` `exports`, CommonJS packages, import maps, and style and asset imports (see [Modules](/docs/modules)). What it does not do:
 
-- No `node_modules` resolution.
-- No `package.json` `exports` map.
-- No file-extension inference (you must write `import './foo.mjs'`, not `import './foo'`).
 - No HTTP imports.
-
-This matches the bare ECMAScript spec but not Node's behaviour. There is no hook for a custom module resolver. To use npm packages, bundle them with a tool like esbuild into a single script or module before passing it to Phasis.
+- No Node built-in modules (`fs`, `path`, `node:*`); stub them through the import map.
+- No bundler-specific import features (`?raw`, `?url`, `import.meta.glob`).
 
 ## Wasm
 
-`WebAssembly` is not implemented. There's no PHP wasm runtime to bind to.
+Phasis cannot compile or run WebAssembly modules: there's no PHP wasm runtime to bind to. The `WebAssembly` namespace has `Memory` (with shared memories, which are how the Web Platform hands out a `SharedArrayBuffer`) and the `CompileError`, `LinkError` and `RuntimeError` constructors. `compile`, `instantiate`, `validate`, `Module` and the other module APIs are absent, so `typeof WebAssembly.instantiate === 'function'` feature checks take their fallback path.
 
 ## Browser-only Web APIs we skip
 

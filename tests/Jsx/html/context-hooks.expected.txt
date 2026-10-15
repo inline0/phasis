@@ -1,0 +1,4 @@
+{
+  "string": "<div><p>light 2 5 4 function r</p><p>dark 2 5 4 function r</p><p>inner 2 5 4 function r</p><p>nested 2 5 4 function r</p><b>light</b></div>",
+  "async": "<div><p>light 2 5 4 function r</p><p>dark 2 5 4 function r</p><p>inner 2 5 4 function r</p><p>nested 2 5 4 function r</p><b>light</b></div>"
+}

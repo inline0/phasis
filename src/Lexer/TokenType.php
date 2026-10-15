@@ -128,6 +128,14 @@ enum TokenType: string
     // Private identifier (#name)
     case PrivateIdentifier = 'PrivateIdentifier';
 
+    // JSX, emitted only when the lexer runs in JSX mode. Punctuation inside
+    // tags reuses the ordinary types (`/`, `=`, `:`, `.`, `{`, `}`).
+    case JsxTagStart = 'JsxTagStart';
+    case JsxTagEnd = 'JsxTagEnd';
+    case JsxName = 'JsxName';
+    case JsxText = 'JsxText';
+    case JsxString = 'JsxString';
+
     // Special
     case EOF = 'EOF';
 

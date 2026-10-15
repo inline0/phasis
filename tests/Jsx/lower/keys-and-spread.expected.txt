@@ -1,0 +1,6 @@
+#1 jsx("div", {"a": 1, "key": "p"}, "x")
+#2 createElement("div", {"a": 1, "key": "x"})
+#3 createElement("div", {"a": 1, "key": "x"}, "child", "k")
+#4 jsx("div", {"a": 1, "b": 2, "key": "p", "c": true}, "k")
+#5 jsx("div", {"a": 1, "key": "p"})
+#6 jsx("div", {"a": 1, "key": "p", "b": 2})

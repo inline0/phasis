@@ -1,0 +1,14 @@
+Program
+  ExpressionStatement
+    AssignmentExpression op==
+      Identifier name=x
+      JSXElement
+        JSXOpeningElement
+          JSXIdentifier name=div
+          JSXAttribute
+            JSXIdentifier name=a
+            Literal value="1"
+          JSXAttribute
+            JSXIdentifier name=b
+            JSXExpressionContainer
+              Literal value=2

@@ -13,6 +13,7 @@ use Phasis\Value\JsArrayBuffer;
 use Phasis\Value\JsDataView;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsObject;
+use Phasis\Value\JsSharedArrayBuffer;
 use Phasis\Value\JsString;
 use Phasis\Value\JsTypedArray;
 use Phasis\Value\JsUndefined;
@@ -269,10 +270,18 @@ final class CompressionStream
      * Extract raw bytes from a BufferSource chunk
      * (Uint8Array / typed view / ArrayBuffer / DataView). Returns
      * null when the chunk is not a BufferSource — caller surfaces
-     * that as the spec-mandated TypeError.
+     * that as the spec-mandated TypeError. BufferSource has no
+     * [AllowShared], so SharedArrayBuffers and views on them are not one.
      */
     private static function bufferSourceBytes(JsValue $chunk): ?string
     {
+        if (
+            $chunk instanceof JsSharedArrayBuffer
+            || (($chunk instanceof JsTypedArray || $chunk instanceof JsDataView)
+                && $chunk->getBuffer() instanceof JsSharedArrayBuffer)
+        ) {
+            return null;
+        }
         if ($chunk instanceof JsArrayBuffer) {
             return $chunk->readBytes(0, $chunk->getByteLength());
         }

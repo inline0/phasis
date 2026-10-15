@@ -80,6 +80,7 @@ class Parser
     use Parts\StatementParser;
     use Parts\ExpressionParser;
     use Parts\TokenNavigation;
+    use Parts\JsxParser;
 
     private int $pos = 0;
     private bool $noIn = false;
@@ -137,6 +138,92 @@ class Parser
     /** @var Lexer */
     private Lexer $lexer;
 
+    /** @var array<string, string> Dotted global expressions replaced by string literals, as bundlers' `define`. */
+    private array $defines = [];
+
+    /**
+     * Replace dotted global expressions with string literals at parse
+     * time, the way bundlers' `define` option works. Used for
+     * `process.env.NODE_ENV` in modules. Must be called before parse().
+     *
+     * @param array<string, string> $defines e.g. ['process.env.NODE_ENV' => 'production']
+     */
+    public function setDefines(array $defines): void
+    {
+        $this->defines = $defines;
+    }
+
+    /** JSX settings; null means JSX is not recognized at all. */
+    private ?Jsx\JsxOptions $jsxOptions = null;
+
+    private ?Jsx\JsxLowering $jsxLoweringInstance = null;
+
+    /**
+     * Recognize JSX in this source. Must be called before parse(). Classic
+     * and Preserve work in either goal; Automatic and Precompile inject
+     * imports and therefore need the module goal.
+     */
+    public function setJsxOptions(?Jsx\JsxOptions $options): void
+    {
+        $this->jsxOptions = $options;
+    }
+
+    /**
+     * The JSX import source in effect after `@jsxImportSource` pragmas, or
+     * null when JSX is off. Call after parse().
+     */
+    public function jsxImportSource(): ?string
+    {
+        if ($this->jsxOptions === null) {
+            return null;
+        }
+        return $this->lexer->jsxPragmas()['jsxImportSource'] ?? $this->jsxOptions->importSource;
+    }
+
+    private function jsxMode(): Jsx\JsxMode
+    {
+        $mode = $this->jsxOptions !== null ? $this->jsxOptions->mode : Jsx\JsxMode::Preserve;
+        if ($mode === Jsx\JsxMode::Preserve) {
+            return $mode;
+        }
+        return match ($this->lexer->jsxPragmas()['jsxRuntime'] ?? null) {
+            'classic' => Jsx\JsxMode::Classic,
+            'automatic' => $mode === Jsx\JsxMode::Precompile ? $mode : Jsx\JsxMode::Automatic,
+            default => $mode,
+        };
+    }
+
+    private function jsxLowering(): Jsx\JsxLowering
+    {
+        if ($this->jsxLoweringInstance !== null) {
+            return $this->jsxLoweringInstance;
+        }
+        $options = $this->jsxOptions ?? new Jsx\JsxOptions();
+        $pragmas = $this->lexer->jsxPragmas();
+        $used = [];
+        foreach ($this->tokens ?? [] as $token) {
+            if ($token->type === TokenType::Identifier) {
+                $used[$token->value] = true;
+            }
+        }
+        $uniqueName = static function (string $base) use (&$used): string {
+            $name = $base;
+            $n = 2;
+            while (isset($used[$name])) {
+                $name = $base . $n++;
+            }
+            $used[$name] = true;
+            return $name;
+        };
+        return $this->jsxLoweringInstance = new Jsx\JsxLowering(
+            $this->jsxMode(),
+            $pragmas['jsxImportSource'] ?? $options->importSource,
+            $pragmas['jsx'] ?? $options->factory,
+            $pragmas['jsxFrag'] ?? $options->fragment,
+            $uniqueName,
+        );
+    }
+
     /** @var Token[]|null */
     private ?array $tokens = null;
 
@@ -162,8 +249,78 @@ class Parser
         if ($this->tokens === null) {
             $this->lexer->setModuleMode($this->moduleMode);
             $this->lexer->setCollectComments($this->collectComments);
+            $this->lexer->setJsx($this->jsxOptions !== null);
             $this->tokens = $this->lexer->tokenize();
+            if ($this->defines !== []) {
+                $this->applyDefines();
+            }
         }
+    }
+
+    /**
+     * Substitute each define whose dotted path appears as a global read:
+     * not a property of something else, not assigned to, and not shadowed
+     * by a declaration of the root name anywhere in the file.
+     */
+    private function applyDefines(): void
+    {
+        $tokens = $this->tokens ?? [];
+        foreach ($this->defines as $path => $value) {
+            $parts = explode('.', $path);
+            $root = $parts[0];
+            $declared = false;
+            foreach ($tokens as $i => $token) {
+                if ($token->type === TokenType::Identifier && $token->value === $root && $i > 0) {
+                    $prev = $tokens[$i - 1]->type;
+                    if (in_array($prev, [TokenType::Var, TokenType::Let, TokenType::Const_, TokenType::Function_, TokenType::Class_], true)) {
+                        $declared = true;
+                        break;
+                    }
+                }
+            }
+            if ($declared) {
+                continue;
+            }
+            $width = count($parts) * 2 - 1;
+            $out = [];
+            $count = count($tokens);
+            for ($i = 0; $i < $count; $i++) {
+                $token = $tokens[$i];
+                if (
+                    $token->type === TokenType::Identifier
+                    && $token->value === $root
+                    && $this->matchesDefine($tokens, $i, $parts)
+                ) {
+                    $out[] = new Token(TokenType::String, $value, $token->location, $token->lineTerminatorBefore, 'verbatim');
+                    $i += $width - 1;
+                    continue;
+                }
+                $out[] = $token;
+            }
+            $tokens = $out;
+        }
+        $this->tokens = $tokens;
+    }
+
+    /**
+     * @param Token[] $tokens
+     * @param list<string> $parts
+     */
+    private function matchesDefine(array $tokens, int $i, array $parts): bool
+    {
+        if ($i > 0 && in_array($tokens[$i - 1]->type, [TokenType::Dot, TokenType::OptionalChaining], true)) {
+            return false;
+        }
+        foreach (array_slice($parts, 1) as $k => $part) {
+            $dot = $tokens[$i + 1 + $k * 2] ?? null;
+            $name = $tokens[$i + 2 + $k * 2] ?? null;
+            if ($dot === null || $dot->type !== TokenType::Dot || $name === null || $name->value !== $part) {
+                return false;
+            }
+        }
+        $after = $tokens[$i + count($parts) * 2 - 1] ?? null;
+        return $after === null
+            || (!$after->type->isAssignmentOperator() && $after->type !== TokenType::PlusPlus && $after->type !== TokenType::MinusMinus);
     }
 
     /**
@@ -227,7 +384,7 @@ class Parser
         return substr($this->source, $startOffset, $endOffset - $startOffset);
     }
 
-    public static function parseSource(string $source, string $sourceType = 'script'): Program
+    public static function parseSource(string $source, string $sourceType = 'script', ?Jsx\JsxOptions $jsx = null): Program
     {
         if ($sourceType !== 'script' && $sourceType !== 'module') {
             throw new \InvalidArgumentException(
@@ -236,6 +393,7 @@ class Parser
         }
         $parser = new self($source);
         $parser->setModuleMode($sourceType === 'module');
+        $parser->setJsxOptions($jsx);
         return $parser->parse();
     }
 
@@ -256,6 +414,20 @@ class Parser
 
         while (!$this->isAtEnd()) {
             $body[] = $this->parseStatementOrDeclaration();
+        }
+
+        if ($this->jsxLoweringInstance !== null && $this->jsxLoweringInstance->needsImports()) {
+            if (!$this->moduleMode) {
+                throw new \Phasis\Exceptions\SyntaxError(
+                    'The automatic JSX runtime needs module code; use the classic runtime in scripts',
+                    $location,
+                );
+            }
+            $body = [
+                ...$this->jsxLoweringInstance->importDeclarations($location),
+                ...$this->jsxLoweringInstance->templateDeclarations($location),
+                ...$body,
+            ];
         }
 
         $program = new Program($location, $body);

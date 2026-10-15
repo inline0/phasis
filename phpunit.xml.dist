@@ -29,6 +29,9 @@
         <testsuite name="oracle">
             <directory>tests/Oracle</directory>
         </testsuite>
+        <testsuite name="jsx">
+            <directory>tests/Jsx</directory>
+        </testsuite>
         <testsuite name="popular">
             <directory>tests/Popular</directory>
         </testsuite>

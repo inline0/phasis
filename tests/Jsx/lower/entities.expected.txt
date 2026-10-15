@@ -1,0 +1,6 @@
+#1 jsx("p", {"children": "©  x'y'z &unknown;  "})
+#2 jsx("p", {"children": "&amp &ampx; &#; &#x; &lt"})
+#3 jsx("p", {"children": "\u0000|𐀀|\ud800|A|😀|&AMP;|'"})
+#4 jsx("p", {"children": "A&#X41;A￿A"})
+#5 jsx("p", {"children": "  a  "})
+#6 jsx("p", {"children": "  b "})

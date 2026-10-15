@@ -1,0 +1,5 @@
+{
+  "string": "ERROR: Too many re-renders. React limits the number of renders to prevent an infinite loop.",
+  "static": "ERROR: Too many re-renders. React limits the number of renders to prevent an infinite loop.",
+  "prerender": "ERROR: Too many re-renders. React limits the number of renders to prevent an infinite loop."
+}

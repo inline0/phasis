@@ -1,0 +1,5 @@
+{
+  "string": "<div><!--$!--><template data-dgst=\"\"></template><p>placeholder</p><!--/$--><p>server part</p></div>",
+  "static": "<div><p>placeholder</p><p>server part</p></div>",
+  "prerender": "<div><!--$!--><template data-dgst=\"\"></template><p>placeholder</p><!--/$--><p>server part</p></div>"
+}

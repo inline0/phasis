@@ -60,7 +60,7 @@ class DisposableStackConstructor
      */
     private static function isDisposableStack(JsValue $value): bool
     {
-        return $value instanceof JsObject && self::getDisposableInstances()->contains($value);
+        return $value instanceof JsObject && self::getDisposableInstances()->offsetExists($value);
     }
 
     /**
@@ -68,7 +68,7 @@ class DisposableStackConstructor
      */
     private static function isAsyncDisposableStack(JsValue $value): bool
     {
-        return $value instanceof JsObject && self::getAsyncDisposableInstances()->contains($value);
+        return $value instanceof JsObject && self::getAsyncDisposableInstances()->offsetExists($value);
     }
 
     public static function install(Environment $env): void
@@ -107,7 +107,7 @@ class DisposableStackConstructor
                 false,
                 false,
             ));
-            self::getDisposableInstances()->attach($this_);
+            self::getDisposableInstances()->offsetSet($this_);
             return $this_;
         }, 0);
         $ctor->setConstructable();
@@ -226,7 +226,7 @@ class DisposableStackConstructor
                     false,
                 ));
                 // Register the new stack as a real DisposableStack instance.
-                self::getDisposableInstances()->attach($newStack);
+                self::getDisposableInstances()->offsetSet($newStack);
                 // Mark old stack as disposed with empty stack.
                 $this_->set('[[DisposableState]]', new JsString('disposed'));
                 $this_->set('[[DisposableStack]]', new JsObject());
@@ -301,7 +301,7 @@ class DisposableStackConstructor
                 false,
                 false,
             ));
-            self::getAsyncDisposableInstances()->attach($this_);
+            self::getAsyncDisposableInstances()->offsetSet($this_);
             return $this_;
         }, 0);
         $ctor->setConstructable();
@@ -437,7 +437,7 @@ class DisposableStackConstructor
                     false,
                 ));
                 // Register the new stack as a real AsyncDisposableStack instance.
-                self::getAsyncDisposableInstances()->attach($newStack);
+                self::getAsyncDisposableInstances()->offsetSet($newStack);
                 $this_->set('[[DisposableState]]', new JsString('disposed'));
                 $this_->set('[[DisposableStack]]', new JsObject());
                 return $newStack;
