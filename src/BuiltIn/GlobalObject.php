@@ -129,6 +129,9 @@ class GlobalObject
             $prevInstance = JsFunction::getInterpreterInstance();
             $prevCallback = JsFunction::getInterpreterCallback();
             $interp = new Interpreter($env);
+            if ($prevInstance !== null) {
+                $interp->inheritLimits($prevInstance);
+            }
             try {
                 $interp->validateEvalProgram($program);
                 $interp->setEvalContext(true);
@@ -350,6 +353,9 @@ class GlobalObject
                 $prevInstance = JsFunction::getInterpreterInstance();
                 $prevCallback = JsFunction::getInterpreterCallback();
                 $interp = new Interpreter($env);
+                if ($prevInstance !== null) {
+                    $interp->inheritLimits($prevInstance);
+                }
                 try {
                     $result = $interp->execute($program);
                 } finally {
@@ -992,6 +998,9 @@ class GlobalObject
                 $prevInstance = JsFunction::getInterpreterInstance();
                 $prevCallback = JsFunction::getInterpreterCallback();
                 $interp = new Interpreter($env);
+                if ($prevInstance !== null) {
+                    $interp->inheritLimits($prevInstance);
+                }
                 try {
                     return $interp->execute($program);
                 } finally {
@@ -1189,6 +1198,9 @@ class GlobalObject
                 $prevInstance = JsFunction::getInterpreterInstance();
                 $prevCallback = JsFunction::getInterpreterCallback();
                 $interp = new Interpreter($env);
+                if ($prevInstance !== null) {
+                    $interp->inheritLimits($prevInstance);
+                }
                 try {
                     return $interp->execute($program);
                 } finally {

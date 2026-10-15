@@ -23,6 +23,9 @@ final class CommentIndex
 
     private int $attachedCount = 0;
 
+    /** @var array<int, int> Start offset of each comment, by the offset just past its end. */
+    private array $startByEnd = [];
+
     public function __construct()
     {
         $this->leading = new \SplObjectStorage();
@@ -35,7 +38,7 @@ final class CommentIndex
         $list = $this->leading[$node] ?? [];
         $list[] = $comment;
         $this->leading[$node] = $list;
-        $this->attachedCount++;
+        $this->record($comment);
     }
 
     public function addTrailing(Node $node, AttachedComment $comment): void
@@ -43,7 +46,7 @@ final class CommentIndex
         $list = $this->trailing[$node] ?? [];
         $list[] = $comment;
         $this->trailing[$node] = $list;
-        $this->attachedCount++;
+        $this->record($comment);
     }
 
     public function addDangling(Node $node, AttachedComment $comment): void
@@ -51,7 +54,7 @@ final class CommentIndex
         $list = $this->dangling[$node] ?? [];
         $list[] = $comment;
         $this->dangling[$node] = $list;
-        $this->attachedCount++;
+        $this->record($comment);
     }
 
     /** @return array<int, AttachedComment> */
@@ -72,9 +75,21 @@ final class CommentIndex
         return $this->dangling[$node] ?? [];
     }
 
+    /** Where the comment that ends just before this offset starts, or null when none does. */
+    public function startOfCommentEndingAt(int $offset): ?int
+    {
+        return $this->startByEnd[$offset] ?? null;
+    }
+
     /** Total number of comments attached anywhere; used to assert none were dropped. */
     public function attachedCount(): int
     {
         return $this->attachedCount;
+    }
+
+    private function record(AttachedComment $comment): void
+    {
+        $this->startByEnd[$comment->comment->endOffset] = $comment->comment->start->offset;
+        $this->attachedCount++;
     }
 }

@@ -61,6 +61,9 @@ class ShadowRealmConstructor
                     $outerRealm = Engine::getCurrentRealm();
                 }
                 $engine = new Engine(eager: $outerRealm?->isEager() ?? false);
+                if ($outerInterp !== null) {
+                    $engine->inheritExecutionBudget($outerInterp);
+                }
                 $engine->setLimit('maxLoopIterations', 2_000_000);
                 if ($outerInterp !== null) {
                     Engine::setCurrentInterpreter($outerInterp);
@@ -178,8 +181,14 @@ class ShadowRealmConstructor
                     );
                 }
 
+                $caller = Engine::getCurrentInterpreter();
+                if ($caller !== null) {
+                    $engine->inheritExecutionBudget($caller);
+                }
                 try {
                     $result = self::evaluateInRealm($engine, $sourceText->value, $outerRealm);
+                } catch (\Phasis\Exceptions\BudgetExceeded $e) {
+                    throw $e;
                 } catch (\Phasis\Exceptions\SyntaxError $e) {
                     // SyntaxError must surface in the OUTER realm so a
                     // cross-realm ShadowRealm exposes
@@ -249,6 +258,9 @@ class ShadowRealmConstructor
                     ? $callerInterpreter->getCurrentModulePath()
                     : null;
 
+                if ($callerInterpreter !== null) {
+                    $engine->inheritExecutionBudget($callerInterpreter);
+                }
                 $promise = new \Phasis\Value\JsPromise();
                 try {
                     $innerInterpreter = $engine->getInterpreter();
@@ -269,6 +281,8 @@ class ShadowRealmConstructor
                     } else {
                         $promise->resolve(self::getWrappedValue($value));
                     }
+                } catch (\Phasis\Exceptions\BudgetExceeded $e) {
+                    throw $e;
                 } catch (\Throwable $e) {
                     // Per spec RealmImportValue, any module-load failure
                     // (parse error, link error, runtime throw) rejects the

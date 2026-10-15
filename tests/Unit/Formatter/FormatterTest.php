@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Phasis\Tests\Unit\Formatter;
 
 use Phasis\Ast\EstreeSerializer;
+use Phasis\Engine;
 use Phasis\Formatter\FormatOptions;
 use Phasis\Formatter\Formatter;
 use Phasis\Parser\Parser;
@@ -85,6 +86,34 @@ final class FormatterTest extends TestCase
         );
     }
 
+    public function testDroppedEmptyStatementsLeaveStringsAsExpressions(): void
+    {
+        $source = ";\"use strict\"\nundeclared = 1\nfunction f() { ;'use strict'; return this === undefined }\n"
+            . "function g() { ('use strict'); return this === undefined }\n"
+            . "function h() { 'a'; ; 'use strict'; return this === undefined }\n"
+            . "[typeof undeclared, f(), g(), h()].join()";
+
+        $formatted = Formatter::formatSource($source, 'script', new FormatOptions());
+
+        self::assertSame(
+            "(\"use strict\");\nundeclared = 1;\n"
+            . "function f() {\n  (\"use strict\");\n  return this === undefined;\n}\n"
+            . "function g() {\n  (\"use strict\");\n  return this === undefined;\n}\n"
+            . "function h() {\n  \"a\";\n  (\"use strict\");\n  return this === undefined;\n}\n"
+            . "[typeof undeclared, f(), g(), h()].join();\n",
+            $formatted,
+        );
+        self::assertSame('number,false,false,false', (new Engine())->eval($source));
+        self::assertSame('number,false,false,false', (new Engine())->eval($formatted));
+    }
+
+    public function testDirectivesKeepTheirSpelling(): void
+    {
+        $source = "function f() {\n  'use strict';\n  \"it's\";\n  return this;\n}\n";
+
+        self::assertSame($source, Formatter::formatSource($source, 'script', new FormatOptions(singleQuote: true)));
+    }
+
     public function testDoubleQuoteAndSpacesOptions(): void
     {
         $out = Formatter::formatSource("const a = { x: 'hi' };\n", 'script', new FormatOptions());
@@ -144,12 +173,23 @@ final class FormatterTest extends TestCase
     }
 
     /**
+     * Strips positions and spellings, and the empty statements of a statement
+     * list, which the formatter drops as prettier does.
+     *
      * @param array<int|string, mixed> $tree
      */
     private static function stripVolatileKeys(array &$tree): void
     {
         foreach (['loc', 'start', 'end', 'range', 'raw', 'verbatim'] as $key) {
             unset($tree[$key]);
+        }
+        foreach (['body', 'consequent'] as $key) {
+            if (isset($tree[$key]) && is_array($tree[$key]) && array_is_list($tree[$key])) {
+                $tree[$key] = array_values(array_filter(
+                    $tree[$key],
+                    static fn(mixed $node): bool => !is_array($node) || ($node['type'] ?? null) !== 'EmptyStatement',
+                ));
+            }
         }
         if (isset($tree['value']) && is_int($tree['value'])) {
             $tree['value'] = (float) $tree['value'];

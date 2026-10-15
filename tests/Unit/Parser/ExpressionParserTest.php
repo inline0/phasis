@@ -396,4 +396,40 @@ class ExpressionParserTest extends TestCase
         $this->assertInstanceOf(BinaryExpression::class, $expr->right);
         $this->assertSame('**', $expr->right->operator);
     }
+
+    /** @return iterable<string, array{string, class-string}> */
+    public static function operandsFollowedByMemberOnNextLine(): iterable
+    {
+        yield 'logical not' => ["!a\n.b;", UnaryExpression::class];
+        yield 'typeof' => ["typeof a\n.b;", UnaryExpression::class];
+        yield 'await' => ["async function f() { await a\n.b; }", \Phasis\Ast\Expression\AwaitExpression::class];
+    }
+
+    /** @param class-string $operator */
+    #[\PHPUnit\Framework\Attributes\DataProvider('operandsFollowedByMemberOnNextLine')]
+    public function testMemberAccessAfterALineBreakBindsToTheOperand(string $source, string $operator): void
+    {
+        $statement = (new Parser($source))->parse()->body[0];
+        if ($statement instanceof \Phasis\Ast\Declaration\FunctionDeclaration) {
+            $block = $statement->body;
+            $this->assertInstanceOf(\Phasis\Ast\Statement\BlockStatement::class, $block);
+            $statement = $block->body[0];
+        }
+        $this->assertInstanceOf(ExpressionStatement::class, $statement);
+
+        $expr = $statement->expression;
+        $this->assertInstanceOf($operator, $expr);
+        $this->assertInstanceOf(MemberExpression::class, $expr->argument);
+    }
+
+    public function testParenthesizedStringIsNotADirectiveCandidate(): void
+    {
+        $plain = $this->parseExpression('"use strict";');
+        $parenthesized = $this->parseExpression('("use strict");');
+
+        $this->assertInstanceOf(Literal::class, $plain);
+        $this->assertTrue($plain->verbatim);
+        $this->assertInstanceOf(Literal::class, $parenthesized);
+        $this->assertFalse($parenthesized->verbatim);
+    }
 }

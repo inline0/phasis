@@ -67,13 +67,13 @@ The printer implements the prettier document model: groups flatten when they fit
 
 ## Comments
 
-Comments are collected during tokenization (`Parser::setCollectComments(true)`, exposed on the parser for tooling) and reattached to the tree as leading, trailing, or dangling attachments. Line comments keep their own lines, same-line trailing comments stay on their statement, blank lines around comments survive, and `/** ... */` blocks are reindented with their `*` gutter aligned.
+Comments are collected during tokenization (`Parser::setCollectComments(true)`, exposed on the parser for tooling) and reattached to the tree as leading, trailing, or dangling attachments. Line comments keep their own lines, same-line trailing comments stay on their statement, a comment between an operator and its operand stays there, blank lines around comments survive, and `/** ... */` blocks are reindented with their `*` gutter aligned.
 
 ## Guarantees
 
 Three invariants hold for every formatted output, enforced by the test suite:
 
-- The output reparses to an equivalent program (locations aside).
+- The output reparses to an equivalent program, apart from locations, literal spellings and the empty statements of a statement list, which the formatter drops as prettier does. A string statement that is not a directive keeps parentheses, `("use strict");`, so dropping an empty statement before it cannot make it one.
 - Every comment in the input survives into the output.
 - Formatting is idempotent: formatting formatted output changes nothing.
 

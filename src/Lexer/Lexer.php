@@ -815,6 +815,16 @@ class Lexer
         $ch = $this->source[$this->pos];
         $this->advance();
 
+        // A line continuation ends the line it is on.
+        if ($ch === "\n" || $ch === "\r") {
+            if ($ch === "\r" && $this->pos < $this->length && $this->source[$this->pos] === "\n") {
+                $this->pos++;
+            }
+            $this->line++;
+            $this->column = 0;
+            return '';
+        }
+
         // AnnexB B.1.4: legacy octal escape sequences (\0-\7 start).
         if ($ch >= '0' && $ch <= '7') {
             return $this->readLegacyOctalEscape($ch);
@@ -829,13 +839,6 @@ class Lexer
             'v' => "\v",
             'x' => $this->readHexEscape(2),
             'u' => $this->readUnicodeEscape(),
-            "\n" => '',
-            "\r" => $this->pos < $this->length && $this->source[$this->pos] === "\n"
-                ? (function () {
-                    $this->advance();
-                    return '';
-                })()
-                : '',
             default => $ch,
         };
     }
@@ -887,6 +890,16 @@ class Lexer
         }
 
         $this->advance();
+
+        // A line continuation ends the line it is on.
+        if ("\n" === $ch || "\r" === $ch) {
+            if ("\r" === $ch && $this->pos < $this->length && "\n" === $this->source[$this->pos]) {
+                $this->pos++;
+            }
+            $this->line++;
+            $this->column = 0;
+            return '';
+        }
 
         // For hex and unicode escapes, save position and try; if invalid, restore and mark invalid.
         if ($ch === 'x') {
@@ -1120,6 +1133,8 @@ class Lexer
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->advance();
                 }
+                $this->line++;
+                $this->column = 0;
                 $cooked .= "\n";
                 $raw .= "\n";
                 continue;
@@ -1128,6 +1143,10 @@ class Lexer
             $cooked .= $ch;
             $raw .= $ch;
             $this->advance();
+            if ($ch === "\n") {
+                $this->line++;
+                $this->column = 0;
+            }
         }
 
         throw new SyntaxError('Unterminated template literal', $start);
@@ -1181,6 +1200,8 @@ class Lexer
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->advance();
                 }
+                $this->line++;
+                $this->column = 0;
                 $cooked .= "\n";
                 $raw .= "\n";
                 continue;
@@ -1193,6 +1214,10 @@ class Lexer
             $cooked .= $ch;
             $raw .= $ch;
             $this->advance();
+            if ($ch === "\n") {
+                $this->line++;
+                $this->column = 0;
+            }
         }
 
         throw new SyntaxError('Unterminated template literal', $start);
@@ -1573,7 +1598,7 @@ class Lexer
 
     private function isIdentifierStart(string $ch): bool
     {
-        $ord = ord($ch);
+        $ord = $ch === '' ? 0 : ord($ch[0]);
         if ($ord >= 0x80) {
             // ZWJ (U+200D) and ZWNJ (U+200C) are IdentifierPart but NOT
             // IdentifierStart. UTF-8 of both starts with 0xE2 0x80 0x8C/8D.
@@ -1663,7 +1688,7 @@ class Lexer
 
     private function isIdentifierPart(string $ch): bool
     {
-        $ord = ord($ch);
+        $ord = $ch === '' ? 0 : ord($ch[0]);
         if ($ord >= 0x80) {
             // Line terminator / Unicode whitespace check: classify by the
             // passed-in character, not the current lexer position, so

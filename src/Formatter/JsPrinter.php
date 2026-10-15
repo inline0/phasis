@@ -107,12 +107,30 @@ final class JsPrinter
         '**' => 14,
     ];
 
+    /**
+     * Attached comments already printed, so no comment prints twice.
+     *
+     * @var \SplObjectStorage<AttachedComment, null>
+     */
+    private \SplObjectStorage $emitted;
+
+    /**
+     * Expression statements that are directives: string literals, not
+     * parenthesized, in the leading run of a program's or function body's
+     * statements.
+     *
+     * @var \SplObjectStorage<ExpressionStatement, null>
+     */
+    private \SplObjectStorage $directives;
+
     public function __construct(
         private readonly FormatOptions $options,
         private readonly CommentIndex $comments,
         private readonly string $source,
         private readonly bool $jsonMode = false,
     ) {
+        $this->emitted = new \SplObjectStorage();
+        $this->directives = new \SplObjectStorage();
     }
 
     /**
@@ -147,7 +165,7 @@ final class JsPrinter
             }
             return $doc;
         }
-        $doc[] = $this->statementList($program->body);
+        $doc[] = $this->statementList($program->body, prologue: true);
         foreach ($this->comments->trailingFor($program) as $attached) {
             $doc[] = Doc::hardline();
             $doc[] = $this->commentText($attached);
@@ -159,11 +177,18 @@ final class JsPrinter
     /**
      * @param array<int, Node> $statements
      */
-    private function statementList(array $statements, bool $preserveLeadingBlank = false): mixed
+    private function statementList(array $statements, bool $preserveLeadingBlank = false, bool $prologue = false): mixed
     {
         $parts = [];
         $first = true;
         foreach ($statements as $statement) {
+            // Any other statement, an empty one included, ends the directive
+            // prologue; a string after it is an expression, not a directive.
+            if ($prologue && $statement instanceof ExpressionStatement && $this->isDirective($statement)) {
+                $this->directives->offsetSet($statement);
+            } else {
+                $prologue = false;
+            }
             if ($statement instanceof EmptyStatement && $this->comments->leadingFor($statement) === []) {
                 continue;
             }
@@ -192,8 +217,8 @@ final class JsPrinter
 
     private function withComments(Node $node, mixed $doc): mixed
     {
-        $leading = $this->comments->leadingFor($node);
-        $trailing = $this->comments->trailingFor($node);
+        $leading = $this->unprinted($this->comments->leadingFor($node));
+        $trailing = $this->unprinted($this->comments->trailingFor($node));
         if ($leading === [] && $trailing === []) {
             return $doc;
         }
@@ -211,6 +236,26 @@ final class JsPrinter
             }
         }
         $parts[] = $doc;
+        return array_merge($parts, $this->trailingCommentParts($trailing));
+    }
+
+    /**
+     * A node printed with only its trailing comments, for a link inside a
+     * member chain whose leading comments belong before the chain.
+     */
+    private function withTrailingComments(Node $node, mixed $doc): mixed
+    {
+        $trailing = $this->unprinted($this->comments->trailingFor($node));
+        return $trailing === [] ? $doc : [$doc, ...$this->trailingCommentParts($trailing)];
+    }
+
+    /**
+     * @param array<int, AttachedComment> $trailing
+     * @return array<int, mixed>
+     */
+    private function trailingCommentParts(array $trailing): array
+    {
+        $parts = [];
         foreach ($trailing as $attached) {
             if ($attached->ownLine) {
                 $parts[] = Doc::hardline();
@@ -218,12 +263,34 @@ final class JsPrinter
                     $parts[] = Doc::hardline();
                 }
                 $parts[] = $this->commentText($attached);
+            } elseif ($attached->comment->kind === 'block') {
+                // As prettier: a block comment on the same line stays where it is.
+                $parts[] = ' ';
+                $parts[] = $this->commentText($attached);
             } else {
                 $parts[] = Doc::lineSuffix([' ', $this->commentText($attached)]);
                 $parts[] = Doc::breakParent();
             }
         }
         return $parts;
+    }
+
+    /**
+     * The comments not printed yet, now counted as printed.
+     *
+     * @param array<int, AttachedComment> $attached
+     * @return array<int, AttachedComment>
+     */
+    private function unprinted(array $attached): array
+    {
+        $fresh = [];
+        foreach ($attached as $comment) {
+            if (!$this->emitted->offsetExists($comment)) {
+                $this->emitted->offsetSet($comment);
+                $fresh[] = $comment;
+            }
+        }
+        return $fresh;
     }
 
     private function newlineAfterComment(AttachedComment $attached): bool
@@ -356,8 +423,13 @@ final class JsPrinter
     private function expressionStatement(ExpressionStatement $node): mixed
     {
         $expression = $node->expression;
-        if ($expression instanceof Literal && is_string($expression->value) && $this->isSourceString($expression)) {
+        if ($this->directives->offsetExists($node) && $expression instanceof Literal) {
             return [$this->directiveText($expression), ';'];
+        }
+        // A string that is not a directive keeps parentheses, so that it
+        // cannot become one where an empty statement before it is dropped.
+        if ($expression instanceof Literal && is_string($expression->value) && $this->isSourceString($expression)) {
+            return ['(', $this->print($expression, $node), ');'];
         }
 
         $needsParens = $this->statementStartNeedsParens($expression);
@@ -366,6 +438,26 @@ final class JsPrinter
             return ['(', $doc, ');'];
         }
         return [$doc, ';'];
+    }
+
+    private function isDirective(ExpressionStatement $node): bool
+    {
+        $expression = $node->expression;
+        if (!$expression instanceof Literal || !is_string($expression->value) || !$this->isSourceString($expression)) {
+            return false;
+        }
+        $offset = $expression->location->offset;
+        while (true) {
+            while ($offset > 0 && ctype_space($this->source[$offset - 1])) {
+                $offset--;
+            }
+            $commentStart = $this->comments->startOfCommentEndingAt($offset);
+            if ($commentStart === null) {
+                break;
+            }
+            $offset = $commentStart;
+        }
+        return $offset === 0 || $this->source[$offset - 1] !== '(';
     }
 
     /** Whether the leftmost token of an expression statement would be misparsed without parens. */
@@ -405,7 +497,7 @@ final class JsPrinter
         }
     }
 
-    private function block(BlockStatement $node): mixed
+    private function block(BlockStatement $node, bool $functionBody = false): mixed
     {
         if ($node->body === [] || $this->onlyEmptyStatements($node->body)) {
             $dangling = $this->comments->danglingFor($node);
@@ -420,7 +512,12 @@ final class JsPrinter
             $parts[] = '}';
             return $parts;
         }
-        return ['{', Doc::indent([Doc::hardline(), $this->statementList($node->body, true)]), Doc::hardline(), '}'];
+        return [
+            '{',
+            Doc::indent([Doc::hardline(), $this->statementList($node->body, true, $functionBody)]),
+            Doc::hardline(),
+            '}',
+        ];
     }
 
     /**
@@ -717,7 +814,7 @@ final class JsPrinter
             $prefix,
             $this->functionParams($params, $node),
             ' ',
-            $body instanceof BlockStatement ? $this->block($body) : $this->print($body, $node),
+            $body instanceof BlockStatement ? $this->block($body, true) : $this->print($body, $node),
         ];
     }
 
@@ -824,7 +921,9 @@ final class JsPrinter
             return $parts;
         }
         if ($node instanceof StaticBlock) {
-            return ['static ', $this->block($node->body)];
+            // Prettier prints a static block's leading strings as directives
+            // too; class code is strict, so neither spelling changes anything.
+            return ['static ', $this->block($node->body, true)];
         }
         return $this->print($node, null);
     }
@@ -847,7 +946,7 @@ final class JsPrinter
             $this->propertyKey($key, $computed),
             $this->functionParams($function->params, $function),
             ' ',
-            $body instanceof BlockStatement ? $this->block($body) : $this->print($body, $function),
+            $body instanceof BlockStatement ? $this->block($body, true) : $this->print($body, $function),
         ];
     }
 
@@ -1006,9 +1105,11 @@ final class JsPrinter
     {
         $doc = $this->printWithoutParens($node, $parent);
         if ($parent !== null && $this->needsParens($node, $parent)) {
-            return ['(', $doc, ')'];
+            $doc = ['(', $doc, ')'];
         }
-        return $doc;
+        // A comment attached to an expression that no enclosing construct
+        // prints, such as an operand's, prints with the expression itself.
+        return $this->withComments($node, $doc);
     }
 
     private function printWithoutParens(Node $node, ?Node $parent): mixed
@@ -1337,14 +1438,16 @@ final class JsPrinter
         $head = $chainParts;
 
         if (!$current->expression && $body instanceof BlockStatement) {
-            return [$head, ' ', $this->block($body)];
+            return [$head, ' ', $this->block($body, true)];
         }
 
         $bodyNeedsParens = $this->arrowBodyStartsWithObject($body);
-        $bodyDoc = $this->print($body, $current);
         if ($bodyNeedsParens) {
-            return Doc::group([$head, ' (', $bodyDoc, ')']);
+            // These parentheses are the body's own, so it is printed without
+            // the ones needsParens would add again.
+            return Doc::group([$head, ' (', $this->printWithoutParens($body, $current), ')']);
         }
+        $bodyDoc = $this->print($body, $current);
 
         if ($this->arrowBodyHugs($body)) {
             return Doc::group([$head, ' ', $bodyDoc]);
@@ -1752,7 +1855,9 @@ final class JsPrinter
         $head = $current;
 
         $groups = [];
-        $currentGroup = [$this->print($head, null)];
+        // The head is the object or callee of the chain's first link, which
+        // decides whether it needs parentheses: (await x).y, (a ? b : c).d().
+        $currentGroup = [$this->print($head, $units[0][1] ?? null)];
         $callCount = 0;
         $index = 0;
         $unitCount = count($units);
@@ -1763,10 +1868,10 @@ final class JsPrinter
                 if ($kind === 'call') {
                     /** @var CallExpression $unit */
                     $currentGroup[] = $unit->optional ? '?.' : '';
-                    $currentGroup[] = $this->callArguments($unit->arguments, $unit);
+                    $currentGroup[] = $this->chainLink($unit, $node, $this->callArguments($unit->arguments, $unit));
                     $callCount++;
                 } else {
-                    $currentGroup[] = $this->memberSuffix($unit);
+                    $currentGroup[] = $this->chainLink($unit, $node, $this->memberSuffix($unit));
                 }
                 $index++;
                 continue;
@@ -1776,7 +1881,7 @@ final class JsPrinter
 
         if ($callCount === 0) {
             while ($index + 1 < $unitCount && $units[$index][0] === 'member' && $units[$index + 1][0] === 'member') {
-                $currentGroup[] = $this->memberSuffix($units[$index][1]);
+                $currentGroup[] = $this->chainLink($units[$index][1], $node, $this->memberSuffix($units[$index][1]));
                 $index++;
             }
         }
@@ -1786,17 +1891,17 @@ final class JsPrinter
             if ($kind === 'call') {
                 /** @var CallExpression $unit */
                 $currentGroup[] = $unit->optional ? '?.' : '';
-                $currentGroup[] = $this->callArguments($unit->arguments, $unit);
+                $currentGroup[] = $this->chainLink($unit, $node, $this->callArguments($unit->arguments, $unit));
                 $callCount++;
                 continue;
             }
             /** @var MemberExpression $unit */
             if ($unit->computed) {
-                $currentGroup[] = $this->memberSuffix($unit);
+                $currentGroup[] = $this->chainLink($unit, $node, $this->memberSuffix($unit));
                 continue;
             }
             $groups[] = $currentGroup;
-            $currentGroup = [$this->memberSuffix($unit)];
+            $currentGroup = [$this->chainLink($unit, $node, $this->memberSuffix($unit))];
         }
         $groups[] = $currentGroup;
 
@@ -1826,11 +1931,127 @@ final class JsPrinter
             )),
         ];
 
-        if ($callCount > 2) {
+        // As prettier: a chain of more than two calls always breaks when one
+        // of them takes an argument that is not simple, such as a function;
+        // otherwise it stays on one line while it fits.
+        if ($callCount > 2 && $this->chainHasComplexArguments($units)) {
             return $expanded;
         }
 
         return Doc::conditionalGroup([$flat, $expanded]);
+    }
+
+    /**
+     * One link of a member chain with the trailing comments of the
+     * expression it ends; the whole chain's own comments print around it.
+     */
+    private function chainLink(Node $unit, Node $chain, mixed $doc): mixed
+    {
+        return $unit === $chain ? $doc : $this->withTrailingComments($unit, $doc);
+    }
+
+    /** @param list<array{0: string, 1: Node}> $units */
+    private function chainHasComplexArguments(array $units): bool
+    {
+        foreach ($units as [$kind, $unit]) {
+            if ($kind !== 'call' || !$unit instanceof CallExpression) {
+                continue;
+            }
+            foreach ($unit->arguments as $argument) {
+                if (!$this->isSimpleCallArgument($argument)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Prettier's isSimpleCallArgument, with the same depth of two. */
+    private function isSimpleCallArgument(?Node $node, int $depth = 2): bool
+    {
+        if ($node === null || $depth <= 0) {
+            return false;
+        }
+        $child = fn(?Node $inner): bool => $this->isSimpleCallArgument($inner, $depth - 1);
+        if ($node instanceof Literal) {
+            if (str_starts_with($node->raw, '__REGEXP__/')) {
+                $pattern = substr($node->raw, strlen('__REGEXP__/'));
+                return mb_strlen(substr($pattern, 0, (int) strrpos($pattern, '/'))) <= 5;
+            }
+            return true;
+        }
+        if ($node instanceof Identifier || $node instanceof ThisExpression || $node instanceof PrivateIdentifier) {
+            return true;
+        }
+        if ($node instanceof TemplateLiteral) {
+            foreach ($node->quasis as $quasi) {
+                if ($quasi instanceof TemplateElement && str_contains($quasi->rawValue, "\n")) {
+                    return false;
+                }
+            }
+            foreach ($node->expressions as $expression) {
+                if (!$child($expression)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof ObjectExpression) {
+            foreach ($node->properties as $property) {
+                if (!$property instanceof Property || $property->computed) {
+                    return false;
+                }
+                if (!$property->shorthand && ($property->method || !$child($property->value))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof ArrayExpression) {
+            foreach ($node->elements as $element) {
+                if ($element !== null && !$child($element)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof ImportExpression) {
+            $arguments = array_values(array_filter([$node->source, $node->options]));
+            if (count($arguments) > $depth) {
+                return false;
+            }
+            foreach ($arguments as $argument) {
+                if (!$child($argument)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof CallExpression || $node instanceof NewExpression) {
+            if (!$this->isSimpleCallArgument($node->callee, $depth)) {
+                return false;
+            }
+            if (count($node->arguments) > $depth) {
+                return false;
+            }
+            foreach ($node->arguments as $argument) {
+                if (!$child($argument)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof MemberExpression) {
+            return $this->isSimpleCallArgument($node->object, $depth)
+                && $this->isSimpleCallArgument($node->property, $depth);
+        }
+        if ($node instanceof UnaryExpression && in_array($node->operator, ['!', '-', '+', '~'], true)) {
+            return $this->isSimpleCallArgument($node->argument, $depth);
+        }
+        if ($node instanceof UpdateExpression) {
+            return $this->isSimpleCallArgument($node->argument, $depth);
+        }
+        return false;
     }
 
     private function shouldMergeChainHead(Node $head): bool

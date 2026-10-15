@@ -95,6 +95,7 @@ use Phasis\Runtime\CallStack;
 use Phasis\Runtime\Completion;
 use Phasis\Runtime\CompletionType;
 use Phasis\Runtime\Reference;
+use Phasis\Parser\RegExpSyntax;
 
 /**
  * Interpreter helper part: RegExpHelpers. Composed back into the
@@ -1784,54 +1785,12 @@ trait RegExpHelpers
 
     private static function normalizeEsPropertyName(string $name): ?string
     {
-        static $aliases = [
-            'General_Category' => 'General_Category', 'gc' => 'General_Category',
-            'Script' => 'Script', 'sc' => 'Script',
-            'Script_Extensions' => 'Script_Extensions', 'scx' => 'Script_Extensions',
-        ];
-        return $aliases[$name] ?? null;
+        return RegExpSyntax::normalizeEsPropertyName($name);
     }
 
     private static function mapGeneralCategoryValue(string $value): ?string
     {
-        static $map = [
-            'Letter' => 'L', 'Cased_Letter' => 'L&',
-            'Uppercase_Letter' => 'Lu', 'Lowercase_Letter' => 'Ll',
-            'Titlecase_Letter' => 'Lt', 'Modifier_Letter' => 'Lm',
-            'Other_Letter' => 'Lo',
-            'Mark' => 'M', 'Nonspacing_Mark' => 'Mn',
-            'Spacing_Mark' => 'Mc', 'Enclosing_Mark' => 'Me',
-            'Number' => 'N', 'Decimal_Number' => 'Nd',
-            'Letter_Number' => 'Nl', 'Other_Number' => 'No',
-            'Punctuation' => 'P', 'Connector_Punctuation' => 'Pc',
-            'Dash_Punctuation' => 'Pd', 'Open_Punctuation' => 'Ps',
-            'Close_Punctuation' => 'Pe', 'Initial_Punctuation' => 'Pi',
-            'Final_Punctuation' => 'Pf', 'Other_Punctuation' => 'Po',
-            'Symbol' => 'S', 'Math_Symbol' => 'Sm',
-            'Currency_Symbol' => 'Sc', 'Modifier_Symbol' => 'Sk',
-            'Other_Symbol' => 'So',
-            'Separator' => 'Z', 'Space_Separator' => 'Zs',
-            'Line_Separator' => 'Zl', 'Paragraph_Separator' => 'Zp',
-            'Other' => 'C', 'Control' => 'Cc', 'Format' => 'Cf',
-            'Surrogate' => 'Cs', 'Private_Use' => 'Co', 'Unassigned' => 'Cn',
-            'L' => 'L', 'L&' => 'L&', 'LC' => 'L&',
-            'Lu' => 'Lu', 'Ll' => 'Ll', 'Lt' => 'Lt',
-            'Lm' => 'Lm', 'Lo' => 'Lo',
-            'M' => 'M', 'Mn' => 'Mn', 'Mc' => 'Mc', 'Me' => 'Me',
-            'N' => 'N', 'Nd' => 'Nd', 'Nl' => 'Nl', 'No' => 'No',
-            'P' => 'P', 'Pc' => 'Pc', 'Pd' => 'Pd', 'Ps' => 'Ps',
-            'Pe' => 'Pe', 'Pi' => 'Pi', 'Pf' => 'Pf', 'Po' => 'Po',
-            'S' => 'S', 'Sm' => 'Sm', 'Sc' => 'Sc', 'Sk' => 'Sk', 'So' => 'So',
-            'Z' => 'Z', 'Zs' => 'Zs', 'Zl' => 'Zl', 'Zp' => 'Zp',
-            'C' => 'C', 'Cc' => 'Cc', 'Cf' => 'Cf', 'Cs' => 'Cs',
-            'Co' => 'Co', 'Cn' => 'Cn',
-            'cntrl' => 'Cc', 'digit' => 'Nd', 'punct' => 'P',
-            // Unicode "loose" alias for Mark / M (PropertyValueAliases.txt
-            // lists Combining_Mark as a synonym for the Mark general
-            // category). Required by the test262 generated suite.
-            'Combining_Mark' => 'M',
-        ];
-        return $map[$value] ?? null;
+        return RegExpSyntax::mapGeneralCategoryValue($value);
     }
 
     /**
@@ -1841,108 +1800,12 @@ trait RegExpHelpers
      */
     private static function isVStringBinaryProperty(string $name): bool
     {
-        static $names = [
-            'Basic_Emoji' => true,
-            'Emoji_Keycap_Sequence' => true,
-            'RGI_Emoji' => true,
-            'RGI_Emoji_Flag_Sequence' => true,
-            'RGI_Emoji_Modifier_Sequence' => true,
-            'RGI_Emoji_Tag_Sequence' => true,
-            'RGI_Emoji_ZWJ_Sequence' => true,
-        ];
-        return isset($names[$name]);
+        return RegExpSyntax::isVStringBinaryProperty($name);
     }
 
     private static function mapBinaryProperty(string $name): ?string
     {
-        if (self::isVStringBinaryProperty($name)) {
-            // We don't have native data for v-flag string-binary
-            // properties. Substitute a never-matching tag so the regex
-            // compiles cleanly without polluting the match set.
-            return '!StringProperty';
-        }
-        static $supported = [
-            'ASCII' => 'ASCII', 'ASCII_Hex_Digit' => 'ASCII_Hex_Digit',
-            'AHex' => 'ASCII_Hex_Digit', 'Alphabetic' => 'Alphabetic',
-            'Alpha' => 'Alphabetic', 'Any' => 'Any',
-            'Bidi_Control' => 'Bidi_Control', 'Bidi_C' => 'Bidi_Control',
-            'Bidi_Mirrored' => 'Bidi_Mirrored', 'Bidi_M' => 'Bidi_Mirrored',
-            'Case_Ignorable' => 'Case_Ignorable', 'CI' => 'Case_Ignorable',
-            'Cased' => 'Cased',
-            'Changes_When_Casefolded' => 'Changes_When_Casefolded',
-            'CWCF' => 'Changes_When_Casefolded',
-            'Changes_When_Casemapped' => 'Changes_When_Casemapped',
-            'CWCM' => 'Changes_When_Casemapped',
-            'Changes_When_Lowercased' => 'Changes_When_Lowercased',
-            'CWL' => 'Changes_When_Lowercased',
-            'Changes_When_NFKC_Casefolded' => 'Changes_When_NFKC_Casefolded',
-            'CWKCF' => 'Changes_When_NFKC_Casefolded',
-            'Changes_When_Titlecased' => 'Changes_When_Titlecased',
-            'CWT' => 'Changes_When_Titlecased',
-            'Changes_When_Uppercased' => 'Changes_When_Uppercased',
-            'CWU' => 'Changes_When_Uppercased',
-            'Dash' => 'Dash',
-            'Default_Ignorable_Code_Point' => 'Default_Ignorable_Code_Point',
-            'DI' => 'Default_Ignorable_Code_Point',
-            'Deprecated' => 'Deprecated', 'Dep' => 'Deprecated',
-            'Diacritic' => 'Diacritic', 'Dia' => 'Diacritic',
-            'Emoji' => 'Emoji', 'Emoji_Component' => 'Emoji_Component',
-            'EComp' => 'Emoji_Component',
-            'Emoji_Modifier' => 'Emoji_Modifier', 'EMod' => 'Emoji_Modifier',
-            'Emoji_Modifier_Base' => 'Emoji_Modifier_Base',
-            'EBase' => 'Emoji_Modifier_Base',
-            'Emoji_Presentation' => 'Emoji_Presentation',
-            'EPres' => 'Emoji_Presentation',
-            'Extended_Pictographic' => 'Extended_Pictographic',
-            'ExtPict' => 'Extended_Pictographic',
-            'Extender' => 'Extender', 'Ext' => 'Extender',
-            'Grapheme_Base' => 'Grapheme_Base', 'Gr_Base' => 'Grapheme_Base',
-            'Grapheme_Extend' => 'Grapheme_Extend', 'Gr_Ext' => 'Grapheme_Extend',
-            'Hex_Digit' => 'Hex_Digit', 'Hex' => 'Hex_Digit',
-            'IDS_Binary_Operator' => 'IDS_Binary_Operator',
-            'IDSB' => 'IDS_Binary_Operator',
-            'IDS_Trinary_Operator' => 'IDS_Trinary_Operator',
-            'IDST' => 'IDS_Trinary_Operator',
-            'ID_Continue' => 'ID_Continue', 'IDC' => 'ID_Continue',
-            'ID_Start' => 'ID_Start', 'IDS' => 'ID_Start',
-            'Ideographic' => 'Ideographic', 'Ideo' => 'Ideographic',
-            'Join_Control' => 'Join_Control', 'Join_C' => 'Join_Control',
-            'Logical_Order_Exception' => 'Logical_Order_Exception',
-            'LOE' => 'Logical_Order_Exception',
-            'Lowercase' => 'Lowercase', 'Lower' => 'Lowercase',
-            'Math' => 'Math',
-            'Noncharacter_Code_Point' => 'Noncharacter_Code_Point',
-            'NChar' => 'Noncharacter_Code_Point',
-            'Pattern_Syntax' => 'Pattern_Syntax', 'Pat_Syn' => 'Pattern_Syntax',
-            'Pattern_White_Space' => 'Pattern_White_Space',
-            'Pat_WS' => 'Pattern_White_Space',
-            'Quotation_Mark' => 'Quotation_Mark', 'QMark' => 'Quotation_Mark',
-            'Radical' => 'Radical',
-            'Regional_Indicator' => 'Regional_Indicator', 'RI' => 'Regional_Indicator',
-            'Sentence_Terminal' => 'Sentence_Terminal', 'STerm' => 'Sentence_Terminal',
-            'Soft_Dotted' => 'Soft_Dotted', 'SD' => 'Soft_Dotted',
-            'Terminal_Punctuation' => 'Terminal_Punctuation',
-            'Term' => 'Terminal_Punctuation',
-            'Unified_Ideograph' => 'Unified_Ideograph', 'UIdeo' => 'Unified_Ideograph',
-            'Uppercase' => 'Uppercase', 'Upper' => 'Uppercase',
-            'Variation_Selector' => 'Variation_Selector', 'VS' => 'Variation_Selector',
-            'White_Space' => 'White_Space', 'space' => 'White_Space',
-            'WSpace' => 'White_Space',
-            'XID_Continue' => 'XID_Continue', 'XIDC' => 'XID_Continue',
-            'XID_Start' => 'XID_Start', 'XIDS' => 'XID_Start',
-            'Assigned' => '!Assigned',
-        ];
-        $pcre = $supported[$name] ?? null;
-        if ($pcre === null) {
-            return null;
-        }
-        if ($pcre === '!Assigned') {
-            return '!Assigned';
-        }
-        if (@preg_match('/\\p{' . $pcre . '}/u', '') === false) {
-            return 'Any';
-        }
-        return $pcre;
+        return RegExpSyntax::mapBinaryProperty($name);
     }
 
     private static function normalizeScriptName(string $name): ?string

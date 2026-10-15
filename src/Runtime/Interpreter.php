@@ -101,6 +101,12 @@ class Interpreter
 
     private CallStack $callStack;
     private int $maxLoopIterations;
+
+    /** The execution budget, shared with the interpreters this one starts; null for none. */
+    private ?ExecutionBudget $budget = null;
+
+    /** Where the last statement the tree-walker started begins, for an embedder to locate an error that escapes. */
+    private ?\Phasis\Lexer\SourceLocation $lastLocation = null;
     private bool $strictMode = false;
 
     /** @var array<string, bool> Current function parameter names for Annex B hoisting. */
@@ -531,6 +537,65 @@ class Interpreter
         return $this->maxLoopIterations;
     }
 
+    /**
+     * Stop evaluation once it has run for this many seconds from now; null
+     * removes the budget. While a budget is set, calls stay on the
+     * tree-walking interpreter, whose loops and calls check it.
+     */
+    public function setExecutionBudget(?float $seconds): void
+    {
+        $this->budget = $seconds === null ? null : new ExecutionBudget(hrtime(true) + (int) ($seconds * 1_000_000_000));
+    }
+
+    public function hasExecutionBudget(): bool
+    {
+        return $this->budget !== null;
+    }
+
+    /**
+     * Where the last statement the tree-walker started begins. After an
+     * error escapes an evaluation that ran on the tree-walker, as every
+     * budgeted one does, it is the statement that threw.
+     */
+    public function lastLocation(): ?\Phasis\Lexer\SourceLocation
+    {
+        return $this->lastLocation;
+    }
+
+    /**
+     * Run under the limits of the interpreter that started this one, as an
+     * indirect eval or a ShadowRealm does, so nested code cannot escape the
+     * budget or the loop limit.
+     */
+    public function inheritLimits(Interpreter $outer, bool $loopLimit = true): void
+    {
+        $this->budget = $outer->budget;
+        if ($loopLimit) {
+            $this->maxLoopIterations = $outer->maxLoopIterations;
+        }
+    }
+
+    /** Whether evaluation ran past its budget, even where code swallowed the exception. */
+    public function budgetExceeded(): bool
+    {
+        return $this->budget !== null && $this->budget->exceeded;
+    }
+
+    /**
+     * Throws once evaluation has run past its budget, and on every check
+     * after that, so code that swallows the exception cannot keep running.
+     */
+    public function checkBudget(): void
+    {
+        if ($this->budget === null) {
+            return;
+        }
+        if ($this->budget->exceeded || hrtime(true) > $this->budget->deadline) {
+            $this->budget->exceeded = true;
+            throw new \Phasis\Exceptions\BudgetExceeded('Evaluation ran past its execution budget.');
+        }
+    }
+
     /** Mark this interpreter as running eval code (indirect eval). */
     public function setEvalContext(bool $isEval): void
     {
@@ -707,6 +772,11 @@ class Interpreter
      */
     private function tryRunProgramOnVm(\Phasis\Ast\Program $program): ?JsValue
     {
+        // A budgeted evaluation stays on the tree-walker, whose loops and
+        // calls check the budget.
+        if ($this->budget !== null) {
+            return null;
+        }
         // The Interpreter::$programIsEvalFree flag is intentionally
         // not consulted here: it is set false for the LIFETIME of an
         // Engine after the first program that references `eval`, so a
@@ -1141,6 +1211,7 @@ class Interpreter
         foreach ($statements as $stmt) {
             // Same ExpressionStatement fast path as executeBody.
             if ($stmt instanceof ExpressionStatement) {
+                $this->lastLocation = $stmt->location;
                 $result = $this->evaluate($stmt->expression, $env);
                 continue;
             }
@@ -1167,6 +1238,7 @@ class Interpreter
             // allocation that execExpressionStatement otherwise emits and
             // the executeStatement match-true dispatch.
             if ($stmt instanceof ExpressionStatement) {
+                $this->lastLocation = $stmt->location;
                 $result = $this->evaluate($stmt->expression, $env);
                 $anyNonEmpty = true;
                 continue;
@@ -1191,6 +1263,7 @@ class Interpreter
 
     private function executeStatement(Node $node, Environment $env): Completion
     {
+        $this->lastLocation = $node->location;
         // ExpressionStatement is the overwhelmingly common statement type
         // in real code (every function body, every loop iteration body).
         // Handle it via a typed pre-check before the match dispatch.

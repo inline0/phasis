@@ -3867,6 +3867,9 @@ trait ExpressionEvaluation
         JsValue $thisValue,
         array $args,
     ): JsValue {
+        if ($this->budget !== null) {
+            $this->checkBudget();
+        }
         // Switch the currently-active realm (interpreter) to the function's
         // realm for the duration of the call so that any new JsFunction
         // instances created inside the body, plus realm-aware lookups, are
@@ -5224,7 +5227,8 @@ trait ExpressionEvaluation
         \Phasis\Runtime\Environment $fnEnv,
         bool $fnStrict,
     ): ?\Phasis\Bytecode\GeneratorSnapshot {
-        if ($fn->compileFailed) {
+        // A budgeted evaluation runs generators on the tree-walker too.
+        if ($fn->compileFailed || $this->budget !== null) {
             return null;
         }
         // Compiler bailouts the runtime can't recover from also live
@@ -6162,6 +6166,11 @@ trait ExpressionEvaluation
         JsValue $thisValue,
         array $args,
     ): ?JsValue {
+        // The budget is checked by the tree-walking interpreter's loops and
+        // calls, so a budgeted evaluation never tiers up.
+        if ($this->budget !== null) {
+            return null;
+        }
         // JS-to-PHP fast path: when the body is a tight numeric subset
         // (arithmetic + locals + simple control flow, no calls / no
         // member access), JsToPhp lowers it to a PHP closure that

@@ -307,4 +307,25 @@ class LexerTest extends TestCase
         $this->assertSame(TokenType::PlusPlus, $tokens[0][0]);
         $this->assertSame(TokenType::MinusMinus, $tokens[1][0]);
     }
+
+    /** @return iterable<string, array{string, int}> */
+    public static function multiLineLiterals(): iterable
+    {
+        yield 'template' => ["`a\nb`;\nx", 3];
+        yield 'template with crlf and substitution' => ["`a\r\nb\${1}c\nd`;\nx", 4];
+        yield 'template line continuation' => ["`a\\\nb`;\nx", 3];
+        yield 'string line continuation' => ["'a\\\nb';\nx", 3];
+        yield 'string crlf and cr continuations' => ["'a\\\r\nb' + 'c\\\rd';\nx", 4];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('multiLineLiterals')]
+    public function testLinesAfterAMultiLineLiteralCount(string $source, int $line): void
+    {
+        $tokens = (new Lexer($source))->tokenize();
+        $last = $tokens[count($tokens) - 2];
+
+        $this->assertSame('x', $last->value);
+        $this->assertSame($line, $last->location->line);
+        $this->assertSame(0, $last->location->column);
+    }
 }

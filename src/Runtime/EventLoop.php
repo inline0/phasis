@@ -55,6 +55,14 @@ final class EventLoop
      */
     private float $nowMs;
 
+    /** Whether timers fire; while off, setTimeout and setInterval still return ids but never run. */
+    private bool $timersEnabled = true;
+
+    public function setTimersEnabled(bool $enabled): void
+    {
+        $this->timersEnabled = $enabled;
+    }
+
     public function __construct(private readonly Engine $engine)
     {
         $this->nowMs = self::wallTimeMs();
@@ -143,6 +151,9 @@ final class EventLoop
      */
     public function fireDueTasks(): bool
     {
+        if (!$this->timersEnabled) {
+            return false;
+        }
         if ($this->tasks === []) {
             return false;
         }
@@ -188,7 +199,7 @@ final class EventLoop
     {
         for ($i = 0; $i < $maxIters; $i++) {
             JsPromise::drainMicrotasks();
-            if ($this->tasks === []) {
+            if ($this->tasks === [] || !$this->timersEnabled) {
                 return;
             }
             // Microtasks emptied + no due timer + queue not empty

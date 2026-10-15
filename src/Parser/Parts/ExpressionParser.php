@@ -690,7 +690,7 @@ trait ExpressionParser
             if ($isUnparenthesizedArrow) {
                 break;
             }
-            if ($this->check(TokenType::Dot) && !$this->current()->lineTerminatorBefore) {
+            if ($this->check(TokenType::Dot)) {
                 // Property access forces the receiver to be a normal
                 // expression — a CoverInitializedName like `{ a = 0 }` can
                 // no longer be salvaged into an AssignmentPattern, so any
@@ -1003,8 +1003,8 @@ trait ExpressionParser
             $pattern = $m[1];
             $flags = $m[2];
             self::validateRegExpFlagsAtParseTime($flags, $token);
-            \Phasis\Runtime\Interpreter::validateRegExpModifierGroups($pattern);
-            if (\Phasis\Runtime\Interpreter::hasDuplicateNamedGroupsInSameAlternative($pattern)) {
+            \Phasis\Parser\RegExpSyntax::validateRegExpModifierGroups($pattern);
+            if (\Phasis\Parser\RegExpSyntax::hasDuplicateNamedGroupsInSameAlternative($pattern)) {
                 throw new \Phasis\Exceptions\SyntaxError(
                     "Invalid regular expression: /{$pattern}/: Duplicate capture group name",
                 );
@@ -1318,12 +1318,12 @@ trait ExpressionParser
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
-                                if (\Phasis\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
+                                if (\Phasis\Parser\RegExpSyntax::isBinaryUnicodePropertyName($parts[0])) {
                                     throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Binary property used with value",
                                     );
                                 }
-                                if (\Phasis\Runtime\Interpreter::isNonBinaryUnicodePropertyName($parts[0]) === false) {
+                                if (\Phasis\Parser\RegExpSyntax::isNonBinaryUnicodePropertyName($parts[0]) === false) {
                                     throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
@@ -1332,10 +1332,10 @@ trait ExpressionParser
                                 // exactly: if we recognise the property name
                                 // as General_Category, the value must be a
                                 // canonical-cased GC value.
-                                $normName = \Phasis\Runtime\Interpreter::normalizeUnicodePropertyName($parts[0]);
+                                $normName = \Phasis\Parser\RegExpSyntax::normalizeEsPropertyName($parts[0]);
                                 if (
                                     $normName === 'General_Category'
-                                    && \Phasis\Runtime\Interpreter::isGeneralCategoryValue($parts[1]) === false
+                                    && \Phasis\Parser\RegExpSyntax::isGeneralCategoryValue($parts[1]) === false
                                 ) {
                                     throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property value",
@@ -1343,7 +1343,7 @@ trait ExpressionParser
                                 }
                             }
                             if ($unicode && !str_contains($propExpr, '=')) {
-                                if (\Phasis\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
+                                if (\Phasis\Parser\RegExpSyntax::isLoneUnicodePropertyKnown($propExpr) === false) {
                                     throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
@@ -1351,7 +1351,7 @@ trait ExpressionParser
                                 // Properties of strings (\q-eligible) only
                                 // legal in v-mode.
                                 if (
-                                    \Phasis\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
+                                    \Phasis\Parser\RegExpSyntax::isVStringBinaryProperty($propExpr)
                                 ) {
                                     if (!$isVFlag) {
                                         throw new \Phasis\Exceptions\SyntaxError(
@@ -1902,19 +1902,19 @@ trait ExpressionParser
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
-                                if (\Phasis\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
+                                if (\Phasis\Parser\RegExpSyntax::isBinaryUnicodePropertyName($parts[0])) {
                                     throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Binary property used with value",
                                     );
                                 }
                             } else {
-                                if (\Phasis\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
+                                if (\Phasis\Parser\RegExpSyntax::isLoneUnicodePropertyKnown($propExpr) === false) {
                                     throw new \Phasis\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
                                 if (
-                                    \Phasis\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
+                                    \Phasis\Parser\RegExpSyntax::isVStringBinaryProperty($propExpr)
                                 ) {
                                     if (!$isVFlag) {
                                         throw new \Phasis\Exceptions\SyntaxError(
@@ -2558,6 +2558,12 @@ trait ExpressionParser
         if ($this->check(TokenType::Arrow)) {
             $params = $this->expressionToParams($expr);
             return $this->parseArrowFunctionFromParams($location, $params, false);
+        }
+
+        // A parenthesized string is never a directive: ("use strict") does
+        // not make code strict.
+        if ($expr instanceof Literal && is_string($expr->value) && $expr->verbatim) {
+            $expr = new Literal($expr->location, $expr->value, $expr->raw, verbatim: false);
         }
 
         // Mark the expression as parenthesized so IsIdentifierRef returns false.

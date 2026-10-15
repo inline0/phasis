@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.0] - 2026-10-15
+
+### Added
+- Execution budget: `Engine::setExecutionBudget(?float $seconds)` stops evaluation once it has run that long with `Phasis\Exceptions\BudgetExceeded`, which no JavaScript `try` catches. Once exceeded, every later loop iteration and call throws again and `budgetExceeded()` stays `true`. Indirect `eval`, the `Function` constructor and `ShadowRealm` run under the same budget, and it persists across `reset()`
+- `Engine::lastLocation()` returns where the last statement started, locating an error that escaped a budgeted evaluation
+- `Engine::setTimersEnabled(false)` keeps `setTimeout` and `setInterval` callbacks from firing; draining the event loop then runs microtasks only
+- `Phasis\Parser\RegExpSyntax` holds the regular-expression early-error checks, so parsing a regular expression literal no longer loads the interpreter
+
+### Fixed
+- The formatter dropped the empty statement before a string and so made the string a directive: `;"use strict"; x = 1` printed as `"use strict"; x = 1;`, which makes the program strict. A string statement that is not a directive now prints as `("use strict");`, like prettier, and a parenthesized one keeps its parentheses
+- `("use strict")` made the enclosing program or function strict; a parenthesized string is not a directive
+- The formatter dropped the parentheses around the head of a member chain with three or more calls, so `(await x).json().then(a).catch(b)` printed as `await x.json().then(a).catch(b)` and `(a ? b : c).d().e().f()` lost its conditional's parentheses too
+- The formatter printed an arrow function's object body in two pairs of parentheses, `(({ id }))`
+- The formatter dropped a comment between an operator and its operand (`a + /* c */ b`) or after `=`; every comment now prints exactly once, where it was written, and a same-line block comment no longer moves to the end of the line
+- A member chain of more than two calls whose arguments are all simple stays on one line when it fits, as in prettier
+- A member access on the next line after a unary or `await` operand bound to the whole expression: `!a\n.b` parsed as `(!a).b`
+- Line and column numbers after a multi-line template literal, or a string or template with a line continuation, were off by the lines it spanned
+- Indirect `eval` and the `Function` constructor ran with the default loop limit instead of the engine's
+- PHP 8.5 deprecation notices from `ord()` in the lexer for identifiers with non-ASCII characters or Unicode escapes
+
 ## [0.6.1] - 2026-10-15
 
 ### Fixed

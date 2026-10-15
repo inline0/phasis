@@ -118,6 +118,12 @@ final class CommentAttacher
             }
 
             if (!$comment->newlineBefore && $preceding !== null) {
+                // As prettier: a comment with only spaces between it and the
+                // next node on its line leads that node, as in `a + /* c */ b`.
+                if ($following !== null && $this->onlySpacesBetween($comment->endOffset, $bound)) {
+                    $index->addLeading($following[0], $this->attached($comment));
+                    continue;
+                }
                 $index->addTrailing($preceding[0], $this->attached($comment));
                 continue;
             }
@@ -168,6 +174,12 @@ final class CommentAttacher
             break;
         }
         return false;
+    }
+
+    /** Whether nothing but spaces and tabs lies between two offsets. */
+    private function onlySpacesBetween(int $from, int $to): bool
+    {
+        return strspn($this->source, " \t", $from, $to - $from) === $to - $from;
     }
 
     /**

@@ -1382,6 +1382,9 @@ trait StatementExecution
         $v = JsUndefined::instance();
         $iterations = 0;
         while (true) {
+            if ($this->budget !== null) {
+                $this->checkBudget();
+            }
             if ($node->test !== null) {
                 $test = $this->evaluate($node->test, $iterEnv);
                 if (!TypeConversion::toBoolean($test)) {
@@ -1504,6 +1507,9 @@ trait StatementExecution
         $iterations = 0;
 
         foreach ($keys as $key) {
+            if ($this->budget !== null) {
+                $this->checkBudget();
+            }
             if (++$iterations > $this->maxLoopIterations) {
                 throw new InternalError('Maximum loop iterations exceeded');
             }
@@ -1655,6 +1661,9 @@ trait StatementExecution
             };
 
             while (true) {
+                if ($this->budget !== null) {
+                    $this->checkBudget();
+                }
                 if (++$iterations > $this->maxLoopIterations) {
                     throw new InternalError('Maximum loop iterations exceeded');
                 }
@@ -2361,6 +2370,9 @@ trait StatementExecution
         $v = JsUndefined::instance();
         $iterations = 0;
         while (true) {
+            if ($this->budget !== null) {
+                $this->checkBudget();
+            }
             if (++$iterations > $this->maxLoopIterations) {
                 throw new InternalError('Maximum loop iterations exceeded');
             }
@@ -2402,6 +2414,9 @@ trait StatementExecution
         $v = JsUndefined::instance();
         $iterations = 0;
         do {
+            if ($this->budget !== null) {
+                $this->checkBudget();
+            }
             if (++$iterations > $this->maxLoopIterations) {
                 throw new InternalError('Maximum loop iterations exceeded');
             }

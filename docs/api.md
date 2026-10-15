@@ -204,9 +204,34 @@ Sets a runtime-tunable resource limit. There is exactly one:
 $engine->setLimit('maxLoopIterations', 1_000_000);
 ```
 
-Unknown limit names and negative values throw `\InvalidArgumentException`. Zero permits loops whose bodies never run. Limits persist across `reset()`. There are no limits for string length, console output or wall-clock time.
+Unknown limit names and negative values throw `\InvalidArgumentException`. Zero permits loops whose bodies never run. Limits persist across `reset()`. There are no limits for string length or console output; wall-clock time has its own [execution budget](#setexecutionbudget).
 
 The loop budget is per loop entry. Nested loops and repeated calls receive their own counters; suspended bytecode generators retain their counters across resumes. Exceeding the budget raises "Maximum loop iterations exceeded", which can be caught by JS `try` / `catch`. An uncaught error reaches PHP as `Phasis\Exceptions\InternalError` or, after a JS handler rethrows it, `Phasis\Exceptions\JsThrowable`; both extend `Phasis\Exceptions\RuntimeError`.
+
+## setExecutionBudget
+
+```php
+public function setExecutionBudget(?float $seconds): void
+public function budgetExceeded(): bool
+public function lastLocation(): ?array
+```
+
+Stops evaluation once it has run for `$seconds` from now with `Phasis\Exceptions\BudgetExceeded`, which is not a JavaScript error, so no JS `try` statement catches it. Once the budget is exceeded every later loop iteration and call throws again and `budgetExceeded()` stays `true`, so code that swallows the exception (through a host function or a promise job, say) cannot keep running unnoticed. `null` removes the budget.
+
+While a budget is set, evaluation stays on the tree-walking interpreter, whose loops and calls check it; indirect `eval`, the `Function` constructor and `ShadowRealm` run under the same budget. The budget persists across `reset()`.
+
+`lastLocation()` returns where the last statement the tree-walker started begins, as a 1-based `['line' => int, 'column' => int]`. After an error escapes a budgeted evaluation, it is the statement that threw.
+
+```php
+$engine->setExecutionBudget(2.0);
+try {
+    $engine->eval($untrusted);
+} catch (\Phasis\Exceptions\BudgetExceeded) {
+    $where = $engine->lastLocation();
+} finally {
+    $engine->setExecutionBudget(null);
+}
+```
 
 ## reset
 
@@ -227,6 +252,7 @@ public function runEventLoop(): void
 public function tickEventLoop(): bool
 public function pendingTaskCount(): int
 public function getEventLoop(): \Phasis\Runtime\EventLoop
+public function setTimersEnabled(bool $enabled): void
 ```
 
 `eval()` and `evalAsModule()` call `runEventLoop()` automatically after the synchronous code completes. So a script that schedules `setTimeout(cb, 5000)` at top level runs `cb` before `eval()` returns — the loop uses **virtual time**, jumping its clock to the next pending deadline rather than sleeping PHP. Matches `node script.js` semantics.
@@ -239,6 +265,8 @@ while ($engine->pendingTaskCount() > 0) {
     usleep(1000);
 }
 ```
+
+`setTimersEnabled(false)` keeps `setTimeout` and `setInterval` callbacks from firing: they are still accepted and return ids, and draining the loop runs microtasks only. The switch persists across `reset()`.
 
 A runaway `setInterval` is bounded: `runEventLoop()` caps at 100,000 cycles and throws a plain `\RuntimeException` — the JS code's fault surfaces as a clear PHP error rather than a hang. The interval stays scheduled, so every later `eval()` on the same engine throws the same error; discard the engine afterwards. Uncaught errors in a timer callback are emitted via `error_log()` and the loop keeps draining; one bad timer doesn't kill the program.
 
@@ -328,6 +356,7 @@ Without `setCookieJar()`, `fetch` ignores both inbound `Set-Cookie` and outbound
 | `Phasis\Exceptions\TypeError`, `ReferenceError`, `RangeError` | `RuntimeError` | an error the engine raised itself (for example `null.x` or an undefined variable) that nothing caught |
 | `Phasis\Exceptions\InternalError` | `RuntimeError` | the loop limit or the call-stack ceiling was crossed |
 | `Phasis\Exceptions\RuntimeError` | `\RuntimeException` | base class of the above |
+| `Phasis\Exceptions\BudgetExceeded` | `\RuntimeException` | evaluation ran past the [execution budget](#setexecutionbudget) |
 | `Phasis\Parser\ParseError` | `Phasis\Exceptions\SyntaxError` (`\RuntimeException`) | the source does not parse |
 | `\RuntimeException` | | `execFile()` cannot read the file; the event loop hit its 100,000-cycle cap |
 

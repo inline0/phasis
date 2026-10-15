@@ -137,6 +137,9 @@ class Engine
     /** @var array<string, int> */
     private array $limits = [];
 
+    /** Whether timers fire; kept across reset() like the limits. */
+    private bool $timersEnabled = true;
+
     /** Tracks names whose accessor placeholders are still in place. */
     private LazyBuiltinRegistry $lazyRegistry;
 
@@ -1946,8 +1949,10 @@ class Engine
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();
         $this->callStack = new CallStack();
+        $previous = $this->interpreter;
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
         $this->interpreter->setRealm($this);
+        $this->interpreter->inheritLimits($previous, loopLimit: false);
         self::$currentInterpreter = $this->interpreter;
         foreach ($this->limits as $name => $value) {
             $this->setLimit($name, $value);
@@ -1958,6 +1963,7 @@ class Engine
         $this->configureModuleLoader();
         $this->initializeGlobalObject();
         $this->eventLoop = new EventLoop($this);
+        $this->eventLoop->setTimersEnabled($this->timersEnabled);
     }
 
     /**
@@ -2253,6 +2259,59 @@ class Engine
             throw new \Phasis\Exceptions\TypeError('Cannot compile RegExp');
         }
         return self::$currentInterpreter->createRegExpFromConstructor($pattern, $flags);
+    }
+
+    /**
+     * Stop evaluation once it has run for this many seconds from now, with a
+     * BudgetExceeded exception no JavaScript try statement can catch; null
+     * removes the budget. Once exceeded, every later check throws again and
+     * budgetExceeded() stays true, so code that swallows the exception
+     * cannot keep running unnoticed.
+     */
+    public function setExecutionBudget(?float $seconds): void
+    {
+        $this->interpreter->setExecutionBudget($seconds);
+    }
+
+    public function budgetExceeded(): bool
+    {
+        return $this->interpreter->budgetExceeded();
+    }
+
+    /**
+     * Where the last statement evaluation started begins, as a 1-based line
+     * and column. After an error escapes a budgeted evaluation, it locates
+     * the statement that threw.
+     *
+     * @return array{line: int, column: int}|null
+     */
+    public function lastLocation(): ?array
+    {
+        $location = $this->interpreter->lastLocation();
+
+        return $location === null ? null : ['line' => $location->line, 'column' => $location->column + 1];
+    }
+
+    /**
+     * Whether setTimeout and setInterval callbacks run. While off they are
+     * accepted and never fire, and draining the event loop runs microtasks
+     * only.
+     */
+    public function setTimersEnabled(bool $enabled): void
+    {
+        $this->timersEnabled = $enabled;
+        $this->eventLoop->setTimersEnabled($enabled);
+    }
+
+    /**
+     * Run this engine under the execution budget of the interpreter that
+     * created it, as a ShadowRealm's engine does.
+     *
+     * @internal
+     */
+    public function inheritExecutionBudget(Interpreter $outer): void
+    {
+        $this->interpreter->inheritLimits($outer, loopLimit: false);
     }
 
     public function setLimit(string $name, int $value): void

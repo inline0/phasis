@@ -95,6 +95,7 @@ use Phasis\Runtime\CallStack;
 use Phasis\Runtime\Completion;
 use Phasis\Runtime\CompletionType;
 use Phasis\Runtime\Reference;
+use Phasis\Parser\RegExpSyntax;
 
 /**
  * Interpreter helper part: RegExpAnalysis. Composed back into the
@@ -1046,121 +1047,7 @@ trait RegExpAnalysis
      */
     public static function validateRegExpModifierGroups(string $pattern): void
     {
-        // Hot-path fast exit: a pattern with no `(?` syntax has no
-        // modifier groups to validate.
-        if (strpos($pattern, '(?') === false) {
-            return;
-        }
-        $len = strlen($pattern);
-        $i = 0;
-        $inClass = false;
-        while ($i < $len) {
-            $ch = $pattern[$i];
-            if ($ch !== '\\' && $ch !== '[' && $ch !== ']' && $ch !== '(') {
-                $skip = strcspn($pattern, "\\[](", $i);
-                if ($skip > 0) {
-                    $i += $skip;
-                    continue;
-                }
-            }
-            if ($ch === '\\') {
-                $i += 2;
-                continue;
-            }
-            if (!$inClass && $ch === '[') {
-                $inClass = true;
-                $i++;
-                continue;
-            }
-            if ($inClass) {
-                if ($ch === ']') {
-                    $inClass = false;
-                }
-                $i++;
-                continue;
-            }
-            if ($ch === '(' && $i + 1 < $len && $pattern[$i + 1] === '?') {
-                // Distinguish `(?:`, `(?=`, `(?!`, `(?<=`, `(?<!`, `(?<name>`
-                // from a modifier group `(?flags-flags:`. Modifier groups
-                // start with i/m/s or `-`.
-                if ($i + 2 < $len) {
-                    $first = $pattern[$i + 2];
-                    if (
-                        !in_array($first, ['i', 'm', 's', '-'], true)
-                    ) {
-                        $i += 2;
-                        continue;
-                    }
-                }
-                // Scan flag characters after `(?`.
-                $j = $i + 2;
-                $add = '';
-                $remove = '';
-                $phase = 'add';
-                $hasMinus = false;
-                $hasColon = false;
-                while ($j < $len) {
-                    $c = $pattern[$j];
-                    if ($c === '-' && $phase === 'add' && !$hasMinus) {
-                        $phase = 'remove';
-                        $hasMinus = true;
-                        $j++;
-                        continue;
-                    }
-                    if ($c === ':') {
-                        $hasColon = true;
-                        break;
-                    }
-                    if ($c === ')') {
-                        break;
-                    }
-                    if (!in_array($c, ['i', 'm', 's'], true)) {
-                        // Invalid character in modifier group.
-                        throw new \Phasis\Exceptions\SyntaxError(
-                            "Invalid regular expression: /{$pattern}/: Invalid modifier flag"
-                        );
-                    }
-                    if ($phase === 'add') {
-                        $add .= $c;
-                    } else {
-                        $remove .= $c;
-                    }
-                    $j++;
-                }
-                if (!$hasColon) {
-                    throw new \Phasis\Exceptions\SyntaxError(
-                        "Invalid regular expression: /{$pattern}/: Modifier group requires colon"
-                    );
-                }
-                if ($add === '' && $remove === '') {
-                    throw new \Phasis\Exceptions\SyntaxError(
-                        "Invalid regular expression: /{$pattern}/: Modifier group has no flags"
-                    );
-                }
-                // Repeated flag on either side → SyntaxError.
-                if (strlen(count_chars($add, 3)) !== strlen($add)) {
-                    throw new \Phasis\Exceptions\SyntaxError(
-                        "Invalid regular expression: /{$pattern}/: Repeated flag in modifier"
-                    );
-                }
-                if (strlen(count_chars($remove, 3)) !== strlen($remove)) {
-                    throw new \Phasis\Exceptions\SyntaxError(
-                        "Invalid regular expression: /{$pattern}/: Repeated flag in modifier"
-                    );
-                }
-                // Overlap between add and remove → SyntaxError.
-                for ($k = 0; $k < strlen($add); $k++) {
-                    if (str_contains($remove, $add[$k])) {
-                        throw new \Phasis\Exceptions\SyntaxError(
-                            "Invalid regular expression: /{$pattern}/: Flag in both add and remove modifiers"
-                        );
-                    }
-                }
-                $i = $j + 1;
-                continue;
-            }
-            $i++;
-        }
+        RegExpSyntax::validateRegExpModifierGroups($pattern);
     }
 
     /**
@@ -1171,105 +1058,7 @@ trait RegExpAnalysis
      */
     public static function hasDuplicateNamedGroupsInSameAlternative(string $pattern): bool
     {
-        // Hot-path fast exit: at least two named-group declarations are
-        // required for a duplicate to exist.
-        if (strpos($pattern, '(?<') === false) {
-            return false;
-        }
-        // Collect declared names per alternative, descending into groups but
-        // restarting the "seen" set on every top-level `|`. Groups themselves
-        // introduce their own alternative scope (their internal `|` splits
-        // the inner names, independent of the outer set).
-        $len = strlen($pattern);
-        $i = 0;
-        // Stack of "seen-name" sets, one per nested alternative scope.
-        $stack = [[]];
-        $topIndex = 0;
-        while ($i < $len) {
-            $ch = $pattern[$i];
-            if ($ch !== '\\' && $ch !== '[' && $ch !== '(' && $ch !== ')' && $ch !== '|') {
-                $skip = strcspn($pattern, "\\[()|", $i);
-                if ($skip > 0) {
-                    $i += $skip;
-                    continue;
-                }
-            }
-            if ($ch === '\\') {
-                $i += 2;
-                continue;
-            }
-            if ($ch === '[') {
-                $i++;
-                while ($i < $len && $pattern[$i] !== ']') {
-                    if ($pattern[$i] === '\\') {
-                        $i++;
-                    }
-                    $i++;
-                }
-                $i++;
-                continue;
-            }
-            if ($ch === '|') {
-                // New alternative at the current nesting: reset its seen set.
-                $stack[$topIndex] = [];
-                $i++;
-                continue;
-            }
-            if (
-                $ch === '('
-                && $i + 1 < $len
-                && $pattern[$i + 1] === '?'
-            ) {
-                // Is it a named capture (?<name>..) — not lookbehind (?<=..) or (?<!..)?
-                if (
-                    $i + 3 < $len
-                    && $pattern[$i + 2] === '<'
-                    && $pattern[$i + 3] !== '='
-                    && $pattern[$i + 3] !== '!'
-                ) {
-                    $nameStart = $i + 3;
-                    $nameEnd = $nameStart;
-                    while ($nameEnd < $len && $pattern[$nameEnd] !== '>') {
-                        $nameEnd++;
-                    }
-                    if ($nameEnd < $len) {
-                        $name = substr($pattern, $nameStart, $nameEnd - $nameStart);
-                        if (isset($stack[$topIndex][$name])) {
-                            return true;
-                        }
-                        $stack[$topIndex][$name] = true;
-                        $i = $nameEnd + 1;
-                        // Enter a new alternative scope for the group body.
-                        $stack[] = [];
-                        $topIndex++;
-                        continue;
-                    }
-                }
-                // Non-capturing or other (?...) group — push scope.
-                $stack[] = [];
-                $topIndex++;
-                $i += 2;
-                continue;
-            }
-            if ($ch === '(') {
-                // Plain capturing group — push scope.
-                $stack[] = [];
-                $topIndex++;
-                $i++;
-                continue;
-            }
-            if ($ch === ')') {
-                // Pop scope.
-                if ($topIndex > 0) {
-                    array_pop($stack);
-                    $topIndex--;
-                }
-                $i++;
-                continue;
-            }
-            $i++;
-        }
-        return false;
+        return RegExpSyntax::hasDuplicateNamedGroupsInSameAlternative($pattern);
     }
 
     /**
