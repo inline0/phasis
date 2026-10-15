@@ -29,5 +29,9 @@
     "unicode_property_data": "17.0.0",
     "canonical_workflow": "compat-matrix.yml",
     "report": "compat.json"
+  },
+  "temporal_eras": {
+    "source": "https://tc39.es/proposal-intl-era-monthcode/",
+    "scope": "Current identifiers/getters and date/date-time/year-month era-year property bags; existing non-ISO arithmetic gaps remain in the canonical report"
   }
 }

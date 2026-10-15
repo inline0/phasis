@@ -101,8 +101,7 @@ trait TypeConversionHelpers
                 // For calendars that use eras (gregory, japanese,
                 // roc, etc.), the two fields must be both present
                 // or both absent.
-                static $erasUseEras = ['gregory', 'japanese', 'roc'];
-                if (in_array($cal, $erasUseEras, true) && $eraSet !== $eraYearSet) {
+                if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
                     throw new TypeError(
                         'era and eraYear must be provided together',
                     );
@@ -118,58 +117,12 @@ trait TypeConversionHelpers
                 self::parseMonthCodeSyntax($mcStr);
             }
             $yearVal = $item->get('year');
-            if ($yearVal instanceof JsUndefined) {
-                static $pdEraCals = [
-                    'gregory', 'japanese', 'roc',
-                    'coptic', 'ethiopic', 'ethioaa',
-                ];
-                if (
-                    $eraYearNum !== null
-                    && in_array($cal, $pdEraCals, true)
-                ) {
-                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    if ($cal === 'japanese') {
-                        $isoYear = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
-                        if ($isoYear === null) {
-                            // Unrecognized era: treat as gregory-style.
-                            $yNum = in_array($eraLower, ['bc', 'bce', 'japanese-inverse'], true)
-                                ? (1 - $eraYearNum)
-                                : $eraYearNum;
-                        } else {
-                            $yNum = (float) $isoYear;
-                        }
-                    } elseif ($cal === 'roc') {
-                        // ROC year fields are calendar-relative (year 1 = ISO
-                        // 1912). For era="roc", the calendar year is the era
-                        // year directly. For "roc-inverse"/"before-roc",
-                        // calendar year 0 = ISO 1911 = before-roc year 1.
-                        if ($eraLower === 'roc-inverse' || $eraLower === 'before-roc') {
-                            $yNum = 1 - $eraYearNum;
-                        } else {
-                            $yNum = $eraYearNum;
-                        }
-                    } elseif ($cal === 'gregory') {
-                        $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
-                            ? (1 - $eraYearNum)
-                            : $eraYearNum;
-                    } else {
-                        // Other calendars (coptic, ethiopic, islamic, etc.)
-                        // pass eraYear through as the calendar year, with
-                        // -inverse / -bc style flipping the sign.
-                        $yNum = (
-                            $eraLower !== ''
-                            && (str_ends_with($eraLower, '-inverse')
-                                || in_array($eraLower, ['bc', 'bce', 'before-roc'], true))
-                        )
-                            ? (1 - $eraYearNum)
-                            : $eraYearNum;
-                    }
-                } else {
-                    throw new TypeError('missing required property: year');
-                }
-            } else {
-                $yNum = TypeConversion::toNumber($yearVal);
-            }
+            $yNum = self::calendarYearFromFields(
+                $cal,
+                $eraStr,
+                $eraYearNum,
+                $yearVal instanceof JsUndefined ? null : TypeConversion::toNumber($yearVal),
+            );
             // Now validate and resolve fields.
             if (!$hasMonth && !$hasMonthCode) {
                 throw new TypeError('missing required property: month');
@@ -410,8 +363,7 @@ trait TypeConversionHelpers
                         throw new RangeError('eraYear must be an integer');
                     }
                 }
-                static $relErasUseEras = ['gregory', 'japanese', 'roc'];
-                if (in_array($cal, $relErasUseEras, true) && $eraSet !== $eraYearSet) {
+                if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
                     throw new TypeError('era and eraYear must be provided together');
                 }
             }
@@ -528,17 +480,12 @@ trait TypeConversionHelpers
                 }
             }
             // Required: year (or era+eraYear), day (and month or monthCode).
-            if ($yearVal instanceof JsUndefined) {
-                static $relEraDeriv = ['gregory', 'japanese', 'roc'];
-                if ($eraYearNum !== null && in_array($cal, $relEraDeriv, true)) {
-                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    $yNum = in_array($eraLower, ['bc', 'bce'], true)
-                        ? (1 - $eraYearNum)
-                        : $eraYearNum;
-                } else {
-                    throw new TypeError('missing required property: year');
-                }
-            }
+            $yNum = self::calendarYearFromFields(
+                $cal,
+                $eraStr,
+                $eraYearNum,
+                $yearVal instanceof JsUndefined ? null : $yNum,
+            );
             if ($dayVal instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
             }
@@ -560,6 +507,15 @@ trait TypeConversionHelpers
             // Check for -0 year.
             if ($yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
                 throw new RangeError('reject minus zero as extended year');
+            }
+            if ($cal === 'roc') {
+                $y += 1911;
+            } elseif ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'japanese'], true)) {
+                $parts = self::calendarPartsToIso($cal, $y, $mc, $mc === null ? $m : null, $d);
+                if ($parts === null) {
+                    throw new RangeError('Invalid calendar date');
+                }
+                [$y, $m, $d] = [$parts['year'], $parts['month'], $parts['day']];
             }
             [$y, $m, $d] = self::constrainISODate($y, $m, $d);
             // If timeZone present, validate the offset (no fuzzy match in property
@@ -923,8 +879,7 @@ trait TypeConversionHelpers
                         throw new RangeError('eraYear must be an integer');
                     }
                 }
-                static $pdtErasUseEras = ['gregory', 'japanese', 'roc'];
-                if (in_array($cal, $pdtErasUseEras, true) && $eraSet !== $eraYearSet) {
+                if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
                     throw new TypeError(
                         'era and eraYear must be provided together',
                     );
@@ -1002,32 +957,18 @@ trait TypeConversionHelpers
                 $s = (int) $sNum;
             }
             $yearVal = $item->get('year');
-            if ($yearVal instanceof JsUndefined) {
-                // For era-using calendars, era+eraYear can
-                // substitute for year (Gregorian: ce/ad → year=eraYear,
-                // bc/bce → year = 1 - eraYear). For calendars that
-                // don't use eras (hebrew/islamic/chinese), an absent
-                // year is always a TypeError.
-                static $pdtEraDerivCals = ['gregory', 'japanese', 'roc'];
-                if (
-                    $eraYearNum !== null
-                    && in_array($cal, $pdtEraDerivCals, true)
-                ) {
-                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    if (in_array($eraLower, ['bc', 'bce'], true)) {
-                        $y = 1 - (int) $eraYearNum;
-                    } else {
-                        $y = (int) $eraYearNum;
-                    }
-                } else {
-                    throw new TypeError('missing required property: year');
-                }
-            } else {
-                $yNum = TypeConversion::toNumber($yearVal);
-                if (!is_finite($yNum)) {
-                    throw new RangeError('year must be finite');
-                }
-                $y = (int) $yNum;
+            $yNum = self::calendarYearFromFields(
+                $cal,
+                $eraStr,
+                $eraYearNum,
+                $yearVal instanceof JsUndefined ? null : TypeConversion::toNumber($yearVal),
+            );
+            if (!is_finite($yNum)) {
+                throw new RangeError('year must be finite');
+            }
+            $y = (int) $yNum;
+            if ($cal === 'roc') {
+                $y += 1911;
             }
             // Now validate monthCode suitability (after year type check).
             if ($mcStr !== null) {
@@ -1219,8 +1160,7 @@ trait TypeConversionHelpers
                     throw new RangeError('eraYear must be an integer');
                 }
             }
-            static $pymLazyEraCals = ['gregory', 'japanese', 'roc'];
-            if (in_array($cal, $pymLazyEraCals, true) && $eraSet !== $eraYearSet) {
+            if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
                 throw new TypeError('era and eraYear must be provided together');
             }
         }
@@ -1241,34 +1181,19 @@ trait TypeConversionHelpers
             $mcParsed = self::parseMonthCodeSyntax($mcStr);
         }
         $year = $item->get('year');
-        if ($year instanceof JsUndefined) {
-            static $pymLazyDeriv = ['gregory', 'japanese', 'roc'];
-            if ($eraYearNum !== null && in_array($cal, $pymLazyDeriv, true)) {
-                $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                if ($cal === 'japanese') {
-                    $isoYear = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
-                    $yNum = $isoYear !== null
-                        ? (float) $isoYear
-                        : (in_array($eraLower, ['japanese-inverse'], true) ? (1 - $eraYearNum) : $eraYearNum);
-                } elseif ($cal === 'roc') {
-                    $yNum = in_array($eraLower, ['roc-inverse', 'before-roc'], true)
-                        ? (1912 - $eraYearNum)
-                        : (1911 + $eraYearNum);
-                } else {
-                    $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
-                        ? (1 - $eraYearNum)
-                        : $eraYearNum;
-                }
-            } else {
-                throw new TypeError('missing required property: year');
-            }
-        } else {
-            $yNum = TypeConversion::toNumber($year);
-        }
+        $yNum = self::calendarYearFromFields(
+            $cal,
+            $eraStr,
+            $eraYearNum,
+            $year instanceof JsUndefined ? null : TypeConversion::toNumber($year),
+        );
         if (!is_finite($yNum)) {
             throw new RangeError('year must be finite');
         }
         $y = (int) $yNum;
+        if ($cal === 'roc') {
+            $y += 1911;
+        }
         if ($mVal === null && $mcStr === null) {
             throw new TypeError('missing required property: month or monthCode');
         }
@@ -1386,8 +1311,7 @@ trait TypeConversionHelpers
                         throw new RangeError('eraYear must be an integer');
                     }
                 }
-                static $pymErasUseEras = ['gregory', 'japanese', 'roc'];
-                if (in_array($cal, $pymErasUseEras, true) && $eraSet !== $eraYearSet) {
+                if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
                     throw new TypeError('era and eraYear must be provided together');
                 }
             }
@@ -1408,37 +1332,19 @@ trait TypeConversionHelpers
                 $mcParsed = self::parseMonthCodeSyntax($mcStr);
             }
             $year = $item->get('year');
-            if ($year instanceof JsUndefined) {
-                static $pymEraDerivCals = ['gregory', 'japanese', 'roc'];
-                if (
-                    $eraYearNum !== null
-                    && in_array($cal, $pymEraDerivCals, true)
-                ) {
-                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    if ($cal === 'japanese') {
-                        $isoYear = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
-                        $yNum = $isoYear !== null
-                            ? (float) $isoYear
-                            : (in_array($eraLower, ['japanese-inverse'], true) ? (1 - $eraYearNum) : $eraYearNum);
-                    } elseif ($cal === 'roc') {
-                        $yNum = in_array($eraLower, ['roc-inverse', 'before-roc'], true)
-                            ? (1912 - $eraYearNum)
-                            : (1911 + $eraYearNum);
-                    } else {
-                        $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
-                            ? (1 - $eraYearNum)
-                            : $eraYearNum;
-                    }
-                } else {
-                    throw new TypeError('missing required property: year');
-                }
-            } else {
-                $yNum = TypeConversion::toNumber($year);
-            }
+            $yNum = self::calendarYearFromFields(
+                $cal,
+                $eraStr,
+                $eraYearNum,
+                $year instanceof JsUndefined ? null : TypeConversion::toNumber($year),
+            );
             if (!is_finite($yNum)) {
                 throw new RangeError('year must be finite');
             }
             $y = (int) $yNum;
+            if ($cal === 'roc') {
+                $y += 1911;
+            }
             if ($mVal === null && $mcStr === null) {
                 throw new TypeError('missing required property: month or monthCode');
             }

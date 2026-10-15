@@ -346,6 +346,73 @@ trait MethodRegistrationHelpers
         return null;
     }
 
+    private static function calendarHasEras(string $cal): bool
+    {
+        return in_array($cal, [
+            'buddhist', 'coptic', 'ethiopic', 'ethioaa', 'gregory', 'hebrew',
+            'indian', 'islamic-civil', 'islamic-tbla', 'islamic-umalqura',
+            'japanese', 'persian', 'roc',
+        ], true);
+    }
+
+    private static function calendarYearFromFields(
+        string $cal,
+        ?string $era,
+        ?float $eraYear,
+        ?float $year,
+    ): float {
+        if (self::calendarHasEras($cal) && $eraYear !== null && $era !== null) {
+            // Intl era/monthCode uses calendar arithmetic years, including
+            // lenient Japanese regnal years outside the named era's range.
+            $derived = match ($cal) {
+                'gregory', 'japanese' => match ($era) {
+                    'ce', 'ad' => $eraYear,
+                    'bce', 'bc' => 1 - $eraYear,
+                    'meiji' => $cal === 'japanese' ? 1867 + $eraYear : null,
+                    'taisho' => $cal === 'japanese' ? 1911 + $eraYear : null,
+                    'showa' => $cal === 'japanese' ? 1925 + $eraYear : null,
+                    'heisei' => $cal === 'japanese' ? 1988 + $eraYear : null,
+                    'reiwa' => $cal === 'japanese' ? 2018 + $eraYear : null,
+                    default => null,
+                },
+                'roc' => match ($era) {
+                    'roc' => $eraYear,
+                    'broc' => 1 - $eraYear,
+                    default => null,
+                },
+                'ethiopic' => match ($era) {
+                    'am' => $eraYear,
+                    'aa' => $eraYear - 5500,
+                    default => null,
+                },
+                'islamic-civil', 'islamic-tbla', 'islamic-umalqura' => match ($era) {
+                    'ah' => $eraYear,
+                    'bh' => 1 - $eraYear,
+                    default => null,
+                },
+                default => $era === match ($cal) {
+                    'buddhist' => 'be',
+                    'coptic', 'hebrew' => 'am',
+                    'ethioaa' => 'aa',
+                    'indian' => 'shaka',
+                    'persian' => 'ap',
+                    default => '',
+                } ? $eraYear : null,
+            };
+            if ($derived === null) {
+                throw new RangeError("Invalid era '{$era}' for calendar '{$cal}'");
+            }
+            if ($year !== null && (float) (int) $year !== $derived) {
+                throw new RangeError('era/eraYear and year disagree');
+            }
+            return $derived;
+        }
+        if ($year === null) {
+            throw new TypeError('missing required property: year');
+        }
+        return $year;
+    }
+
     private static function deriveEra(string $cal, int $isoYear, int $isoMonth = 1, int $isoDay = 1): ?string
     {
         return match ($cal) {

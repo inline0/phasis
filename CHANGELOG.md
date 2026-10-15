@@ -16,6 +16,7 @@
 - Official TC39 test262 snapshot to October 13, 2026; canonical reports retain individual failure paths and messages
 
 ### Fixed
+- Temporal date/date-time/year-month property bags resolve current era names, aliases and arithmetic years, reject inconsistent explicit years, and use calendar-relative ROC fields
 - HTML attributes now escape after one default-hint string coercion, including arrays and custom objects
 - The formatter preserves import/export attributes, keeps empty-switch comments inside the body, and honors `semi: false` with automatic-semicolon-insertion guards
 - Test262 JSON reporting survives failure messages containing lone surrogate code units
