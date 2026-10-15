@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Phasis\Formatter;
 
 use Phasis\Ast\Node;
+use Phasis\Ast\Statement\SwitchStatement;
 use Phasis\Lexer\Comment;
+use Phasis\Lexer\Lexer;
+use Phasis\Lexer\Token;
+use Phasis\Lexer\TokenType;
 
 /**
  * Distributes collected comments onto AST nodes as leading, trailing, or
@@ -26,6 +30,9 @@ final class CommentAttacher
     /** @var array<string, array<int, array{0: string, 1: bool}>> */
     private array $classProps = [];
 
+    /** @var Token[]|null Lazily lexed only for empty switch body boundaries. */
+    private ?array $tokens = null;
+
     private function __construct(private readonly string $source)
     {
         $this->maxStart = new \SplObjectStorage();
@@ -40,7 +47,8 @@ final class CommentAttacher
         $attacher = new self($source);
         $index = new CommentIndex();
         if ($comments !== []) {
-            $attacher->distribute($root, $comments, strlen($source), $index);
+            $remaining = $attacher->attachEmptySwitchComments($root, $comments, $index);
+            $attacher->distribute($root, $remaining, strlen($source), $index);
         }
         return $attacher->finish($comments, $index);
     }
@@ -144,6 +152,67 @@ final class CommentAttacher
             $childBound = $i + 1 < $count ? $children[$i + 1][0]->location->offset : $upperBound;
             $this->distribute($child, $into[$child], $childBound, $index);
         }
+    }
+
+    /**
+     * Empty switches have a discriminant child but no body children. Bind
+     * comments within the braces before the generic trailing-child rule.
+     *
+     * @param Comment[] $comments
+     * @return Comment[]
+     */
+    private function attachEmptySwitchComments(Node $node, array $comments, CommentIndex $index): array
+    {
+        if ($node instanceof SwitchStatement && $node->cases === []) {
+            $range = $this->emptySwitchBodyRange($node);
+            if ($range !== null) {
+                $remaining = [];
+                foreach ($comments as $comment) {
+                    if ($comment->start->offset > $range[0] && $comment->endOffset <= $range[1]) {
+                        $index->addDangling($node, $this->attached($comment));
+                    } else {
+                        $remaining[] = $comment;
+                    }
+                }
+                $comments = $remaining;
+            }
+        }
+        foreach ($this->children($node) as [$child]) {
+            if ($comments === []) {
+                break;
+            }
+            $comments = $this->attachEmptySwitchComments($child, $comments, $index);
+        }
+        return $comments;
+    }
+
+    /** @return array{int, int}|null */
+    private function emptySwitchBodyRange(SwitchStatement $node): ?array
+    {
+        $this->tokens ??= (new Lexer($this->source))->tokenize();
+        $depth = 0;
+        $seenTest = false;
+        $open = null;
+        foreach ($this->tokens as $token) {
+            if ($token->location->offset <= $node->location->offset) {
+                continue;
+            }
+            if ($seenTest && $depth === 0) {
+                if ($open === null && $token->type === TokenType::LeftBrace) {
+                    $open = $token->location->offset;
+                    continue;
+                }
+                return $open !== null && $token->type === TokenType::RightBrace
+                    ? [$open, $token->location->offset] : null;
+            }
+            if ($token->type === TokenType::LeftParen) {
+                $seenTest = true;
+                $depth++;
+            } elseif ($token->type === TokenType::RightParen) {
+                $depth--;
+            }
+        }
+        return null;
     }
 
     private function attached(Comment $comment): AttachedComment

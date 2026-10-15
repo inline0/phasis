@@ -15,7 +15,7 @@ use Phasis\Regex\Ast\Node;
 use Phasis\Regex\Ast\Pattern;
 use Phasis\Regex\Ast\Quantified;
 use Phasis\Regex\Ast\Sequence;
-use Phasis\Regex\Unicode16Tables;
+use Phasis\Regex\UnicodeTables;
 
 /**
  * Matcher trait part: MatcherUnicodeProperty. Composed into Matcher via
@@ -104,7 +104,7 @@ trait MatcherUnicodeProperty
         if (array_key_exists($key, $cache)) {
             return $cache[$key];
         }
-        $ranges = Unicode16Tables::PROPERTIES[$key] ?? null;
+        $ranges = UnicodeTables::PROPERTIES[$key] ?? null;
         $cache[$key] = $ranges;
         return $ranges;
     }
@@ -304,7 +304,7 @@ trait MatcherUnicodeProperty
 
     private function lookupUnicodeProperty(string $name, ?string $value, int $cp): bool
     {
-        // Unicode 16 bundled tables take precedence over host ICU
+        // Bundled Unicode tables take precedence over host ICU
         // (which on Ubuntu CI is ICU 74 = Unicode 14, two versions
         // behind the test262 fixtures). Falls back to IntlChar/PCRE2
         // for properties not present in the bundle.
@@ -360,8 +360,8 @@ trait MatcherUnicodeProperty
     }
 
     /**
-     * Look up a property/value combination in the bundled Unicode 16
-     * tables (src/Regex/Unicode16Tables.php). Returns true/false if
+     * Look up a property/value combination in the bundled Unicode
+     * tables (src/Regex/UnicodeTables.php). Returns true/false if
      * the property is in our bundle, or null if the property is
      * unknown (caller falls back to IntlChar/PCRE2).
      *
@@ -381,7 +381,7 @@ trait MatcherUnicodeProperty
         $cacheKey = $value === null ? $name : $name . '=' . $value;
         if (!array_key_exists($cacheKey, $rangesCache)) {
             $key = self::bundledPropertyKey($name, $value);
-            $rangesCache[$cacheKey] = Unicode16Tables::PROPERTIES[$key] ?? null;
+            $rangesCache[$cacheKey] = UnicodeTables::PROPERTIES[$key] ?? null;
         }
         $ranges = $rangesCache[$cacheKey];
         if ($ranges === null) {

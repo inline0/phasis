@@ -1,0 +1,4 @@
+{
+  "string": "<article data-coercions=\"1\"><pre>&lt;section>&lt;div title=&quot;&amp;quot;>&amp;lt;x-probe>&amp;amp;&quot;>&lt;/div>&lt;div class=&quot;&amp;quot;&amp;lt;>&amp;amp;,tail&quot;>&lt;/div>&lt;svg viewBox=&quot;&amp;quot;&amp;lt;>&amp;amp;,tail&quot;>&lt;/svg>&lt;div title=&quot;&amp;quot;&amp;lt;>&amp;amp;&quot;>&lt;/div>&lt;div title=&quot;&amp;quot;&amp;lt;probe>&amp;amp;&quot;>&lt;/div>&lt;/section></pre></article>",
+  "async": "<article data-coercions=\"1\"><pre>&lt;section>&lt;div title=&quot;&amp;quot;>&amp;lt;x-probe>&amp;amp;&quot;>&lt;/div>&lt;div class=&quot;&amp;quot;&amp;lt;>&amp;amp;,tail&quot;>&lt;/div>&lt;svg viewBox=&quot;&amp;quot;&amp;lt;>&amp;amp;,tail&quot;>&lt;/svg>&lt;div title=&quot;&amp;quot;&amp;lt;>&amp;amp;&quot;>&lt;/div>&lt;div title=&quot;&amp;quot;&amp;lt;probe>&amp;amp;&quot;>&lt;/div>&lt;/section></pre></article>"
+}

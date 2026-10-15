@@ -1,0 +1,117 @@
+[
+  {
+    "name": "empty-switch-line-comment",
+    "source": "switch (state) {\n // Keep pending state\n}\n",
+    "type": "script",
+    "options": {}
+  },
+  {
+    "name": "empty-switch-block-comment",
+    "source": "switch (state) { /* Keep pending state */ }\n",
+    "type": "script",
+    "options": {}
+  },
+  {
+    "name": "empty-switch-no-comment",
+    "source": "switch(state){}",
+    "type": "script",
+    "options": {}
+  },
+  {
+    "name": "css-type-repeat",
+    "source": "article{border-radius:attr(corners type(<length>+));width:attr(width type(<number> | <percentage>));}",
+    "type": "css",
+    "options": {}
+  },
+  {
+    "name": "css-type-list",
+    "source": "section{--colors:attr(colors type(<color>#));--items:attr(items type(<number>+));width:calc(10px + 20px)}",
+    "type": "css",
+    "options": {}
+  },
+  {
+    "name": "string-quote-backslash",
+    "source": "console.log(\"A setting\\\\'s .kind must be \\\"method\\\" or \\\"field\\\".\");",
+    "type": "script",
+    "options": {
+      "singleQuote": true
+    }
+  },
+  {
+    "name": "json-escaped-text",
+    "source": "{\"name\":\"雪😀\",\"quoted\":\"\\\"&<>\",\"negative\":-0,\"nested\":{\"enabled\":true}}",
+    "type": "json",
+    "options": {}
+  },
+  {
+    "name": "json-narrow",
+    "source": "{\"one\":[1,2,3,4],\"two\":{\"alpha\":true,\"beta\":false}}",
+    "type": "json",
+    "options": {
+      "printWidth": 25,
+      "useTabs": true
+    }
+  },
+  {
+    "name": "arrow-semi-options",
+    "source": "const double=(value)=>{return value*2};const config={double,enabled:true};",
+    "type": "script",
+    "options": {
+      "semi": false,
+      "arrowParens": "avoid",
+      "bracketSpacing": false
+    }
+  },
+  {
+    "name": "module-import-attributes",
+    "source": "import data from './data.json' with {type:'json'};export {data};",
+    "type": "module",
+    "options": {
+      "singleQuote": true
+    }
+  },
+  {
+    "name": "module-export-attributes",
+    "source": "export {default as data} from './data.json' with {type:'json'}; export * from './locales.json' with {'type':'json'};",
+    "type": "module",
+    "options": {
+      "singleQuote": true
+    }
+  },
+  {
+    "name": "side-effect-import-attributes",
+    "source": "import './settings.json' with {type:'json'};",
+    "type": "module",
+    "options": {}
+  },
+  {
+    "name": "switch-comments-boundaries",
+    "source": "switch (state /* test */) { /* first */\n // second\n}\n// after switch\n",
+    "type": "script",
+    "options": {}
+  },
+  {
+    "name": "semicolon-asi-guards",
+    "source": "let x = 1;\n[1, 2].forEach(log);\n(function () {})();\n/abc/.test(text);\n`literal`;\n+value;\n-value;\n({ x });",
+    "type": "script",
+    "options": {
+      "semi": false
+    }
+  },
+  {
+    "name": "semicolon-control-flow",
+    "source": "function f(x){if(x)return x;else throw new Error();}for(let i=0;i<2;i++){if(i)continue;else break;}do{x++}while(x<3);debugger;",
+    "type": "script",
+    "options": {
+      "semi": false
+    }
+  },
+  {
+    "name": "semicolon-class-fields",
+    "source": "class Sample { first = 1; second = 2; [computed]() {} third = 3; *iterator() {} fourth; }",
+    "type": "script",
+    "options": {
+      "semi": false
+    }
+  }
+]

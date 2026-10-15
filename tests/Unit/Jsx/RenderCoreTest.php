@@ -33,7 +33,7 @@ final class RenderCoreTest extends TestCase
         $this->assertSame(
             "\$\$typeof,type,key,ref,props Symbol(react.transitional.element) k null a\n"
             . "true true true\n"
-            . "1 {\"ref\":null,\"a\":1,\"children\":[\"one\",\"two\"]} true false 19.3.0\n"
+            . "1 {\"ref\":null,\"a\":1,\"children\":[\"one\",\"two\"]} true false 19.3.1\n"
             . 'true 2 z',
             $out,
         );

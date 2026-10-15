@@ -1,7 +1,7 @@
 <?php
 
 /**
- * React 19.3.0 inline instruction scripts, copied byte for byte from
+ * React 19.3.1 inline instruction scripts, copied byte for byte from
  * react-dom-server.node.production.js.
  *
  * Copyright (c) Meta Platforms, Inc. and affiliates.

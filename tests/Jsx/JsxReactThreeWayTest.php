@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Phasis\Tests\Jsx;
 
 use Phasis\Engine;
+use Phasis\BuiltIn\Jsx\React\ReactModule;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -33,7 +34,7 @@ final class JsxReactThreeWayTest extends TestCase
     {
         $expected = json_decode((string) file_get_contents(substr($file, 0, -4) . '.expected.txt'), true);
         $engine = new Engine();
-        $dir = __DIR__ . '/vendor/react-19.3.0/';
+        $dir = __DIR__ . '/vendor/react-' . ReactModule::VERSION . '/';
         $engine->setImportMap([
             'react' => $dir . 'react.mjs',
             'react/jsx-runtime' => $dir . 'jsx-runtime.mjs',

@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
  * async Comments component whose fetch() is served by a mock transport.
  *
  * The fixture project in tests/Jsx/oracle/project, bundled by esbuild like
- * a client build and rendered with react-dom@19.3.0's prerender in Node,
+ * a client build and rendered with react-dom@19.3.1's prerender in Node,
  * is the oracle (`node tests/Jsx/oracle/jsx-oracle.mjs project`).
  */
 final class JsxGoalsTest extends TestCase

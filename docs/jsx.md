@@ -37,7 +37,7 @@ $engine = new Engine();
 echo $engine->render(__DIR__ . '/components/PostCard.jsx', ['post' => $post]);
 ```
 
-There are two renderers. The **React profile** is a native port of React 19.3's server renderer: its HTML is byte-identical to `react-dom@19.3.0`, so React hydrates it on the client (see [React](/docs/react)). The **HTML profile** is for server-only HTML such as emails and feeds: byte-identical to `preact-render-to-string` 6.8.0, with no hydration markers. Both share one element model and the same hooks.
+There are two renderers. The **React profile** is a native port of React 19.3's server renderer: its HTML is byte-identical to `react-dom@19.3.1`, so React hydrates it on the client (see [React](/docs/react)). The **HTML profile** is for server-only HTML such as emails and feeds: byte-identical to `preact-render-to-string` 6.8.1, with no hydration markers. Both share one element model and the same hooks.
 
 ## Which files get JSX
 
@@ -121,7 +121,7 @@ export default function Newsletter({ name, articleHtml }) {
 
 - **`phasis/jsx-runtime`** exports `jsx`, `jsxs` and `Fragment`.
 - **`phasis`** exports `createElement`, `Fragment`, `createContext`, the server hooks (`useState`, `useReducer`, `useMemo`, `useCallback`, `useRef`, `useContext`, `useId`, `use`, the effect hooks, which never run, and the rest), `renderToString`, `renderToStringAsync` and `raw`.
-- **Output** is byte-identical to preact-render-to-string 6.8.0: HTML spellings (`class`, `for`, string `style`) work as written, camelCase HTML props are lowercased, `style` objects become `prop:value;` pairs with `px`, booleans render as bare attributes, void elements as `<br/>`, and text escapes `&`, `<` and `"`.
+- **Output** is byte-identical to preact-render-to-string 6.8.1: HTML spellings (`class`, `for`, string `style`) work as written, camelCase HTML props are lowercased, `style` objects become `prop:value;` pairs with `px`, booleans render as bare attributes, void elements as `<br/>`, and text escapes `&`, `<` and `"`.
 - **`raw(html)`** inserts trusted HTML verbatim. It and `dangerouslySetInnerHTML` are the only unescaped paths.
 - **No URL filtering.** `javascript:` URLs pass through as written, as in Preact. Sanitize untrusted URLs yourself.
 - **`renderToStringAsync`** waits for components that suspend on `use(promise)`, wrapping their output in preact's `<!--$s-->` markers. Awaiting async components is a Phasis extension; preact-render-to-string renders nothing for them.

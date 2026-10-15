@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-15",
+  "react": {
+    "version": "19.3.1",
+    "source": "https://github.com/facebook/react/releases/tag/v19.3.1"
+  },
+  "preact": {
+    "version": "11.0.1",
+    "source": "https://github.com/preactjs/preact/releases/tag/11.0.1"
+  },
+  "preact-render-to-string": {
+    "version": "6.8.1",
+    "commit": "0519dc873fe385ca86864f6eb9a0a584185b943a",
+    "source": "https://github.com/preactjs/preact-render-to-string"
+  },
+  "prettier": {
+    "version": "3.9.10",
+    "scope": [
+      "JavaScript",
+      "JSON",
+      "CSS"
+    ],
+    "oracle": "node tests/Jsx/oracle/formatter-oracle.mjs",
+    "source": "https://github.com/prettier/prettier/releases/tag/3.9.10"
+  },
+  "test262": {
+    "repository": "https://github.com/tc39/test262",
+    "commit": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+    "unicode_property_data": "17.0.0",
+    "canonical_workflow": "compat-matrix.yml",
+    "report": "compat.json"
+  }
+}

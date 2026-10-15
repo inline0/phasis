@@ -391,7 +391,7 @@ final class JsPrinter
     {
         return match (true) {
             $node instanceof ExpressionStatement => $this->expressionStatement($node),
-            $node instanceof VariableDeclaration => [$this->variableDeclaration($node), ';'],
+            $node instanceof VariableDeclaration => [$this->variableDeclaration($node), $this->semicolon()],
             $node instanceof FunctionDeclaration => $this->functionNode($node, $node->id?->name),
             $node instanceof ClassDeclaration => $this->classNode($node),
             $node instanceof BlockStatement => $this->block($node),
@@ -405,14 +405,14 @@ final class JsPrinter
             $node instanceof ThrowStatement => $this->returnLike('throw', $node->argument),
             $node instanceof TryStatement => $this->tryStatement($node),
             $node instanceof SwitchStatement => $this->switchStatement($node),
-            $node instanceof BreakStatement => [$node->label === null ? 'break' : 'break ' . $node->label, ';'],
+            $node instanceof BreakStatement => [$node->label === null ? 'break' : 'break ' . $node->label, $this->semicolon()],
             $node instanceof ContinueStatement => [
                 $node->label === null ? 'continue' : 'continue ' . $node->label,
-                ';',
+                $this->semicolon(),
             ],
             $node instanceof LabeledStatement => $this->labeledStatement($node),
             $node instanceof EmptyStatement => '',
-            $node instanceof DebuggerStatement => 'debugger;',
+            $node instanceof DebuggerStatement => 'debugger' . $this->semicolon(),
             $node instanceof WithStatement => $this->withStatement($node),
             $node instanceof ImportDeclaration => $this->importDeclaration($node),
             $node instanceof ExportDeclaration => $this->exportDeclaration($node),
@@ -420,24 +420,56 @@ final class JsPrinter
         };
     }
 
+    private function semicolon(): string
+    {
+        return $this->options->semi ? ';' : '';
+    }
+
     private function expressionStatement(ExpressionStatement $node): mixed
     {
         $expression = $node->expression;
         if ($this->directives->offsetExists($node) && $expression instanceof Literal) {
-            return [$this->directiveText($expression), ';'];
+            return [$this->directiveText($expression), $this->semicolon()];
         }
         // A string that is not a directive keeps parentheses, so that it
         // cannot become one where an empty statement before it is dropped.
         if ($expression instanceof Literal && is_string($expression->value) && $this->isSourceString($expression)) {
-            return ['(', $this->print($expression, $node), ');'];
+            return [$this->options->semi ? '' : ';', '(', $this->print($expression, $node), ')' . $this->semicolon()];
         }
 
         $needsParens = $this->statementStartNeedsParens($expression);
         $doc = $this->print($expression, $node);
+        $prefix = !$this->options->semi
+            && ($needsParens || str_contains('([`/+-', $this->firstTokenCharacter($doc))) ? ';' : '';
         if ($needsParens) {
-            return ['(', $doc, ');'];
+            return [$prefix, '(', $doc, ')' . $this->semicolon()];
         }
-        return [$doc, ';'];
+        return [$prefix, $doc, $this->semicolon()];
+    }
+
+    /** The first printed token, before indentation and comment documents. */
+    private function firstTokenCharacter(mixed $doc): string
+    {
+        if (is_string($doc)) {
+            $text = ltrim($doc);
+            if (str_starts_with($text, '//') || str_starts_with($text, '/*')) {
+                return '';
+            }
+            return $text[0] ?? '';
+        }
+        if (!is_array($doc)) {
+            return '';
+        }
+        if (isset($doc['type'])) {
+            return $this->firstTokenCharacter($doc['contents'] ?? $doc['flatContents'] ?? $doc['parts'] ?? '');
+        }
+        foreach ($doc as $part) {
+            $character = $this->firstTokenCharacter($part);
+            if ($character !== '') {
+                return $character;
+            }
+        }
+        return '';
     }
 
     private function isDirective(ExpressionStatement $node): bool
@@ -636,14 +668,14 @@ final class JsPrinter
             $body,
             'while (',
             Doc::group([Doc::indent([Doc::softline(), $this->print($node->test, $node)]), Doc::softline()]),
-            ');',
+            ')' . $this->semicolon(),
         ];
     }
 
     private function returnLike(string $keyword, ?Node $argument): mixed
     {
         if ($argument === null) {
-            return [$keyword, ';'];
+            return [$keyword, $this->semicolon()];
         }
         if ($argument instanceof BinaryExpression || $argument instanceof LogicalExpression) {
             return [
@@ -654,13 +686,13 @@ final class JsPrinter
                     Doc::softline(),
                     Doc::ifBreak(')'),
                 ]),
-                ';',
+                $this->semicolon(),
             ];
         }
         if ($argument instanceof SequenceExpression) {
-            return [$keyword . ' (', $this->print($argument, null), ');'];
+            return [$keyword . ' (', $this->print($argument, null), ')' . $this->semicolon()];
         }
-        return [$keyword . ' ', $this->print($argument, null), ';'];
+        return [$keyword . ' ', $this->print($argument, null), $this->semicolon()];
     }
 
     private function tryStatement(TryStatement $node): mixed
@@ -687,6 +719,12 @@ final class JsPrinter
             Doc::group([Doc::indent([Doc::softline(), $this->print($node->discriminant, $node)]), Doc::softline()]),
             ') {',
         ];
+        if ($node->cases === []) {
+            foreach ($this->unprinted($this->comments->danglingFor($node)) as $attached) {
+                $parts[] = Doc::indent([Doc::hardline(), $this->commentText($attached)]);
+            }
+            return [...$parts, Doc::hardline(), '}'];
+        }
         $caseParts = [];
         foreach ($node->cases as $index => $case) {
             if ($index > 0) {
@@ -884,21 +922,24 @@ final class JsPrinter
         }
         $members = [];
         $first = true;
-        foreach ($node->body as $member) {
+        foreach ($node->body as $memberIndex => $member) {
             if (!$first) {
                 $members[] = Doc::hardline();
                 if ($this->blankBefore($this->effectiveStart($member))) {
                     $members[] = Doc::hardline();
                 }
             }
-            $members[] = $this->withComments($member, $this->classMember($member));
+            $next = $node->body[$memberIndex + 1] ?? null;
+            $forceSemi = ($next instanceof ClassMethod || $next instanceof ClassProperty) && $next->computed
+                || ($next instanceof ClassMethod && $next->value->generator);
+            $members[] = $this->withComments($member, $this->classMember($member, $forceSemi));
             $first = false;
         }
         $parts[] = ['{', Doc::indent([Doc::hardline(), $members]), Doc::hardline(), '}'];
         return $parts;
     }
 
-    private function classMember(Node $node): mixed
+    private function classMember(Node $node, bool $forceSemi = false): mixed
     {
         if ($node instanceof ClassMethod) {
             $prefix = $node->static ? 'static ' : '';
@@ -917,7 +958,7 @@ final class JsPrinter
                 $parts[] = ' = ';
                 $parts[] = $this->print($node->value, $node);
             }
-            $parts[] = ';';
+            $parts[] = $forceSemi ? ';' : $this->semicolon();
             return $parts;
         }
         if ($node instanceof StaticBlock) {
@@ -987,8 +1028,10 @@ final class JsPrinter
 
     private function importDeclaration(ImportDeclaration $node): mixed
     {
+        $prefix = 'import ' . ($node->phase === 'evaluation' ? '' : $node->phase . ' ');
+        $attributes = $node->attributes === null ? '' : [' with ', $this->print($node->attributes, null)];
         if ($node->specifiers === []) {
-            return ['import ', $this->moduleString($node->source), ';'];
+            return [$prefix, $this->moduleString($node->source), $attributes, $this->semicolon()];
         }
 
         $default = null;
@@ -1017,7 +1060,7 @@ final class JsPrinter
         if ($namespace !== null) {
             $clauses[] = '* as ' . $namespace;
         }
-        $parts = ['import '];
+        $parts = [$prefix];
         $parts[] = Doc::join(', ', $clauses);
         if ($named !== []) {
             if ($clauses !== []) {
@@ -1027,7 +1070,8 @@ final class JsPrinter
         }
         $parts[] = ' from ';
         $parts[] = $this->moduleString($node->source);
-        $parts[] = ';';
+        $parts[] = $attributes;
+        $parts[] = $this->semicolon();
         return $parts;
     }
 
@@ -1048,14 +1092,20 @@ final class JsPrinter
 
     private function exportDeclaration(ExportDeclaration $node): mixed
     {
+        $attributes = $node->attributes === null ? '' : [' with ', $this->print($node->attributes, null)];
         if ($node->isAll) {
             $clause = $node->allAs !== null ? '* as ' . $node->allAs : '*';
-            return ['export ' . $clause . ' from ', $this->moduleString((string) $node->source), ';'];
+            return [
+                'export ' . $clause . ' from ',
+                $this->moduleString((string) $node->source),
+                $attributes,
+                $this->semicolon(),
+            ];
         }
         if ($node->isDefault) {
             $declaration = $node->declaration;
             if ($declaration === null) {
-                return 'export default;';
+                return 'export default' . $this->semicolon();
             }
             if ($declaration instanceof FunctionDeclaration) {
                 return ['export default ', $this->functionNode($declaration, $declaration->id?->name)];
@@ -1063,7 +1113,7 @@ final class JsPrinter
             if ($declaration instanceof ClassDeclaration) {
                 return ['export default ', $this->classNode($declaration)];
             }
-            return ['export default ', $this->print($declaration, $node), ';'];
+            return ['export default ', $this->print($declaration, $node), $this->semicolon()];
         }
         if ($node->declaration !== null) {
             return ['export ', $this->statement($node->declaration)];
@@ -1088,8 +1138,9 @@ final class JsPrinter
         if ($node->source !== null) {
             $parts[] = ' from ';
             $parts[] = $this->moduleString($node->source);
+            $parts[] = $attributes;
         }
-        $parts[] = ';';
+        $parts[] = $this->semicolon();
         return $parts;
     }
 

@@ -195,6 +195,10 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/source-phase-imports | PARTIAL | 1 | 1 | 0 | 0 | 0 | 0 | 50.0% |
 | staging/top-level-await | PASS | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
+## Failing Tests
+
+1976 individual failure paths and messages are recorded in [compat.json](compat.json) under `test262.failures`.
+
 ## Blocked Chunks
 
 | Group | Kind | Files | Sample | Log |

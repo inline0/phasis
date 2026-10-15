@@ -2,7 +2,7 @@
 
 /**
  * The general HTML profile: serialization ported from preact-render-to-string
- * 6.8.0 (src/index.js and src/lib/util.js).
+ * 6.8.1 (src/index.js and src/lib/util.js).
  *
  * Copyright (c) 2015 Jason Miller
  *
@@ -772,7 +772,7 @@ final class HtmlRenderer
         if (($v instanceof JsBoolean && $v->value) || ($v instanceof JsString && $v->value === '')) {
             return ' ' . $name;
         }
-        return ' ' . $name . '="' . ($v instanceof JsString ? self::encodeEntities($v->value) : self::concatString($v)) . '"';
+        return ' ' . $name . '="' . self::encodeEntities(self::concatString($v)) . '"';
     }
 
     private static function styleObjToCss(JsObject $style): string

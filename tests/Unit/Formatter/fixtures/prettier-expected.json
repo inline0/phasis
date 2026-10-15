@@ -1,0 +1,260 @@
+{
+  "version": "3.9.10",
+  "cases": [
+    {
+      "name": "chains.in.js",
+      "source": "async function load(source) {\n  const value = (await source.read()).trim();\n  const parsed = (await source.read()).json().then(check).catch(report);\n  const picked = (flag ? first : second).pick().sort().reverse();\n  const negated = !source\n    .ready;\n  const awaited = await source\n    .pending;\n  return (await import('./module.js')).default;\n}\n\nconst schema = z.string().optional().default('x');\nconst object = z.object({ id: z.string() }).strict().optional();\nconst mapped = items.filter(Boolean).map((item) => item.id).join(',');\n\nconst make = (id) => ({ id, label: String(id) });\nconst nested = (id) => ({ ...defaults, id });\n\nconst total = first + /* operand */ second;\nconst sum = left + // why\n  right;\nconst assigned = /* value */ compute();\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "async function load(source) {\n\tconst value = (await source.read()).trim();\n\tconst parsed = (await source.read()).json().then(check).catch(report);\n\tconst picked = (flag ? first : second).pick().sort().reverse();\n\tconst negated = !source.ready;\n\tconst awaited = await source.pending;\n\treturn (await import('./module.js')).default;\n}\n\nconst schema = z.string().optional().default('x');\nconst object = z.object({ id: z.string() }).strict().optional();\nconst mapped = items\n\t.filter(Boolean)\n\t.map((item) => item.id)\n\t.join(',');\n\nconst make = (id) => ({ id, label: String(id) });\nconst nested = (id) => ({ ...defaults, id });\n\nconst total = first + /* operand */ second;\nconst sum =\n\tleft + // why\n\tright;\nconst assigned = /* value */ compute();\n"
+    },
+    {
+      "name": "classes.in.js",
+      "source": "class Point extends Base {\n  static count = 0;\n  #secret = 'hidden';\n  constructor(x, y) { super(); this.x = x; this.y = y; }\n  get length() { return Math.sqrt(this.x ** 2 + this.y ** 2); }\n  set length(v) { this.scale = v; }\n  static create(...args) { return new Point(...args); }\n  async *stream() { yield* this.items; }\n  static { Point.count = 1; }\n}\nconst Anon = class { method() {} };\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "class Point extends Base {\n\tstatic count = 0;\n\t#secret = 'hidden';\n\tconstructor(x, y) {\n\t\tsuper();\n\t\tthis.x = x;\n\t\tthis.y = y;\n\t}\n\tget length() {\n\t\treturn Math.sqrt(this.x ** 2 + this.y ** 2);\n\t}\n\tset length(v) {\n\t\tthis.scale = v;\n\t}\n\tstatic create(...args) {\n\t\treturn new Point(...args);\n\t}\n\tasync *stream() {\n\t\tyield* this.items;\n\t}\n\tstatic {\n\t\tPoint.count = 1;\n\t}\n}\nconst Anon = class {\n\tmethod() {}\n};\n"
+    },
+    {
+      "name": "comments.in.js",
+      "source": "// file header comment\n\n// leading comment on statement\nconst a = 1; // trailing same-line\n\n/* block before */ const b = 2;\n\n/**\n * JSDoc style block\n * with lines\n */\nfunction documented() {\n  // inside function\n\n  return 1; // trailing in block\n}\n\nconst obj = {\n  // comment above property\n  key: 'value',\n};\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "// file header comment\n\n// leading comment on statement\nconst a = 1; // trailing same-line\n\n/* block before */ const b = 2;\n\n/**\n * JSDoc style block\n * with lines\n */\nfunction documented() {\n\t// inside function\n\n\treturn 1; // trailing in block\n}\n\nconst obj = {\n\t// comment above property\n\tkey: 'value',\n};\n"
+    },
+    {
+      "name": "destructuring.in.js",
+      "source": "const { alpha, beta = 2, gamma: renamed, ...rest } = source;\nconst [first, , third = 'x', ...tail] = list;\nfunction draw({ size = 'big', coords: { x = 0, y = 0 } = {}, radius = 25 } = {}) { return [x, y]; }\nconst fn = ({ a, b }, [c, d], ...others) => a + b + c + d + others.length;\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "const { alpha, beta = 2, gamma: renamed, ...rest } = source;\nconst [first, , third = 'x', ...tail] = list;\nfunction draw({\n\tsize = 'big',\n\tcoords: { x = 0, y = 0 } = {},\n\tradius = 25,\n} = {}) {\n\treturn [x, y];\n}\nconst fn = ({ a, b }, [c, d], ...others) => a + b + c + d + others.length;\n"
+    },
+    {
+      "name": "directives.in.js",
+      "source": ";(() => {\n  var el = wp.element.createElement\n  var config = window.config\n\n  // The rendered file's own extension.\n  function extension(url) {\n    var match = /\\.([a-z0-9]+)$/i.exec(url.split(/[?#]/)[0])\n\n    return match ? match[1] : \"png\"\n  }\n\n  function strict() {\n    \"use strict\"\n    'also a directive'\n    return this\n  }\n\n  function sloppy() {\n    ;\"use strict\"\n    return this\n  }\n\n  function parenthesized() {\n    (\"use strict\")\n    return this\n  }\n\n  function afterEmpty() {\n    \"first\"; ; \"use strict\"\n    return this\n  }\n\n  const arrow = () => { \"use strict\"; \"x\"; ; \"y\" }\n\n  class Holder {\n    method() { 'use strict'; return 1 }\n    static { \"not a directive\" }\n  }\n\n  {\n    \"not a directive\"\n  }\n\n  a;;;b\n  ;[1, 2].forEach(run)\n  ;`template`.trim()\n})()\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "(() => {\n\tvar el = wp.element.createElement;\n\tvar config = window.config;\n\n\t// The rendered file's own extension.\n\tfunction extension(url) {\n\t\tvar match = /\\.([a-z0-9]+)$/i.exec(url.split(/[?#]/)[0]);\n\n\t\treturn match ? match[1] : 'png';\n\t}\n\n\tfunction strict() {\n\t\t'use strict';\n\t\t'also a directive';\n\t\treturn this;\n\t}\n\n\tfunction sloppy() {\n\t\t('use strict');\n\t\treturn this;\n\t}\n\n\tfunction parenthesized() {\n\t\t('use strict');\n\t\treturn this;\n\t}\n\n\tfunction afterEmpty() {\n\t\t'first';\n\t\t('use strict');\n\t\treturn this;\n\t}\n\n\tconst arrow = () => {\n\t\t'use strict';\n\t\t'x';\n\t\t('y');\n\t};\n\n\tclass Holder {\n\t\tmethod() {\n\t\t\t'use strict';\n\t\t\treturn 1;\n\t\t}\n\t\tstatic {\n\t\t\t'not a directive';\n\t\t}\n\t}\n\n\t{\n\t\t('not a directive');\n\t}\n\n\ta;\n\tb;\n\t[1, 2].forEach(run);\n\t`template`.trim();\n})();\n"
+    },
+    {
+      "name": "loops.in.js",
+      "source": "for (let i = 0; i < items.length; i++) { total += items[i]; }\nfor (const [key, value] of Object.entries(map)) { console.log(key, value); }\nfor (const key in obj) { if (Object.hasOwn(obj, key)) count++; }\ndo { attempts++; } while (attempts < 3 && !done);\nwhile (queue.length) queue.pop();\nouter: for (;;) { break outer; }\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "for (let i = 0; i < items.length; i++) {\n\ttotal += items[i];\n}\nfor (const [key, value] of Object.entries(map)) {\n\tconsole.log(key, value);\n}\nfor (const key in obj) {\n\tif (Object.hasOwn(obj, key)) count++;\n}\ndo {\n\tattempts++;\n} while (attempts < 3 && !done);\nwhile (queue.length) queue.pop();\nouter: for (;;) {\n\tbreak outer;\n}\n"
+    },
+    {
+      "name": "misc.in.js",
+      "source": "const chained = value?.deep?.prop ?? fallback;\nconst opt = api?.fetch?.(url);\ndelete target.prop;\nvoid promise;\ntypeof thing === 'string' && thing.trim();\nlabel: {\n  break label;\n}\nnew Date();\nnew (factory())();\nconst seq = (a++, b--, a + b);\nthrow new Error(`fail: ${code}`);\ntry { risky(); } catch { recover(); } finally { cleanup(); }\nasync function waits() { await Promise.all([one(), two()]); }\nfunction* gen() { const got = yield produce(); }\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "const chained = value?.deep?.prop ?? fallback;\nconst opt = api?.fetch?.(url);\ndelete target.prop;\nvoid promise;\ntypeof thing === 'string' && thing.trim();\nlabel: {\n\tbreak label;\n}\nnew Date();\nnew (factory())();\nconst seq = (a++, b--, a + b);\nthrow new Error(`fail: ${code}`);\ntry {\n\trisky();\n} catch {\n\trecover();\n} finally {\n\tcleanup();\n}\nasync function waits() {\n\tawait Promise.all([one(), two()]);\n}\nfunction* gen() {\n\tconst got = yield produce();\n}\n"
+    },
+    {
+      "name": "modules.in.js",
+      "source": "import defaultExport, { named, other as renamed } from 'some-module';\nimport * as ns from 'namespace-module';\nimport 'side-effect';\nexport { a, b as c };\nexport default function main() { return 1; }\nexport const value = 42;\nexport * from 'reexport';\nexport * as bundle from 'bundle-module';\n",
+      "type": "module",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "import defaultExport, { named, other as renamed } from 'some-module';\nimport * as ns from 'namespace-module';\nimport 'side-effect';\nexport { a, b as c };\nexport default function main() {\n\treturn 1;\n}\nexport const value = 42;\nexport * from 'reexport';\nexport * as bundle from 'bundle-module';\n"
+    },
+    {
+      "name": "numbers.in.js",
+      "source": "const values = [0.5, .25, 1e10, 1E10, 0XFF, 0b101, 10n, 1_000_000, 5., 1.50, 1.0e5];\nconst re = /ab+c/gi;\nconst division = a / b / c;\nconst mod = a % b * c;\nconst pow = a ** b ** c;\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "const values = [\n\t0.5,\n\t0.25,\n\t1e10,\n\t1e10,\n\t0xff,\n\t0b101,\n\t10n,\n\t1_000_000,\n\t5,\n\t1.5,\n\t1.0e5,\n];\nconst re = /ab+c/gi;\nconst division = a / b / c;\nconst mod = (a % b) * c;\nconst pow = a ** (b ** c);\n"
+    },
+    {
+      "name": "switch.in.js",
+      "source": "switch (action.type) {\n  case 'add': {\n    const next = state + 1;\n    return next;\n  }\n  case 'remove':\n  case 'delete':\n    return state - 1;\n  default:\n    return state;\n}\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "switch (action.type) {\n\tcase 'add': {\n\t\tconst next = state + 1;\n\t\treturn next;\n\t}\n\tcase 'remove':\n\tcase 'delete':\n\t\treturn state - 1;\n\tdefault:\n\t\treturn state;\n}\n"
+    },
+    {
+      "name": "templates.in.js",
+      "source": "const simple = `hello ${name}`;\nconst multi = `line one\nline two ${a + b} tail`;\nconst tagged = tag`prefix ${x} suffix`;\nconst nested = `outer ${`inner ${deep}`} end`;\n",
+      "type": "script",
+      "options": {
+        "useTabs": true,
+        "singleQuote": true
+      },
+      "expected": "const simple = `hello ${name}`;\nconst multi = `line one\nline two ${a + b} tail`;\nconst tagged = tag`prefix ${x} suffix`;\nconst nested = `outer ${`inner ${deep}`} end`;\n"
+    },
+    {
+      "name": "css/battery.in.css",
+      "source": "/* file comment */\na,b.cls>c   d{color:red;margin:0 auto}\n.long{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,sans-serif;background:linear-gradient(to right,rgba(0,0,0,.5) 0%,transparent 100%)}\n@media (min-width:640px) and (max-width:1024px){.x{display:flex}}\n@import url(\"foo.css\");\n@theme{--color-bg:oklch(17.8% 0.0104 88.8);--font-sans:\"Inter\",ui-sans-serif,system-ui,-apple-system,sans-serif}\n.rule{ @apply grow; }\n.empty{}\n@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}\n.nested{color:blue;&:hover{color:green}.child &{color:teal}}\n.imp{margin:0!important}\n\n.blank-above{top:0}\n",
+      "type": "css",
+      "options": {},
+      "expected": "/* file comment */\na,\nb.cls > c d {\n  color: red;\n  margin: 0 auto;\n}\n.long {\n  font-family:\n    -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\",\n    Arial, sans-serif;\n  background: linear-gradient(\n    to right,\n    rgba(0, 0, 0, 0.5) 0%,\n    transparent 100%\n  );\n}\n@media (min-width: 640px) and (max-width: 1024px) {\n  .x {\n    display: flex;\n  }\n}\n@import url(\"foo.css\");\n@theme {\n  --color-bg: oklch(17.8% 0.0104 88.8);\n  --font-sans: \"Inter\", ui-sans-serif, system-ui, -apple-system, sans-serif;\n}\n.rule {\n  @apply grow;\n}\n.empty {\n}\n@keyframes spin {\n  from {\n    transform: rotate(0);\n  }\n  to {\n    transform: rotate(360deg);\n  }\n}\n.nested {\n  color: blue;\n  &:hover {\n    color: green;\n  }\n  .child & {\n    color: teal;\n  }\n}\n.imp {\n  margin: 0 !important;\n}\n\n.blank-above {\n  top: 0;\n}\n"
+    },
+    {
+      "name": "css/edge.in.css",
+      "source": ".tw{@apply rounded-glass border border-white/[0.08] bg-white/[0.04] p-1.5 sm:p-2;}\n.q{content:\"He said \\\"hi\\\"\";background:url(img/x.png)}\n.n{width:calc(100% - 2rem);opacity:.50;margin:1.50em;z-index:100}\n.t{color:red /* trail */;top:0} /* after rule */\n:root{--i0-shadow-lg:0 24px 80px rgb(0 0 0 / 0.45);--i0-glass-blur:blur(8px) saturate(1.5)}\n.sel:not(.a>.b),.x::before{content:''}\n@custom-variant dark (&:where([data-theme=dark] *));\n",
+      "type": "css",
+      "options": {},
+      "expected": ".tw {\n  @apply rounded-glass border border-white/[0.08] bg-white/[0.04] p-1.5 sm:p-2;\n}\n.q {\n  content: 'He said \"hi\"';\n  background: url(img/x.png);\n}\n.n {\n  width: calc(100% - 2rem);\n  opacity: 0.5;\n  margin: 1.5em;\n  z-index: 100;\n}\n.t {\n  color: red /* trail */;\n  top: 0;\n} /* after rule */\n:root {\n  --i0-shadow-lg: 0 24px 80px rgb(0 0 0 / 0.45);\n  --i0-glass-blur: blur(8px) saturate(1.5);\n}\n.sel:not(.a > .b),\n.x::before {\n  content: \"\";\n}\n@custom-variant dark (&:where([data-theme=dark] *));\n"
+    },
+    {
+      "name": "empty-switch-line-comment",
+      "source": "switch (state) {\n // Keep pending state\n}\n",
+      "type": "script",
+      "options": {},
+      "expected": "switch (state) {\n  // Keep pending state\n}\n"
+    },
+    {
+      "name": "empty-switch-block-comment",
+      "source": "switch (state) { /* Keep pending state */ }\n",
+      "type": "script",
+      "options": {},
+      "expected": "switch (state) {\n  /* Keep pending state */\n}\n"
+    },
+    {
+      "name": "empty-switch-no-comment",
+      "source": "switch(state){}",
+      "type": "script",
+      "options": {},
+      "expected": "switch (state) {\n}\n"
+    },
+    {
+      "name": "css-type-repeat",
+      "source": "article{border-radius:attr(corners type(<length>+));width:attr(width type(<number> | <percentage>));}",
+      "type": "css",
+      "options": {},
+      "expected": "article {\n  border-radius: attr(corners type(<length>+));\n  width: attr(width type(<number> | <percentage>));\n}\n"
+    },
+    {
+      "name": "css-type-list",
+      "source": "section{--colors:attr(colors type(<color>#));--items:attr(items type(<number>+));width:calc(10px + 20px)}",
+      "type": "css",
+      "options": {},
+      "expected": "section {\n  --colors: attr(colors type(<color>#));\n  --items: attr(items type(<number>+));\n  width: calc(10px + 20px);\n}\n"
+    },
+    {
+      "name": "string-quote-backslash",
+      "source": "console.log(\"A setting\\\\'s .kind must be \\\"method\\\" or \\\"field\\\".\");",
+      "type": "script",
+      "options": {
+        "singleQuote": true
+      },
+      "expected": "console.log('A setting\\\\\\'s .kind must be \"method\" or \"field\".');\n"
+    },
+    {
+      "name": "json-escaped-text",
+      "source": "{\"name\":\"雪😀\",\"quoted\":\"\\\"&<>\",\"negative\":-0,\"nested\":{\"enabled\":true}}",
+      "type": "json",
+      "options": {},
+      "expected": "{\n  \"name\": \"雪😀\",\n  \"quoted\": \"\\\"&<>\",\n  \"negative\": -0,\n  \"nested\": { \"enabled\": true }\n}\n"
+    },
+    {
+      "name": "json-narrow",
+      "source": "{\"one\":[1,2,3,4],\"two\":{\"alpha\":true,\"beta\":false}}",
+      "type": "json",
+      "options": {
+        "printWidth": 25,
+        "useTabs": true
+      },
+      "expected": "{\n\t\"one\": [1, 2, 3, 4],\n\t\"two\": {\n\t\t\"alpha\": true,\n\t\t\"beta\": false\n\t}\n}\n"
+    },
+    {
+      "name": "arrow-semi-options",
+      "source": "const double=(value)=>{return value*2};const config={double,enabled:true};",
+      "type": "script",
+      "options": {
+        "semi": false,
+        "arrowParens": "avoid",
+        "bracketSpacing": false
+      },
+      "expected": "const double = value => {\n  return value * 2\n}\nconst config = {double, enabled: true}\n"
+    },
+    {
+      "name": "module-import-attributes",
+      "source": "import data from './data.json' with {type:'json'};export {data};",
+      "type": "module",
+      "options": {
+        "singleQuote": true
+      },
+      "expected": "import data from './data.json' with { type: 'json' };\nexport { data };\n"
+    },
+    {
+      "name": "module-export-attributes",
+      "source": "export {default as data} from './data.json' with {type:'json'}; export * from './locales.json' with {'type':'json'};",
+      "type": "module",
+      "options": {
+        "singleQuote": true
+      },
+      "expected": "export { default as data } from './data.json' with { type: 'json' };\nexport * from './locales.json' with { type: 'json' };\n"
+    },
+    {
+      "name": "side-effect-import-attributes",
+      "source": "import './settings.json' with {type:'json'};",
+      "type": "module",
+      "options": {},
+      "expected": "import \"./settings.json\" with { type: \"json\" };\n"
+    },
+    {
+      "name": "switch-comments-boundaries",
+      "source": "switch (state /* test */) { /* first */\n // second\n}\n// after switch\n",
+      "type": "script",
+      "options": {},
+      "expected": "switch (state /* test */) {\n  /* first */\n  // second\n}\n// after switch\n"
+    },
+    {
+      "name": "semicolon-asi-guards",
+      "source": "let x = 1;\n[1, 2].forEach(log);\n(function () {})();\n/abc/.test(text);\n`literal`;\n+value;\n-value;\n({ x });",
+      "type": "script",
+      "options": {
+        "semi": false
+      },
+      "expected": "let x = 1\n;[1, 2].forEach(log)\n;(function () {})()\n;/abc/.test(text)\n;`literal`\n;+value\n;-value\n;({ x })\n"
+    },
+    {
+      "name": "semicolon-control-flow",
+      "source": "function f(x){if(x)return x;else throw new Error();}for(let i=0;i<2;i++){if(i)continue;else break;}do{x++}while(x<3);debugger;",
+      "type": "script",
+      "options": {
+        "semi": false
+      },
+      "expected": "function f(x) {\n  if (x) return x\n  else throw new Error()\n}\nfor (let i = 0; i < 2; i++) {\n  if (i) continue\n  else break\n}\ndo {\n  x++\n} while (x < 3)\ndebugger\n"
+    },
+    {
+      "name": "semicolon-class-fields",
+      "source": "class Sample { first = 1; second = 2; [computed]() {} third = 3; *iterator() {} fourth; }",
+      "type": "script",
+      "options": {
+        "semi": false
+      },
+      "expected": "class Sample {\n  first = 1\n  second = 2;\n  [computed]() {}\n  third = 3;\n  *iterator() {}\n  fourth\n}\n"
+    }
+  ]
+}

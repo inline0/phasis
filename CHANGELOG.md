@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Unicode 17 property tables generated from the pinned test262 fixtures, including Beria Erfe script aliases and updated Tangut/Telugu membership, independent of host ICU
+- Standard `Error.prototype.stack` accessor with captured traces, receiver checks, cross-realm behavior and string-only overrides
+- A reproducible Prettier 3.9.10 oracle for native JavaScript, JSON and CSS formatting
+
+### Changed
+- React and React DOM compatibility references to 19.3.1; Preact render-to-string to 6.8.1
+- Official TC39 test262 snapshot to October 13, 2026; canonical reports retain individual failure paths and messages
+
+### Fixed
+- HTML attributes now escape after one default-hint string coercion, including arrays and custom objects
+- The formatter preserves import/export attributes, keeps empty-switch comments inside the body, and honors `semi: false` with automatic-semicolon-insertion guards
+- Test262 JSON reporting survives failure messages containing lone surrogate code units
+
 ## [0.7.0] - 2026-10-15
 
 ### Added

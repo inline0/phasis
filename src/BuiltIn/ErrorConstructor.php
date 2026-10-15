@@ -37,6 +37,7 @@ class ErrorConstructor
             // subclasses (TypeError, RangeError, etc.) inherit toString
             // from Error.prototype rather than carrying their own copy.
             if ($name === 'Error') {
+                self::installStackAccessor($proto);
                 $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
                     'toString',
                     function (JsValue $this_): JsValue {
@@ -173,6 +174,39 @@ class ErrorConstructor
         }
     }
 
+    /** The standard accessor reads the captured trace, independent of an own stack override. */
+    private static function installStackAccessor(JsObject $prototype): void
+    {
+        $getter = JsFunction::fromCallable('get stack', static function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \Phasis\Exceptions\TypeError('Error.prototype.stack getter requires an object');
+            }
+            $stack = $this_->getInternalProperty('[[ErrorStack]]');
+            return $stack instanceof JsString ? $stack : JsUndefined::instance();
+        }, 0);
+        $setter = JsFunction::fromCallable('set stack', static function (JsValue $this_, array $args) use ($prototype): JsValue {
+            $value = $args[0] ?? JsUndefined::instance();
+            if (!$this_ instanceof JsObject || !$value instanceof JsString || $this_ === $prototype) {
+                throw new \Phasis\Exceptions\TypeError('Error.prototype.stack setter requires an object and a string');
+            }
+            if ($this_->getOwnPropertyDescriptor('stack') === null) {
+                if (!$this_->defineOwnProperty('stack', PropertyDescriptor::data($value, true, true, true))) {
+                    throw new \Phasis\Exceptions\TypeError('Cannot define stack on receiver');
+                }
+            } else {
+                $this_->set('stack', $value, true);
+            }
+            return JsUndefined::instance();
+        }, 1);
+        $prototype->defineOwnProperty('stack', PropertyDescriptor::accessor($getter, $setter, false, true));
+    }
+
+    private static function captureStack(JsObject $object, string $name, ?string $message): void
+    {
+        $stack = new JsString(self::buildStackString($name, $message));
+        $object->setInternalProperty('[[ErrorStack]]', $stack);
+    }
+
     /**
      * AggregateError constructor per spec sec-aggregate-error.
      *
@@ -273,12 +307,7 @@ class ErrorConstructor
 
             // Stack trace.
             $message = $obj->has('message') ? TypeConversion::toString($obj->get('message')) : '';
-            $obj->defineOwnProperty('stack', PropertyDescriptor::data(
-                new JsString(self::buildStackString($name, $message)),
-                true,
-                false,
-                true,
-            ));
+            self::captureStack($obj, $name, $message);
 
             // Step 4: Perform ? InstallErrorCause(O, options).
             if ($options instanceof JsObject && $options->has('cause')) {
@@ -398,12 +427,7 @@ class ErrorConstructor
                         true,
                     ));
                 }
-                $this_->defineOwnProperty('stack', PropertyDescriptor::data(
-                    new JsString(self::buildStackString($name, $message)),
-                    true,
-                    false,
-                    true,
-                ));
+                self::captureStack($this_, $name, $message);
                 // ES2022: Error cause property from options bag
                 if ($options instanceof JsObject && $options->has('cause')) {
                     $this_->defineOwnProperty('cause', PropertyDescriptor::data(
@@ -435,12 +459,7 @@ class ErrorConstructor
                     true,
                 ));
             }
-            $obj->defineOwnProperty('stack', PropertyDescriptor::data(
-                new JsString(self::buildStackString($name, $message)),
-                true,
-                false,
-                true,
-            ));
+            self::captureStack($obj, $name, $message);
             if ($options instanceof JsObject && $options->has('cause')) {
                 $obj->defineOwnProperty('cause', PropertyDescriptor::data(
                     $options->get('cause'),
@@ -509,12 +528,7 @@ class ErrorConstructor
             ));
 
             $message = $obj->has('message') ? TypeConversion::toString($obj->get('message')) : '';
-            $obj->defineOwnProperty('stack', PropertyDescriptor::data(
-                new JsString(self::buildStackString('SuppressedError', $message)),
-                true,
-                false,
-                true,
-            ));
+            self::captureStack($obj, 'SuppressedError', $message);
 
             return $obj;
         };

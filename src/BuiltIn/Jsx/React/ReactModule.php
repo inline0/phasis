@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Native `react` and `react/jsx-runtime` for React 19.3.0.
+ * Native `react` and `react/jsx-runtime` for React 19.3.1.
  *
  * Ported from React's react.production.js and react-jsx-runtime.production.js:
  *
@@ -35,7 +35,7 @@ use Phasis\Value\JsValue;
 
 final class ReactModule
 {
-    public const VERSION = '19.3.0';
+    public const VERSION = '19.3.1';
 
     /** The hooks dispatcher of the render in progress (React's ReactSharedInternals.H). */
     public static ?Fizz\Hooks $dispatcher = null;

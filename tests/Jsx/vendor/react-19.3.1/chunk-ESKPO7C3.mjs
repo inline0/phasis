@@ -1,13 +1,13 @@
 import {
   require_react
-} from "./chunk-YGJZAC6A.mjs";
+} from "./chunk-B7C5XBGA.mjs";
 import {
   __commonJS
 } from "./chunk-B7F5QLE5.mjs";
 
-// node_modules/react-dom/cjs/react-dom.production.js
+// tests/Jsx/oracle/node_modules/react-dom/cjs/react-dom.production.js
 var require_react_dom_production = __commonJS({
-  "node_modules/react-dom/cjs/react-dom.production.js"(exports) {
+  "tests/Jsx/oracle/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
     "use strict";
     /**
      * @license React
@@ -167,13 +167,13 @@ var require_react_dom_production = __commonJS({
     exports.useFormStatus = function() {
       return ReactSharedInternals.H.useHostTransitionStatus();
     };
-    exports.version = "19.3.0";
+    exports.version = "19.3.1";
   }
 });
 
-// node_modules/react-dom/index.js
+// tests/Jsx/oracle/node_modules/react-dom/index.js
 var require_react_dom = __commonJS({
-  "node_modules/react-dom/index.js"(exports, module) {
+  "tests/Jsx/oracle/node_modules/react-dom/index.js"(exports, module) {
     "use strict";
     function checkDCE() {
       if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {

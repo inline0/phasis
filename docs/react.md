@@ -10,7 +10,7 @@ meta_description: "The native React 19.3 server renderer: byte-identical to reac
 
 # React
 
-`react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` are built-in modules implemented in PHP. They port React 19.3's server renderer (Fizz), so the HTML is byte-identical to `react-dom@19.3.0`, and React 19.3 on the client hydrates it. Only your components run as JavaScript; no React source is parsed or executed.
+`react`, `react/jsx-runtime`, `react-dom`, `react-dom/server` and `react-dom/static` are built-in modules implemented in PHP. They port React 19.3's server renderer (Fizz), so the HTML is byte-identical to `react-dom@19.3.1`, and React 19.3 on the client hydrates it. Only your components run as JavaScript; no React source is parsed or executed.
 
 ## Rendering a component for hydration
 
@@ -52,7 +52,7 @@ The text markers React needs (`<!-- -->` between adjacent text) are in the outpu
 
 | Module | Exports |
 |---|---|
-| `react` | `Activity`, `Children`, `Component`, `Fragment`, `Profiler`, `PureComponent`, `StrictMode`, `Suspense`, `ViewTransition`, `addTransitionType`, `cache`, `cacheSignal`, `cloneElement`, `createContext`, `createElement`, `createRef`, `forwardRef`, `isValidElement`, `lazy`, `memo`, `startTransition`, `unstable_useCacheRefresh`, `use`, `useActionState`, `useCallback`, `useContext`, `useDebugValue`, `useDeferredValue`, `useEffect`, `useEffectEvent`, `useId`, `useImperativeHandle`, `useInsertionEffect`, `useLayoutEffect`, `useMemo`, `useOptimistic`, `useReducer`, `useRef`, `useState`, `useSyncExternalStore`, `useTransition`, `version` (`"19.3.0"`) |
+| `react` | `Activity`, `Children`, `Component`, `Fragment`, `Profiler`, `PureComponent`, `StrictMode`, `Suspense`, `ViewTransition`, `addTransitionType`, `cache`, `cacheSignal`, `cloneElement`, `createContext`, `createElement`, `createRef`, `forwardRef`, `isValidElement`, `lazy`, `memo`, `startTransition`, `unstable_useCacheRefresh`, `use`, `useActionState`, `useCallback`, `useContext`, `useDebugValue`, `useDeferredValue`, `useEffect`, `useEffectEvent`, `useId`, `useImperativeHandle`, `useInsertionEffect`, `useLayoutEffect`, `useMemo`, `useOptimistic`, `useReducer`, `useRef`, `useState`, `useSyncExternalStore`, `useTransition`, `version` (`"19.3.1"`) |
 | `react/jsx-runtime` | `jsx`, `jsxs`, `Fragment` |
 | `react-dom` | `browser`, `createPortal`, `flushSync`, `preconnect`, `prefetchDNS`, `preinit`, `preinitModule`, `preload`, `preloadModule`, `requestFormReset`, `unstable_batchedUpdates`, `useFormState`, `useFormStatus`, `version` |
 | `react-dom/server` | `renderToString`, `renderToStaticMarkup`, `version` |
@@ -99,7 +99,7 @@ Identical props always give identical HTML, so the output can be cached keyed by
 
 ## How it is verified
 
-- **Render oracle**: every React fixture in `tests/Jsx/react` renders byte-identical to `react-dom@19.3.0` in Node with `renderToString`, `renderToStaticMarkup` and `prerender`, and through `Engine::render()`.
+- **Render oracle**: every React fixture in `tests/Jsx/react` renders byte-identical to `react-dom@19.3.1` in Node with `renderToString`, `renderToStaticMarkup` and `prerender`, and through `Engine::render()`.
 - **Hydration**: `tests/Jsx/oracle/hydrate.mjs` hydrates Phasis's output with React 19.3's client in jsdom, production and development builds, and requires zero recoverable errors, zero hydration warnings and every server node reused.
 - **Three-way**: real React 19.3 running inside Phasis agrees with both.
 
@@ -108,7 +108,7 @@ Identical props always give identical HTML, so the output can be cached keyed by
 Libraries that reach into React internals the native implementation does not cover can run against real React instead. Map the built-ins to an ES module build of React 19.3 with an import map:
 
 ```php
-$dir = __DIR__ . '/react-19.3.0/'; // e.g. tests/Jsx/oracle/build-vendor.mjs output
+$dir = __DIR__ . '/react-19.3.1/'; // e.g. tests/Jsx/oracle/build-vendor.mjs output
 $engine->setImportMap([
     'react' => $dir . 'react.mjs',
     'react/jsx-runtime' => $dir . 'jsx-runtime.mjs',
@@ -127,4 +127,4 @@ It is byte-identical but much slower (about 12x on the SSR bench), and `render()
 - React Server Components: `"use client"` and `"use server"`, the Flight protocol, server actions.
 - Aborting a `prerender` with a signal renders the aborted parts as client-rendered boundaries rather than tracking them as postponed.
 - The `errorInfo` passed to `onError` has no `componentStack`.
-- React versions other than 19.3.0.
+- React versions other than 19.3.1.

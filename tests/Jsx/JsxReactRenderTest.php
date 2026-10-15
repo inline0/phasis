@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * React render oracle: every fixture in tests/Jsx/react renders through
- * the native React 19.3 profile byte-identical to react-dom@19.3.0 in Node
+ * the native React 19.3 profile byte-identical to react-dom@19.3.1 in Node
  * (renderToString, renderToStaticMarkup and prerender, via the shared
  * _driver.mjs). Engine::render() must return the prerender output.
  *

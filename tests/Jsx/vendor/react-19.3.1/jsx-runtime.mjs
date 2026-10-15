@@ -3,9 +3,9 @@ import {
   __toESM
 } from "./chunk-B7F5QLE5.mjs";
 
-// node_modules/react/cjs/react-jsx-runtime.production.js
+// tests/Jsx/oracle/node_modules/react/cjs/react-jsx-runtime.production.js
 var require_react_jsx_runtime_production = __commonJS({
-  "node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
+  "tests/Jsx/oracle/node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
     "use strict";
     /**
      * @license React
@@ -42,9 +42,9 @@ var require_react_jsx_runtime_production = __commonJS({
   }
 });
 
-// node_modules/react/jsx-runtime.js
+// tests/Jsx/oracle/node_modules/react/jsx-runtime.js
 var require_jsx_runtime = __commonJS({
-  "node_modules/react/jsx-runtime.js"(exports, module) {
+  "tests/Jsx/oracle/node_modules/react/jsx-runtime.js"(exports, module) {
     "use strict";
     if (true) {
       module.exports = require_react_jsx_runtime_production();
@@ -54,7 +54,7 @@ var require_jsx_runtime = __commonJS({
   }
 });
 
-// .vendor-entries/jsx-runtime.js
+// tests/Jsx/oracle/.vendor-entries/jsx-runtime.js
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 var { Fragment, jsx, jsxs } = import_jsx_runtime.default;
 var jsx_runtime_default = import_jsx_runtime.default;

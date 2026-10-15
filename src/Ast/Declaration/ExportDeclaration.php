@@ -30,6 +30,7 @@ class ExportDeclaration extends Node
         public readonly bool $isDefault = false,
         public readonly bool $isAll = false,
         public readonly ?string $allAs = null,
+        public readonly ?Node $attributes = null,
     ) {
         parent::__construct($location);
     }

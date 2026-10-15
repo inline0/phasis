@@ -1759,16 +1759,16 @@ trait RegExpHelpers
     }
 
     /**
-     * Whether the bundled Unicode 16 property tables have an entry
+     * Whether the bundled Unicode property tables have an entry
      * for ($name, $value) — either as a property=value pair (Script,
      * General_Category, Script_Extensions, with alias) or a bare
-     * binary property name. See src/Regex/Unicode16Tables.php for
+     * binary property name. See src/Regex/UnicodeTables.php for
      * the keying convention.
      */
     private static function bundleKnowsProperty(string $name, ?string $value): bool
     {
         $key = $value === null ? $name : $name . '=' . $value;
-        return array_key_exists($key, \Phasis\Regex\Unicode16Tables::PROPERTIES);
+        return array_key_exists($key, \Phasis\Regex\UnicodeTables::PROPERTIES);
     }
 
     /**
@@ -1776,7 +1776,7 @@ trait RegExpHelpers
      * lacks data for a property the regex pattern names but the custom
      * matcher's bundled tables can answer. Keeps the regex constructor
      * from throwing SyntaxError at construct time; the matcher routes
-     * \p{...} through Unicode16Tables anyway.
+     * \p{...} through UnicodeTables anyway.
      */
     private static function neverMatchSentinel(bool $negated): string
     {

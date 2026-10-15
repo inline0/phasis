@@ -40,6 +40,8 @@ Invalid source throws the same `Phasis\Exceptions\SyntaxError` as the parser, wi
 
 ## FormatOptions
 
+The committed formatter oracle is generated with Prettier 3.9.10 (`node tests/Jsx/oracle/formatter-oracle.mjs` after installing the pinned oracle dependencies). It checks JavaScript, JSON and CSS output and idempotency.
+
 Layout options mirror prettier 3.x and default to prettier's defaults:
 
 | Option          | Default    | Meaning                                                        |

@@ -1,20 +1,24 @@
 import {
+  require_react_dom_server_edge_production
+} from "./chunk-ZL7F3C3Q.mjs";
+import {
   require_react_dom
-} from "./chunk-SN3JDJTZ.mjs";
+} from "./chunk-ESKPO7C3.mjs";
 import {
   require_react
-} from "./chunk-YGJZAC6A.mjs";
+} from "./chunk-B7C5XBGA.mjs";
 import {
-  __commonJS
+  __commonJS,
+  __toESM
 } from "./chunk-B7F5QLE5.mjs";
 
-// node_modules/react-dom/cjs/react-dom-server.edge.production.js
-var require_react_dom_server_edge_production = __commonJS({
-  "node_modules/react-dom/cjs/react-dom-server.edge.production.js"(exports) {
+// tests/Jsx/oracle/node_modules/react-dom/cjs/react-dom-server-legacy.browser.production.js
+var require_react_dom_server_legacy_browser_production = __commonJS({
+  "tests/Jsx/oracle/node_modules/react-dom/cjs/react-dom-server-legacy.browser.production.js"(exports) {
     "use strict";
     /**
      * @license React
-     * react-dom-server.edge.production.js
+     * react-dom-server-legacy.browser.production.js
      *
      * Copyright (c) Meta Platforms, Inc. and affiliates.
      *
@@ -23,6 +27,15 @@ var require_react_dom_server_edge_production = __commonJS({
      */
     var React = require_react();
     var ReactDOM = require_react_dom();
+    function formatProdErrorMessage(code) {
+      var url = "https://react.dev/errors/" + code;
+      if (1 < arguments.length) {
+        url += "?args[]=" + encodeURIComponent(arguments[1]);
+        for (var i = 2; i < arguments.length; i++)
+          url += "&args[]=" + encodeURIComponent(arguments[i]);
+      }
+      return "Minified React error #" + code + "; visit " + url + " for the full message or use the non-minified dev environment for full errors and additional helpful warnings.";
+    }
     var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
     var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
     var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -79,50 +92,6 @@ var require_react_dom_server_edge_production = __commonJS({
       h1 ^= h1 >>> 13;
       h1 = 3266489909 * (h1 & 65535) + ((3266489909 * (h1 >>> 16) & 65535) << 16) & 4294967295;
       return (h1 ^ h1 >>> 16) >>> 0;
-    }
-    function handleErrorInNextTick(error) {
-      setTimeout(function() {
-        throw error;
-      });
-    }
-    var LocalPromise = Promise;
-    var scheduleMicrotask = "function" === typeof queueMicrotask ? queueMicrotask : function(callback) {
-      LocalPromise.resolve(null).then(callback).catch(handleErrorInNextTick);
-    };
-    var currentView = null;
-    var writtenBytes = 0;
-    function writeChunk(destination, chunk) {
-      if (0 !== chunk.byteLength)
-        if (4096 < chunk.byteLength)
-          0 < writtenBytes && (destination.enqueue(
-            new Uint8Array(currentView.buffer, 0, writtenBytes)
-          ), currentView = new Uint8Array(4096), writtenBytes = 0), destination.enqueue(chunk);
-        else {
-          var allowableBytes = currentView.length - writtenBytes;
-          allowableBytes < chunk.byteLength && (0 === allowableBytes ? destination.enqueue(currentView) : (currentView.set(chunk.subarray(0, allowableBytes), writtenBytes), destination.enqueue(currentView), chunk = chunk.subarray(allowableBytes)), currentView = new Uint8Array(4096), writtenBytes = 0);
-          currentView.set(chunk, writtenBytes);
-          writtenBytes += chunk.byteLength;
-        }
-    }
-    function writeChunkAndReturn(destination, chunk) {
-      writeChunk(destination, chunk);
-      return true;
-    }
-    function completeWriting(destination) {
-      currentView && 0 < writtenBytes && (destination.enqueue(new Uint8Array(currentView.buffer, 0, writtenBytes)), currentView = null, writtenBytes = 0);
-    }
-    var textEncoder = new TextEncoder();
-    function stringToChunk(content) {
-      return textEncoder.encode(content);
-    }
-    function stringToPrecomputedChunk(content) {
-      return textEncoder.encode(content);
-    }
-    function byteLengthOfChunk(chunk) {
-      return chunk.byteLength;
-    }
-    function closeWithError(destination, error) {
-      "function" === typeof destination.error ? destination.error(error) : destination.close();
     }
     var assign = Object.assign;
     var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -290,141 +259,9 @@ var require_react_dom_server_edge_production = __commonJS({
     };
     var PRELOAD_NO_CREDS = [];
     var currentlyFlushingRenderState = null;
-    stringToPrecomputedChunk('"></template>');
-    var startInlineScript = stringToPrecomputedChunk("<script");
-    var endInlineScript = stringToPrecomputedChunk("</script>");
-    var startScriptSrc = stringToPrecomputedChunk('<script src="');
-    var startModuleSrc = stringToPrecomputedChunk('<script type="module" src="');
-    var scriptNonce = stringToPrecomputedChunk(' nonce="');
-    var scriptIntegirty = stringToPrecomputedChunk(' integrity="');
-    var scriptCrossOrigin = stringToPrecomputedChunk(' crossorigin="');
-    var endAsyncScript = stringToPrecomputedChunk(' async=""></script>');
-    var startInlineStyle = stringToPrecomputedChunk("<style");
     var scriptRegex = /(<\/|<)(s)(cript)/gi;
     function scriptReplacer(match, prefix2, s, suffix2) {
       return "" + prefix2 + ("s" === s ? "\\u0073" : "\\u0053") + suffix2;
-    }
-    var importMapScriptStart = stringToPrecomputedChunk(
-      '<script type="importmap">'
-    );
-    var importMapScriptEnd = stringToPrecomputedChunk("</script>");
-    function createRenderState(resumableState, nonce, externalRuntimeConfig, importMap, onHeaders, maxHeadersLength) {
-      externalRuntimeConfig = "string" === typeof nonce ? nonce : nonce && nonce.script;
-      var inlineScriptWithNonce = void 0 === externalRuntimeConfig ? startInlineScript : stringToPrecomputedChunk(
-        '<script nonce="' + escapeTextForBrowser(externalRuntimeConfig) + '"'
-      ), nonceStyle = "string" === typeof nonce ? void 0 : nonce && nonce.style, inlineStyleWithNonce = void 0 === nonceStyle ? startInlineStyle : stringToPrecomputedChunk(
-        '<style nonce="' + escapeTextForBrowser(nonceStyle) + '"'
-      ), idPrefix = resumableState.idPrefix, bootstrapChunks = [], bootstrapScriptContent = resumableState.bootstrapScriptContent, bootstrapScripts = resumableState.bootstrapScripts, bootstrapModules = resumableState.bootstrapModules;
-      void 0 !== bootstrapScriptContent && (bootstrapChunks.push(inlineScriptWithNonce), pushCompletedShellIdAttribute(bootstrapChunks, resumableState), bootstrapChunks.push(
-        endOfStartTag,
-        stringToChunk(
-          ("" + bootstrapScriptContent).replace(scriptRegex, scriptReplacer)
-        ),
-        endInlineScript
-      ));
-      bootstrapScriptContent = [];
-      void 0 !== importMap && (bootstrapScriptContent.push(
-        void 0 === externalRuntimeConfig ? importMapScriptStart : stringToPrecomputedChunk(
-          '<script type="importmap" nonce="' + escapeTextForBrowser(externalRuntimeConfig) + '">'
-        )
-      ), bootstrapScriptContent.push(
-        stringToChunk(
-          ("" + JSON.stringify(importMap)).replace(scriptRegex, scriptReplacer)
-        )
-      ), bootstrapScriptContent.push(importMapScriptEnd));
-      importMap = onHeaders ? {
-        preconnects: "",
-        fontPreloads: "",
-        highImagePreloads: "",
-        remainingCapacity: 2 + ("number" === typeof maxHeadersLength ? maxHeadersLength : 2e3)
-      } : null;
-      onHeaders = {
-        placeholderPrefix: stringToPrecomputedChunk(idPrefix + "P:"),
-        segmentPrefix: stringToPrecomputedChunk(idPrefix + "S:"),
-        boundaryPrefix: stringToPrecomputedChunk(idPrefix + "B:"),
-        startInlineScript: inlineScriptWithNonce,
-        startInlineStyle: inlineStyleWithNonce,
-        preamble: createPreambleState(),
-        externalRuntimeScript: null,
-        bootstrapChunks,
-        importMapChunks: bootstrapScriptContent,
-        onHeaders,
-        headers: importMap,
-        resets: {
-          font: {},
-          dns: {},
-          connect: { default: {}, anonymous: {}, credentials: {} },
-          image: {},
-          style: {}
-        },
-        charsetChunks: [],
-        viewportChunks: [],
-        hoistableChunks: [],
-        preconnects: /* @__PURE__ */ new Set(),
-        fontPreloads: /* @__PURE__ */ new Set(),
-        highImagePreloads: /* @__PURE__ */ new Set(),
-        styles: /* @__PURE__ */ new Map(),
-        bootstrapScripts: /* @__PURE__ */ new Set(),
-        scripts: /* @__PURE__ */ new Set(),
-        bulkPreloads: /* @__PURE__ */ new Set(),
-        preloads: {
-          images: /* @__PURE__ */ new Map(),
-          stylesheets: /* @__PURE__ */ new Map(),
-          scripts: /* @__PURE__ */ new Map(),
-          moduleScripts: /* @__PURE__ */ new Map()
-        },
-        nonce: { script: externalRuntimeConfig, style: nonceStyle },
-        hoistableState: null,
-        stylesToHoist: false
-      };
-      if (void 0 !== bootstrapScripts)
-        for (importMap = 0; importMap < bootstrapScripts.length; importMap++)
-          idPrefix = bootstrapScripts[importMap], nonceStyle = inlineScriptWithNonce = void 0, inlineStyleWithNonce = {
-            rel: "preload",
-            as: "script",
-            fetchPriority: "low",
-            nonce
-          }, "string" === typeof idPrefix ? inlineStyleWithNonce.href = maxHeadersLength = idPrefix : (inlineStyleWithNonce.href = maxHeadersLength = idPrefix.src, inlineStyleWithNonce.integrity = nonceStyle = "string" === typeof idPrefix.integrity ? idPrefix.integrity : void 0, inlineStyleWithNonce.crossOrigin = inlineScriptWithNonce = "string" === typeof idPrefix || null == idPrefix.crossOrigin ? void 0 : "use-credentials" === idPrefix.crossOrigin ? "use-credentials" : ""), idPrefix = resumableState, bootstrapScriptContent = maxHeadersLength, idPrefix.scriptResources[bootstrapScriptContent] = null, idPrefix.moduleScriptResources[bootstrapScriptContent] = null, idPrefix = [], pushLinkImpl(idPrefix, inlineStyleWithNonce), onHeaders.bootstrapScripts.add(idPrefix), bootstrapChunks.push(
-            startScriptSrc,
-            stringToChunk(escapeTextForBrowser(maxHeadersLength)),
-            attributeEnd
-          ), externalRuntimeConfig && bootstrapChunks.push(
-            scriptNonce,
-            stringToChunk(escapeTextForBrowser(externalRuntimeConfig)),
-            attributeEnd
-          ), "string" === typeof nonceStyle && bootstrapChunks.push(
-            scriptIntegirty,
-            stringToChunk(escapeTextForBrowser(nonceStyle)),
-            attributeEnd
-          ), "string" === typeof inlineScriptWithNonce && bootstrapChunks.push(
-            scriptCrossOrigin,
-            stringToChunk(escapeTextForBrowser(inlineScriptWithNonce)),
-            attributeEnd
-          ), pushCompletedShellIdAttribute(bootstrapChunks, resumableState), bootstrapChunks.push(endAsyncScript);
-      if (void 0 !== bootstrapModules)
-        for (nonce = 0; nonce < bootstrapModules.length; nonce++)
-          nonceStyle = bootstrapModules[nonce], maxHeadersLength = importMap = void 0, inlineScriptWithNonce = {
-            rel: "modulepreload",
-            fetchPriority: "low",
-            nonce: externalRuntimeConfig
-          }, "string" === typeof nonceStyle ? inlineScriptWithNonce.href = bootstrapScripts = nonceStyle : (inlineScriptWithNonce.href = bootstrapScripts = nonceStyle.src, inlineScriptWithNonce.integrity = maxHeadersLength = "string" === typeof nonceStyle.integrity ? nonceStyle.integrity : void 0, inlineScriptWithNonce.crossOrigin = importMap = "string" === typeof nonceStyle || null == nonceStyle.crossOrigin ? void 0 : "use-credentials" === nonceStyle.crossOrigin ? "use-credentials" : ""), nonceStyle = resumableState, inlineStyleWithNonce = bootstrapScripts, nonceStyle.scriptResources[inlineStyleWithNonce] = null, nonceStyle.moduleScriptResources[inlineStyleWithNonce] = null, nonceStyle = [], pushLinkImpl(nonceStyle, inlineScriptWithNonce), onHeaders.bootstrapScripts.add(nonceStyle), bootstrapChunks.push(
-            startModuleSrc,
-            stringToChunk(escapeTextForBrowser(bootstrapScripts)),
-            attributeEnd
-          ), externalRuntimeConfig && bootstrapChunks.push(
-            scriptNonce,
-            stringToChunk(escapeTextForBrowser(externalRuntimeConfig)),
-            attributeEnd
-          ), "string" === typeof maxHeadersLength && bootstrapChunks.push(
-            scriptIntegirty,
-            stringToChunk(escapeTextForBrowser(maxHeadersLength)),
-            attributeEnd
-          ), "string" === typeof importMap && bootstrapChunks.push(
-            scriptCrossOrigin,
-            stringToChunk(escapeTextForBrowser(importMap)),
-            attributeEnd
-          ), pushCompletedShellIdAttribute(bootstrapChunks, resumableState), bootstrapChunks.push(endAsyncScript);
-      return onHeaders;
     }
     function createResumableState(identifierPrefix, externalRuntimeConfig, bootstrapScriptContent, bootstrapScripts, bootstrapModules) {
       return {
@@ -447,9 +284,6 @@ var require_react_dom_server_edge_production = __commonJS({
         moduleScriptResources: {}
       };
     }
-    function createPreambleState() {
-      return { htmlChunks: null, headChunks: null, bodyChunks: null };
-    }
     function createFormatContext(insertionMode, selectedValue, tagScope, viewTransition) {
       return {
         insertionMode,
@@ -457,14 +291,6 @@ var require_react_dom_server_edge_production = __commonJS({
         tagScope,
         viewTransition
       };
-    }
-    function createRootFormatContext(namespaceURI) {
-      return createFormatContext(
-        "http://www.w3.org/2000/svg" === namespaceURI ? 4 : "http://www.w3.org/1998/Math/MathML" === namespaceURI ? 5 : 0,
-        null,
-        0,
-        null
-      );
     }
     function getChildFormatContext(parentContext, type, props) {
       var subtreeScope = parentContext.tagScope & -25;
@@ -549,13 +375,6 @@ var require_react_dom_server_edge_production = __commonJS({
       0 < localId && (resumableState += "H" + localId.toString(32));
       return resumableState + "_";
     }
-    var textSeparator = stringToPrecomputedChunk("<!-- -->");
-    function pushTextInstance(target, text, renderState, textEmbedded) {
-      if ("" === text) return textEmbedded;
-      textEmbedded && target.push(textSeparator);
-      target.push(stringToChunk(escapeTextForBrowser(text)));
-      return true;
-    }
     function pushViewTransitionAttributes(target, formatContext) {
       formatContext = formatContext.viewTransition;
       null !== formatContext && ("auto" !== formatContext.name && (pushStringAttribute(
@@ -565,76 +384,43 @@ var require_react_dom_server_edge_production = __commonJS({
       ), formatContext.nameIdx++), pushStringAttribute(target, "vt-update", formatContext.update), "none" !== formatContext.enter && pushStringAttribute(target, "vt-enter", formatContext.enter), "none" !== formatContext.exit && pushStringAttribute(target, "vt-exit", formatContext.exit), "none" !== formatContext.share && pushStringAttribute(target, "vt-share", formatContext.share));
     }
     var styleNameCache = /* @__PURE__ */ new Map();
-    var styleAttributeStart = stringToPrecomputedChunk(' style="');
-    var styleAssign = stringToPrecomputedChunk(":");
-    var styleSeparator = stringToPrecomputedChunk(";");
     function pushStyleAttribute(target, style) {
-      if ("object" !== typeof style)
-        throw Error(
-          "The `style` prop expects a mapping from style properties to values, not a string. For example, style={{marginRight: spacing + 'em'}} when using JSX."
-        );
+      if ("object" !== typeof style) throw Error(formatProdErrorMessage(62));
       var isFirst = true, styleName;
       for (styleName in style)
         if (hasOwnProperty.call(style, styleName)) {
           var styleValue = style[styleName];
           if (null != styleValue && "boolean" !== typeof styleValue && "" !== styleValue) {
             if (0 === styleName.indexOf("--")) {
-              var nameChunk = stringToChunk(escapeTextForBrowser(styleName));
-              styleValue = stringToChunk(
-                escapeTextForBrowser(("" + styleValue).trim())
-              );
+              var nameChunk = escapeTextForBrowser(styleName);
+              styleValue = escapeTextForBrowser(("" + styleValue).trim());
             } else
-              nameChunk = styleNameCache.get(styleName), void 0 === nameChunk && (nameChunk = stringToPrecomputedChunk(
-                escapeTextForBrowser(
-                  styleName.replace(uppercasePattern, "-$1").toLowerCase().replace(msPattern, "-ms-")
-                )
-              ), styleNameCache.set(styleName, nameChunk)), styleValue = "number" === typeof styleValue ? 0 === styleValue || unitlessNumbers.has(styleName) ? stringToChunk("" + styleValue) : stringToChunk(styleValue + "px") : stringToChunk(
-                escapeTextForBrowser(("" + styleValue).trim())
-              );
-            isFirst ? (isFirst = false, target.push(
-              styleAttributeStart,
-              nameChunk,
-              styleAssign,
-              styleValue
-            )) : target.push(styleSeparator, nameChunk, styleAssign, styleValue);
+              nameChunk = styleNameCache.get(styleName), void 0 === nameChunk && (nameChunk = escapeTextForBrowser(
+                styleName.replace(uppercasePattern, "-$1").toLowerCase().replace(msPattern, "-ms-")
+              ), styleNameCache.set(styleName, nameChunk)), styleValue = "number" === typeof styleValue ? 0 === styleValue || unitlessNumbers.has(styleName) ? "" + styleValue : styleValue + "px" : escapeTextForBrowser(("" + styleValue).trim());
+            isFirst ? (isFirst = false, target.push(' style="', nameChunk, ":", styleValue)) : target.push(";", nameChunk, ":", styleValue);
           }
         }
-      isFirst || target.push(attributeEnd);
+      isFirst || target.push('"');
     }
-    var attributeSeparator = stringToPrecomputedChunk(" ");
-    var attributeAssign = stringToPrecomputedChunk('="');
-    var attributeEnd = stringToPrecomputedChunk('"');
-    var attributeEmptyString = stringToPrecomputedChunk('=""');
     function pushBooleanAttribute(target, name, value) {
-      value && "function" !== typeof value && "symbol" !== typeof value && target.push(attributeSeparator, stringToChunk(name), attributeEmptyString);
+      value && "function" !== typeof value && "symbol" !== typeof value && target.push(" ", name, '=""');
     }
     function pushStringAttribute(target, name, value) {
-      "function" !== typeof value && "symbol" !== typeof value && "boolean" !== typeof value && target.push(
-        attributeSeparator,
-        stringToChunk(name),
-        attributeAssign,
-        stringToChunk(escapeTextForBrowser(value)),
-        attributeEnd
-      );
+      "function" !== typeof value && "symbol" !== typeof value && "boolean" !== typeof value && target.push(" ", name, '="', escapeTextForBrowser(value), '"');
     }
-    var actionJavaScriptURL = stringToPrecomputedChunk(
-      escapeTextForBrowser(
-        "javascript:throw new Error('React form unexpectedly submitted.')"
-      )
+    var actionJavaScriptURL = escapeTextForBrowser(
+      "javascript:throw new Error('React form unexpectedly submitted.')"
     );
-    var startHiddenInputChunk = stringToPrecomputedChunk('<input type="hidden"');
     function pushAdditionalFormField(value, key) {
-      this.push(startHiddenInputChunk);
+      this.push('<input type="hidden"');
       validateAdditionalFormField(value);
       pushStringAttribute(this, "name", key);
       pushStringAttribute(this, "value", value);
-      this.push(endOfStartTagSelfClosing);
+      this.push("/>");
     }
     function validateAdditionalFormField(value) {
-      if ("string" !== typeof value)
-        throw Error(
-          "File/Blob fields are not yet supported in progressive forms. Will fallback to client hydration."
-        );
+      if ("string" !== typeof value) throw Error(formatProdErrorMessage(480));
     }
     function getCustomFormFields(resumableState, formAction) {
       if ("function" === typeof formAction.$$FORM_ACTION) {
@@ -658,13 +444,7 @@ var require_react_dom_server_edge_production = __commonJS({
       var formData = null;
       if ("function" === typeof formAction) {
         var customFields = getCustomFormFields(resumableState, formAction);
-        null !== customFields ? (name = customFields.name, formAction = customFields.action || "", formEncType = customFields.encType, formMethod = customFields.method, formTarget = customFields.target, formData = customFields.data) : (target.push(
-          attributeSeparator,
-          stringToChunk("formAction"),
-          attributeAssign,
-          actionJavaScriptURL,
-          attributeEnd
-        ), formTarget = formMethod = formEncType = formAction = name = null, injectFormReplayingRuntime(resumableState, renderState));
+        null !== customFields ? (name = customFields.name, formAction = customFields.action || "", formEncType = customFields.encType, formMethod = customFields.method, formTarget = customFields.target, formData = customFields.data) : (target.push(" ", "formAction", '="', actionJavaScriptURL, '"'), formTarget = formMethod = formEncType = formAction = name = null, injectFormReplayingRuntime(resumableState, renderState));
       }
       null != name && pushAttribute(target, "name", name);
       null != formAction && pushAttribute(target, "formAction", formAction);
@@ -699,13 +479,7 @@ var require_react_dom_server_edge_production = __commonJS({
           if (null == value || "function" === typeof value || "symbol" === typeof value || "boolean" === typeof value)
             break;
           value = sanitizeURL("" + value);
-          target.push(
-            attributeSeparator,
-            stringToChunk(name),
-            attributeAssign,
-            stringToChunk(escapeTextForBrowser(value)),
-            attributeEnd
-          );
+          target.push(" ", name, '="', escapeTextForBrowser(value), '"');
           break;
         case "defaultValue":
         case "defaultChecked":
@@ -723,13 +497,7 @@ var require_react_dom_server_edge_production = __commonJS({
           if ("function" === typeof value || "symbol" === typeof value || "boolean" === typeof value)
             break;
           value = sanitizeURL("" + value);
-          target.push(
-            attributeSeparator,
-            stringToChunk("xlink:href"),
-            attributeAssign,
-            stringToChunk(escapeTextForBrowser(value)),
-            attributeEnd
-          );
+          target.push(" ", "xlink:href", '="', escapeTextForBrowser(value), '"');
           break;
         case "contentEditable":
         case "spellCheck":
@@ -739,13 +507,7 @@ var require_react_dom_server_edge_production = __commonJS({
         case "externalResourcesRequired":
         case "focusable":
         case "preserveAlpha":
-          "function" !== typeof value && "symbol" !== typeof value && target.push(
-            attributeSeparator,
-            stringToChunk(name),
-            attributeAssign,
-            stringToChunk(escapeTextForBrowser(value)),
-            attributeEnd
-          );
+          "function" !== typeof value && "symbol" !== typeof value && target.push(" ", name, '="', escapeTextForBrowser(value), '"');
           break;
         case "inert":
         case "allowFullScreen":
@@ -771,47 +533,21 @@ var require_react_dom_server_edge_production = __commonJS({
         case "scoped":
         case "seamless":
         case "itemScope":
-          value && "function" !== typeof value && "symbol" !== typeof value && target.push(
-            attributeSeparator,
-            stringToChunk(name),
-            attributeEmptyString
-          );
+          value && "function" !== typeof value && "symbol" !== typeof value && target.push(" ", name, '=""');
           break;
         case "capture":
         case "download":
-          true === value ? target.push(
-            attributeSeparator,
-            stringToChunk(name),
-            attributeEmptyString
-          ) : false !== value && "function" !== typeof value && "symbol" !== typeof value && target.push(
-            attributeSeparator,
-            stringToChunk(name),
-            attributeAssign,
-            stringToChunk(escapeTextForBrowser(value)),
-            attributeEnd
-          );
+          true === value ? target.push(" ", name, '=""') : false !== value && "function" !== typeof value && "symbol" !== typeof value && target.push(" ", name, '="', escapeTextForBrowser(value), '"');
           break;
         case "cols":
         case "rows":
         case "size":
         case "span":
-          "function" !== typeof value && "symbol" !== typeof value && !isNaN(value) && 1 <= value && target.push(
-            attributeSeparator,
-            stringToChunk(name),
-            attributeAssign,
-            stringToChunk(escapeTextForBrowser(value)),
-            attributeEnd
-          );
+          "function" !== typeof value && "symbol" !== typeof value && !isNaN(value) && 1 <= value && target.push(" ", name, '="', escapeTextForBrowser(value), '"');
           break;
         case "rowSpan":
         case "start":
-          "function" === typeof value || "symbol" === typeof value || isNaN(value) || target.push(
-            attributeSeparator,
-            stringToChunk(name),
-            attributeAssign,
-            stringToChunk(escapeTextForBrowser(value)),
-            attributeEnd
-          );
+          "function" === typeof value || "symbol" === typeof value || isNaN(value) || target.push(" ", name, '="', escapeTextForBrowser(value), '"');
           break;
         case "xlinkActuate":
           pushStringAttribute(target, "xlink:actuate", value);
@@ -851,31 +587,18 @@ var require_react_dom_server_edge_production = __commonJS({
                   var prefix$8 = name.toLowerCase().slice(0, 5);
                   if ("data-" !== prefix$8 && "aria-" !== prefix$8) return;
               }
-              target.push(
-                attributeSeparator,
-                stringToChunk(name),
-                attributeAssign,
-                stringToChunk(escapeTextForBrowser(value)),
-                attributeEnd
-              );
+              target.push(" ", name, '="', escapeTextForBrowser(value), '"');
             }
           }
       }
     }
-    var endOfStartTag = stringToPrecomputedChunk(">");
-    var endOfStartTagSelfClosing = stringToPrecomputedChunk("/>");
     function pushInnerHTML(target, innerHTML, children) {
       if (null != innerHTML) {
-        if (null != children)
-          throw Error(
-            "Can only set one of `children` or `props.dangerouslySetInnerHTML`."
-          );
+        if (null != children) throw Error(formatProdErrorMessage(60));
         if ("object" !== typeof innerHTML || !("__html" in innerHTML))
-          throw Error(
-            "`props.dangerouslySetInnerHTML` must be in the form `{__html: ...}`. Please visit https://react.dev/link/dangerously-set-inner-html for more information."
-          );
+          throw Error(formatProdErrorMessage(61));
         innerHTML = innerHTML.__html;
-        null !== innerHTML && void 0 !== innerHTML && target.push(stringToChunk("" + innerHTML));
+        null !== innerHTML && void 0 !== innerHTML && target.push("" + innerHTML);
       }
     }
     function flattenOptionChildren(children) {
@@ -885,28 +608,22 @@ var require_react_dom_server_edge_production = __commonJS({
       });
       return content;
     }
-    var selectedMarkerAttribute = stringToPrecomputedChunk(' selected=""');
-    var formReplayingRuntimeScript = stringToPrecomputedChunk(
-      `addEventListener("submit",function(a){if(!a.defaultPrevented){var b=a.target,d=a.submitter,c=b.action,e=d;if(d){var f=d.getAttribute("formAction");null!=f&&(c=f,e=null)}"javascript:throw new Error('React form unexpectedly submitted.')"===c&&(a.preventDefault(),a=new FormData(b,e),c=b.ownerDocument||b,(c.$$reactFormReplay=c.$$reactFormReplay||[]).push(b,d,a))}});`
-    );
     function injectFormReplayingRuntime(resumableState, renderState) {
       if (0 === (resumableState.instructions & 16)) {
         resumableState.instructions |= 16;
         var preamble = renderState.preamble, bootstrapChunks = renderState.bootstrapChunks;
         (preamble.htmlChunks || preamble.headChunks) && 0 === bootstrapChunks.length ? (bootstrapChunks.push(renderState.startInlineScript), pushCompletedShellIdAttribute(bootstrapChunks, resumableState), bootstrapChunks.push(
-          endOfStartTag,
-          formReplayingRuntimeScript,
-          endInlineScript
+          ">",
+          `addEventListener("submit",function(a){if(!a.defaultPrevented){var b=a.target,d=a.submitter,c=b.action,e=d;if(d){var f=d.getAttribute("formAction");null!=f&&(c=f,e=null)}"javascript:throw new Error('React form unexpectedly submitted.')"===c&&(a.preventDefault(),a=new FormData(b,e),c=b.ownerDocument||b,(c.$$reactFormReplay=c.$$reactFormReplay||[]).push(b,d,a))}});`,
+          "</script>"
         )) : bootstrapChunks.unshift(
           renderState.startInlineScript,
-          endOfStartTag,
-          formReplayingRuntimeScript,
-          endInlineScript
+          ">",
+          `addEventListener("submit",function(a){if(!a.defaultPrevented){var b=a.target,d=a.submitter,c=b.action,e=d;if(d){var f=d.getAttribute("formAction");null!=f&&(c=f,e=null)}"javascript:throw new Error('React form unexpectedly submitted.')"===c&&(a.preventDefault(),a=new FormData(b,e),c=b.ownerDocument||b,(c.$$reactFormReplay=c.$$reactFormReplay||[]).push(b,d,a))}});`,
+          "</script>"
         );
       }
     }
-    var formStateMarkerIsMatching = stringToPrecomputedChunk("<!--F!-->");
-    var formStateMarkerIsNotMatching = stringToPrecomputedChunk("<!--F-->");
     function pushLinkImpl(target, props) {
       target.push(startChunkForTag("link"));
       for (var propKey in props)
@@ -916,14 +633,12 @@ var require_react_dom_server_edge_production = __commonJS({
             switch (propKey) {
               case "children":
               case "dangerouslySetInnerHTML":
-                throw Error(
-                  "link is a self-closing tag and must neither have `children` nor use `dangerouslySetInnerHTML`."
-                );
+                throw Error(formatProdErrorMessage(399, "link"));
               default:
                 pushAttribute(target, propKey, propValue);
             }
         }
-      target.push(endOfStartTagSelfClosing);
+      target.push("/>");
       return null;
     }
     var styleRegex = /(<\/|<)(s)(tyle)/gi;
@@ -939,15 +654,13 @@ var require_react_dom_server_edge_production = __commonJS({
             switch (propKey) {
               case "children":
               case "dangerouslySetInnerHTML":
-                throw Error(
-                  tag + " is a self-closing tag and must neither have `children` nor use `dangerouslySetInnerHTML`."
-                );
+                throw Error(formatProdErrorMessage(399, tag));
               default:
                 pushAttribute(target, propKey, propValue);
             }
         }
       pushViewTransitionAttributes(target, formatContext);
-      target.push(endOfStartTagSelfClosing);
+      target.push("/>");
       return null;
     }
     function pushTitleImpl(target, props) {
@@ -968,16 +681,13 @@ var require_react_dom_server_edge_production = __commonJS({
                 pushAttribute(target, propKey, propValue);
             }
         }
-      target.push(endOfStartTag);
+      target.push(">");
       props = Array.isArray(children) ? 2 > children.length ? children[0] : null : children;
-      "function" !== typeof props && "symbol" !== typeof props && null !== props && void 0 !== props && target.push(stringToChunk(escapeTextForBrowser("" + props)));
+      "function" !== typeof props && "symbol" !== typeof props && null !== props && void 0 !== props && target.push(escapeTextForBrowser("" + props));
       pushInnerHTML(target, innerHTML, children);
       target.push(endChunkForTag("title"));
       return null;
     }
-    var headPreambleContributionChunk = stringToPrecomputedChunk("<!--head-->");
-    var bodyPreambleContributionChunk = stringToPrecomputedChunk("<!--body-->");
-    var htmlPreambleContributionChunk = stringToPrecomputedChunk("<!--html-->");
     function pushScriptImpl(target, props) {
       target.push(startChunkForTag("script"));
       var children = null, innerHTML = null, propKey;
@@ -996,11 +706,9 @@ var require_react_dom_server_edge_production = __commonJS({
                 pushAttribute(target, propKey, propValue);
             }
         }
-      target.push(endOfStartTag);
+      target.push(">");
       pushInnerHTML(target, innerHTML, children);
-      "string" === typeof children && target.push(
-        stringToChunk(("" + children).replace(scriptRegex, scriptReplacer))
-      );
+      "string" === typeof children && target.push(("" + children).replace(scriptRegex, scriptReplacer));
       target.push(endChunkForTag("script"));
       return null;
     }
@@ -1023,7 +731,7 @@ var require_react_dom_server_edge_production = __commonJS({
             }
         }
       pushViewTransitionAttributes(target, formatContext);
-      target.push(endOfStartTag);
+      target.push(">");
       pushInnerHTML(target, innerHTML, tag);
       return tag;
     }
@@ -1046,23 +754,22 @@ var require_react_dom_server_edge_production = __commonJS({
             }
         }
       pushViewTransitionAttributes(target, formatContext);
-      target.push(endOfStartTag);
+      target.push(">");
       pushInnerHTML(target, innerHTML, tag);
-      return "string" === typeof tag ? (target.push(stringToChunk(escapeTextForBrowser(tag))), null) : tag;
+      return "string" === typeof tag ? (target.push(escapeTextForBrowser(tag)), null) : tag;
     }
-    var leadingNewline = stringToPrecomputedChunk("\n");
     var VALID_TAG_REGEX = /^[a-zA-Z][a-zA-Z:_\.\-\d]*$/;
     var validatedTagCache = /* @__PURE__ */ new Map();
     function startChunkForTag(tag) {
       var tagStartChunk = validatedTagCache.get(tag);
       if (void 0 === tagStartChunk) {
-        if (!VALID_TAG_REGEX.test(tag)) throw Error("Invalid tag: " + tag);
-        tagStartChunk = stringToPrecomputedChunk("<" + tag);
+        if (!VALID_TAG_REGEX.test(tag))
+          throw Error(formatProdErrorMessage(65, tag));
+        tagStartChunk = "<" + tag;
         validatedTagCache.set(tag, tagStartChunk);
       }
       return tagStartChunk;
     }
-    var doctypeChunk = stringToPrecomputedChunk("<!DOCTYPE html>");
     function pushStartInstance(target$jscomp$0, type, props, resumableState, renderState, preambleState, hoistableState, formatContext, textEmbedded) {
       switch (type) {
         case "div":
@@ -1092,10 +799,10 @@ var require_react_dom_server_edge_production = __commonJS({
                 }
             }
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
+          target$jscomp$0.push(">");
           pushInnerHTML(target$jscomp$0, innerHTML, children);
           if ("string" === typeof children) {
-            target$jscomp$0.push(stringToChunk(escapeTextForBrowser(children)));
+            target$jscomp$0.push(escapeTextForBrowser(children));
             var JSCompiler_inline_result = null;
           } else JSCompiler_inline_result = children;
           return JSCompiler_inline_result;
@@ -1129,7 +836,7 @@ var require_react_dom_server_edge_production = __commonJS({
                 }
             }
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
+          target$jscomp$0.push(">");
           pushInnerHTML(target$jscomp$0, innerHTML$jscomp$0, children$jscomp$0);
           return children$jscomp$0;
         case "option":
@@ -1165,14 +872,14 @@ var require_react_dom_server_edge_production = __commonJS({
             if (isArrayImpl(selectedValue))
               for (var i = 0; i < selectedValue.length; i++) {
                 if ("" + selectedValue[i] === stringValue) {
-                  target$jscomp$0.push(selectedMarkerAttribute);
+                  target$jscomp$0.push(' selected=""');
                   break;
                 }
               }
             else
-              "" + selectedValue === stringValue && target$jscomp$0.push(selectedMarkerAttribute);
-          } else selected && target$jscomp$0.push(selectedMarkerAttribute);
-          target$jscomp$0.push(endOfStartTag);
+              "" + selectedValue === stringValue && target$jscomp$0.push(' selected=""');
+          } else selected && target$jscomp$0.push(' selected=""');
+          target$jscomp$0.push(">");
           pushInnerHTML(target$jscomp$0, innerHTML$jscomp$1, children$jscomp$1);
           return children$jscomp$1;
         case "textarea":
@@ -1193,9 +900,7 @@ var require_react_dom_server_edge_production = __commonJS({
                     defaultValue = propValue$jscomp$2;
                     break;
                   case "dangerouslySetInnerHTML":
-                    throw Error(
-                      "`dangerouslySetInnerHTML` does not make sense on <textarea>."
-                    );
+                    throw Error(formatProdErrorMessage(91));
                   default:
                     pushAttribute(
                       target$jscomp$0,
@@ -1206,23 +911,18 @@ var require_react_dom_server_edge_production = __commonJS({
             }
           null === value$jscomp$0 && null !== defaultValue && (value$jscomp$0 = defaultValue);
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
+          target$jscomp$0.push(">");
           if (null != children$jscomp$2) {
-            if (null != value$jscomp$0)
-              throw Error(
-                "If you supply `defaultValue` on a <textarea>, do not pass children."
-              );
+            if (null != value$jscomp$0) throw Error(formatProdErrorMessage(92));
             if (isArrayImpl(children$jscomp$2)) {
               if (1 < children$jscomp$2.length)
-                throw Error("<textarea> can only have at most one child.");
+                throw Error(formatProdErrorMessage(93));
               value$jscomp$0 = "" + children$jscomp$2[0];
             }
             value$jscomp$0 = "" + children$jscomp$2;
           }
-          "string" === typeof value$jscomp$0 && "\n" === value$jscomp$0[0] && target$jscomp$0.push(leadingNewline);
-          null !== value$jscomp$0 && target$jscomp$0.push(
-            stringToChunk(escapeTextForBrowser("" + value$jscomp$0))
-          );
+          "string" === typeof value$jscomp$0 && "\n" === value$jscomp$0[0] && target$jscomp$0.push("\n");
+          null !== value$jscomp$0 && target$jscomp$0.push(escapeTextForBrowser("" + value$jscomp$0));
           return null;
         case "input":
           target$jscomp$0.push(startChunkForTag("input"));
@@ -1234,9 +934,7 @@ var require_react_dom_server_edge_production = __commonJS({
                 switch (propKey$jscomp$3) {
                   case "children":
                   case "dangerouslySetInnerHTML":
-                    throw Error(
-                      "input is a self-closing tag and must neither have `children` nor use `dangerouslySetInnerHTML`."
-                    );
+                    throw Error(formatProdErrorMessage(399, "input"));
                   case "name":
                     name = propValue$jscomp$3;
                     break;
@@ -1285,7 +983,7 @@ var require_react_dom_server_edge_production = __commonJS({
           null !== checked ? pushBooleanAttribute(target$jscomp$0, "checked", checked) : null !== defaultChecked && pushBooleanAttribute(target$jscomp$0, "checked", defaultChecked);
           null !== value$jscomp$1 ? pushAttribute(target$jscomp$0, "value", value$jscomp$1) : null !== defaultValue$jscomp$0 && pushAttribute(target$jscomp$0, "value", defaultValue$jscomp$0);
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTagSelfClosing);
+          target$jscomp$0.push("/>");
           null != formData && formData.forEach(pushAdditionalFormField, target$jscomp$0);
           return null;
         case "button":
@@ -1336,13 +1034,11 @@ var require_react_dom_server_edge_production = __commonJS({
             name$jscomp$0
           );
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
+          target$jscomp$0.push(">");
           null != formData$jscomp$0 && formData$jscomp$0.forEach(pushAdditionalFormField, target$jscomp$0);
           pushInnerHTML(target$jscomp$0, innerHTML$jscomp$2, children$jscomp$3);
           if ("string" === typeof children$jscomp$3) {
-            target$jscomp$0.push(
-              stringToChunk(escapeTextForBrowser(children$jscomp$3))
-            );
+            target$jscomp$0.push(escapeTextForBrowser(children$jscomp$3));
             var JSCompiler_inline_result$jscomp$0 = null;
           } else JSCompiler_inline_result$jscomp$0 = children$jscomp$3;
           return JSCompiler_inline_result$jscomp$0;
@@ -1387,11 +1083,11 @@ var require_react_dom_server_edge_production = __commonJS({
               formAction$jscomp$1
             );
             null !== customFields ? (formAction$jscomp$1 = customFields.action || "", formEncType$jscomp$1 = customFields.encType, formMethod$jscomp$1 = customFields.method, formTarget$jscomp$1 = customFields.target, formData$jscomp$1 = customFields.data, formActionName = customFields.name) : (target$jscomp$0.push(
-              attributeSeparator,
-              stringToChunk("action"),
-              attributeAssign,
+              " ",
+              "action",
+              '="',
               actionJavaScriptURL,
-              attributeEnd
+              '"'
             ), formTarget$jscomp$1 = formMethod$jscomp$1 = formEncType$jscomp$1 = formAction$jscomp$1 = null, injectFormReplayingRuntime(resumableState, renderState));
           }
           null != formAction$jscomp$1 && pushAttribute(target$jscomp$0, "action", formAction$jscomp$1);
@@ -1399,13 +1095,11 @@ var require_react_dom_server_edge_production = __commonJS({
           null != formMethod$jscomp$1 && pushAttribute(target$jscomp$0, "method", formMethod$jscomp$1);
           null != formTarget$jscomp$1 && pushAttribute(target$jscomp$0, "target", formTarget$jscomp$1);
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
-          null !== formActionName && (target$jscomp$0.push(startHiddenInputChunk), pushStringAttribute(target$jscomp$0, "name", formActionName), target$jscomp$0.push(endOfStartTagSelfClosing), null != formData$jscomp$1 && formData$jscomp$1.forEach(pushAdditionalFormField, target$jscomp$0));
+          target$jscomp$0.push(">");
+          null !== formActionName && (target$jscomp$0.push('<input type="hidden"'), pushStringAttribute(target$jscomp$0, "name", formActionName), target$jscomp$0.push("/>"), null != formData$jscomp$1 && formData$jscomp$1.forEach(pushAdditionalFormField, target$jscomp$0));
           pushInnerHTML(target$jscomp$0, innerHTML$jscomp$3, children$jscomp$4);
           if ("string" === typeof children$jscomp$4) {
-            target$jscomp$0.push(
-              stringToChunk(escapeTextForBrowser(children$jscomp$4))
-            );
+            target$jscomp$0.push(escapeTextForBrowser(children$jscomp$4));
             var JSCompiler_inline_result$jscomp$1 = null;
           } else JSCompiler_inline_result$jscomp$1 = children$jscomp$4;
           return JSCompiler_inline_result$jscomp$1;
@@ -1418,9 +1112,7 @@ var require_react_dom_server_edge_production = __commonJS({
                 switch (propKey$jscomp$6) {
                   case "children":
                   case "dangerouslySetInnerHTML":
-                    throw Error(
-                      "menuitems cannot have `children` nor `dangerouslySetInnerHTML`."
-                    );
+                    throw Error(formatProdErrorMessage(400));
                   default:
                     pushAttribute(
                       target$jscomp$0,
@@ -1430,7 +1122,7 @@ var require_react_dom_server_edge_production = __commonJS({
                 }
             }
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
+          target$jscomp$0.push(">");
           return null;
         case "object":
           target$jscomp$0.push(startChunkForTag("object"));
@@ -1450,11 +1142,11 @@ var require_react_dom_server_edge_production = __commonJS({
                     var sanitizedValue = sanitizeURL("" + propValue$jscomp$7);
                     if ("" === sanitizedValue) break;
                     target$jscomp$0.push(
-                      attributeSeparator,
-                      stringToChunk("data"),
-                      attributeAssign,
-                      stringToChunk(escapeTextForBrowser(sanitizedValue)),
-                      attributeEnd
+                      " ",
+                      "data",
+                      '="',
+                      escapeTextForBrowser(sanitizedValue),
+                      '"'
                     );
                     break;
                   default:
@@ -1466,12 +1158,10 @@ var require_react_dom_server_edge_production = __commonJS({
                 }
             }
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
+          target$jscomp$0.push(">");
           pushInnerHTML(target$jscomp$0, innerHTML$jscomp$4, children$jscomp$5);
           if ("string" === typeof children$jscomp$5) {
-            target$jscomp$0.push(
-              stringToChunk(escapeTextForBrowser(children$jscomp$5))
-            );
+            target$jscomp$0.push(escapeTextForBrowser(children$jscomp$5));
             var JSCompiler_inline_result$jscomp$2 = null;
           } else JSCompiler_inline_result$jscomp$2 = children$jscomp$5;
           return JSCompiler_inline_result$jscomp$2;
@@ -1501,7 +1191,7 @@ var require_react_dom_server_edge_production = __commonJS({
               if (null !== resourceState) {
                 resumableState.styleResources[href] = null;
                 styleQueue || (styleQueue = {
-                  precedence: stringToChunk(escapeTextForBrowser(precedence)),
+                  precedence: escapeTextForBrowser(precedence),
                   rules: [],
                   hrefs: [],
                   sheets: /* @__PURE__ */ new Map()
@@ -1524,14 +1214,14 @@ var require_react_dom_server_edge_production = __commonJS({
                 var resource$9 = styleQueue.sheets.get(href);
                 resource$9 && hoistableState && hoistableState.stylesheets.add(resource$9);
               }
-              textEmbedded && target$jscomp$0.push(textSeparator);
+              textEmbedded && target$jscomp$0.push("<!-- -->");
               JSCompiler_inline_result$jscomp$4 = null;
             }
           else
             props.onLoad || props.onError ? JSCompiler_inline_result$jscomp$4 = pushLinkImpl(
               target$jscomp$0,
               props
-            ) : (textEmbedded && target$jscomp$0.push(textSeparator), JSCompiler_inline_result$jscomp$4 = isFallback$jscomp$0 ? null : pushLinkImpl(renderState.hoistableChunks, props));
+            ) : (textEmbedded && target$jscomp$0.push("<!-- -->"), JSCompiler_inline_result$jscomp$4 = isFallback$jscomp$0 ? null : pushLinkImpl(renderState.hoistableChunks, props));
           return JSCompiler_inline_result$jscomp$4;
         case "script":
           var noscriptTagInScope$jscomp$1 = formatContext.tagScope & 1, asyncProp = props.async;
@@ -1560,7 +1250,7 @@ var require_react_dom_server_edge_production = __commonJS({
               renderState.scripts.add(resource$jscomp$0);
               pushScriptImpl(resource$jscomp$0, scriptProps);
             }
-            textEmbedded && target$jscomp$0.push(textSeparator);
+            textEmbedded && target$jscomp$0.push("<!-- -->");
             JSCompiler_inline_result$jscomp$5 = null;
           }
           return JSCompiler_inline_result$jscomp$5;
@@ -1588,11 +1278,9 @@ var require_react_dom_server_edge_production = __commonJS({
                       );
                   }
               }
-            target$jscomp$0.push(endOfStartTag);
+            target$jscomp$0.push(">");
             var child = Array.isArray(children$jscomp$6) ? 2 > children$jscomp$6.length ? children$jscomp$6[0] : null : children$jscomp$6;
-            "function" !== typeof child && "symbol" !== typeof child && null !== child && void 0 !== child && target$jscomp$0.push(
-              stringToChunk(("" + child).replace(styleRegex, styleReplacer))
-            );
+            "function" !== typeof child && "symbol" !== typeof child && null !== child && void 0 !== child && target$jscomp$0.push(("" + child).replace(styleRegex, styleReplacer));
             pushInnerHTML(target$jscomp$0, innerHTML$jscomp$5, children$jscomp$6);
             target$jscomp$0.push(endChunkForTag("style"));
             var JSCompiler_inline_result$jscomp$6 = null;
@@ -1601,18 +1289,14 @@ var require_react_dom_server_edge_production = __commonJS({
             if (null !== (resumableState.styleResources.hasOwnProperty(href$jscomp$0) ? resumableState.styleResources[href$jscomp$0] : void 0)) {
               resumableState.styleResources[href$jscomp$0] = null;
               styleQueue$jscomp$0 || (styleQueue$jscomp$0 = {
-                precedence: stringToChunk(
-                  escapeTextForBrowser(precedence$jscomp$0)
-                ),
+                precedence: escapeTextForBrowser(precedence$jscomp$0),
                 rules: [],
                 hrefs: [],
                 sheets: /* @__PURE__ */ new Map()
               }, renderState.styles.set(precedence$jscomp$0, styleQueue$jscomp$0));
               var nonceStyle = renderState.nonce.style;
               if (!nonceStyle || nonceStyle === nonce) {
-                styleQueue$jscomp$0.hrefs.push(
-                  stringToChunk(escapeTextForBrowser(href$jscomp$0))
-                );
+                styleQueue$jscomp$0.hrefs.push(escapeTextForBrowser(href$jscomp$0));
                 var target = styleQueue$jscomp$0.rules, children$jscomp$7 = null, innerHTML$jscomp$6 = null, propKey$jscomp$9;
                 for (propKey$jscomp$9 in props)
                   if (hasOwnProperty.call(props, propKey$jscomp$9)) {
@@ -1628,15 +1312,13 @@ var require_react_dom_server_edge_production = __commonJS({
                   }
                 var child$jscomp$0 = Array.isArray(children$jscomp$7) ? 2 > children$jscomp$7.length ? children$jscomp$7[0] : null : children$jscomp$7;
                 "function" !== typeof child$jscomp$0 && "symbol" !== typeof child$jscomp$0 && null !== child$jscomp$0 && void 0 !== child$jscomp$0 && target.push(
-                  stringToChunk(
-                    ("" + child$jscomp$0).replace(styleRegex, styleReplacer)
-                  )
+                  ("" + child$jscomp$0).replace(styleRegex, styleReplacer)
                 );
                 pushInnerHTML(target, innerHTML$jscomp$6, children$jscomp$7);
               }
             }
             styleQueue$jscomp$0 && hoistableState && hoistableState.styles.add(styleQueue$jscomp$0);
-            textEmbedded && target$jscomp$0.push(textSeparator);
+            textEmbedded && target$jscomp$0.push("<!-- -->");
             JSCompiler_inline_result$jscomp$6 = void 0;
           }
           return JSCompiler_inline_result$jscomp$6;
@@ -1650,7 +1332,7 @@ var require_react_dom_server_edge_production = __commonJS({
               formatContext
             );
           else
-            textEmbedded && target$jscomp$0.push(textSeparator), JSCompiler_inline_result$jscomp$7 = isFallback$jscomp$1 ? null : "string" === typeof props.charSet ? pushSelfClosing(
+            textEmbedded && target$jscomp$0.push("<!-- -->"), JSCompiler_inline_result$jscomp$7 = isFallback$jscomp$1 ? null : "string" === typeof props.charSet ? pushSelfClosing(
               renderState.charsetChunks,
               props,
               "meta",
@@ -1691,20 +1373,15 @@ var require_react_dom_server_edge_production = __commonJS({
                 }
             }
           pushViewTransitionAttributes(target$jscomp$0, formatContext);
-          target$jscomp$0.push(endOfStartTag);
+          target$jscomp$0.push(">");
           if (null != innerHTML$jscomp$7) {
-            if (null != children$jscomp$8)
-              throw Error(
-                "Can only set one of `children` or `props.dangerouslySetInnerHTML`."
-              );
+            if (null != children$jscomp$8) throw Error(formatProdErrorMessage(60));
             if ("object" !== typeof innerHTML$jscomp$7 || !("__html" in innerHTML$jscomp$7))
-              throw Error(
-                "`props.dangerouslySetInnerHTML` must be in the form `{__html: ...}`. Please visit https://react.dev/link/dangerously-set-inner-html for more information."
-              );
+              throw Error(formatProdErrorMessage(61));
             var html = innerHTML$jscomp$7.__html;
-            null !== html && void 0 !== html && ("string" === typeof html && 0 < html.length && "\n" === html[0] ? target$jscomp$0.push(leadingNewline, stringToChunk(html)) : target$jscomp$0.push(stringToChunk("" + html)));
+            null !== html && void 0 !== html && ("string" === typeof html && 0 < html.length && "\n" === html[0] ? target$jscomp$0.push("\n", html) : target$jscomp$0.push("" + html));
           }
-          "string" === typeof children$jscomp$8 && "\n" === children$jscomp$8[0] && target$jscomp$0.push(leadingNewline);
+          "string" === typeof children$jscomp$8 && "\n" === children$jscomp$8[0] && target$jscomp$0.push("\n");
           return children$jscomp$8;
         case "img":
           var pictureOrNoScriptTagInScope = formatContext.tagScope & 3, src = props.src, srcSet = props.srcSet;
@@ -1768,8 +1445,8 @@ var require_react_dom_server_edge_production = __commonJS({
           if (2 > formatContext.insertionMode) {
             var preamble = preambleState || renderState.preamble;
             if (preamble.headChunks)
-              throw Error("The `<head>` tag may only be rendered once.");
-            null !== preambleState && target$jscomp$0.push(headPreambleContributionChunk);
+              throw Error(formatProdErrorMessage(545, "`<head>`"));
+            null !== preambleState && target$jscomp$0.push("<!--head-->");
             preamble.headChunks = [];
             var JSCompiler_inline_result$jscomp$9 = pushStartSingletonElement(
               preamble.headChunks,
@@ -1789,8 +1466,8 @@ var require_react_dom_server_edge_production = __commonJS({
           if (2 > formatContext.insertionMode) {
             var preamble$jscomp$0 = preambleState || renderState.preamble;
             if (preamble$jscomp$0.bodyChunks)
-              throw Error("The `<body>` tag may only be rendered once.");
-            null !== preambleState && target$jscomp$0.push(bodyPreambleContributionChunk);
+              throw Error(formatProdErrorMessage(545, "`<body>`"));
+            null !== preambleState && target$jscomp$0.push("<!--body-->");
             preamble$jscomp$0.bodyChunks = [];
             var JSCompiler_inline_result$jscomp$10 = pushStartSingletonElement(
               preamble$jscomp$0.bodyChunks,
@@ -1810,9 +1487,9 @@ var require_react_dom_server_edge_production = __commonJS({
           if (0 === formatContext.insertionMode) {
             var preamble$jscomp$1 = preambleState || renderState.preamble;
             if (preamble$jscomp$1.htmlChunks)
-              throw Error("The `<html>` tag may only be rendered once.");
-            null !== preambleState && target$jscomp$0.push(htmlPreambleContributionChunk);
-            preamble$jscomp$1.htmlChunks = [doctypeChunk];
+              throw Error(formatProdErrorMessage(545, "`<html>`"));
+            null !== preambleState && target$jscomp$0.push("<!--html-->");
+            preamble$jscomp$1.htmlChunks = [""];
             var JSCompiler_inline_result$jscomp$11 = pushStartSingletonElement(
               preamble$jscomp$1.htmlChunks,
               props,
@@ -1857,18 +1534,18 @@ var require_react_dom_server_edge_production = __commonJS({
                         if (true === propValue$jscomp$11) propValue$jscomp$11 = "";
                         else if ("object" === typeof propValue$jscomp$11) continue;
                         target$jscomp$0.push(
-                          attributeSeparator,
-                          stringToChunk(attributeName),
-                          attributeAssign,
-                          stringToChunk(escapeTextForBrowser(propValue$jscomp$11)),
-                          attributeEnd
+                          " ",
+                          attributeName,
+                          '="',
+                          escapeTextForBrowser(propValue$jscomp$11),
+                          '"'
                         );
                       }
                   }
                 }
               }
             pushViewTransitionAttributes(target$jscomp$0, formatContext);
-            target$jscomp$0.push(endOfStartTag);
+            target$jscomp$0.push(">");
             pushInnerHTML(target$jscomp$0, innerHTML$jscomp$8, children$jscomp$9);
             return children$jscomp$9;
           }
@@ -1878,7 +1555,7 @@ var require_react_dom_server_edge_production = __commonJS({
     var endTagCache = /* @__PURE__ */ new Map();
     function endChunkForTag(tag) {
       var chunk = endTagCache.get(tag);
-      void 0 === chunk && (chunk = stringToPrecomputedChunk("</" + tag + ">"), endTagCache.set(tag, chunk));
+      void 0 === chunk && (chunk = "</" + tag + ">", endTagCache.set(tag, chunk));
       return chunk;
     }
     function hoistPreambleState(renderState, preambleState) {
@@ -1890,88 +1567,38 @@ var require_react_dom_server_edge_production = __commonJS({
     function writeBootstrap(destination, renderState) {
       renderState = renderState.bootstrapChunks;
       for (var i = 0; i < renderState.length - 1; i++)
-        writeChunk(destination, renderState[i]);
-      return i < renderState.length ? (i = renderState[i], renderState.length = 0, writeChunkAndReturn(destination, i)) : true;
+        destination.push(renderState[i]);
+      return i < renderState.length ? (i = renderState[i], renderState.length = 0, destination.push(i)) : true;
     }
-    var shellTimeRuntimeScript = stringToPrecomputedChunk(
-      "requestAnimationFrame(function(){$RT=performance.now()});"
-    );
-    var placeholder1 = stringToPrecomputedChunk('<template id="');
-    var placeholder2 = stringToPrecomputedChunk('"></template>');
-    var startActivityBoundary = stringToPrecomputedChunk("<!--&-->");
-    var endActivityBoundary = stringToPrecomputedChunk("<!--/&-->");
-    var startCompletedSuspenseBoundary = stringToPrecomputedChunk("<!--$-->");
-    var startPendingSuspenseBoundary1 = stringToPrecomputedChunk(
-      '<!--$?--><template id="'
-    );
-    var startPendingSuspenseBoundary2 = stringToPrecomputedChunk('"></template>');
-    var startClientRenderedSuspenseBoundary = stringToPrecomputedChunk("<!--$!-->");
-    var endSuspenseBoundary = stringToPrecomputedChunk("<!--/$-->");
-    var clientRenderedSuspenseBoundaryError1 = stringToPrecomputedChunk("<template");
-    var clientRenderedSuspenseBoundaryErrorAttrInterstitial = stringToPrecomputedChunk('"');
-    var clientRenderedSuspenseBoundaryError1A = stringToPrecomputedChunk(' data-dgst="');
-    stringToPrecomputedChunk(' data-msg="');
-    stringToPrecomputedChunk(' data-stck="');
-    stringToPrecomputedChunk(' data-cstck="');
-    var clientRenderedSuspenseBoundaryError2 = stringToPrecomputedChunk("></template>");
     function writeStartPendingSuspenseBoundary(destination, renderState, id) {
-      writeChunk(destination, startPendingSuspenseBoundary1);
-      if (null === id)
-        throw Error(
-          "An ID must have been assigned before we can complete the boundary."
-        );
-      writeChunk(destination, renderState.boundaryPrefix);
-      writeChunk(destination, stringToChunk(id.toString(16)));
-      return writeChunkAndReturn(destination, startPendingSuspenseBoundary2);
+      destination.push('<!--$?--><template id="');
+      if (null === id) throw Error(formatProdErrorMessage(395));
+      destination.push(renderState.boundaryPrefix);
+      renderState = id.toString(16);
+      destination.push(renderState);
+      return destination.push('"></template>');
     }
-    var startSegmentHTML = stringToPrecomputedChunk('<div hidden id="');
-    var startSegmentHTML2 = stringToPrecomputedChunk('">');
-    var endSegmentHTML = stringToPrecomputedChunk("</div>");
-    var startSegmentSVG = stringToPrecomputedChunk(
-      '<svg aria-hidden="true" style="display:none" id="'
-    );
-    var startSegmentSVG2 = stringToPrecomputedChunk('">');
-    var endSegmentSVG = stringToPrecomputedChunk("</svg>");
-    var startSegmentMathML = stringToPrecomputedChunk(
-      '<math aria-hidden="true" style="display:none" id="'
-    );
-    var startSegmentMathML2 = stringToPrecomputedChunk('">');
-    var endSegmentMathML = stringToPrecomputedChunk("</math>");
-    var startSegmentTable = stringToPrecomputedChunk('<table hidden id="');
-    var startSegmentTable2 = stringToPrecomputedChunk('">');
-    var endSegmentTable = stringToPrecomputedChunk("</table>");
-    var startSegmentTableBody = stringToPrecomputedChunk('<table hidden><tbody id="');
-    var startSegmentTableBody2 = stringToPrecomputedChunk('">');
-    var endSegmentTableBody = stringToPrecomputedChunk("</tbody></table>");
-    var startSegmentTableRow = stringToPrecomputedChunk('<table hidden><tr id="');
-    var startSegmentTableRow2 = stringToPrecomputedChunk('">');
-    var endSegmentTableRow = stringToPrecomputedChunk("</tr></table>");
-    var startSegmentColGroup = stringToPrecomputedChunk(
-      '<table hidden><colgroup id="'
-    );
-    var startSegmentColGroup2 = stringToPrecomputedChunk('">');
-    var endSegmentColGroup = stringToPrecomputedChunk("</colgroup></table>");
     function writeStartSegment(destination, renderState, formatContext, id) {
       switch (formatContext.insertionMode) {
         case 0:
         case 1:
         case 3:
         case 2:
-          return writeChunk(destination, startSegmentHTML), writeChunk(destination, renderState.segmentPrefix), writeChunk(destination, stringToChunk(id.toString(16))), writeChunkAndReturn(destination, startSegmentHTML2);
+          return destination.push('<div hidden id="'), destination.push(renderState.segmentPrefix), renderState = id.toString(16), destination.push(renderState), destination.push('">');
         case 4:
-          return writeChunk(destination, startSegmentSVG), writeChunk(destination, renderState.segmentPrefix), writeChunk(destination, stringToChunk(id.toString(16))), writeChunkAndReturn(destination, startSegmentSVG2);
+          return destination.push('<svg aria-hidden="true" style="display:none" id="'), destination.push(renderState.segmentPrefix), renderState = id.toString(16), destination.push(renderState), destination.push('">');
         case 5:
-          return writeChunk(destination, startSegmentMathML), writeChunk(destination, renderState.segmentPrefix), writeChunk(destination, stringToChunk(id.toString(16))), writeChunkAndReturn(destination, startSegmentMathML2);
+          return destination.push('<math aria-hidden="true" style="display:none" id="'), destination.push(renderState.segmentPrefix), renderState = id.toString(16), destination.push(renderState), destination.push('">');
         case 6:
-          return writeChunk(destination, startSegmentTable), writeChunk(destination, renderState.segmentPrefix), writeChunk(destination, stringToChunk(id.toString(16))), writeChunkAndReturn(destination, startSegmentTable2);
+          return destination.push('<table hidden id="'), destination.push(renderState.segmentPrefix), renderState = id.toString(16), destination.push(renderState), destination.push('">');
         case 7:
-          return writeChunk(destination, startSegmentTableBody), writeChunk(destination, renderState.segmentPrefix), writeChunk(destination, stringToChunk(id.toString(16))), writeChunkAndReturn(destination, startSegmentTableBody2);
+          return destination.push('<table hidden><tbody id="'), destination.push(renderState.segmentPrefix), renderState = id.toString(16), destination.push(renderState), destination.push('">');
         case 8:
-          return writeChunk(destination, startSegmentTableRow), writeChunk(destination, renderState.segmentPrefix), writeChunk(destination, stringToChunk(id.toString(16))), writeChunkAndReturn(destination, startSegmentTableRow2);
+          return destination.push('<table hidden><tr id="'), destination.push(renderState.segmentPrefix), renderState = id.toString(16), destination.push(renderState), destination.push('">');
         case 9:
-          return writeChunk(destination, startSegmentColGroup), writeChunk(destination, renderState.segmentPrefix), writeChunk(destination, stringToChunk(id.toString(16))), writeChunkAndReturn(destination, startSegmentColGroup2);
+          return destination.push('<table hidden><colgroup id="'), destination.push(renderState.segmentPrefix), renderState = id.toString(16), destination.push(renderState), destination.push('">');
         default:
-          throw Error("Unknown insertion mode. This is a bug in React.");
+          throw Error(formatProdErrorMessage(397));
       }
     }
     function writeEndSegment(destination, formatContext) {
@@ -1980,70 +1607,23 @@ var require_react_dom_server_edge_production = __commonJS({
         case 1:
         case 3:
         case 2:
-          return writeChunkAndReturn(destination, endSegmentHTML);
+          return destination.push("</div>");
         case 4:
-          return writeChunkAndReturn(destination, endSegmentSVG);
+          return destination.push("</svg>");
         case 5:
-          return writeChunkAndReturn(destination, endSegmentMathML);
+          return destination.push("</math>");
         case 6:
-          return writeChunkAndReturn(destination, endSegmentTable);
+          return destination.push("</table>");
         case 7:
-          return writeChunkAndReturn(destination, endSegmentTableBody);
+          return destination.push("</tbody></table>");
         case 8:
-          return writeChunkAndReturn(destination, endSegmentTableRow);
+          return destination.push("</tr></table>");
         case 9:
-          return writeChunkAndReturn(destination, endSegmentColGroup);
+          return destination.push("</colgroup></table>");
         default:
-          throw Error("Unknown insertion mode. This is a bug in React.");
+          throw Error(formatProdErrorMessage(397));
       }
     }
-    var completeSegmentScript1Full = stringToPrecomputedChunk(
-      '$RS=function(a,b){a=document.getElementById(a);b=document.getElementById(b);for(a.parentNode.removeChild(a);a.firstChild;)b.parentNode.insertBefore(a.firstChild,b);b.parentNode.removeChild(b)};$RS("'
-    );
-    var completeSegmentScript1Partial = stringToPrecomputedChunk('$RS("');
-    var completeSegmentScript2 = stringToPrecomputedChunk('","');
-    var completeSegmentScriptEnd = stringToPrecomputedChunk('")</script>');
-    stringToPrecomputedChunk('<template data-rsi="" data-sid="');
-    stringToPrecomputedChunk('" data-pid="');
-    var completeBoundaryScriptFunctionOnly = stringToPrecomputedChunk(
-      '$RB=[];$RV=function(a){$RT=performance.now();for(var b=0;b<a.length;b+=2){var c=a[b],e=a[b+1];null!==e.parentNode&&e.parentNode.removeChild(e);var f=c.parentNode;if(f){var g=c.previousSibling,h=0;do{if(c&&8===c.nodeType){var d=c.data;if("/$"===d||"/&"===d)if(0===h)break;else h--;else"$"!==d&&"$?"!==d&&"$~"!==d&&"$!"!==d&&"&"!==d||h++}d=c.nextSibling;f.removeChild(c);c=d}while(c);for(;e.firstChild;)f.insertBefore(e.firstChild,c);g.data="$";g._reactRetry&&requestAnimationFrame(g._reactRetry)}}a.length=0};\n$RC=function(a,b){if(b=document.getElementById(b))(a=document.getElementById(a))?(a.previousSibling.data="$~",$RB.push(a,b),2===$RB.length&&("number"!==typeof $RT?requestAnimationFrame($RV.bind(null,$RB)):(a=performance.now(),setTimeout($RV.bind(null,$RB),2300>a&&2E3<a?2300-a:$RT+300-a)))):b.parentNode.removeChild(b)};'
-    );
-    var completeBoundaryUpgradeToViewTransitionsInstruction = stringToChunk(
-      `$RV=function(B,g){function h(a,c){var e=a.getAttribute(c);e&&(c=a.style,l.push(a,c.viewTransitionName,c.viewTransitionClass),"auto"!==e&&(c.viewTransitionClass=e),(a=a.getAttribute("vt-name"))||(a="_T_"+N++ +"_"),a=CSS.escape(a)!==a?"r-"+btoa(a).replace(/=/g,""):a,c.viewTransitionName=a,C=!0)}var C=!1,N=0,l=[];try{var f=document.__reactViewTransition;if(f){f.finished.finally($RV.bind(null,g));return}var m=new Map;for(f=1;f<g.length;f+=2)for(var k=g[f].querySelectorAll("[vt-share]"),d=0;d<k.length;d++){var b=k[d];m.set(b.getAttribute("vt-name"),b)}var u=[];for(k=0;k<g.length;k+=2){var D=g[k],x=D.parentNode;if(x){var v=x.getBoundingClientRect();if(v.left||v.top||v.width||v.height){b=D;for(f=0;b;){if(8===b.nodeType){var t=b.data;if("/$"===t)if(0===f)break;else f--;else"$"!==t&&"$?"!==t&&"$~"!==t&&"$!"!==t||f++}else if(1===b.nodeType){d=b;var E=d.getAttribute("vt-name"),y=m.get(E);h(d,y?"vt-share":"vt-exit");y&&(h(y,"vt-share"),m.set(E,null));for(var F=d.querySelectorAll("[vt-share]"),
-z=0;z<F.length;z++){var G=F[z],H=G.getAttribute("vt-name"),I=m.get(H);I&&(h(G,"vt-share"),h(I,"vt-share"),m.set(H,null))}var J=d.querySelectorAll("[vt-parent-exit]");for(d=0;d<J.length;d++)h(J[d],"vt-parent-exit")}b=b.nextSibling}for(var K=g[k+1],n=K.firstElementChild;n;){null!==m.get(n.getAttribute("vt-name"))&&h(n,"vt-enter");var L=n.querySelectorAll("[vt-parent-enter]");for(b=0;b<L.length;b++)h(L[b],"vt-parent-enter");n=n.nextElementSibling}b=x;do for(var p=b.firstElementChild;p;){var M=p.getAttribute("vt-update");
-M&&"none"!==M&&!l.includes(p)&&h(p,"vt-update");p=p.nextElementSibling}while((b=b.parentNode)&&1===b.nodeType&&"none"!==b.getAttribute("vt-update"));u.push.apply(u,K.querySelectorAll('img[src]:not([loading="lazy"])'))}}}if(C){var A=document.__reactViewTransition=document.startViewTransition({update:function(){B(g);for(var a=[document.documentElement.clientHeight,document.fonts.ready],c={},e=0;e<u.length;c={g:c.g},e++)if(c.g=u[e],!c.g.complete){var q=c.g.getBoundingClientRect();0<q.bottom&&0<q.right&&
-q.top<window.innerHeight&&q.left<window.innerWidth&&(q=new Promise(function(w){return function(r){w.g.addEventListener("load",r);w.g.addEventListener("error",r)}}(c)),a.push(q))}return Promise.race([Promise.all(a),new Promise(function(w){var r=performance.now();setTimeout(w,2300>r&&2E3<r?2300-r:500)})])},types:[]});A.ready.finally(function(){for(var a=l.length-3;0<=a;a-=3){var c=l[a],e=c.style;e.viewTransitionName=l[a+1];e.viewTransitionClass=l[a+1];""===c.getAttribute("style")&&c.removeAttribute("style")}});
-A.finished.finally(function(){document.__reactViewTransition===A&&(document.__reactViewTransition=null)});$RB=[];return}}catch(a){}B(g)}.bind(null,$RV);`
-    );
-    var completeBoundaryScript1Partial = stringToPrecomputedChunk('$RC("');
-    var completeBoundaryWithStylesScript1FullPartial = stringToPrecomputedChunk(
-      '$RM=new Map;$RR=function(n,w,p){function u(q){this._p=null;q()}for(var r=new Map,t=document,h,b,e=t.querySelectorAll("link[data-precedence],style[data-precedence]"),v=[],k=0;b=e[k++];)"not all"===b.getAttribute("media")?v.push(b):("LINK"===b.tagName&&$RM.set(b.getAttribute("href"),b),r.set(b.dataset.precedence,h=b));e=0;b=[];var l,a;for(k=!0;;){if(k){var f=p[e++];if(!f){k=!1;e=0;continue}var c=!1,m=0;var d=f[m++];if(a=$RM.get(d)){var g=a._p;c=!0}else{a=t.createElement("link");a.href=d;a.rel=\n"stylesheet";for(a.dataset.precedence=l=f[m++];g=f[m++];)a.setAttribute(g,f[m++]);g=a._p=new Promise(function(q,x){a.onload=u.bind(a,q);a.onerror=u.bind(a,x)});$RM.set(d,a)}d=a.getAttribute("media");!g||d&&!matchMedia(d).matches||b.push(g);if(c)continue}else{a=v[e++];if(!a)break;l=a.getAttribute("data-precedence");a.removeAttribute("media")}c=r.get(l)||h;c===h&&(h=a);r.set(l,a);c?c.parentNode.insertBefore(a,c.nextSibling):(c=t.head,c.insertBefore(a,c.firstChild))}if(p=document.getElementById(n))p.previousSibling.data=\n"$~";Promise.all(b).then($RC.bind(null,n,w),$RX.bind(null,n,"CSS failed to load"))};$RR("'
-    );
-    var completeBoundaryWithStylesScript1Partial = stringToPrecomputedChunk('$RR("');
-    var completeBoundaryScript2 = stringToPrecomputedChunk('","');
-    var completeBoundaryScript3a = stringToPrecomputedChunk('",');
-    var completeBoundaryScript3b = stringToPrecomputedChunk('"');
-    var completeBoundaryScriptEnd = stringToPrecomputedChunk(")</script>");
-    stringToPrecomputedChunk('<template data-rci="" data-bid="');
-    stringToPrecomputedChunk('<template data-rri="" data-bid="');
-    stringToPrecomputedChunk('" data-sid="');
-    stringToPrecomputedChunk('" data-sty="');
-    var clientRenderScriptFunctionOnly = stringToPrecomputedChunk(
-      '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,null!=c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};'
-    );
-    var clientRenderScript1Full = stringToPrecomputedChunk(
-      '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,null!=c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};;$RX("'
-    );
-    var clientRenderScript1Partial = stringToPrecomputedChunk('$RX("');
-    var clientRenderScript1A = stringToPrecomputedChunk('"');
-    var clientRenderErrorScriptArgInterstitial = stringToPrecomputedChunk(",");
-    var clientRenderErrorScriptNull = stringToPrecomputedChunk("null");
-    var clientRenderScriptEnd = stringToPrecomputedChunk(")</script>");
-    stringToPrecomputedChunk('<template data-rxi="" data-bid="');
-    stringToPrecomputedChunk('" data-dgst="');
-    stringToPrecomputedChunk('" data-msg="');
-    stringToPrecomputedChunk('" data-stck="');
-    stringToPrecomputedChunk('" data-cstck="');
     var regexForJSStringsInInstructionScripts = /[<\u2028\u2029]/g;
     function escapeJSStringsForInstructionScripts(input) {
       return JSON.stringify(input).replace(
@@ -2088,29 +1668,20 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         }
       );
     }
-    var lateStyleTagResourceOpen1 = stringToPrecomputedChunk(
-      ' media="not all" data-precedence="'
-    );
-    var lateStyleTagResourceOpen2 = stringToPrecomputedChunk('" data-href="');
-    var lateStyleTagResourceOpen3 = stringToPrecomputedChunk('">');
-    var lateStyleTagTemplateClose = stringToPrecomputedChunk("</style>");
     var currentlyRenderingBoundaryHasStylesToHoist = false;
     var destinationHasCapacity = true;
     function flushStyleTagsLateForBoundary(styleQueue) {
       var rules = styleQueue.rules, hrefs = styleQueue.hrefs, i = 0;
       if (hrefs.length) {
-        writeChunk(this, currentlyFlushingRenderState.startInlineStyle);
-        writeChunk(this, lateStyleTagResourceOpen1);
-        writeChunk(this, styleQueue.precedence);
-        for (writeChunk(this, lateStyleTagResourceOpen2); i < hrefs.length - 1; i++)
-          writeChunk(this, hrefs[i]), writeChunk(this, spaceSeparator);
-        writeChunk(this, hrefs[i]);
-        writeChunk(this, lateStyleTagResourceOpen3);
-        for (i = 0; i < rules.length; i++) writeChunk(this, rules[i]);
-        destinationHasCapacity = writeChunkAndReturn(
-          this,
-          lateStyleTagTemplateClose
-        );
+        this.push(currentlyFlushingRenderState.startInlineStyle);
+        this.push(' media="not all" data-precedence="');
+        this.push(styleQueue.precedence);
+        for (this.push('" data-href="'); i < hrefs.length - 1; i++)
+          this.push(hrefs[i]), this.push(" ");
+        this.push(hrefs[i]);
+        this.push('">');
+        for (i = 0; i < rules.length; i++) this.push(rules[i]);
+        destinationHasCapacity = this.push("</style>");
         currentlyRenderingBoundaryHasStylesToHoist = true;
         rules.length = 0;
         hrefs.length = 0;
@@ -2130,41 +1701,36 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       return destinationHasCapacity;
     }
     function flushResource(resource) {
-      for (var i = 0; i < resource.length; i++) writeChunk(this, resource[i]);
+      for (var i = 0; i < resource.length; i++) this.push(resource[i]);
       resource.length = 0;
     }
     var stylesheetFlushingQueue = [];
     function flushStyleInPreamble(stylesheet) {
       pushLinkImpl(stylesheetFlushingQueue, stylesheet.props);
       for (var i = 0; i < stylesheetFlushingQueue.length; i++)
-        writeChunk(this, stylesheetFlushingQueue[i]);
+        this.push(stylesheetFlushingQueue[i]);
       stylesheetFlushingQueue.length = 0;
       stylesheet.state = 2;
     }
-    var styleTagResourceOpen1 = stringToPrecomputedChunk(' data-precedence="');
-    var styleTagResourceOpen2 = stringToPrecomputedChunk('" data-href="');
-    var spaceSeparator = stringToPrecomputedChunk(" ");
-    var styleTagResourceOpen3 = stringToPrecomputedChunk('">');
-    var styleTagResourceClose = stringToPrecomputedChunk("</style>");
     function flushStylesInPreamble(styleQueue) {
       var hasStylesheets = 0 < styleQueue.sheets.size;
       styleQueue.sheets.forEach(flushStyleInPreamble, this);
       styleQueue.sheets.clear();
       var rules = styleQueue.rules, hrefs = styleQueue.hrefs;
       if (!hasStylesheets || hrefs.length) {
-        writeChunk(this, currentlyFlushingRenderState.startInlineStyle);
-        writeChunk(this, styleTagResourceOpen1);
-        writeChunk(this, styleQueue.precedence);
+        this.push(currentlyFlushingRenderState.startInlineStyle);
+        this.push(' data-precedence="');
+        this.push(styleQueue.precedence);
         styleQueue = 0;
         if (hrefs.length) {
-          for (writeChunk(this, styleTagResourceOpen2); styleQueue < hrefs.length - 1; styleQueue++)
-            writeChunk(this, hrefs[styleQueue]), writeChunk(this, spaceSeparator);
-          writeChunk(this, hrefs[styleQueue]);
+          for (this.push('" data-href="'); styleQueue < hrefs.length - 1; styleQueue++)
+            this.push(hrefs[styleQueue]), this.push(" ");
+          this.push(hrefs[styleQueue]);
         }
-        writeChunk(this, styleTagResourceOpen3);
+        this.push('">');
         for (styleQueue = 0; styleQueue < rules.length; styleQueue++)
-          writeChunk(this, rules[styleQueue]);
-        writeChunk(this, styleTagResourceClose);
+          this.push(rules[styleQueue]);
+        this.push("</style>");
         rules.length = 0;
         hrefs.length = 0;
       }
@@ -2185,7 +1751,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           referrerPolicy: props.referrerPolicy
         });
         for (stylesheet = 0; stylesheet < stylesheetFlushingQueue.length; stylesheet++)
-          writeChunk(this, stylesheetFlushingQueue[stylesheet]);
+          this.push(stylesheetFlushingQueue[stylesheet]);
         stylesheetFlushingQueue.length = 0;
       }
     }
@@ -2193,45 +1759,31 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       styleQueue.sheets.forEach(preloadLateStyle, this);
       styleQueue.sheets.clear();
     }
-    stringToPrecomputedChunk('<link rel="expect" href="#');
-    stringToPrecomputedChunk('" blocking="render"/>');
-    var completedShellIdAttributeStart = stringToPrecomputedChunk(' id="');
     function pushCompletedShellIdAttribute(target, resumableState) {
       0 === (resumableState.instructions & 32) && (resumableState.instructions |= 32, target.push(
-        completedShellIdAttributeStart,
-        stringToChunk(escapeTextForBrowser("_" + resumableState.idPrefix + "R_")),
-        attributeEnd
+        ' id="',
+        escapeTextForBrowser("_" + resumableState.idPrefix + "R_"),
+        '"'
       ));
     }
-    var arrayFirstOpenBracket = stringToPrecomputedChunk("[");
-    var arraySubsequentOpenBracket = stringToPrecomputedChunk(",[");
-    var arrayInterstitial = stringToPrecomputedChunk(",");
-    var arrayCloseBracket = stringToPrecomputedChunk("]");
     function writeStyleResourceDependenciesInJS(destination, hoistableState) {
-      writeChunk(destination, arrayFirstOpenBracket);
-      var nextArrayOpenBrackChunk = arrayFirstOpenBracket;
+      destination.push("[");
+      var nextArrayOpenBrackChunk = "[";
       hoistableState.stylesheets.forEach(function(resource) {
         if (2 !== resource.state)
           if (3 === resource.state)
-            writeChunk(destination, nextArrayOpenBrackChunk), writeChunk(
-              destination,
-              stringToChunk(
-                escapeJSObjectForInstructionScripts("" + resource.props.href)
-              )
-            ), writeChunk(destination, arrayCloseBracket), nextArrayOpenBrackChunk = arraySubsequentOpenBracket;
+            destination.push(nextArrayOpenBrackChunk), resource = escapeJSObjectForInstructionScripts(
+              "" + resource.props.href
+            ), destination.push(resource), destination.push("]"), nextArrayOpenBrackChunk = ",[";
           else {
-            writeChunk(destination, nextArrayOpenBrackChunk);
+            destination.push(nextArrayOpenBrackChunk);
             var precedence = resource.props["data-precedence"], props = resource.props, coercedHref = sanitizeURL("" + resource.props.href);
-            writeChunk(
-              destination,
-              stringToChunk(escapeJSObjectForInstructionScripts(coercedHref))
-            );
+            coercedHref = escapeJSObjectForInstructionScripts(coercedHref);
+            destination.push(coercedHref);
             precedence = "" + precedence;
-            writeChunk(destination, arrayInterstitial);
-            writeChunk(
-              destination,
-              stringToChunk(escapeJSObjectForInstructionScripts(precedence))
-            );
+            destination.push(",");
+            precedence = escapeJSObjectForInstructionScripts(precedence);
+            destination.push(precedence);
             for (var propKey in props)
               if (hasOwnProperty.call(props, propKey) && (precedence = props[propKey], null != precedence))
                 switch (propKey) {
@@ -2242,9 +1794,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                     break;
                   case "children":
                   case "dangerouslySetInnerHTML":
-                    throw Error(
-                      "link is a self-closing tag and must neither have `children` nor use `dangerouslySetInnerHTML`."
-                    );
+                    throw Error(formatProdErrorMessage(399, "link"));
                   default:
                     writeStyleResourceAttributeInJS(
                       destination,
@@ -2252,12 +1802,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                       precedence
                     );
                 }
-            writeChunk(destination, arrayCloseBracket);
-            nextArrayOpenBrackChunk = arraySubsequentOpenBracket;
+            destination.push("]");
+            nextArrayOpenBrackChunk = ",[";
             resource.state = 3;
           }
       });
-      writeChunk(destination, arrayCloseBracket);
+      destination.push("]");
     }
     function writeStyleResourceAttributeInJS(destination, name, value) {
       var attributeName = name.toLowerCase();
@@ -2292,22 +1842,18 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             return;
           name = "" + value;
       }
-      writeChunk(destination, arrayInterstitial);
-      writeChunk(
-        destination,
-        stringToChunk(escapeJSObjectForInstructionScripts(attributeName))
-      );
-      writeChunk(destination, arrayInterstitial);
-      writeChunk(
-        destination,
-        stringToChunk(escapeJSObjectForInstructionScripts(name))
-      );
+      destination.push(",");
+      attributeName = escapeJSObjectForInstructionScripts(attributeName);
+      destination.push(attributeName);
+      destination.push(",");
+      attributeName = escapeJSObjectForInstructionScripts(name);
+      destination.push(attributeName);
     }
     function createHoistableState() {
       return { styles: /* @__PURE__ */ new Set(), stylesheets: /* @__PURE__ */ new Set(), suspenseyImages: false };
     }
     function prefetchDNS(href) {
-      var request = resolveRequest();
+      var request = currentRequest ? currentRequest : null;
       if (request) {
         var resumableState = request.resumableState, renderState = request.renderState;
         if ("string" === typeof href && href) {
@@ -2327,7 +1873,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       } else previousDispatcher.D(href);
     }
     function preconnect(href, crossOrigin) {
-      var request = resolveRequest();
+      var request = currentRequest ? currentRequest : null;
       if (request) {
         var resumableState = request.resumableState, renderState = request.renderState;
         if ("string" === typeof href && href) {
@@ -2361,7 +1907,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       } else previousDispatcher.C(href, crossOrigin);
     }
     function preload(href, as, options) {
-      var request = resolveRequest();
+      var request = currentRequest ? currentRequest : null;
       if (request) {
         var resumableState = request.resumableState, renderState = request.renderState;
         if (as && href) {
@@ -2430,7 +1976,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       } else previousDispatcher.L(href, as, options);
     }
     function preloadModule(href, options) {
-      var request = resolveRequest();
+      var request = currentRequest ? currentRequest : null;
       if (request) {
         var resumableState = request.resumableState, renderState = request.renderState;
         if (href) {
@@ -2458,14 +2004,14 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       } else previousDispatcher.m(href, options);
     }
     function preinitStyle(href, precedence, options) {
-      var request = resolveRequest();
+      var request = currentRequest ? currentRequest : null;
       if (request) {
         var resumableState = request.resumableState, renderState = request.renderState;
         if (href) {
           precedence = precedence || "default";
           var styleQueue = renderState.styles.get(precedence), resourceState = resumableState.styleResources.hasOwnProperty(href) ? resumableState.styleResources[href] : void 0;
           null !== resourceState && (resumableState.styleResources[href] = null, styleQueue || (styleQueue = {
-            precedence: stringToChunk(escapeTextForBrowser(precedence)),
+            precedence: escapeTextForBrowser(precedence),
             rules: [],
             hrefs: [],
             sheets: /* @__PURE__ */ new Map()
@@ -2480,7 +2026,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       } else previousDispatcher.S(href, precedence, options);
     }
     function preinitScript(src, options) {
-      var request = resolveRequest();
+      var request = currentRequest ? currentRequest : null;
       if (request) {
         var resumableState = request.resumableState, renderState = request.renderState;
         if (src) {
@@ -2490,7 +2036,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       } else previousDispatcher.X(src, options);
     }
     function preinitModuleScript(src, options) {
-      var request = resolveRequest();
+      var request = currentRequest ? currentRequest : null;
       if (request) {
         var resumableState = request.resumableState, renderState = request.renderState;
         if (src) {
@@ -2571,12 +2117,116 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       childState.stylesheets.forEach(hoistStylesheetDependency, parentState);
       childState.suspenseyImages && (parentState.suspenseyImages = true);
     }
-    function hasSuspenseyContent(hoistableState, flushingInShell) {
-      return flushingInShell ? hoistableState.suspenseyImages : 0 < hoistableState.stylesheets.size || hoistableState.suspenseyImages;
+    function createRenderState(resumableState, generateStaticMarkup) {
+      var idPrefix = resumableState.idPrefix, bootstrapChunks = [], bootstrapScriptContent = resumableState.bootstrapScriptContent, bootstrapScripts = resumableState.bootstrapScripts, bootstrapModules = resumableState.bootstrapModules;
+      void 0 !== bootstrapScriptContent && (bootstrapChunks.push("<script"), pushCompletedShellIdAttribute(bootstrapChunks, resumableState), bootstrapChunks.push(
+        ">",
+        ("" + bootstrapScriptContent).replace(scriptRegex, scriptReplacer),
+        "</script>"
+      ));
+      bootstrapScriptContent = idPrefix + "P:";
+      var JSCompiler_object_inline_segmentPrefix_1724 = idPrefix + "S:";
+      idPrefix += "B:";
+      var JSCompiler_object_inline_preconnects_1738 = /* @__PURE__ */ new Set(), JSCompiler_object_inline_fontPreloads_1739 = /* @__PURE__ */ new Set(), JSCompiler_object_inline_highImagePreloads_1740 = /* @__PURE__ */ new Set(), JSCompiler_object_inline_styles_1741 = /* @__PURE__ */ new Map(), JSCompiler_object_inline_bootstrapScripts_1742 = /* @__PURE__ */ new Set(), JSCompiler_object_inline_scripts_1743 = /* @__PURE__ */ new Set(), JSCompiler_object_inline_bulkPreloads_1744 = /* @__PURE__ */ new Set(), JSCompiler_object_inline_preloads_1745 = {
+        images: /* @__PURE__ */ new Map(),
+        stylesheets: /* @__PURE__ */ new Map(),
+        scripts: /* @__PURE__ */ new Map(),
+        moduleScripts: /* @__PURE__ */ new Map()
+      };
+      if (void 0 !== bootstrapScripts)
+        for (var i = 0; i < bootstrapScripts.length; i++) {
+          var scriptConfig = bootstrapScripts[i], src, crossOrigin = void 0, integrity = void 0, props = {
+            rel: "preload",
+            as: "script",
+            fetchPriority: "low",
+            nonce: void 0
+          };
+          "string" === typeof scriptConfig ? props.href = src = scriptConfig : (props.href = src = scriptConfig.src, props.integrity = integrity = "string" === typeof scriptConfig.integrity ? scriptConfig.integrity : void 0, props.crossOrigin = crossOrigin = "string" === typeof scriptConfig || null == scriptConfig.crossOrigin ? void 0 : "use-credentials" === scriptConfig.crossOrigin ? "use-credentials" : "");
+          scriptConfig = resumableState;
+          var href = src;
+          scriptConfig.scriptResources[href] = null;
+          scriptConfig.moduleScriptResources[href] = null;
+          scriptConfig = [];
+          pushLinkImpl(scriptConfig, props);
+          JSCompiler_object_inline_bootstrapScripts_1742.add(scriptConfig);
+          bootstrapChunks.push('<script src="', escapeTextForBrowser(src), '"');
+          "string" === typeof integrity && bootstrapChunks.push(
+            ' integrity="',
+            escapeTextForBrowser(integrity),
+            '"'
+          );
+          "string" === typeof crossOrigin && bootstrapChunks.push(
+            ' crossorigin="',
+            escapeTextForBrowser(crossOrigin),
+            '"'
+          );
+          pushCompletedShellIdAttribute(bootstrapChunks, resumableState);
+          bootstrapChunks.push(' async=""></script>');
+        }
+      if (void 0 !== bootstrapModules)
+        for (bootstrapScripts = 0; bootstrapScripts < bootstrapModules.length; bootstrapScripts++)
+          props = bootstrapModules[bootstrapScripts], crossOrigin = src = void 0, integrity = {
+            rel: "modulepreload",
+            fetchPriority: "low",
+            nonce: void 0
+          }, "string" === typeof props ? integrity.href = i = props : (integrity.href = i = props.src, integrity.integrity = crossOrigin = "string" === typeof props.integrity ? props.integrity : void 0, integrity.crossOrigin = src = "string" === typeof props || null == props.crossOrigin ? void 0 : "use-credentials" === props.crossOrigin ? "use-credentials" : ""), props = resumableState, scriptConfig = i, props.scriptResources[scriptConfig] = null, props.moduleScriptResources[scriptConfig] = null, props = [], pushLinkImpl(props, integrity), JSCompiler_object_inline_bootstrapScripts_1742.add(props), bootstrapChunks.push(
+            '<script type="module" src="',
+            escapeTextForBrowser(i),
+            '"'
+          ), "string" === typeof crossOrigin && bootstrapChunks.push(
+            ' integrity="',
+            escapeTextForBrowser(crossOrigin),
+            '"'
+          ), "string" === typeof src && bootstrapChunks.push(
+            ' crossorigin="',
+            escapeTextForBrowser(src),
+            '"'
+          ), pushCompletedShellIdAttribute(bootstrapChunks, resumableState), bootstrapChunks.push(' async=""></script>');
+      return {
+        placeholderPrefix: bootstrapScriptContent,
+        segmentPrefix: JSCompiler_object_inline_segmentPrefix_1724,
+        boundaryPrefix: idPrefix,
+        startInlineScript: "<script",
+        startInlineStyle: "<style",
+        preamble: { htmlChunks: null, headChunks: null, bodyChunks: null },
+        externalRuntimeScript: null,
+        bootstrapChunks,
+        importMapChunks: [],
+        onHeaders: void 0,
+        headers: null,
+        resets: {
+          font: {},
+          dns: {},
+          connect: { default: {}, anonymous: {}, credentials: {} },
+          image: {},
+          style: {}
+        },
+        charsetChunks: [],
+        viewportChunks: [],
+        hoistableChunks: [],
+        preconnects: JSCompiler_object_inline_preconnects_1738,
+        fontPreloads: JSCompiler_object_inline_fontPreloads_1739,
+        highImagePreloads: JSCompiler_object_inline_highImagePreloads_1740,
+        styles: JSCompiler_object_inline_styles_1741,
+        bootstrapScripts: JSCompiler_object_inline_bootstrapScripts_1742,
+        scripts: JSCompiler_object_inline_scripts_1743,
+        bulkPreloads: JSCompiler_object_inline_bulkPreloads_1744,
+        preloads: JSCompiler_object_inline_preloads_1745,
+        nonce: { script: void 0, style: void 0 },
+        stylesToHoist: false,
+        generateStaticMarkup
+      };
+    }
+    function pushTextInstance(target, text, renderState, textEmbedded) {
+      if (renderState.generateStaticMarkup)
+        return target.push(escapeTextForBrowser(text)), false;
+      "" === text ? target = textEmbedded : (textEmbedded && target.push("<!-- -->"), target.push(escapeTextForBrowser(text)), target = true);
+      return target;
+    }
+    function pushSegmentFinale(target, renderState, lastPushedText, textEmbedded) {
+      renderState.generateStaticMarkup || lastPushedText && textEmbedded && target.push("<!-- -->");
     }
     var bind = Function.prototype.bind;
-    var supportsRequestStorage = "function" === typeof AsyncLocalStorage;
-    var requestStorage = supportsRequestStorage ? new AsyncLocalStorage() : null;
     var REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference");
     function getComponentNameFromType(type) {
       if (null == type) return null;
@@ -2628,51 +2278,39 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
     var currentActiveSnapshot = null;
     function popToNearestCommonAncestor(prev, next) {
       if (prev !== next) {
-        prev.context._currentValue = prev.parentValue;
+        prev.context._currentValue2 = prev.parentValue;
         prev = prev.parent;
         var parentNext = next.parent;
         if (null === prev) {
-          if (null !== parentNext)
-            throw Error(
-              "The stacks must reach the root at the same time. This is a bug in React."
-            );
+          if (null !== parentNext) throw Error(formatProdErrorMessage(401));
         } else {
-          if (null === parentNext)
-            throw Error(
-              "The stacks must reach the root at the same time. This is a bug in React."
-            );
+          if (null === parentNext) throw Error(formatProdErrorMessage(401));
           popToNearestCommonAncestor(prev, parentNext);
         }
-        next.context._currentValue = next.value;
+        next.context._currentValue2 = next.value;
       }
     }
     function popAllPrevious(prev) {
-      prev.context._currentValue = prev.parentValue;
+      prev.context._currentValue2 = prev.parentValue;
       prev = prev.parent;
       null !== prev && popAllPrevious(prev);
     }
     function pushAllNext(next) {
       var parentNext = next.parent;
       null !== parentNext && pushAllNext(parentNext);
-      next.context._currentValue = next.value;
+      next.context._currentValue2 = next.value;
     }
     function popPreviousToCommonLevel(prev, next) {
-      prev.context._currentValue = prev.parentValue;
+      prev.context._currentValue2 = prev.parentValue;
       prev = prev.parent;
-      if (null === prev)
-        throw Error(
-          "The depth must equal at least at zero before reaching the root. This is a bug in React."
-        );
+      if (null === prev) throw Error(formatProdErrorMessage(402));
       prev.depth === next.depth ? popToNearestCommonAncestor(prev, next) : popPreviousToCommonLevel(prev, next);
     }
     function popNextToCommonLevel(prev, next) {
       var parentNext = next.parent;
-      if (null === parentNext)
-        throw Error(
-          "The depth must equal at least at zero before reaching the root. This is a bug in React."
-        );
+      if (null === parentNext) throw Error(formatProdErrorMessage(402));
       prev.depth === parentNext.depth ? popToNearestCommonAncestor(prev, parentNext) : popNextToCommonLevel(prev, parentNext);
-      next.context._currentValue = next.value;
+      next.context._currentValue2 = next.value;
     }
     function switchContext(newSnapshot) {
       var prev = currentActiveSnapshot;
@@ -2728,9 +2366,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
     }
     function noop() {
     }
-    var SuspenseException = Error(
-      "Suspense Exception: This is not a real error! It's an implementation detail of `use` to interrupt the current render. You must either rethrow it immediately, or move the `use` call outside of the `try/catch` block. Capturing without rethrowing will lead to unexpected behavior.\n\nTo handle async errors, wrap your component in an error boundary, or call the promise's `.catch` method and pass the result to `use`."
-    );
+    var SuspenseException = Error(formatProdErrorMessage(460));
     function trackUsedThenable(thenableState2, thenable, index) {
       index = thenableState2[index];
       void 0 === index ? thenableState2.push(thenable) : index !== thenable && (thenable.then(noop, noop), thenable = index);
@@ -2740,9 +2376,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         case "rejected":
           thenableState2 = thenable.reason;
           if (void 0 === thenableState2 && !("reason" in thenable))
-            throw Error(
-              "A rejected Promise was passed to React without a `reason` property. React threw a generic error from where the Promise was used to assist in identifying the problematic Promise. Make sure that instrumented Promises correctly set the `reason` property when setting `status` to `'rejected'`."
-            );
+            throw Error(formatProdErrorMessage(600));
           throw thenableState2;
         default:
           "string" === typeof thenable.status ? thenable.then(noop, noop) : (thenableState2 = thenable, thenableState2.status = "pending", thenableState2.then(
@@ -2773,10 +2407,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
     }
     var suspendedThenable = null;
     function getSuspendedThenable() {
-      if (null === suspendedThenable)
-        throw Error(
-          "Expected a suspended thenable. This is a bug in React. Please file an issue."
-        );
+      if (null === suspendedThenable) throw Error(formatProdErrorMessage(459));
       var thenable = suspendedThenable;
       suspendedThenable = null;
       return thenable;
@@ -2808,7 +2439,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         }
       else initializedReason = recoverable;
       initializedReason = Error(
-        "Browser-only rendering was requested by `browser()`.",
+        formatProdErrorMessage(603),
         void 0 === recoverable ? void 0 : { cause: initializedReason }
       );
       Object.defineProperty(initializedReason, REACT_RECOVERABLE_TYPE, {
@@ -2821,7 +2452,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
     }
     function cloneRecoverableErrorAsFatal(recoverableError) {
       var fatalRecoverableError = Error(
-        "The server render could not complete because client rendering was requested outside a Suspense boundary. See this error's cause for additional details.",
+        formatProdErrorMessage(604),
         hasOwnProperty.call(recoverableError, "cause") ? { cause: recoverableError.cause } : void 0
       );
       recoverableError = recoverableError.stack;
@@ -2835,14 +2466,11 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
     var numberOfReRenders = 0;
     function resolveCurrentlyRenderingComponent() {
       if (null === currentlyRenderingComponent)
-        throw Error(
-          "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
-        );
+        throw Error(formatProdErrorMessage(321));
       return currentlyRenderingComponent;
     }
     function createHook() {
-      if (0 < numberOfReRenders)
-        throw Error("Rendered more hooks than during the previous render");
+      if (0 < numberOfReRenders) throw Error(formatProdErrorMessage(312));
       return { memoizedState: null, queue: null, next: null };
     }
     function createWorkInProgressHook() {
@@ -2916,10 +2544,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       return nextCreate;
     }
     function dispatchAction(componentIdentity, queue, action) {
-      if (25 <= numberOfReRenders)
-        throw Error(
-          "Too many re-renders. React limits the number of renders to prevent an infinite loop."
-        );
+      if (25 <= numberOfReRenders) throw Error(formatProdErrorMessage(301));
       if (componentIdentity === currentlyRenderingComponent)
         if (didScheduleRenderPhaseUpdate = true, componentIdentity = { action, next: null }, null === renderPhaseUpdates && (renderPhaseUpdates = /* @__PURE__ */ new Map()), action = renderPhaseUpdates.get(queue), void 0 === action)
           renderPhaseUpdates.set(queue, componentIdentity);
@@ -2929,15 +2554,13 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         }
     }
     function throwOnUseEffectEventCall() {
-      throw Error(
-        "A function wrapped in useEffectEvent can't be called during rendering."
-      );
+      throw Error(formatProdErrorMessage(440));
     }
     function unsupportedStartTransition() {
-      throw Error("startTransition cannot be called during server rendering.");
+      throw Error(formatProdErrorMessage(394));
     }
     function unsupportedSetOptimisticState() {
-      throw Error("Cannot update optimistic state while rendering.");
+      throw Error(formatProdErrorMessage(479));
     }
     function useActionState(action, initialState, permalink) {
       resolveCurrentlyRenderingComponent();
@@ -2989,24 +2612,25 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       return trackUsedThenable(thenableState, thenable, index);
     }
     function unsupportedRefresh() {
-      throw Error("Cache cannot be refreshed during server rendering.");
+      throw Error(formatProdErrorMessage(393));
     }
     var HooksDispatcher = {
       readContext: function(context) {
-        return context._currentValue;
+        return context._currentValue2;
       },
       use: function(usable) {
         if (null !== usable && "object" === typeof usable) {
           if ("function" === typeof usable.then) return unwrapThenable(usable);
           if (usable.$$typeof === REACT_RECOVERABLE_TYPE)
             throw createRecoverableError(usable);
-          if (usable.$$typeof === REACT_CONTEXT_TYPE) return usable._currentValue;
+          if (usable.$$typeof === REACT_CONTEXT_TYPE)
+            return usable._currentValue2;
         }
-        throw Error("An unsupported type was passed to use(): " + String(usable));
+        throw Error(formatProdErrorMessage(438, String(usable)));
       },
       useContext: function(context) {
         resolveCurrentlyRenderingComponent();
-        return context._currentValue;
+        return context._currentValue2;
       },
       useMemo,
       useReducer,
@@ -3039,18 +2663,13 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       },
       useId: function() {
         var treeId = getTreeId(currentlyRenderingTask.treeContext), resumableState = currentResumableState;
-        if (null === resumableState)
-          throw Error(
-            "Invalid hook call. Hooks can only be called inside of the body of a function component."
-          );
+        if (null === resumableState) throw Error(formatProdErrorMessage(404));
         var localId = localIdCounter++;
         return makeId(resumableState, treeId, localId);
       },
       useSyncExternalStore: function(subscribe, getSnapshot, getServerSnapshot) {
         if (void 0 === getServerSnapshot)
-          throw Error(
-            "Missing getServerSnapshot, which is required for server-rendered content. Will revert to client rendering."
-          );
+          throw Error(formatProdErrorMessage(407));
         return getServerSnapshot();
       },
       useOptimistic: function(passthrough) {
@@ -3078,18 +2697,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
     var currentResumableState = null;
     var DefaultAsyncDispatcher = {
       getCacheForType: function() {
-        throw Error("Not implemented.");
+        throw Error(formatProdErrorMessage(248));
       },
       cacheSignal: function() {
-        throw Error("Not implemented.");
+        throw Error(formatProdErrorMessage(248));
       }
     };
-    function prepareStackTrace(error, structuredStackTrace) {
-      error = (error.name || "Error") + ": " + (error.message || "");
-      for (var i = 0; i < structuredStackTrace.length; i++)
-        error += "\n    at " + structuredStackTrace[i].toString();
-      return error;
-    }
     var prefix;
     var suffix;
     function describeBuiltInComponentFrame(name) {
@@ -3108,7 +2721,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       if (!fn || reentry) return "";
       reentry = true;
       var previousPrepareStackTrace = Error.prepareStackTrace;
-      Error.prepareStackTrace = prepareStackTrace;
+      Error.prepareStackTrace = void 0;
       try {
         var RunInRootFrame = {
           DetermineComponentFrameRoot: function() {
@@ -3235,7 +2848,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             payload = type.name;
             lazyComponent = type.env;
             var location = type.debugLocation;
-            if (null != location && (type = Error.prepareStackTrace, Error.prepareStackTrace = prepareStackTrace, location = location.stack, Error.prepareStackTrace = type, location.startsWith("Error: react-stack-top-frame\n") && (location = location.slice(29)), type = location.indexOf("\n"), -1 !== type && (location = location.slice(type + 1)), type = location.indexOf("react_stack_bottom_frame"), -1 !== type && (type = location.lastIndexOf("\n", type)), type = -1 !== type ? location = location.slice(0, type) : "", location = type.lastIndexOf("\n"), type = -1 === location ? type : type.slice(location + 1), -1 !== type.indexOf(payload))) {
+            if (null != location && (type = Error.prepareStackTrace, Error.prepareStackTrace = void 0, location = location.stack, Error.prepareStackTrace = type, location.startsWith("Error: react-stack-top-frame\n") && (location = location.slice(29)), type = location.indexOf("\n"), -1 !== type && (location = location.slice(type + 1)), type = location.indexOf("react_stack_bottom_frame"), -1 !== type && (type = location.lastIndexOf("\n", type)), type = -1 !== type ? location = location.slice(0, type) : "", location = type.lastIndexOf("\n"), type = -1 === location ? type : type.slice(location + 1), -1 !== type.indexOf(payload))) {
               payload = "\n" + type;
               break a;
             }
@@ -3256,13 +2869,8 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       }
       return "";
     }
-    function getViewTransitionClassName(defaultClass, eventClass) {
-      defaultClass = null == defaultClass || "string" === typeof defaultClass ? defaultClass : defaultClass.default;
-      eventClass = null == eventClass || "string" === typeof eventClass ? eventClass : eventClass.default;
-      return null == eventClass ? "auto" === defaultClass ? null : defaultClass : "auto" === eventClass ? null : eventClass;
-    }
     function isEligibleForOutlining(request, boundary) {
-      return (500 < boundary.byteSize || hasSuspenseyContent(boundary.contentState, false) || boundary.defer) && null === boundary.preamble;
+      return (500 < boundary.byteSize || boundary.defer) && null === boundary.preamble;
     }
     function defaultErrorHandler(error) {
       if ("object" === typeof error && null !== error && "string" === typeof error.environmentName) {
@@ -3271,25 +2879,16 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         "string" === typeof error[0] ? error.splice(
           0,
           1,
-          "\x1B[0m\x1B[7m%c%s\x1B[0m%c " + error[0],
-          "background: #e6e6e6;background: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.25));color: #000000;color: light-dark(#000000, #ffffff);border-radius: 2px",
-          " " + JSCompiler_inline_result + " ",
-          ""
-        ) : error.splice(
-          0,
-          0,
-          "\x1B[0m\x1B[7m%c%s\x1B[0m%c",
-          "background: #e6e6e6;background: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.25));color: #000000;color: light-dark(#000000, #ffffff);border-radius: 2px",
-          " " + JSCompiler_inline_result + " ",
-          ""
-        );
+          "[%s] " + error[0],
+          " " + JSCompiler_inline_result + " "
+        ) : error.splice(0, 0, "[%s]", " " + JSCompiler_inline_result + " ");
         error.unshift(console);
         JSCompiler_inline_result = bind.apply(console.error, error);
         JSCompiler_inline_result();
       } else console.error(error);
       return null;
     }
-    function RequestInstance(resumableState, renderState, rootFormatContext, progressiveChunkSize, onError, onBrowserBailout, onAllReady, onShellReady, onShellError, onFatalError, formState) {
+    function RequestInstance(resumableState, renderState, rootFormatContext, progressiveChunkSize, onError2, onBrowserBailout, onAllReady, onShellReady, onShellError, onFatalError, formState) {
       var abortSet = /* @__PURE__ */ new Set();
       this.destination = null;
       this.flushScheduled = false;
@@ -3310,7 +2909,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       this.completedBoundaries = [];
       this.partialBoundaries = [];
       this.postponedState = this.trackedPostpones = null;
-      this.onError = void 0 === onError ? defaultErrorHandler : onError;
+      this.onError = void 0 === onError2 ? defaultErrorHandler : onError2;
       this.onBrowserBailout = void 0 === onBrowserBailout ? noop : onBrowserBailout;
       this.onAllReady = void 0 === onAllReady ? noop : onAllReady;
       this.onShellReady = void 0 === onShellReady ? noop : onShellReady;
@@ -3319,13 +2918,13 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       this.renderLifetimeController = null;
       this.formState = void 0 === formState ? null : formState;
     }
-    function createRequest(children, resumableState, renderState, rootFormatContext, progressiveChunkSize, onError, onBrowserBailout, onAllReady, onShellReady, onShellError, onFatalError, formState) {
+    function createRequest(children, resumableState, renderState, rootFormatContext, progressiveChunkSize, onError2, onBrowserBailout, onAllReady, onShellReady, onShellError, onFatalError, formState) {
       resumableState = new RequestInstance(
         resumableState,
         renderState,
         rootFormatContext,
         progressiveChunkSize,
-        onError,
+        onError2,
         onBrowserBailout,
         onAllReady,
         onShellReady,
@@ -3363,127 +2962,10 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       resumableState.pingedTasks.push(children);
       return resumableState;
     }
-    function createPrerenderRequest(children, resumableState, renderState, rootFormatContext, progressiveChunkSize, onError, onBrowserBailout, onAllReady, onShellReady, onShellError, onFatalError) {
-      children = createRequest(
-        children,
-        resumableState,
-        renderState,
-        rootFormatContext,
-        progressiveChunkSize,
-        onError,
-        onBrowserBailout,
-        onAllReady,
-        onShellReady,
-        onShellError,
-        onFatalError,
-        void 0
-      );
-      children.trackedPostpones = {
-        workingMap: /* @__PURE__ */ new Map(),
-        rootNodes: [],
-        rootSlots: null
-      };
-      return children;
-    }
-    function resumeRequest(children, postponedState, renderState, onError, onBrowserBailout, onAllReady, onShellReady, onShellError, onFatalError) {
-      renderState = new RequestInstance(
-        postponedState.resumableState,
-        renderState,
-        postponedState.rootFormatContext,
-        postponedState.progressiveChunkSize,
-        onError,
-        onBrowserBailout,
-        onAllReady,
-        onShellReady,
-        onShellError,
-        onFatalError,
-        null
-      );
-      renderState.nextSegmentId = postponedState.nextSegmentId;
-      if ("number" === typeof postponedState.replaySlots)
-        return onError = createPendingSegment(
-          renderState,
-          0,
-          null,
-          postponedState.rootFormatContext,
-          false,
-          false
-        ), onError.parentFlushed = true, children = createRenderTask(
-          renderState,
-          null,
-          children,
-          -1,
-          null,
-          onError,
-          null,
-          null,
-          renderState.abortableTasks,
-          null,
-          postponedState.rootFormatContext,
-          null,
-          emptyTreeContext,
-          null,
-          null
-        ), pushComponentStack(children), renderState.pingedTasks.push(children), renderState;
-      children = createReplayTask(
-        renderState,
-        null,
-        {
-          nodes: postponedState.replayNodes,
-          slots: postponedState.replaySlots,
-          pendingTasks: 0
-        },
-        children,
-        -1,
-        null,
-        null,
-        renderState.abortableTasks,
-        null,
-        postponedState.rootFormatContext,
-        null,
-        emptyTreeContext,
-        null,
-        null
-      );
-      pushComponentStack(children);
-      renderState.pingedTasks.push(children);
-      return renderState;
-    }
-    function resumeAndPrerenderRequest(children, postponedState, renderState, onError, onBrowserBailout, onAllReady, onShellReady, onShellError, onFatalError) {
-      children = resumeRequest(
-        children,
-        postponedState,
-        renderState,
-        onError,
-        onBrowserBailout,
-        onAllReady,
-        onShellReady,
-        onShellError,
-        onFatalError
-      );
-      children.trackedPostpones = {
-        workingMap: /* @__PURE__ */ new Map(),
-        rootNodes: [],
-        rootSlots: null
-      };
-      return children;
-    }
     var currentRequest = null;
-    function resolveRequest() {
-      if (currentRequest) return currentRequest;
-      if (supportsRequestStorage) {
-        var store = requestStorage.getStore();
-        if (store) return store;
-      }
-      return null;
-    }
     function pingTask(request, task) {
       request.pingedTasks.push(task);
-      1 === request.pingedTasks.length && (request.flushScheduled = null !== request.destination, null !== request.trackedPostpones || 10 === request.status ? scheduleMicrotask(function() {
-        return performWork(request);
-      }) : setTimeout(function() {
-        return performWork(request);
-      }, 0));
+      1 === request.pingedTasks.length && (request.flushScheduled = null !== request.destination, performWork(request));
     }
     function createSuspenseBoundary(request, row, fallbackAbortableTasks, preamble, defer) {
       fallbackAbortableTasks = {
@@ -3632,7 +3114,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       0 !== request.pendingRootTasks && onShellError(error);
       onFatalError(error);
       endRenderLifetime(request);
-      null !== request.destination ? (request.status = 13, closeWithError(request.destination, error)) : (request.status = 12, request.aborted || (request.fatalError = error));
+      null !== request.destination ? (request.status = 13, request.destination.destroy(error)) : (request.status = 12, request.aborted || (request.fatalError = error));
     }
     function finishSuspenseListRow(request, row) {
       unblockSuspenseListRow(request, row.next, row.hoistables);
@@ -3714,7 +3196,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         i = resumeSlots.chunks.length;
         for (node = 0; node < keyPath; node++) {
           resumeSegmentID = "unstable_legacy-backwards" === revealOrder ? keyPath - 1 - node : node;
-          var node$40 = rows[resumeSegmentID];
+          var node$39 = rows[resumeSegmentID];
           task.row = previousSuspenseListRow = createSuspenseListRow(
             previousSuspenseListRow
           );
@@ -3734,7 +3216,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           resumeSlots.children.splice(n, 0, newSegment);
           task.blockedSegment = newSegment;
           try {
-            renderNode(request, task, node$40, resumeSegmentID), newSegment.lastPushedText && newSegment.textEmbedded && newSegment.chunks.push(textSeparator), newSegment.status = 1, finishedSegment(request, task.blockedBoundary, newSegment), 0 === --previousSuspenseListRow.pendingTasks && finishSuspenseListRow(request, previousSuspenseListRow);
+            renderNode(request, task, node$39, resumeSegmentID), pushSegmentFinale(
+              newSegment.chunks,
+              request.renderState,
+              newSegment.lastPushedText,
+              newSegment.textEmbedded
+            ), newSegment.status = 1, 0 === --previousSuspenseListRow.pendingTasks && finishSuspenseListRow(request, previousSuspenseListRow);
           } catch (thrownValue) {
             throw newSegment.status = request.aborted ? 3 : 4, thrownValue;
           }
@@ -3771,7 +3258,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           didEmitActionStateMarkers = true;
           segment = segment.chunks;
           for (var i = 0; i < actionStateCount; i++)
-            i === actionStateMatchingIndex2 ? segment.push(formStateMarkerIsMatching) : segment.push(formStateMarkerIsNotMatching);
+            i === actionStateMatchingIndex2 ? segment.push("<!--F!-->") : segment.push("<!--F-->");
         }
       }
       actionStateCount = task.keyPath;
@@ -3791,12 +3278,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           var defaultProps = type.defaultProps;
           if (defaultProps) {
             newProps === props && (newProps = assign({}, newProps, props));
-            for (var propName$45 in defaultProps)
-              void 0 === newProps[propName$45] && (newProps[propName$45] = defaultProps[propName$45]);
+            for (var propName$44 in defaultProps)
+              void 0 === newProps[propName$44] && (newProps[propName$44] = defaultProps[propName$44]);
           }
           var JSCompiler_inline_result = newProps;
           var context = emptyContextObject, contextType = type.contextType;
-          "object" === typeof contextType && null !== contextType && (context = contextType._currentValue);
+          "object" === typeof contextType && null !== contextType && (context = contextType._currentValue2);
           var JSCompiler_inline_result$jscomp$0 = new type(
             JSCompiler_inline_result,
             context
@@ -3808,7 +3295,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           var internalInstance = { queue: [], replace: false };
           JSCompiler_inline_result$jscomp$0._reactInternals = internalInstance;
           var contextType$jscomp$0 = type.contextType;
-          JSCompiler_inline_result$jscomp$0.context = "object" === typeof contextType$jscomp$0 && null !== contextType$jscomp$0 ? contextType$jscomp$0._currentValue : emptyContextObject;
+          JSCompiler_inline_result$jscomp$0.context = "object" === typeof contextType$jscomp$0 && null !== contextType$jscomp$0 ? contextType$jscomp$0._currentValue2 : emptyContextObject;
           var getDerivedStateFromProps = type.getDerivedStateFromProps;
           if ("function" === typeof getDerivedStateFromProps) {
             var partialState = getDerivedStateFromProps(
@@ -3876,7 +3363,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           task.formatContext = prevContext;
           task.keyPath = prevKeyPath$jscomp$0;
         } else {
-          var children$42 = pushStartInstance(
+          var children$41 = pushStartInstance(
             segment.chunks,
             type,
             props,
@@ -3888,10 +3375,10 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             segment.lastPushedText
           );
           segment.lastPushedText = false;
-          var prevContext$43 = task.formatContext, prevKeyPath$44 = task.keyPath;
+          var prevContext$42 = task.formatContext, prevKeyPath$43 = task.keyPath;
           task.keyPath = keyPath;
           if (3 === (task.formatContext = getChildFormatContext(
-            prevContext$43,
+            prevContext$42,
             type,
             props
           )).insertionMode) {
@@ -3906,13 +3393,18 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             segment.preambleChildren.push(preambleSegment);
             task.blockedSegment = preambleSegment;
             try {
-              renderNode(request, task, children$42, -1), preambleSegment.lastPushedText && preambleSegment.textEmbedded && preambleSegment.chunks.push(textSeparator), preambleSegment.status = 1, finishedSegment(request, task.blockedBoundary, preambleSegment);
+              renderNode(request, task, children$41, -1), pushSegmentFinale(
+                preambleSegment.chunks,
+                request.renderState,
+                preambleSegment.lastPushedText,
+                preambleSegment.textEmbedded
+              ), preambleSegment.status = 1;
             } finally {
               task.blockedSegment = segment;
             }
-          } else renderNode(request, task, children$42, -1);
-          task.formatContext = prevContext$43;
-          task.keyPath = prevKeyPath$44;
+          } else renderNode(request, task, children$41, -1);
+          task.formatContext = prevContext$42;
+          task.keyPath = prevKeyPath$43;
           a: {
             var target = segment.chunks, resumableState = request.resumableState;
             switch (type) {
@@ -3936,19 +3428,19 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               case "wbr":
                 break a;
               case "body":
-                if (1 >= prevContext$43.insertionMode) {
+                if (1 >= prevContext$42.insertionMode) {
                   resumableState.hasBody = true;
                   break a;
                 }
                 break;
               case "html":
-                if (0 === prevContext$43.insertionMode) {
+                if (0 === prevContext$42.insertionMode) {
                   resumableState.hasHtml = true;
                   break a;
                 }
                 break;
               case "head":
-                if (1 >= prevContext$43.insertionMode) break a;
+                if (1 >= prevContext$42.insertionMode) break a;
             }
             target.push(endChunkForTag(type));
           }
@@ -3975,13 +3467,13 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                 task.keyPath = prevKeyPath$jscomp$2;
               }
             } else if ("hidden" !== props.mode) {
-              segment$jscomp$0.chunks.push(startActivityBoundary);
+              request.renderState.generateStaticMarkup || segment$jscomp$0.chunks.push("<!--&-->");
               segment$jscomp$0.lastPushedText = false;
-              var prevKeyPath$47 = task.keyPath;
+              var prevKeyPath$46 = task.keyPath;
               task.keyPath = keyPath;
               renderNode(request, task, props.children, -1);
-              task.keyPath = prevKeyPath$47;
-              segment$jscomp$0.chunks.push(endActivityBoundary);
+              task.keyPath = prevKeyPath$46;
+              request.renderState.generateStaticMarkup || segment$jscomp$0.chunks.push("<!--/&-->");
               segment$jscomp$0.lastPushedText = false;
             }
             return;
@@ -4021,13 +3513,13 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                 }
               }
               if ("together" === revealOrder) {
-                var prevKeyPath$41 = task.keyPath, prevRow = task.row, newRow = task.row = createSuspenseListRow(null);
+                var prevKeyPath$40 = task.keyPath, prevRow = task.row, newRow = task.row = createSuspenseListRow(null);
                 newRow.boundaries = [];
                 newRow.together = true;
                 task.keyPath = keyPath;
                 renderNodeDestructive(request, task, children$jscomp$0, -1);
                 0 === --newRow.pendingTasks && finishSuspenseListRow(request, newRow);
-                task.keyPath = prevKeyPath$41;
+                task.keyPath = prevKeyPath$40;
                 task.row = prevRow;
                 null !== prevRow && 0 < newRow.pendingTasks && (prevRow.pendingTasks++, newRow.next = prevRow);
               } else {
@@ -4041,47 +3533,11 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           case REACT_VIEW_TRANSITION_TYPE:
             var prevContext$jscomp$0 = task.formatContext, prevKeyPath$jscomp$4 = task.keyPath;
             var resumableState$jscomp$0 = request.resumableState;
-            if (null != props.name && "auto" !== props.name)
-              var JSCompiler_inline_result$jscomp$2 = props.name;
-            else {
+            if (null == props.name || "auto" === props.name) {
               var treeId = getTreeId(task.treeContext);
-              JSCompiler_inline_result$jscomp$2 = makeId(
-                resumableState$jscomp$0,
-                treeId,
-                0
-              );
+              makeId(resumableState$jscomp$0, treeId, 0);
             }
-            var autoName = JSCompiler_inline_result$jscomp$2, resumableState$jscomp$1 = request.resumableState, update = getViewTransitionClassName(props.default, props.update), enter = getViewTransitionClassName(props.default, props.enter), exit = getViewTransitionClassName(props.default, props.exit), share = getViewTransitionClassName(props.default, props.share), name = props.name;
-            null == update && (update = "auto");
-            null == enter && (enter = "auto");
-            null == exit && (exit = "auto");
-            if (null == name) {
-              var parentViewTransition = prevContext$jscomp$0.viewTransition;
-              null !== parentViewTransition ? (name = parentViewTransition.name, share = parentViewTransition.share) : (name = "auto", share = "none");
-            } else
-              null == share && (share = "auto"), prevContext$jscomp$0.tagScope & 4 && (resumableState$jscomp$1.instructions |= 128);
-            prevContext$jscomp$0.tagScope & 8 ? resumableState$jscomp$1.instructions |= 128 : exit = "none";
-            prevContext$jscomp$0.tagScope & 16 ? resumableState$jscomp$1.instructions |= 128 : enter = "none";
-            var viewTransition = {
-              update,
-              enter,
-              exit,
-              share,
-              parentEnter: "none",
-              parentExit: "none",
-              name,
-              autoName,
-              nameIdx: 0
-            }, subtreeScope = prevContext$jscomp$0.tagScope & -25;
-            subtreeScope = "none" !== update ? subtreeScope | 32 : subtreeScope & -33;
-            "none" !== enter && (subtreeScope |= 64);
-            var JSCompiler_inline_result$jscomp$3 = createFormatContext(
-              prevContext$jscomp$0.insertionMode,
-              prevContext$jscomp$0.selectedValue,
-              subtreeScope,
-              viewTransition
-            );
-            task.formatContext = JSCompiler_inline_result$jscomp$3;
+            task.formatContext = prevContext$jscomp$0;
             task.keyPath = keyPath;
             if (null != props.name && "auto" !== props.name)
               renderNodeDestructive(request, task, props.children, -1);
@@ -4095,31 +3551,28 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             task.keyPath = prevKeyPath$jscomp$4;
             return;
           case REACT_SCOPE_TYPE:
-            throw Error("ReactDOMServer does not yet support scope components.");
+            throw Error(formatProdErrorMessage(343));
           case REACT_SUSPENSE_TYPE:
             a: if (null !== task.replay) {
-              var prevKeyPath$27 = task.keyPath, prevContext$28 = task.formatContext, prevRow$29 = task.row;
+              var prevKeyPath$26 = task.keyPath, prevContext$27 = task.formatContext, prevRow$28 = task.row;
               task.keyPath = keyPath;
               task.formatContext = getSuspenseContentFormatContext(
                 request.resumableState,
-                prevContext$28
+                prevContext$27
               );
               task.row = null;
-              var content$30 = props.children;
+              var content$29 = props.children;
               try {
-                renderNode(request, task, content$30, -1);
+                renderNode(request, task, content$29, -1);
               } finally {
-                task.keyPath = prevKeyPath$27, task.formatContext = prevContext$28, task.row = prevRow$29;
+                task.keyPath = prevKeyPath$26, task.formatContext = prevContext$27, task.row = prevRow$28;
               }
             } else {
               var prevKeyPath$jscomp$5 = task.keyPath, prevContext$jscomp$1 = task.formatContext, prevRow$jscomp$0 = task.row, parentBoundary = task.blockedBoundary, parentPreamble = task.blockedPreamble, parentHoistableState = task.hoistableState, parentSegment = task.blockedSegment, fallback = props.fallback, content = props.children, fallbackAbortSet = /* @__PURE__ */ new Set(), newBoundary = createSuspenseBoundary(
                 request,
                 task.row,
                 fallbackAbortSet,
-                2 > task.formatContext.insertionMode ? {
-                  content: createPreambleState(),
-                  fallback: createPreambleState()
-                } : null,
+                null,
                 false
               ), boundarySegment = createPendingSegment(
                 request,
@@ -4170,7 +3623,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                   suspenseComponentStack
                 );
                 try {
-                  renderNode(request, task, fallback, -1), boundarySegment.lastPushedText && boundarySegment.textEmbedded && boundarySegment.chunks.push(textSeparator), boundarySegment.status = 1, finishedSegment(request, parentBoundary, boundarySegment);
+                  renderNode(request, task, fallback, -1), pushSegmentFinale(
+                    boundarySegment.chunks,
+                    request.renderState,
+                    boundarySegment.lastPushedText,
+                    boundarySegment.textEmbedded
+                  ), boundarySegment.status = 1;
                 } catch (thrownValue) {
                   throw boundarySegment.status = request.aborted ? 3 : 4, thrownValue;
                 } finally {
@@ -4210,7 +3668,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                 );
                 task.row = null;
                 try {
-                  if (renderNode(request, task, content, -1), contentRootSegment.lastPushedText && contentRootSegment.textEmbedded && contentRootSegment.chunks.push(textSeparator), contentRootSegment.status = 1, finishedSegment(request, newBoundary, contentRootSegment), queueCompletedSegment(newBoundary, contentRootSegment), 0 === newBoundary.pendingTasks && 0 === newBoundary.status) {
+                  if (renderNode(request, task, content, -1), pushSegmentFinale(
+                    contentRootSegment.chunks,
+                    request.renderState,
+                    contentRootSegment.lastPushedText,
+                    contentRootSegment.textEmbedded
+                  ), contentRootSegment.status = 1, queueCompletedSegment(newBoundary, contentRootSegment), 0 === newBoundary.pendingTasks && 0 === newBoundary.status) {
                     if (newBoundary.status = 1, !isEligibleForOutlining(request, newBoundary)) {
                       null !== prevRow$jscomp$0 && 0 === --prevRow$jscomp$0.pendingTasks && finishSuspenseListRow(request, prevRow$jscomp$0);
                       0 === request.pendingRootTasks && task.blockedPreamble && preparePreamble(request);
@@ -4218,12 +3681,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                     }
                   } else
                     null !== prevRow$jscomp$0 && prevRow$jscomp$0.together && tryToResolveTogetherRow(request, prevRow$jscomp$0);
-                } catch (thrownValue$31) {
+                } catch (thrownValue$30) {
                   newBoundary.status = 4;
                   if (request.aborted) {
                     contentRootSegment.status = 3;
                     var error = request.fatalError;
-                  } else contentRootSegment.status = 4, error = thrownValue$31;
+                  } else contentRootSegment.status = 4, error = thrownValue$30;
                   var thrownInfo = getThrownInfo(task.componentStack), errorDigest = logRecoverableError(request, error, thrownInfo);
                   newBoundary.errorDigest = errorDigest;
                   untrackBoundary(request, newBoundary);
@@ -4289,8 +3752,8 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               return;
             case REACT_CONTEXT_TYPE:
               var children$jscomp$2 = props.children, prevKeyPath$jscomp$6 = task.keyPath, nextValue = props.value;
-              var prevValue = type._currentValue;
-              type._currentValue = nextValue;
+              var prevValue = type._currentValue2;
+              type._currentValue2 = nextValue;
               var prevNode = currentActiveSnapshot, newNode = {
                 parent: prevNode,
                 depth: null === prevNode ? 0 : prevNode.depth + 1,
@@ -4303,17 +3766,14 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               task.keyPath = keyPath;
               renderNodeDestructive(request, task, children$jscomp$2, -1);
               var prevSnapshot = currentActiveSnapshot;
-              if (null === prevSnapshot)
-                throw Error(
-                  "Tried to pop a Context at the root of the app. This is a bug in React."
-                );
-              prevSnapshot.context._currentValue = prevSnapshot.parentValue;
-              var JSCompiler_inline_result$jscomp$4 = currentActiveSnapshot = prevSnapshot.parent;
-              task.context = JSCompiler_inline_result$jscomp$4;
+              if (null === prevSnapshot) throw Error(formatProdErrorMessage(403));
+              prevSnapshot.context._currentValue2 = prevSnapshot.parentValue;
+              var JSCompiler_inline_result$jscomp$2 = currentActiveSnapshot = prevSnapshot.parent;
+              task.context = JSCompiler_inline_result$jscomp$2;
               task.keyPath = prevKeyPath$jscomp$6;
               return;
             case REACT_CONSUMER_TYPE:
-              var render = props.children, newChildren = render(type._context._currentValue), prevKeyPath$jscomp$7 = task.keyPath;
+              var render = props.children, newChildren = render(type._context._currentValue2), prevKeyPath$jscomp$7 = task.keyPath;
               task.keyPath = keyPath;
               renderNodeDestructive(request, task, newChildren, -1);
               task.keyPath = prevKeyPath$jscomp$7;
@@ -4326,7 +3786,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               return;
           }
         throw Error(
-          "Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: " + ((null == type ? type : typeof type) + ".")
+          formatProdErrorMessage(130, null == type ? type : typeof type, "")
         );
       }
     }
@@ -4342,7 +3802,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       resumedSegment.id = segmentId;
       resumedSegment.parentFlushed = true;
       try {
-        task.replay = null, task.blockedSegment = resumedSegment, renderNode(request, task, node, childIndex), resumedSegment.status = 1, finishedSegment(request, blockedBoundary, resumedSegment), null === blockedBoundary ? request.completedRootSegment = resumedSegment : (queueCompletedSegment(blockedBoundary, resumedSegment), blockedBoundary.parentFlushed && request.partialBoundaries.push(blockedBoundary));
+        task.replay = null, task.blockedSegment = resumedSegment, renderNode(request, task, node, childIndex), resumedSegment.status = 1, null === blockedBoundary ? request.completedRootSegment = resumedSegment : (queueCompletedSegment(blockedBoundary, resumedSegment), blockedBoundary.parentFlushed && request.partialBoundaries.push(blockedBoundary));
       } finally {
         task.replay = prevReplay, task.blockedSegment = null;
       }
@@ -4370,7 +3830,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                       if (4 === node$jscomp$0.length) {
                         if (null !== name && name !== node$jscomp$0[0])
                           throw Error(
-                            "Expected the resume to render <" + node$jscomp$0[0] + "> in this slot but instead it rendered <" + name + ">. The tree doesn't match so React will fallback to client rendering."
+                            formatProdErrorMessage(490, node$jscomp$0[0], name)
                           );
                         var childNodes = node$jscomp$0[2], childSlots = node$jscomp$0[3], currentNode = task.node;
                         task.replay = {
@@ -4381,9 +3841,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                         try {
                           renderElement(request, task, key, type, props, ref);
                           if (1 === task.replay.pendingTasks && 0 < task.replay.nodes.length)
-                            throw Error(
-                              "Couldn't find all resumable slots by key/index during replaying. The tree doesn't match so React will fallback to client rendering."
-                            );
+                            throw Error(formatProdErrorMessage(488));
                           task.replay.pendingTasks--;
                         } catch (x) {
                           if ("object" === typeof x && null !== x && (x === SuspenseException || "function" === typeof x.then || "Maximum call stack size exceeded" === x.message))
@@ -4407,7 +3865,11 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                       } else {
                         if (type !== REACT_SUSPENSE_TYPE)
                           throw Error(
-                            "Expected the resume to render <Suspense> in this slot but instead it rendered <" + (getComponentNameFromType(type) || "Unknown") + ">. The tree doesn't match so React will fallback to client rendering."
+                            formatProdErrorMessage(
+                              490,
+                              "Suspense",
+                              getComponentNameFromType(type) || "Unknown"
+                            )
                           );
                         b: {
                           replay = node$jscomp$0[5];
@@ -4422,10 +3884,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                             request,
                             task.row,
                             fallbackAbortSet,
-                            2 > task.formatContext.insertionMode ? {
-                              content: createPreambleState(),
-                              fallback: createPreambleState()
-                            } : null,
+                            null,
                             false
                           );
                           resumedBoundary.parentFlushed = true;
@@ -4446,9 +3905,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                           try {
                             renderNode(request, task, content, -1);
                             if (1 === task.replay.pendingTasks && 0 < task.replay.nodes.length)
-                              throw Error(
-                                "Couldn't find all resumable slots by key/index during replaying. The tree doesn't match so React will fallback to client rendering."
-                              );
+                              throw Error(formatProdErrorMessage(488));
                             task.replay.pendingTasks--;
                             if (0 === resumedBoundary.pendingTasks && 0 === resumedBoundary.status) {
                               resumedBoundary.status = 1;
@@ -4499,9 +3956,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               else renderElement(request, task, key, type, props, ref);
               return;
             case REACT_PORTAL_TYPE:
-              throw Error(
-                "Portals are not currently supported by the server renderer. Render them conditionally so that they only appear on the client render."
-              );
+              throw Error(formatProdErrorMessage(257));
             case REACT_LAZY_TYPE:
               childNodes = node._init;
               node = childNodes(node._payload);
@@ -4532,12 +3987,15 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             return renderNodeDestructive(
               request,
               task,
-              node._currentValue,
+              node._currentValue2,
               childIndex
             );
           childIndex = Object.prototype.toString.call(node);
           throw Error(
-            "Objects are not valid as a React child (found: " + ("[object Object]" === childIndex ? "object with keys {" + Object.keys(node).join(", ") + "}" : childIndex) + "). If you meant to render a collection of children, use an array instead."
+            formatProdErrorMessage(
+              31,
+              "[object Object]" === childIndex ? "object with keys {" + Object.keys(node).join(", ") + "}" : childIndex
+            )
           );
         }
         if ("string" === typeof node)
@@ -4568,9 +4026,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             try {
               renderChildrenArray(request, task, children, -1);
               if (1 === task.replay.pendingTasks && 0 < task.replay.nodes.length)
-                throw Error(
-                  "Couldn't find all resumable slots by key/index during replaying. The tree doesn't match so React will fallback to client rendering."
-                );
+                throw Error(formatProdErrorMessage(488));
               task.replay.pendingTasks--;
             } catch (x) {
               if ("object" === typeof x && null !== x && (x === SuspenseException || "function" === typeof x.then))
@@ -4616,15 +4072,9 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       boundary.status = 5;
       boundary.rootSegmentID = request.nextSegmentId++;
       var tracked = boundary.tracked;
-      if (null === tracked)
-        throw Error(
-          "It should not be possible to postpone at the root. This is a bug in React."
-        );
+      if (null === tracked) throw Error(formatProdErrorMessage(486));
       request = tracked.contentKeyPath;
-      if (null === request)
-        throw Error(
-          "It should not be possible to postpone at the root. This is a bug in React."
-        );
+      if (null === request) throw Error(formatProdErrorMessage(486));
       tracked = tracked.fallbackNode;
       var children = [], boundaryNode = trackedPostpones.workingMap.get(request);
       if (void 0 === boundaryNode)
@@ -4667,18 +4117,14 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               request = trackedPostpones.rootSlots = {};
             else {
               if ("number" === typeof request)
-                throw Error(
-                  "It should not be possible to postpone both at the root of an element as well as a slot below. This is a bug in React."
-                );
+                throw Error(formatProdErrorMessage(491));
             }
           else if (boundary = trackedPostpones.workingMap, boundaryNode = boundary.get(keyPath), void 0 === boundaryNode)
             request = {}, boundaryNode = [keyPath[1], keyPath[2], [], request], boundary.set(keyPath, boundaryNode), addToReplayParent(boundaryNode, keyPath[0], trackedPostpones);
           else if (request = boundaryNode[3], null === request)
             request = boundaryNode[3] = {};
           else if ("number" === typeof request)
-            throw Error(
-              "It should not be possible to postpone both at the root of an element as well as a slot below. This is a bug in React."
-            );
+            throw Error(formatProdErrorMessage(491));
           request[task.childIndex] = segment.id;
         }
       }
@@ -4774,11 +4220,11 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         var childrenLength = segment.children.length, chunkLength = segment.chunks.length;
         try {
           return renderNodeDestructive(request, task, node, childIndex);
-        } catch (thrownValue$64) {
-          if (resetHooksState(), segment.children.length = childrenLength, segment.chunks.length = chunkLength, node = thrownValue$64 === SuspenseException ? getSuspendedThenable() : thrownValue$64, !request.aborted && "object" === typeof node && null !== node) {
+        } catch (thrownValue$63) {
+          if (resetHooksState(), segment.children.length = childrenLength, segment.chunks.length = chunkLength, node = thrownValue$63 === SuspenseException ? getSuspendedThenable() : thrownValue$63, !request.aborted && "object" === typeof node && null !== node) {
             if ("function" === typeof node.then) {
               segment = node;
-              node = thrownValue$64 === SuspenseException ? getThenableStateAfterSuspending() : null;
+              node = thrownValue$63 === SuspenseException ? getThenableStateAfterSuspending() : null;
               request = spawnNewSuspendedRenderTask(request, task, node).ping;
               segment.then(request.resolve, request.reject);
               task.formatContext = previousFormatContext;
@@ -4790,7 +4236,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               return;
             }
             if ("Maximum call stack size exceeded" === node.message) {
-              segment = thrownValue$64 === SuspenseException ? getThenableStateAfterSuspending() : null;
+              segment = thrownValue$63 === SuspenseException ? getThenableStateAfterSuspending() : null;
               segment = spawnNewSuspendedRenderTask(request, task, segment);
               request.pingedTasks.push(segment);
               task.formatContext = previousFormatContext;
@@ -4845,10 +4291,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       }
       nodes.length = 0;
       if (null !== slots) {
-        if (null === boundary)
-          throw Error(
-            "We should not have any resumable nodes in the shell. This is a bug in React."
-          );
+        if (null === boundary) throw Error(formatProdErrorMessage(487));
         4 !== boundary.status && (boundary.status = 4, boundary.errorDigest = errorDigest$jscomp$0, boundary.parentFlushed && request$jscomp$0.clientRenderedBoundaries.push(boundary));
         if ("object" === typeof slots) for (var index in slots) delete slots[index];
       }
@@ -4883,10 +4326,10 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               errorInfo
             )), request.pendingRootTasks--, 0 === request.pendingRootTasks && completeShell(request));
           } else {
-            var trackedPostpones$65 = request.trackedPostpones;
+            var trackedPostpones$64 = request.trackedPostpones;
             if (4 !== boundary.status) {
-              if (!isRecoverableReason && null !== trackedPostpones$65 && null !== segment)
-                return logRecoverableError(request, error, errorInfo), trackPostpone(request, trackedPostpones$65, task, segment), boundary.fallbackAbortableTasks.forEach(function(fallbackTask) {
+              if (!isRecoverableReason && null !== trackedPostpones$64 && null !== segment)
+                return logRecoverableError(request, error, errorInfo), trackPostpone(request, trackedPostpones$64, task, segment), boundary.fallbackAbortableTasks.forEach(function(fallbackTask) {
                   return finishAbortedTask(fallbackTask, request, error);
                 }), boundary.fallbackAbortableTasks.clear(), finishedTask(request, boundary, task.row, segment);
               boundary.status = 4;
@@ -4968,23 +4411,13 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         1 !== childSegment.status && 3 !== childSegment.status && 4 !== childSegment.status || queueCompletedSegment(boundary, childSegment);
       } else boundary.completedSegments.push(segment);
     }
-    function finishedSegment(request, boundary, segment) {
-      if (null !== byteLengthOfChunk) {
-        segment = segment.chunks;
-        for (var segmentByteSize = 0, i = 0; i < segment.length; i++)
-          segmentByteSize += segment[i].byteLength;
-        null === boundary ? request.byteSize += segmentByteSize : boundary.byteSize += segmentByteSize;
-      }
-    }
     function finishedTask(request, boundary, row, segment) {
       null !== row && (0 === --row.pendingTasks ? finishSuspenseListRow(request, row) : row.together && tryToResolveTogetherRow(request, row));
       request.allPendingTasks--;
       if (null === boundary) {
         if (null !== segment && segment.parentFlushed) {
           if (null !== request.completedRootSegment)
-            throw Error(
-              "There can only be one root segment. This is a bug in React."
-            );
+            throw Error(formatProdErrorMessage(389));
           request.completedRootSegment = segment;
         }
         request.pendingRootTasks--;
@@ -5044,9 +4477,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                       task.childIndex
                     ) : retryNode(request, task);
                     if (1 === task.replay.pendingTasks && 0 < task.replay.nodes.length)
-                      throw Error(
-                        "Couldn't find all resumable slots by key/index during replaying. The tree doesn't match so React will fallback to client rendering."
-                      );
+                      throw Error(formatProdErrorMessage(488));
                     task.replay.pendingTasks--;
                     task.abortSet.delete(task);
                     finishedTask(request, task.blockedBoundary, task.row, null);
@@ -5112,11 +4543,12 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                 switchContext(task.context);
                 var childrenLength = request$jscomp$0.children.length, chunkLength = request$jscomp$0.chunks.length, startNode$jscomp$0 = task.node;
                 try {
-                  retryNode(request, task), request$jscomp$0.lastPushedText && request$jscomp$0.textEmbedded && request$jscomp$0.chunks.push(textSeparator), task.abortSet.delete(task), request$jscomp$0.status = 1, finishedSegment(
-                    request,
-                    task.blockedBoundary,
-                    request$jscomp$0
-                  ), finishedTask(
+                  retryNode(request, task), pushSegmentFinale(
+                    request$jscomp$0.chunks,
+                    request.renderState,
+                    request$jscomp$0.lastPushedText,
+                    request$jscomp$0.textEmbedded
+                  ), task.abortSet.delete(task), request$jscomp$0.status = 1, finishedTask(
                     request,
                     task.blockedBoundary,
                     task.row,
@@ -5231,10 +4663,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           hoistPreambleState(request.renderState, preamble.content);
           request.byteSize += boundary.byteSize;
           segment = boundary.completedSegments[0];
-          if (!segment)
-            throw Error(
-              "A previously unvisited boundary must have exactly one root segment. This is a bug in React."
-            );
+          if (!segment) throw Error(formatProdErrorMessage(391));
           return preparePreambleFromSubtree(
             request,
             segment,
@@ -5269,26 +4698,24 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         case 0:
           segment.id = request.nextSegmentId++;
         case 5:
-          return hoistableState = segment.id, segment.lastPushedText = false, segment.textEmbedded = false, request = request.renderState, writeChunk(destination, placeholder1), writeChunk(destination, request.placeholderPrefix), request = stringToChunk(hoistableState.toString(16)), writeChunk(destination, request), writeChunkAndReturn(destination, placeholder2);
+          return hoistableState = segment.id, segment.lastPushedText = false, segment.textEmbedded = false, request = request.renderState, destination.push('<template id="'), destination.push(request.placeholderPrefix), request = hoistableState.toString(16), destination.push(request), destination.push('"></template>');
         case 1:
           segment.status = 2;
           var r = true, chunks = segment.chunks, chunkIdx = 0;
           segment = segment.children;
           for (var childIdx = 0; childIdx < segment.length; childIdx++) {
             for (r = segment[childIdx]; chunkIdx < r.index; chunkIdx++)
-              writeChunk(destination, chunks[chunkIdx]);
+              destination.push(chunks[chunkIdx]);
             r = flushSegment(request, destination, r, hoistableState);
           }
           for (; chunkIdx < chunks.length - 1; chunkIdx++)
-            writeChunk(destination, chunks[chunkIdx]);
-          chunkIdx < chunks.length && (r = writeChunkAndReturn(destination, chunks[chunkIdx]));
+            destination.push(chunks[chunkIdx]);
+          chunkIdx < chunks.length && (r = destination.push(chunks[chunkIdx]));
           return r;
         case 3:
           return true;
         default:
-          throw Error(
-            "Aborted, errored or already flushed boundaries should not be flushed again. This is a bug in React."
-          );
+          throw Error(formatProdErrorMessage(390));
       }
     }
     var flushedByteSize = 0;
@@ -5301,41 +4728,33 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       if (4 === boundary.status) {
         var row = boundary.row;
         null !== row && 0 === --row.pendingTasks && finishSuspenseListRow(request, row);
-        boundary = boundary.errorDigest;
-        writeChunkAndReturn(destination, startClientRenderedSuspenseBoundary);
-        writeChunk(destination, clientRenderedSuspenseBoundaryError1);
-        null != boundary && (writeChunk(destination, clientRenderedSuspenseBoundaryError1A), writeChunk(destination, stringToChunk(escapeTextForBrowser(boundary))), writeChunk(
-          destination,
-          clientRenderedSuspenseBoundaryErrorAttrInterstitial
-        ));
-        writeChunkAndReturn(destination, clientRenderedSuspenseBoundaryError2);
+        request.renderState.generateStaticMarkup || (boundary = boundary.errorDigest, destination.push("<!--$!-->"), destination.push("<template"), null != boundary && (destination.push(' data-dgst="'), boundary = escapeTextForBrowser(boundary), destination.push(boundary), destination.push('"')), destination.push("></template>"));
         flushSubtree(request, destination, segment, hoistableState);
-      } else if (1 !== boundary.status)
-        0 === boundary.status && (boundary.rootSegmentID = request.nextSegmentId++), 0 < boundary.completedSegments.length && request.partialBoundaries.push(boundary), writeStartPendingSuspenseBoundary(
-          destination,
-          request.renderState,
-          boundary.rootSegmentID
-        ), hoistableState && hoistHoistables(hoistableState, boundary.fallbackState), flushSubtree(request, destination, segment, hoistableState);
-      else if (!flushingPartialBoundaries && isEligibleForOutlining(request, boundary) && (flushedByteSize + boundary.byteSize > request.progressiveChunkSize || hasSuspenseyContent(boundary.contentState, flushingShell) || boundary.defer))
-        boundary.rootSegmentID = request.nextSegmentId++, request.completedBoundaries.push(boundary), writeStartPendingSuspenseBoundary(
-          destination,
-          request.renderState,
-          boundary.rootSegmentID
-        ), flushSubtree(request, destination, segment, hoistableState);
-      else {
-        flushedByteSize += boundary.byteSize;
-        hoistableState && hoistHoistables(hoistableState, boundary.contentState);
-        segment = boundary.row;
-        null !== segment && isEligibleForOutlining(request, boundary) && 0 === --segment.pendingTasks && finishSuspenseListRow(request, segment);
-        writeChunkAndReturn(destination, startCompletedSuspenseBoundary);
-        segment = boundary.completedSegments;
-        if (1 !== segment.length)
-          throw Error(
-            "A previously unvisited boundary must have exactly one root segment. This is a bug in React."
-          );
-        flushSegment(request, destination, segment[0], hoistableState);
+        request = request.renderState.generateStaticMarkup ? true : destination.push("<!--/$-->");
+        return request;
       }
-      return writeChunkAndReturn(destination, endSuspenseBoundary);
+      if (1 !== boundary.status)
+        return 0 === boundary.status && (boundary.rootSegmentID = request.nextSegmentId++), 0 < boundary.completedSegments.length && request.partialBoundaries.push(boundary), writeStartPendingSuspenseBoundary(
+          destination,
+          request.renderState,
+          boundary.rootSegmentID
+        ), hoistableState && hoistHoistables(hoistableState, boundary.fallbackState), flushSubtree(request, destination, segment, hoistableState), destination.push("<!--/$-->");
+      if (!flushingPartialBoundaries && isEligibleForOutlining(request, boundary) && (flushedByteSize + boundary.byteSize > request.progressiveChunkSize || boundary.defer))
+        return boundary.rootSegmentID = request.nextSegmentId++, request.completedBoundaries.push(boundary), writeStartPendingSuspenseBoundary(
+          destination,
+          request.renderState,
+          boundary.rootSegmentID
+        ), flushSubtree(request, destination, segment, hoistableState), destination.push("<!--/$-->");
+      flushedByteSize += boundary.byteSize;
+      hoistableState && hoistHoistables(hoistableState, boundary.contentState);
+      segment = boundary.row;
+      null !== segment && isEligibleForOutlining(request, boundary) && 0 === --segment.pendingTasks && finishSuspenseListRow(request, segment);
+      request.renderState.generateStaticMarkup || destination.push("<!--$-->");
+      segment = boundary.completedSegments;
+      if (1 !== segment.length) throw Error(formatProdErrorMessage(391));
+      flushSegment(request, destination, segment[0], hoistableState);
+      request = request.renderState.generateStaticMarkup ? true : destination.push("<!--/$-->");
+      return request;
     }
     function flushSegmentContainer(request, destination, segment, hoistableState) {
       writeStartSegment(
@@ -5370,23 +4789,37 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       boundary = boundary.contentState;
       var requiresStyleInsertion = request.stylesToHoist, requiresViewTransitions = 0 !== (completedSegments.instructions & 128);
       request.stylesToHoist = false;
-      writeChunk(destination, request.startInlineScript);
-      writeChunk(destination, endOfStartTag);
-      requiresStyleInsertion ? (0 === (completedSegments.instructions & 4) && (completedSegments.instructions |= 4, writeChunk(destination, clientRenderScriptFunctionOnly)), 0 === (completedSegments.instructions & 2) && (completedSegments.instructions |= 2, writeChunk(destination, completeBoundaryScriptFunctionOnly)), requiresViewTransitions && 0 === (completedSegments.instructions & 256) && (completedSegments.instructions |= 256, writeChunk(
-        destination,
-        completeBoundaryUpgradeToViewTransitionsInstruction
-      )), 0 === (completedSegments.instructions & 8) ? (completedSegments.instructions |= 8, writeChunk(destination, completeBoundaryWithStylesScript1FullPartial)) : writeChunk(destination, completeBoundaryWithStylesScript1Partial)) : (0 === (completedSegments.instructions & 2) && (completedSegments.instructions |= 2, writeChunk(destination, completeBoundaryScriptFunctionOnly)), requiresViewTransitions && 0 === (completedSegments.instructions & 256) && (completedSegments.instructions |= 256, writeChunk(
-        destination,
-        completeBoundaryUpgradeToViewTransitionsInstruction
-      )), writeChunk(destination, completeBoundaryScript1Partial));
-      completedSegments = stringToChunk(i.toString(16));
-      writeChunk(destination, request.boundaryPrefix);
-      writeChunk(destination, completedSegments);
-      writeChunk(destination, completeBoundaryScript2);
-      writeChunk(destination, request.segmentPrefix);
-      writeChunk(destination, completedSegments);
-      requiresStyleInsertion ? (writeChunk(destination, completeBoundaryScript3a), writeStyleResourceDependenciesInJS(destination, boundary)) : writeChunk(destination, completeBoundaryScript3b);
-      boundary = writeChunkAndReturn(destination, completeBoundaryScriptEnd);
+      destination.push(request.startInlineScript);
+      destination.push(">");
+      requiresStyleInsertion ? (0 === (completedSegments.instructions & 4) && (completedSegments.instructions |= 4, destination.push(
+        '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,null!=c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};'
+      )), 0 === (completedSegments.instructions & 2) && (completedSegments.instructions |= 2, destination.push(
+        '$RB=[];$RV=function(a){$RT=performance.now();for(var b=0;b<a.length;b+=2){var c=a[b],e=a[b+1];null!==e.parentNode&&e.parentNode.removeChild(e);var f=c.parentNode;if(f){var g=c.previousSibling,h=0;do{if(c&&8===c.nodeType){var d=c.data;if("/$"===d||"/&"===d)if(0===h)break;else h--;else"$"!==d&&"$?"!==d&&"$~"!==d&&"$!"!==d&&"&"!==d||h++}d=c.nextSibling;f.removeChild(c);c=d}while(c);for(;e.firstChild;)f.insertBefore(e.firstChild,c);g.data="$";g._reactRetry&&requestAnimationFrame(g._reactRetry)}}a.length=0};\n$RC=function(a,b){if(b=document.getElementById(b))(a=document.getElementById(a))?(a.previousSibling.data="$~",$RB.push(a,b),2===$RB.length&&("number"!==typeof $RT?requestAnimationFrame($RV.bind(null,$RB)):(a=performance.now(),setTimeout($RV.bind(null,$RB),2300>a&&2E3<a?2300-a:$RT+300-a)))):b.parentNode.removeChild(b)};'
+      )), requiresViewTransitions && 0 === (completedSegments.instructions & 256) && (completedSegments.instructions |= 256, destination.push(
+        `$RV=function(B,g){function h(a,c){var e=a.getAttribute(c);e&&(c=a.style,l.push(a,c.viewTransitionName,c.viewTransitionClass),"auto"!==e&&(c.viewTransitionClass=e),(a=a.getAttribute("vt-name"))||(a="_T_"+N++ +"_"),a=CSS.escape(a)!==a?"r-"+btoa(a).replace(/=/g,""):a,c.viewTransitionName=a,C=!0)}var C=!1,N=0,l=[];try{var f=document.__reactViewTransition;if(f){f.finished.finally($RV.bind(null,g));return}var m=new Map;for(f=1;f<g.length;f+=2)for(var k=g[f].querySelectorAll("[vt-share]"),d=0;d<k.length;d++){var b=k[d];m.set(b.getAttribute("vt-name"),b)}var u=[];for(k=0;k<g.length;k+=2){var D=g[k],x=D.parentNode;if(x){var v=x.getBoundingClientRect();if(v.left||v.top||v.width||v.height){b=D;for(f=0;b;){if(8===b.nodeType){var t=b.data;if("/$"===t)if(0===f)break;else f--;else"$"!==t&&"$?"!==t&&"$~"!==t&&"$!"!==t||f++}else if(1===b.nodeType){d=b;var E=d.getAttribute("vt-name"),y=m.get(E);h(d,y?"vt-share":"vt-exit");y&&(h(y,"vt-share"),m.set(E,null));for(var F=d.querySelectorAll("[vt-share]"),
+z=0;z<F.length;z++){var G=F[z],H=G.getAttribute("vt-name"),I=m.get(H);I&&(h(G,"vt-share"),h(I,"vt-share"),m.set(H,null))}var J=d.querySelectorAll("[vt-parent-exit]");for(d=0;d<J.length;d++)h(J[d],"vt-parent-exit")}b=b.nextSibling}for(var K=g[k+1],n=K.firstElementChild;n;){null!==m.get(n.getAttribute("vt-name"))&&h(n,"vt-enter");var L=n.querySelectorAll("[vt-parent-enter]");for(b=0;b<L.length;b++)h(L[b],"vt-parent-enter");n=n.nextElementSibling}b=x;do for(var p=b.firstElementChild;p;){var M=p.getAttribute("vt-update");
+M&&"none"!==M&&!l.includes(p)&&h(p,"vt-update");p=p.nextElementSibling}while((b=b.parentNode)&&1===b.nodeType&&"none"!==b.getAttribute("vt-update"));u.push.apply(u,K.querySelectorAll('img[src]:not([loading="lazy"])'))}}}if(C){var A=document.__reactViewTransition=document.startViewTransition({update:function(){B(g);for(var a=[document.documentElement.clientHeight,document.fonts.ready],c={},e=0;e<u.length;c={g:c.g},e++)if(c.g=u[e],!c.g.complete){var q=c.g.getBoundingClientRect();0<q.bottom&&0<q.right&&
+q.top<window.innerHeight&&q.left<window.innerWidth&&(q=new Promise(function(w){return function(r){w.g.addEventListener("load",r);w.g.addEventListener("error",r)}}(c)),a.push(q))}return Promise.race([Promise.all(a),new Promise(function(w){var r=performance.now();setTimeout(w,2300>r&&2E3<r?2300-r:500)})])},types:[]});A.ready.finally(function(){for(var a=l.length-3;0<=a;a-=3){var c=l[a],e=c.style;e.viewTransitionName=l[a+1];e.viewTransitionClass=l[a+1];""===c.getAttribute("style")&&c.removeAttribute("style")}});
+A.finished.finally(function(){document.__reactViewTransition===A&&(document.__reactViewTransition=null)});$RB=[];return}}catch(a){}B(g)}.bind(null,$RV);`
+      )), 0 === (completedSegments.instructions & 8) ? (completedSegments.instructions |= 8, destination.push(
+        '$RM=new Map;$RR=function(n,w,p){function u(q){this._p=null;q()}for(var r=new Map,t=document,h,b,e=t.querySelectorAll("link[data-precedence],style[data-precedence]"),v=[],k=0;b=e[k++];)"not all"===b.getAttribute("media")?v.push(b):("LINK"===b.tagName&&$RM.set(b.getAttribute("href"),b),r.set(b.dataset.precedence,h=b));e=0;b=[];var l,a;for(k=!0;;){if(k){var f=p[e++];if(!f){k=!1;e=0;continue}var c=!1,m=0;var d=f[m++];if(a=$RM.get(d)){var g=a._p;c=!0}else{a=t.createElement("link");a.href=d;a.rel=\n"stylesheet";for(a.dataset.precedence=l=f[m++];g=f[m++];)a.setAttribute(g,f[m++]);g=a._p=new Promise(function(q,x){a.onload=u.bind(a,q);a.onerror=u.bind(a,x)});$RM.set(d,a)}d=a.getAttribute("media");!g||d&&!matchMedia(d).matches||b.push(g);if(c)continue}else{a=v[e++];if(!a)break;l=a.getAttribute("data-precedence");a.removeAttribute("media")}c=r.get(l)||h;c===h&&(h=a);r.set(l,a);c?c.parentNode.insertBefore(a,c.nextSibling):(c=t.head,c.insertBefore(a,c.firstChild))}if(p=document.getElementById(n))p.previousSibling.data=\n"$~";Promise.all(b).then($RC.bind(null,n,w),$RX.bind(null,n,"CSS failed to load"))};$RR("'
+      )) : destination.push('$RR("')) : (0 === (completedSegments.instructions & 2) && (completedSegments.instructions |= 2, destination.push(
+        '$RB=[];$RV=function(a){$RT=performance.now();for(var b=0;b<a.length;b+=2){var c=a[b],e=a[b+1];null!==e.parentNode&&e.parentNode.removeChild(e);var f=c.parentNode;if(f){var g=c.previousSibling,h=0;do{if(c&&8===c.nodeType){var d=c.data;if("/$"===d||"/&"===d)if(0===h)break;else h--;else"$"!==d&&"$?"!==d&&"$~"!==d&&"$!"!==d&&"&"!==d||h++}d=c.nextSibling;f.removeChild(c);c=d}while(c);for(;e.firstChild;)f.insertBefore(e.firstChild,c);g.data="$";g._reactRetry&&requestAnimationFrame(g._reactRetry)}}a.length=0};\n$RC=function(a,b){if(b=document.getElementById(b))(a=document.getElementById(a))?(a.previousSibling.data="$~",$RB.push(a,b),2===$RB.length&&("number"!==typeof $RT?requestAnimationFrame($RV.bind(null,$RB)):(a=performance.now(),setTimeout($RV.bind(null,$RB),2300>a&&2E3<a?2300-a:$RT+300-a)))):b.parentNode.removeChild(b)};'
+      )), requiresViewTransitions && 0 === (completedSegments.instructions & 256) && (completedSegments.instructions |= 256, destination.push(
+        `$RV=function(B,g){function h(a,c){var e=a.getAttribute(c);e&&(c=a.style,l.push(a,c.viewTransitionName,c.viewTransitionClass),"auto"!==e&&(c.viewTransitionClass=e),(a=a.getAttribute("vt-name"))||(a="_T_"+N++ +"_"),a=CSS.escape(a)!==a?"r-"+btoa(a).replace(/=/g,""):a,c.viewTransitionName=a,C=!0)}var C=!1,N=0,l=[];try{var f=document.__reactViewTransition;if(f){f.finished.finally($RV.bind(null,g));return}var m=new Map;for(f=1;f<g.length;f+=2)for(var k=g[f].querySelectorAll("[vt-share]"),d=0;d<k.length;d++){var b=k[d];m.set(b.getAttribute("vt-name"),b)}var u=[];for(k=0;k<g.length;k+=2){var D=g[k],x=D.parentNode;if(x){var v=x.getBoundingClientRect();if(v.left||v.top||v.width||v.height){b=D;for(f=0;b;){if(8===b.nodeType){var t=b.data;if("/$"===t)if(0===f)break;else f--;else"$"!==t&&"$?"!==t&&"$~"!==t&&"$!"!==t||f++}else if(1===b.nodeType){d=b;var E=d.getAttribute("vt-name"),y=m.get(E);h(d,y?"vt-share":"vt-exit");y&&(h(y,"vt-share"),m.set(E,null));for(var F=d.querySelectorAll("[vt-share]"),
+z=0;z<F.length;z++){var G=F[z],H=G.getAttribute("vt-name"),I=m.get(H);I&&(h(G,"vt-share"),h(I,"vt-share"),m.set(H,null))}var J=d.querySelectorAll("[vt-parent-exit]");for(d=0;d<J.length;d++)h(J[d],"vt-parent-exit")}b=b.nextSibling}for(var K=g[k+1],n=K.firstElementChild;n;){null!==m.get(n.getAttribute("vt-name"))&&h(n,"vt-enter");var L=n.querySelectorAll("[vt-parent-enter]");for(b=0;b<L.length;b++)h(L[b],"vt-parent-enter");n=n.nextElementSibling}b=x;do for(var p=b.firstElementChild;p;){var M=p.getAttribute("vt-update");
+M&&"none"!==M&&!l.includes(p)&&h(p,"vt-update");p=p.nextElementSibling}while((b=b.parentNode)&&1===b.nodeType&&"none"!==b.getAttribute("vt-update"));u.push.apply(u,K.querySelectorAll('img[src]:not([loading="lazy"])'))}}}if(C){var A=document.__reactViewTransition=document.startViewTransition({update:function(){B(g);for(var a=[document.documentElement.clientHeight,document.fonts.ready],c={},e=0;e<u.length;c={g:c.g},e++)if(c.g=u[e],!c.g.complete){var q=c.g.getBoundingClientRect();0<q.bottom&&0<q.right&&
+q.top<window.innerHeight&&q.left<window.innerWidth&&(q=new Promise(function(w){return function(r){w.g.addEventListener("load",r);w.g.addEventListener("error",r)}}(c)),a.push(q))}return Promise.race([Promise.all(a),new Promise(function(w){var r=performance.now();setTimeout(w,2300>r&&2E3<r?2300-r:500)})])},types:[]});A.ready.finally(function(){for(var a=l.length-3;0<=a;a-=3){var c=l[a],e=c.style;e.viewTransitionName=l[a+1];e.viewTransitionClass=l[a+1];""===c.getAttribute("style")&&c.removeAttribute("style")}});
+A.finished.finally(function(){document.__reactViewTransition===A&&(document.__reactViewTransition=null)});$RB=[];return}}catch(a){}B(g)}.bind(null,$RV);`
+      )), destination.push('$RC("'));
+      completedSegments = i.toString(16);
+      destination.push(request.boundaryPrefix);
+      destination.push(completedSegments);
+      destination.push('","');
+      destination.push(request.segmentPrefix);
+      destination.push(completedSegments);
+      requiresStyleInsertion ? (destination.push('",'), writeStyleResourceDependenciesInJS(destination, boundary)) : destination.push('"');
+      boundary = destination.push(")</script>");
       return writeBootstrap(destination, request) && boundary;
     }
     function flushPartiallyCompletedSegment(request, destination, boundary, segment) {
@@ -5394,9 +4827,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       var hoistableState = boundary.contentState, segmentID = segment.id;
       if (-1 === segmentID) {
         if (-1 === (segment.id = boundary.rootSegmentID))
-          throw Error(
-            "A root segment ID must have been assigned by now. This is a bug in React."
-          );
+          throw Error(formatProdErrorMessage(392));
         return flushSegmentContainer(request, destination, segment, hoistableState);
       }
       if (segmentID === boundary.rootSegmentID)
@@ -5404,23 +4835,22 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
       flushSegmentContainer(request, destination, segment, hoistableState);
       boundary = request.resumableState;
       request = request.renderState;
-      writeChunk(destination, request.startInlineScript);
-      writeChunk(destination, endOfStartTag);
-      0 === (boundary.instructions & 1) ? (boundary.instructions |= 1, writeChunk(destination, completeSegmentScript1Full)) : writeChunk(destination, completeSegmentScript1Partial);
-      writeChunk(destination, request.segmentPrefix);
-      segmentID = stringToChunk(segmentID.toString(16));
-      writeChunk(destination, segmentID);
-      writeChunk(destination, completeSegmentScript2);
-      writeChunk(destination, request.placeholderPrefix);
-      writeChunk(destination, segmentID);
-      destination = writeChunkAndReturn(destination, completeSegmentScriptEnd);
+      destination.push(request.startInlineScript);
+      destination.push(">");
+      0 === (boundary.instructions & 1) ? (boundary.instructions |= 1, destination.push(
+        '$RS=function(a,b){a=document.getElementById(a);b=document.getElementById(b);for(a.parentNode.removeChild(a);a.firstChild;)b.parentNode.insertBefore(a.firstChild,b);b.parentNode.removeChild(b)};$RS("'
+      )) : destination.push('$RS("');
+      destination.push(request.segmentPrefix);
+      segmentID = segmentID.toString(16);
+      destination.push(segmentID);
+      destination.push('","');
+      destination.push(request.placeholderPrefix);
+      destination.push(segmentID);
+      destination = destination.push('")</script>');
       return destination;
     }
     var flushingPartialBoundaries = false;
-    var flushingShell = false;
     function flushCompletedQueues(request, destination) {
-      currentView = new Uint8Array(4096);
-      writtenBytes = 0;
       try {
         if (!(0 < request.pendingRootTasks)) {
           var i, completedRootSegment = request.completedRootSegment;
@@ -5432,24 +4862,27 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             var resumableState = request.resumableState, renderState = request.renderState, preamble = renderState.preamble, htmlChunks = preamble.htmlChunks, headChunks = preamble.headChunks, i$jscomp$0;
             if (htmlChunks) {
               for (i$jscomp$0 = 0; i$jscomp$0 < htmlChunks.length; i$jscomp$0++)
-                writeChunk(destination, htmlChunks[i$jscomp$0]);
+                destination.push(htmlChunks[i$jscomp$0]);
               if (headChunks)
                 for (i$jscomp$0 = 0; i$jscomp$0 < headChunks.length; i$jscomp$0++)
-                  writeChunk(destination, headChunks[i$jscomp$0]);
-              else
-                writeChunk(destination, startChunkForTag("head")), writeChunk(destination, endOfStartTag);
+                  destination.push(headChunks[i$jscomp$0]);
+              else {
+                var chunk = startChunkForTag("head");
+                destination.push(chunk);
+                destination.push(">");
+              }
             } else if (headChunks)
               for (i$jscomp$0 = 0; i$jscomp$0 < headChunks.length; i$jscomp$0++)
-                writeChunk(destination, headChunks[i$jscomp$0]);
+                destination.push(headChunks[i$jscomp$0]);
             var charsetChunks = renderState.charsetChunks;
             for (i$jscomp$0 = 0; i$jscomp$0 < charsetChunks.length; i$jscomp$0++)
-              writeChunk(destination, charsetChunks[i$jscomp$0]);
+              destination.push(charsetChunks[i$jscomp$0]);
             charsetChunks.length = 0;
             renderState.preconnects.forEach(flushResource, destination);
             renderState.preconnects.clear();
             var viewportChunks = renderState.viewportChunks;
             for (i$jscomp$0 = 0; i$jscomp$0 < viewportChunks.length; i$jscomp$0++)
-              writeChunk(destination, viewportChunks[i$jscomp$0]);
+              destination.push(viewportChunks[i$jscomp$0]);
             viewportChunks.length = 0;
             renderState.fontPreloads.forEach(flushResource, destination);
             renderState.fontPreloads.clear();
@@ -5460,51 +4893,52 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
             currentlyFlushingRenderState = null;
             var importMapChunks = renderState.importMapChunks;
             for (i$jscomp$0 = 0; i$jscomp$0 < importMapChunks.length; i$jscomp$0++)
-              writeChunk(destination, importMapChunks[i$jscomp$0]);
+              destination.push(importMapChunks[i$jscomp$0]);
             importMapChunks.length = 0;
             renderState.bootstrapScripts.forEach(flushResource, destination);
             renderState.scripts.forEach(flushResource, destination);
             renderState.scripts.clear();
             renderState.bulkPreloads.forEach(flushResource, destination);
             renderState.bulkPreloads.clear();
-            htmlChunks || headChunks || (resumableState.instructions |= 32);
+            resumableState.instructions |= 32;
             var hoistableChunks = renderState.hoistableChunks;
             for (i$jscomp$0 = 0; i$jscomp$0 < hoistableChunks.length; i$jscomp$0++)
-              writeChunk(destination, hoistableChunks[i$jscomp$0]);
+              destination.push(hoistableChunks[i$jscomp$0]);
             for (resumableState = hoistableChunks.length = 0; resumableState < completedPreambleSegments.length; resumableState++) {
               var segments = completedPreambleSegments[resumableState];
               for (renderState = 0; renderState < segments.length; renderState++)
                 flushSegment(request, destination, segments[renderState], null);
             }
             var preamble$jscomp$0 = request.renderState.preamble, headChunks$jscomp$0 = preamble$jscomp$0.headChunks;
-            (preamble$jscomp$0.htmlChunks || headChunks$jscomp$0) && writeChunk(destination, endChunkForTag("head"));
+            if (preamble$jscomp$0.htmlChunks || headChunks$jscomp$0) {
+              var chunk$jscomp$0 = endChunkForTag("head");
+              destination.push(chunk$jscomp$0);
+            }
             var bodyChunks = preamble$jscomp$0.bodyChunks;
             if (bodyChunks)
               for (completedPreambleSegments = 0; completedPreambleSegments < bodyChunks.length; completedPreambleSegments++)
-                writeChunk(destination, bodyChunks[completedPreambleSegments]);
-            flushingShell = true;
+                destination.push(bodyChunks[completedPreambleSegments]);
             flushSegment(request, destination, completedRootSegment, null);
-            flushingShell = false;
             request.completedRootSegment = null;
             var renderState$jscomp$0 = request.renderState;
             if (0 !== request.allPendingTasks || 0 !== request.clientRenderedBoundaries.length || 0 !== request.completedBoundaries.length || null !== request.trackedPostpones && (0 !== request.trackedPostpones.rootNodes.length || null !== request.trackedPostpones.rootSlots)) {
               var resumableState$jscomp$0 = request.resumableState;
               if (0 === (resumableState$jscomp$0.instructions & 64)) {
                 resumableState$jscomp$0.instructions |= 64;
-                writeChunk(destination, renderState$jscomp$0.startInlineScript);
+                destination.push(renderState$jscomp$0.startInlineScript);
                 if (0 === (resumableState$jscomp$0.instructions & 32)) {
                   resumableState$jscomp$0.instructions |= 32;
                   var shellId = "_" + resumableState$jscomp$0.idPrefix + "R_";
-                  writeChunk(destination, completedShellIdAttributeStart);
-                  writeChunk(
-                    destination,
-                    stringToChunk(escapeTextForBrowser(shellId))
-                  );
-                  writeChunk(destination, attributeEnd);
+                  destination.push(' id="');
+                  var chunk$jscomp$1 = escapeTextForBrowser(shellId);
+                  destination.push(chunk$jscomp$1);
+                  destination.push('"');
                 }
-                writeChunk(destination, endOfStartTag);
-                writeChunk(destination, shellTimeRuntimeScript);
-                writeChunkAndReturn(destination, endInlineScript);
+                destination.push(">");
+                destination.push(
+                  "requestAnimationFrame(function(){$RT=performance.now()});"
+                );
+                destination.push("</script>");
               }
             }
             writeBootstrap(destination, renderState$jscomp$0);
@@ -5513,7 +4947,7 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           completedRootSegment = 0;
           var viewportChunks$jscomp$0 = renderState$jscomp$1.viewportChunks;
           for (completedRootSegment = 0; completedRootSegment < viewportChunks$jscomp$0.length; completedRootSegment++)
-            writeChunk(destination, viewportChunks$jscomp$0[completedRootSegment]);
+            destination.push(viewportChunks$jscomp$0[completedRootSegment]);
           viewportChunks$jscomp$0.length = 0;
           renderState$jscomp$1.preconnects.forEach(flushResource, destination);
           renderState$jscomp$1.preconnects.clear();
@@ -5531,33 +4965,30 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           renderState$jscomp$1.bulkPreloads.clear();
           var hoistableChunks$jscomp$0 = renderState$jscomp$1.hoistableChunks;
           for (completedRootSegment = 0; completedRootSegment < hoistableChunks$jscomp$0.length; completedRootSegment++)
-            writeChunk(destination, hoistableChunks$jscomp$0[completedRootSegment]);
+            destination.push(hoistableChunks$jscomp$0[completedRootSegment]);
           hoistableChunks$jscomp$0.length = 0;
           var clientRenderedBoundaries = request.clientRenderedBoundaries;
           for (i = 0; i < clientRenderedBoundaries.length; i++) {
             var boundary = clientRenderedBoundaries[i];
             renderState$jscomp$1 = destination;
             var resumableState$jscomp$1 = request.resumableState, renderState$jscomp$2 = request.renderState, id = boundary.rootSegmentID, errorDigest = boundary.errorDigest;
-            writeChunk(
-              renderState$jscomp$1,
-              renderState$jscomp$2.startInlineScript
-            );
-            writeChunk(renderState$jscomp$1, endOfStartTag);
-            0 === (resumableState$jscomp$1.instructions & 4) ? (resumableState$jscomp$1.instructions |= 4, writeChunk(renderState$jscomp$1, clientRenderScript1Full)) : writeChunk(renderState$jscomp$1, clientRenderScript1Partial);
-            writeChunk(renderState$jscomp$1, renderState$jscomp$2.boundaryPrefix);
-            writeChunk(renderState$jscomp$1, stringToChunk(id.toString(16)));
-            writeChunk(renderState$jscomp$1, clientRenderScript1A);
-            null != errorDigest && (writeChunk(
-              renderState$jscomp$1,
-              clientRenderErrorScriptArgInterstitial
-            ), null == errorDigest ? writeChunk(renderState$jscomp$1, clientRenderErrorScriptNull) : writeChunk(
-              renderState$jscomp$1,
-              stringToChunk(escapeJSStringsForInstructionScripts(errorDigest))
-            ));
-            var JSCompiler_inline_result = writeChunkAndReturn(
-              renderState$jscomp$1,
-              clientRenderScriptEnd
-            );
+            renderState$jscomp$1.push(renderState$jscomp$2.startInlineScript);
+            renderState$jscomp$1.push(">");
+            0 === (resumableState$jscomp$1.instructions & 4) ? (resumableState$jscomp$1.instructions |= 4, renderState$jscomp$1.push(
+              '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,null!=c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};;$RX("'
+            )) : renderState$jscomp$1.push('$RX("');
+            renderState$jscomp$1.push(renderState$jscomp$2.boundaryPrefix);
+            var chunk$jscomp$2 = id.toString(16);
+            renderState$jscomp$1.push(chunk$jscomp$2);
+            renderState$jscomp$1.push('"');
+            if (null != errorDigest)
+              if (renderState$jscomp$1.push(","), null == errorDigest)
+                renderState$jscomp$1.push("null");
+              else {
+                var chunk$jscomp$3 = escapeJSStringsForInstructionScripts(errorDigest);
+                renderState$jscomp$1.push(chunk$jscomp$3);
+              }
+            var JSCompiler_inline_result = renderState$jscomp$1.push(")</script>");
             if (!JSCompiler_inline_result) {
               request.destination = null;
               i++;
@@ -5575,23 +5006,20 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
               return;
             }
           completedBoundaries.splice(0, i);
-          completeWriting(destination);
-          currentView = new Uint8Array(4096);
-          writtenBytes = 0;
           flushingPartialBoundaries = true;
           var partialBoundaries = request.partialBoundaries;
           for (i = 0; i < partialBoundaries.length; i++) {
-            var boundary$71 = partialBoundaries[i];
+            var boundary$70 = partialBoundaries[i];
             a: {
               clientRenderedBoundaries = request;
               boundary = destination;
-              flushedByteSize = boundary$71.byteSize;
-              var completedSegments = boundary$71.completedSegments;
+              flushedByteSize = boundary$70.byteSize;
+              var completedSegments = boundary$70.completedSegments;
               for (JSCompiler_inline_result = 0; JSCompiler_inline_result < completedSegments.length; JSCompiler_inline_result++)
                 if (!flushPartiallyCompletedSegment(
                   clientRenderedBoundaries,
                   boundary,
-                  boundary$71,
+                  boundary$70,
                   completedSegments[JSCompiler_inline_result]
                 )) {
                   JSCompiler_inline_result++;
@@ -5600,15 +5028,15 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
                   break a;
                 }
               completedSegments.splice(0, JSCompiler_inline_result);
-              var row = boundary$71.row;
-              null !== row && row.together && 1 === boundary$71.pendingTasks && (1 === row.pendingTasks ? unblockSuspenseListRow(
+              var row = boundary$70.row;
+              null !== row && row.together && 1 === boundary$70.pendingTasks && (1 === row.pendingTasks ? unblockSuspenseListRow(
                 clientRenderedBoundaries,
                 row,
                 row.hoistables
               ) : row.pendingTasks--);
               JSCompiler_inline_result$jscomp$0 = writeHoistablesForBoundary(
                 boundary,
-                boundary$71.contentState,
+                boundary$70.contentState,
                 clientRenderedBoundaries.renderState
               );
             }
@@ -5632,43 +5060,25 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           largeBoundaries.splice(0, i);
         }
       } finally {
-        flushingPartialBoundaries = false, i = request.postponedState, null !== i && (i.nextSegmentId = request.nextSegmentId), 0 === request.allPendingTasks && 0 === request.clientRenderedBoundaries.length && 0 === request.completedBoundaries.length ? (request.flushScheduled = false, i = request.resumableState, i.hasBody && writeChunk(destination, endChunkForTag("body")), i.hasHtml && writeChunk(destination, endChunkForTag("html")), completeWriting(destination), endRenderLifetime(request), request.status = 13, destination.close(), request.destination = null) : completeWriting(destination);
+        flushingPartialBoundaries = false, i = request.postponedState, null !== i && (i.nextSegmentId = request.nextSegmentId), 0 === request.allPendingTasks && 0 === request.clientRenderedBoundaries.length && 0 === request.completedBoundaries.length && (request.flushScheduled = false, i = request.resumableState, i.hasBody && (partialBoundaries = endChunkForTag("body"), destination.push(partialBoundaries)), i.hasHtml && (i = endChunkForTag("html"), destination.push(i)), endRenderLifetime(request), request.status = 13, destination.push(null), request.destination = null);
       }
     }
-    function startWork(request) {
-      request.flushScheduled = null !== request.destination;
-      supportsRequestStorage ? scheduleMicrotask(function() {
-        return requestStorage.run(request, performWork, request);
-      }) : scheduleMicrotask(function() {
-        return performWork(request);
-      });
-      setTimeout(function() {
-        10 === request.status && (request.status = 11);
-        null === request.trackedPostpones && (supportsRequestStorage ? requestStorage.run(
-          request,
-          enqueueEarlyPreloadsAfterInitialWork,
-          request
-        ) : enqueueEarlyPreloadsAfterInitialWork(request));
-      }, 0);
-    }
-    function enqueueEarlyPreloadsAfterInitialWork(request) {
-      safelyEmitEarlyPreloads(request, 0 === request.pendingRootTasks);
-    }
     function enqueueFlush(request) {
-      false === request.flushScheduled && 0 === request.pingedTasks.length && null !== request.destination && (request.flushScheduled = true, setTimeout(function() {
+      if (false === request.flushScheduled && 0 === request.pingedTasks.length && null !== request.destination) {
+        request.flushScheduled = true;
         var destination = request.destination;
         destination ? flushCompletedQueues(request, destination) : request.flushScheduled = false;
-      }, 0));
+      }
     }
     function startFlowing(request, destination) {
       if (12 === request.status)
-        request.status = 13, request = request.fatalError, isRecoverableError(request) && (request = cloneRecoverableErrorAsFatal(request)), closeWithError(destination, request);
+        request.status = 13, request = request.fatalError, isRecoverableError(request) && (request = cloneRecoverableErrorAsFatal(request)), destination.destroy(request);
       else if (13 !== request.status && null === request.destination) {
         request.destination = destination;
         try {
           flushCompletedQueues(request, destination);
-        } catch (error$73) {
-          logRecoverableError(request, error$73, {}), fatalError(request, error$73);
+        } catch (error$72) {
+          logRecoverableError(request, error$72, {}), fatalError(request, error$72);
         }
       }
     }
@@ -5682,42 +5092,26 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
           abortableTasks.clear();
         }
         null !== request.destination && flushCompletedQueues(request, request.destination);
-      } catch (error$74) {
-        logRecoverableError(request, error$74, {}), fatalError(request, error$74);
+      } catch (error$73) {
+        logRecoverableError(request, error$73, {}), fatalError(request, error$73);
       }
     }
     function endRenderLifetime(request) {
       request = request.renderLifetimeController;
       null !== request && request.abort("The render ended.");
     }
-    function attachAbortSignal(request, signal) {
-      if (signal.aborted) abort(request, signal.reason);
-      else {
-        var renderLifetimeController = new AbortController();
-        request.renderLifetimeController = renderLifetimeController;
-        signal.addEventListener(
-          "abort",
-          function() {
-            abort(request, signal.reason);
-          },
-          { signal: renderLifetimeController.signal }
-        );
-      }
-    }
     function abort(request, reason) {
       if (!(request.aborted || 11 !== request.status && 10 !== request.status)) {
         endRenderLifetime(request);
         var isRecoverableReason = "object" === typeof reason && null !== reason && reason.$$typeof === REACT_RECOVERABLE_TYPE;
         request.aborted = true;
-        reason = isRecoverableReason ? createRecoverableError(reason) : void 0 === reason ? Error("The render was aborted by the server without a reason.") : "object" === typeof reason && null !== reason && "function" === typeof reason.then ? Error("The render was aborted by the server with a promise.") : reason;
+        reason = isRecoverableReason ? createRecoverableError(reason) : void 0 === reason ? Error(formatProdErrorMessage(432)) : "object" === typeof reason && null !== reason && "function" === typeof reason.then ? Error(formatProdErrorMessage(530)) : reason;
         request.fatalError = reason;
-        var abortableTasks = request.abortableTasks;
-        abortableTasks.forEach(function(task) {
+        reason = request.abortableTasks;
+        reason.forEach(function(task) {
           return abortTask(task, request);
         });
-        setTimeout(function() {
-          return finishAbort(request, abortableTasks);
-        }, 0);
+        finishAbort(request, reason);
       }
     }
     function addToReplayParent(node, parentKeyPath, trackedPostpones) {
@@ -5728,259 +5122,96 @@ A.finished.finally(function(){document.__reactViewTransition===A&&(document.__re
         parentNode[2].push(node);
       }
     }
-    function getPostponedState(request) {
-      var trackedPostpones = request.trackedPostpones;
-      if (null === trackedPostpones || 0 === trackedPostpones.rootNodes.length && null === trackedPostpones.rootSlots)
-        return request.trackedPostpones = null;
-      var hasFlushableShell = null === request.completedRootSegment || 5 !== request.completedRootSegment.status && null !== request.completedPreambleSegments;
-      if (hasFlushableShell) {
-        var nextSegmentId = request.nextSegmentId;
-        var replaySlots = trackedPostpones.rootSlots;
-        var resumableState = request.resumableState;
-        resumableState.bootstrapScriptContent = void 0;
-        resumableState.bootstrapScripts = void 0;
-        resumableState.bootstrapModules = void 0;
-      } else {
-        nextSegmentId = 0;
-        replaySlots = -1;
-        resumableState = request.resumableState;
-        var renderState = request.renderState;
-        resumableState.nextFormID = 0;
-        resumableState.hasBody = false;
-        resumableState.hasHtml = false;
-        resumableState.unknownResources = { font: renderState.resets.font };
-        resumableState.dnsResources = renderState.resets.dns;
-        resumableState.connectResources = renderState.resets.connect;
-        resumableState.imageResources = renderState.resets.image;
-        resumableState.styleResources = renderState.resets.style;
-        resumableState.scriptResources = {};
-        resumableState.moduleUnknownResources = {};
-        resumableState.moduleScriptResources = {};
-        resumableState.instructions = 0;
-      }
-      trackedPostpones = {
-        nextSegmentId,
-        rootFormatContext: request.rootFormatContext,
-        progressiveChunkSize: request.progressiveChunkSize,
-        resumableState: request.resumableState,
-        replayNodes: trackedPostpones.rootNodes,
-        replaySlots
-      };
-      hasFlushableShell && (request.postponedState = trackedPostpones);
-      return trackedPostpones;
+    function onError() {
     }
-    function ensureCorrectIsomorphicReactVersion() {
-      var isomorphicReactPackageVersion = React.version;
-      if ("19.3.0" !== isomorphicReactPackageVersion)
-        throw Error(
-          'Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:\n  - react:      ' + (isomorphicReactPackageVersion + "\n  - react-dom:  19.3.0\nLearn more: https://react.dev/warnings/version-mismatch")
-        );
+    function renderToStringImpl(children, options, generateStaticMarkup, abortReason) {
+      var didFatal = false, fatalError2 = null, result = "", readyToStream = false;
+      options = createResumableState(options ? options.identifierPrefix : void 0);
+      children = createRequest(
+        children,
+        options,
+        createRenderState(options, generateStaticMarkup),
+        createFormatContext(0, null, 0, null),
+        Infinity,
+        onError,
+        void 0,
+        void 0,
+        function() {
+          readyToStream = true;
+        },
+        void 0,
+        void 0,
+        void 0
+      );
+      children.flushScheduled = null !== children.destination;
+      performWork(children);
+      10 === children.status && (children.status = 11);
+      null === children.trackedPostpones && safelyEmitEarlyPreloads(children, 0 === children.pendingRootTasks);
+      abort(children, abortReason);
+      startFlowing(children, {
+        push: function(chunk) {
+          null !== chunk && (result += chunk);
+          return true;
+        },
+        destroy: function(error) {
+          didFatal = true;
+          fatalError2 = error;
+        }
+      });
+      if (didFatal && fatalError2 !== abortReason) throw fatalError2;
+      if (!readyToStream) throw Error(formatProdErrorMessage(426));
+      return result;
     }
-    ensureCorrectIsomorphicReactVersion();
-    ensureCorrectIsomorphicReactVersion();
-    exports.prerender = function(children, options) {
-      return new Promise(function(resolve, reject) {
-        var onHeaders = options ? options.onHeaders : void 0, onHeadersImpl;
-        onHeaders && (onHeadersImpl = function(headersDescriptor) {
-          onHeaders(new Headers(headersDescriptor));
-        });
-        var resources = createResumableState(
-          options ? options.identifierPrefix : void 0,
-          options ? options.unstable_externalRuntimeSrc : void 0,
-          options ? options.bootstrapScriptContent : void 0,
-          options ? options.bootstrapScripts : void 0,
-          options ? options.bootstrapModules : void 0
-        ), request = createPrerenderRequest(
-          children,
-          resources,
-          createRenderState(
-            resources,
-            void 0,
-            options ? options.unstable_externalRuntimeSrc : void 0,
-            options ? options.importMap : void 0,
-            onHeadersImpl,
-            options ? options.maxHeadersLength : void 0
-          ),
-          createRootFormatContext(options ? options.namespaceURI : void 0),
-          options ? options.progressiveChunkSize : void 0,
-          options ? options.onError : void 0,
-          options ? options.onBrowserBailout : void 0,
-          function() {
-            var stream = new ReadableStream(
-              {
-                type: "bytes",
-                pull: function(controller) {
-                  startFlowing(request, controller);
-                },
-                cancel: function(reason) {
-                  request.destination = null;
-                  abort(request, reason);
-                }
-              },
-              { highWaterMark: 0 }
-            );
-            stream = { postponed: getPostponedState(request), prelude: stream };
-            resolve(stream);
-          },
-          void 0,
-          void 0,
-          reject
-        );
-        options && options.signal && attachAbortSignal(request, options.signal);
-        startWork(request);
-      });
+    exports.renderToStaticMarkup = function(children, options) {
+      return renderToStringImpl(
+        children,
+        options,
+        true,
+        'The server used "renderToStaticMarkup" which does not support Suspense. If you intended to have the server wait for the suspended component please switch to "renderToReadableStream" which supports Suspense on the server'
+      );
     };
-    exports.renderToReadableStream = function(children, options) {
-      return new Promise(function(resolve, reject) {
-        var onFatalError, onAllReady, allReady = new Promise(function(res, rej) {
-          onAllReady = res;
-          onFatalError = rej;
-        }), onHeaders = options ? options.onHeaders : void 0, onHeadersImpl;
-        onHeaders && (onHeadersImpl = function(headersDescriptor) {
-          onHeaders(new Headers(headersDescriptor));
-        });
-        var resumableState = createResumableState(
-          options ? options.identifierPrefix : void 0,
-          options ? options.unstable_externalRuntimeSrc : void 0,
-          options ? options.bootstrapScriptContent : void 0,
-          options ? options.bootstrapScripts : void 0,
-          options ? options.bootstrapModules : void 0
-        ), request = createRequest(
-          children,
-          resumableState,
-          createRenderState(
-            resumableState,
-            options ? options.nonce : void 0,
-            options ? options.unstable_externalRuntimeSrc : void 0,
-            options ? options.importMap : void 0,
-            onHeadersImpl,
-            options ? options.maxHeadersLength : void 0
-          ),
-          createRootFormatContext(options ? options.namespaceURI : void 0),
-          options ? options.progressiveChunkSize : void 0,
-          options ? options.onError : void 0,
-          options ? options.onBrowserBailout : void 0,
-          onAllReady,
-          function() {
-            var stream = new ReadableStream(
-              {
-                type: "bytes",
-                pull: function(controller) {
-                  startFlowing(request, controller);
-                },
-                cancel: function(reason) {
-                  request.destination = null;
-                  abort(request, reason);
-                }
-              },
-              { highWaterMark: 0 }
-            );
-            stream.allReady = allReady;
-            resolve(stream);
-          },
-          function(error) {
-            allReady.catch(function() {
-            });
-            reject(error);
-          },
-          onFatalError,
-          options ? options.formState : void 0
-        );
-        options && options.signal && attachAbortSignal(request, options.signal);
-        startWork(request);
-      });
+    exports.renderToString = function(children, options) {
+      return renderToStringImpl(
+        children,
+        options,
+        false,
+        'The server used "renderToString" which does not support Suspense. If you intended for this Suspense boundary to render the fallback content on the server consider throwing an Error somewhere within the Suspense boundary. If you intended to have the server wait for the suspended component please switch to "renderToReadableStream" which supports Suspense on the server'
+      );
     };
-    exports.resume = function(children, postponedState, options) {
-      return new Promise(function(resolve, reject) {
-        var onFatalError, onAllReady, allReady = new Promise(function(res, rej) {
-          onAllReady = res;
-          onFatalError = rej;
-        }), request = resumeRequest(
-          children,
-          postponedState,
-          createRenderState(
-            postponedState.resumableState,
-            options ? options.nonce : void 0,
-            void 0,
-            void 0,
-            void 0,
-            void 0
-          ),
-          options ? options.onError : void 0,
-          options ? options.onBrowserBailout : void 0,
-          onAllReady,
-          function() {
-            var stream = new ReadableStream(
-              {
-                type: "bytes",
-                pull: function(controller) {
-                  startFlowing(request, controller);
-                },
-                cancel: function(reason) {
-                  request.destination = null;
-                  abort(request, reason);
-                }
-              },
-              { highWaterMark: 0 }
-            );
-            stream.allReady = allReady;
-            resolve(stream);
-          },
-          function(error) {
-            allReady.catch(function() {
-            });
-            reject(error);
-          },
-          onFatalError
-        );
-        options && options.signal && attachAbortSignal(request, options.signal);
-        startWork(request);
-      });
-    };
-    exports.resumeAndPrerender = function(children, postponedState, options) {
-      return new Promise(function(resolve, reject) {
-        var request = resumeAndPrerenderRequest(
-          children,
-          postponedState,
-          createRenderState(
-            postponedState.resumableState,
-            void 0,
-            void 0,
-            void 0,
-            void 0,
-            void 0
-          ),
-          options ? options.onError : void 0,
-          options ? options.onBrowserBailout : void 0,
-          function() {
-            var stream = new ReadableStream(
-              {
-                type: "bytes",
-                pull: function(controller) {
-                  startFlowing(request, controller);
-                },
-                cancel: function(reason) {
-                  request.destination = null;
-                  abort(request, reason);
-                }
-              },
-              { highWaterMark: 0 }
-            );
-            stream = { postponed: getPostponedState(request), prelude: stream };
-            resolve(stream);
-          },
-          void 0,
-          void 0,
-          reject
-        );
-        options && options.signal && attachAbortSignal(request, options.signal);
-        startWork(request);
-      });
-    };
-    exports.version = "19.3.0";
+    exports.version = "19.3.1";
   }
 });
 
+// tests/Jsx/oracle/node_modules/react-dom/server.edge.js
+var require_server_edge = __commonJS({
+  "tests/Jsx/oracle/node_modules/react-dom/server.edge.js"(exports) {
+    "use strict";
+    var b;
+    var l;
+    if (true) {
+      b = require_react_dom_server_edge_production();
+      l = require_react_dom_server_legacy_browser_production();
+    } else {
+      b = null;
+      l = null;
+    }
+    exports.version = b.version;
+    exports.renderToReadableStream = b.renderToReadableStream;
+    exports.renderToString = l.renderToString;
+    exports.renderToStaticMarkup = l.renderToStaticMarkup;
+    exports.resume = b.resume;
+  }
+});
+
+// tests/Jsx/oracle/.vendor-entries/server.js
+var import_server = __toESM(require_server_edge(), 1);
+var { version, renderToReadableStream, renderToString, renderToStaticMarkup, resume } = import_server.default;
+var server_default = import_server.default;
 export {
-  require_react_dom_server_edge_production
+  server_default as default,
+  renderToReadableStream,
+  renderToStaticMarkup,
+  renderToString,
+  resume,
+  version
 };

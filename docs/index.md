@@ -1,10 +1,10 @@
 ---
 title: "Introduction"
-description: "Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
+description: "Pure PHP JavaScript engine. ECMAScript coverage measured with official test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
 path: "."
 order: 0
 meta_title: "Introduction"
-meta_description: "Pure PHP JavaScript engine. Full ES2024+ at 100% test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
+meta_description: "Pure PHP JavaScript engine. ECMAScript coverage measured with official test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
 ---
 
 # Introduction

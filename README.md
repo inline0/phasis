@@ -33,12 +33,12 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - **Crypto**: `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (SHA family, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2)
 - **WebSocket** (RFC 6455 + replaceable transport), **XMLHttpRequest** (layered over fetch), and a real **event loop** (`setTimeout` / `setInterval` / `queueMicrotask`, plus Stage-3 `AsyncContext`)
 - **JSX Pack**: render JSX components to HTML from PHP with `Engine::render()`, no build step
-  - **Native React 19.3 server renderer** in PHP: `react`, `react-dom/server` and `react-dom/static` are built in, with HTML byte-identical to `react-dom@19.3.0` and hydratable by React on the client (hooks, context, Suspense, `useId`, async components, resource hints)
-  - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8, plus `raw()`
+  - **Native React 19.3 server renderer** in PHP: `react`, `react-dom/server` and `react-dom/static` are built in, with HTML byte-identical to `react-dom@19.3.1` and hydratable by React on the client (hooks, context, Suspense, `useId`, async components, resource hints)
+  - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8.1, plus `raw()`
   - **Bundler-style imports**: extensionless paths and `index` files, `jsconfig` aliases, `node_modules` with `package.json` `exports`, CommonJS packages, style and asset imports, import maps, and barrel pruning for `sideEffects: false` packages
   - Optional precompile of static markup, an `opcache.preload` script, and an on-disk parse cache
 - PHP↔JS interop — pass PHP scalars and arrays into JS, bind PHP callables as JS functions, call JS functions from PHP
-- **100 % of the official test262 suite passes** — ECMAScript conformance, every category, no skips (snapshot in [`COMPAT.md`](./COMPAT.md))
+- **Official test262 coverage** — measured against the pinned TC39 suite, with pass, fail and blocked counts in the canonical CI snapshot ([`COMPAT.md`](./COMPAT.md))
 - **100 % of imported Web Platform Tests pass** across fetch, headers, blob, abort, streams, encoding, URL, structured-clone, hr-time, and atob (the brotli subtests need `ext-brotli`)
 
 ## Quick Start

@@ -98,7 +98,7 @@ A JavaScript interpreter that:
 4. Implements the full ECMAScript standard library (Array, String, Object, Math, JSON, Date, RegExp, Map, Set, Promise, Proxy, Reflect, Symbol, TypedArray, generators, async/await, BigInt, and more)
 5. Supports modern syntax (arrow functions, destructuring, template literals, let/const, classes, optional chaining, nullish coalescing, for-of, spread/rest, computed properties)
 6. Provides direct PHP interop (share objects between PHP and JS without serialization)
-7. Achieves 100% test262 compliance (50,506 pass / 0 fail / 0 skip across the full 50,506-test suite; see COMPAT.md).
+7. Measures ECMAScript compliance against the pinned official test262 suite. The upstream refresh expands coverage from 50,506 to 53,616 files; use COMPAT.md and compat.json for the current canonical results and individual failure paths.
 8. Ships the **Web Platform Pack** (`URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`) and **Fetch Pack** (`fetch` via ext-curl, `Request`, `Response`, `Headers`, body consumers, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`). Compliance tested against the official Web Platform Tests via `bin/wpt`.
 
 All without `exec('node ...')`. Requirements: PHP 8.2+ with `ext-mbstring`, `ext-bcmath`, and `ext-curl` (all three ship enabled on every mainstream PHP build). `ext-intl` is optional but required for the Intl.* APIs and non-ISO Temporal calendars.

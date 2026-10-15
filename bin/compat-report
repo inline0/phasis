@@ -1182,6 +1182,7 @@ function buildCompatSnapshot(
 
     $blockedChunks = [];
     $slowChunks = [];
+    $failures = [];
 
     foreach ($leafChunks as $chunk) {
         $group = &$groups[$chunk['group']];
@@ -1195,6 +1196,15 @@ function buildCompatSnapshot(
                 break;
             case 'complete':
                 $summary = $chunk['summary'];
+                foreach ($summary['failures'] ?? [] as $failure) {
+                    $path = relativePath($failure['path'], $rootDir . '/');
+                    // Downloaded CI state retains the runner's absolute root.
+                    $suiteOffset = strpos($path, '/test262/test/');
+                    if ($suiteOffset !== false) {
+                        $path = substr($path, $suiteOffset + 1);
+                    }
+                    $failures[$path] = ['path' => $path, 'message' => $failure['message']];
+                }
                 $group['pass'] += $summary['pass'];
                 $group['fail'] += $summary['fail'];
                 $group['skip'] += $summary['skip'];
@@ -1285,6 +1295,7 @@ function buildCompatSnapshot(
     $slowChunks = array_slice($slowChunks, 0, 20);
 
     $overall = compatOverallSummary($state);
+    ksort($failures);
 
     return [
         'generatedAt' => date('c'),
@@ -1318,6 +1329,7 @@ function buildCompatSnapshot(
             'totals' => $overall,
             'areas' => array_values($areas),
             'groups' => array_values($groups),
+            'failures' => array_values($failures),
             'blockedChunks' => $blockedChunks,
             'slowChunks' => $slowChunks,
         ],
@@ -1506,6 +1518,15 @@ function renderCompatMarkdown(array $snapshot): string
             formatRate($group['attempted'], $group['passRate']),
         );
     }
+    if (($snapshot['test262']['failures'] ?? []) !== []) {
+        $lines[] = '';
+        $lines[] = '## Failing Tests';
+        $lines[] = '';
+        $lines[] = sprintf(
+            '%d individual failure paths and messages are recorded in [compat.json](compat.json) under `test262.failures`.',
+            count($snapshot['test262']['failures']),
+        );
+    }
     if ($snapshot['test262']['blockedChunks'] !== []) {
         $lines[] = '';
         $lines[] = '## Blocked Chunks';
@@ -1657,7 +1678,10 @@ function writeJsonFile(string $path, array $data): void
 {
     writeTextFile(
         $path,
-        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n",
+        json_encode(
+            $data,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR,
+        ) . "\n",
     );
 }
 

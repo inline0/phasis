@@ -2,9 +2,9 @@ import {
   __commonJS
 } from "./chunk-B7F5QLE5.mjs";
 
-// node_modules/react/cjs/react.production.js
+// tests/Jsx/oracle/node_modules/react/cjs/react.production.js
 var require_react_production = __commonJS({
-  "node_modules/react/cjs/react.production.js"(exports) {
+  "tests/Jsx/oracle/node_modules/react/cjs/react.production.js"(exports) {
     "use strict";
     /**
      * @license React
@@ -459,13 +459,13 @@ var require_react_production = __commonJS({
     exports.useTransition = function() {
       return ReactSharedInternals.H.useTransition();
     };
-    exports.version = "19.3.0";
+    exports.version = "19.3.1";
   }
 });
 
-// node_modules/react/index.js
+// tests/Jsx/oracle/node_modules/react/index.js
 var require_react = __commonJS({
-  "node_modules/react/index.js"(exports, module) {
+  "tests/Jsx/oracle/node_modules/react/index.js"(exports, module) {
     "use strict";
     if (true) {
       module.exports = require_react_production();

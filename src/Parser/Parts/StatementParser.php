@@ -653,6 +653,7 @@ trait StatementParser
         }
         $location = $this->expect(TokenType::Import)->location;
         $specifiers = [];
+        $attributes = null;
 
         // Stage-3 proposals:
         //   `import defer * as ns from ...`   (defer + namespace)
@@ -697,10 +698,10 @@ trait StatementParser
                 && $this->current()->value === 'assert';
             if (($withIsKeyword || $withIsAssert) && $this->peek()->type === TokenType::LeftBrace) {
                 $this->advance();
-                $this->skipAttributeClause();
+                $attributes = $this->parseAttributeClause();
             }
             $this->consumeSemicolon();
-            return new ImportDeclaration($location, $specifiers, $source, null, $phase);
+            return new ImportDeclaration($location, $specifiers, $source, $attributes, $phase);
         }
 
         // import * as ns from 'source'
@@ -759,24 +760,24 @@ trait StatementParser
         }
         $source = $this->advance()->value;
 
-        // Optional WithClause: `with { key: value, ... }` — we accept and
-        // ignore (no attribute-based module resolution).
+        // Preserve the WithClause for formatters and module hosts.
         $withIsKeyword = $this->check(TokenType::With);
         $withIsAssert = $this->check(TokenType::Identifier) && $this->current()->value === 'assert';
         if (($withIsKeyword || $withIsAssert) && $this->peek()->type === TokenType::LeftBrace) {
             $this->advance();
-            $this->skipAttributeClause();
+            $attributes = $this->parseAttributeClause();
         }
 
         $this->consumeSemicolon();
-        return new ImportDeclaration($location, $specifiers, $source, null, $phase);
+        return new ImportDeclaration($location, $specifiers, $source, $attributes, $phase);
     }
 
-    /** Consume and discard `{ key: "val", ... }` from a WithClause. */
-    private function skipAttributeClause(): void
+    /** Parse `{ key: "val", ... }` from a WithClause without losing its syntax. */
+    private function parseAttributeClause(): ObjectExpression
     {
-        $this->expect(TokenType::LeftBrace);
+        $location = $this->expect(TokenType::LeftBrace)->location;
         $seenKeys = [];
+        $properties = [];
         while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
             // Key: IdentifierName or StringLiteral.
             $keyToken = $this->current();
@@ -797,12 +798,17 @@ trait StatementParser
                     $this->current(),
                 );
             }
-            $this->advance();
+            $value = $this->parsePrimaryExpression();
+            $key = $keyToken->type === TokenType::String
+                ? new Literal($keyToken->location, $keyName, $keyToken->rawValue ?? json_encode($keyName, JSON_THROW_ON_ERROR))
+                : new Identifier($keyToken->location, $keyName);
+            $properties[] = new Property($keyToken->location, $key, $value, 'init', false, false, false);
             if (!$this->eat(TokenType::Comma)) {
                 break;
             }
         }
         $this->expect(TokenType::RightBrace);
+        return new ObjectExpression($location, $properties);
     }
 
     /** @return ImportSpecifier[] */
@@ -896,6 +902,7 @@ trait StatementParser
             );
         }
         $location = $this->expect(TokenType::Export)->location;
+        $attributes = null;
 
         // export default ...
         if ($this->check(TokenType::Default_)) {
@@ -949,13 +956,13 @@ trait StatementParser
                 throw new ParseError('Expected module specifier string', $this->current());
             }
             $source = $this->advance()->value;
-            // Optional WithClause; accept and discard.
+            // Optional WithClause.
             $withIsKeyword = $this->check(TokenType::With);
             $withIsAssert = $this->check(TokenType::Identifier)
                 && $this->current()->value === 'assert';
             if (($withIsKeyword || $withIsAssert) && $this->peek()->type === TokenType::LeftBrace) {
                 $this->advance();
-                $this->skipAttributeClause();
+                $attributes = $this->parseAttributeClause();
             }
             $this->consumeSemicolon();
             return new ExportDeclaration(
@@ -963,6 +970,7 @@ trait StatementParser
                 source: $source,
                 isAll: true,
                 allAs: $allAs,
+                attributes: $attributes,
             );
         }
 
@@ -982,13 +990,13 @@ trait StatementParser
                     throw new ParseError('Expected module specifier string', $this->current());
                 }
                 $source = $this->advance()->value;
-                // Optional WithClause; accept and discard.
+                // Optional WithClause.
                 $withIsKeyword = $this->check(TokenType::With);
                 $withIsAssert = $this->check(TokenType::Identifier)
                     && $this->current()->value === 'assert';
                 if (($withIsKeyword || $withIsAssert) && $this->peek()->type === TokenType::LeftBrace) {
                     $this->advance();
-                    $this->skipAttributeClause();
+                    $attributes = $this->parseAttributeClause();
                 }
             }
             // Per §16.2.3.1: without a FromClause, ReferencedBindings of
@@ -1014,7 +1022,7 @@ trait StatementParser
                 }
             }
             $this->consumeSemicolon();
-            return new ExportDeclaration($location, specifiers: $specifiers, source: $source);
+            return new ExportDeclaration($location, specifiers: $specifiers, source: $source, attributes: $attributes);
         }
 
         // export var/let/const, export function, export class, export async function

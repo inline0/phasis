@@ -115,7 +115,7 @@ async function resolutionSuite(dir) {
 /**
  * React render oracle: esbuild compiles the fixture (React's automatic
  * runtime, react and react-dom left external), and Node renders it with
- * react-dom@19.3.0 through tests/Jsx/react/_driver.mjs: renderToString,
+ * react-dom@19.3.1 through tests/Jsx/react/_driver.mjs: renderToString,
  * renderToStaticMarkup and prerender, as JSON.
  */
 async function reactSuite(fixture) {
@@ -142,7 +142,7 @@ async function reactSuite(fixture) {
 /**
  * HTML render oracle: the fixture compiled with `phasis` as the JSX import
  * source, where `phasis` is the Preact-based shim in oracle/phasis-shim, and
- * rendered by preact-render-to-string 6.8.0 through tests/Jsx/html/_driver.mjs.
+ * rendered by preact-render-to-string 6.8.1 through tests/Jsx/html/_driver.mjs.
  */
 async function htmlSuite(fixture) {
     const outDir = path.join(here, '.out', 'html');

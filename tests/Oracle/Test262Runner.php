@@ -1829,7 +1829,6 @@ PHP;
         if ($prop === null) {
             try {
                 $prop = new \ReflectionProperty(Engine::class, 'globalEnv');
-                $prop->setAccessible(true);
             } catch (\ReflectionException) {
                 return null;
             }

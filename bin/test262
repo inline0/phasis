@@ -193,7 +193,7 @@ if ($json) {
         'category' => $category,
         'filesFrom' => $filesFrom,
         'failures' => $failingTests,
-    ], JSON_UNESCAPED_SLASHES) . "\n";
+    ], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR) . "\n";
 } elseif ($report) {
     echo $result->report() . "\n";
 } else {

@@ -1,5 +1,5 @@
 // `phasis` for the HTML render oracle: the same API on top of Preact 11.0.1
-// and preact-render-to-string 6.8.0, the reference the HTML profile matches.
+// and preact-render-to-string 6.8.1, the reference the HTML profile matches.
 import { h, Fragment, createContext } from 'preact';
 import {
     useState, useReducer, useMemo, useCallback, useRef, useEffect, useLayoutEffect,

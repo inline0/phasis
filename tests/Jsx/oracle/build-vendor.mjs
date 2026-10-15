@@ -2,7 +2,7 @@
 // fallback and the three-way oracle: one ES module per public entry point,
 // sharing one copy of React through esbuild's code splitting.
 //
-//   node build-vendor.mjs   (writes ../vendor/react-19.3.0/)
+//   node build-vendor.mjs   (writes ../vendor/react-<installed-version>/)
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 process.env.NODE_ENV = 'production';
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(here, 'x.js'));
-const out = join(here, '..', 'vendor', 'react-19.3.0');
+const version = require('react/package.json').version;
+const out = join(here, '..', 'vendor', `react-${version}`);
 const entries = {
   'react': 'react',
   'jsx-runtime': 'react/jsx-runtime',

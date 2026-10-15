@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * HTML render oracle: every fixture in tests/Jsx/html renders through the
- * HTML profile byte-identical to preact-render-to-string 6.8.0 in Node
+ * HTML profile byte-identical to preact-render-to-string 6.8.1 in Node
  * (renderToString and renderToStringAsync, via the shared _driver.mjs).
  *
  * Regenerate expectations with `node tests/Jsx/oracle/jsx-oracle.mjs html`.
