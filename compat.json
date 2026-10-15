@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-10-15T20:31:39+00:00",
-    "updatedAt": "2026-10-15T20:31:39+00:00",
+    "generatedAt": "2026-10-15T21:03:33+00:00",
+    "updatedAt": "2026-10-15T21:03:33+00:00",
     "complete": true,
     "git": {
         "branch": "feat/upstream-refresh-20261015",
-        "commit": "364d3fb5",
+        "commit": "f991433a",
         "isDirty": true
     },
     "environment": {
@@ -19,7 +19,7 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "0bc5e0009e81fec2c5c503f32cebf690ab14cdb4"
+        "fingerprint": "ce91b8c386be4a847278266981a49876410f74ed"
     },
     "discovery": {
         "groupCount": 161,
@@ -10169,9 +10169,99 @@
         "blockedChunks": [],
         "slowChunks": [
             {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 117.998,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 115.855,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 115.663,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 113.818,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 112.892,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 104.007,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 92.446,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 91.892,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 75.78,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
+                ]
+            },
+            {
+                "group": "built-ins/decodeURIComponent",
+                "kind": "normal",
+                "durationSec": 72.296,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
+                ]
+            },
+            {
                 "group": "built-ins/TypedArray",
                 "kind": "normal",
-                "durationSec": 65.121,
+                "durationSec": 62.926,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
@@ -10182,137 +10272,53 @@
                 ]
             },
             {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 60.139,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
+                ]
+            },
+            {
+                "group": "built-ins/decodeURI",
+                "kind": "normal",
+                "durationSec": 58.33,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
+                ]
+            },
+            {
+                "group": "built-ins/decodeURI",
+                "kind": "normal",
+                "durationSec": 57.169,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js",
+                    "...",
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js",
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js"
+                ]
+            },
+            {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 61.23,
-                "filesCount": 1,
+                "durationSec": 56.561,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 60.599,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 60.572,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 60.381,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 60.292,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 59.191,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 56.465,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js",
+                    "...",
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js",
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 55.479,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Enclosing_Mark.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Final_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Format.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 55.134,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Number.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Open_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Number.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 54.752,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Control.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 54.326,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 54.051,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Paragraph_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Private_Use.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Punctuation.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 53.82,
+                "durationSec": 54.702,
                 "filesCount": 5,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hebrew.js",
@@ -10325,20 +10331,33 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 53.49,
+                "durationSec": 52.974,
                 "filesCount": 5,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Space_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Spacing_Mark.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Surrogate.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Thaana.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Thai.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tibetan.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tifinagh.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tirhuta.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 53.001,
+                "durationSec": 52.48,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Han.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hangul.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hanifi_Rohingya.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hanunoo.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hatran.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 52.11,
                 "filesCount": 5,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Avestan.js",
@@ -10351,33 +10370,7 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 52.467,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter_Number.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Line_Separator.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Lowercase_Letter.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 51.311,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Lepcha.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Limbu.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Linear_A.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Linear_B.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Lisu.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 51.083,
+                "durationSec": 51.4,
                 "filesCount": 5,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Duployan.js",
@@ -10385,19 +10378,6 @@
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Elbasan.js",
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Elymaic.js",
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ethiopic.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 50.711,
-                "filesCount": 5,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Han.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hangul.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hanifi_Rohingya.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hanunoo.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hatran.js"
                 ]
             }
         ]
