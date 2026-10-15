@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Route ordinary Unicode `/v` property patterns through bundled tables on older hosts; keep set and string operations on their existing lowering path.
+- Ship only the runtime CLI in Composer archives; the test262 CLI remains available in source checkouts.
+
 ### Added
 - Unicode 17 property tables generated from the pinned test262 fixtures, including Beria Erfe script aliases and updated Tangut/Telugu membership, independent of host ICU
 - Standard `Error.prototype.stack` accessor with captured traces, receiver checks, cross-realm behavior and string-only overrides

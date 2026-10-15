@@ -31,11 +31,10 @@
 /scripts                export-ignore
 /composer.lock          export-ignore
 
-# Development scripts in bin/ stay out. bin/phasis and bin/test262 are the
-# binaries declared in composer.json, so they ship.
+# Development scripts in bin/ stay out. Only the runtime CLI ships; the
+# test262 runner requires the source checkout and development autoloader.
 /bin/*                  export-ignore
 /bin/phasis             -export-ignore
-/bin/test262            -export-ignore
 
 # JSX fixtures that test CRLF handling must keep their line endings.
 /tests/Jsx/**/*crlf*      -text

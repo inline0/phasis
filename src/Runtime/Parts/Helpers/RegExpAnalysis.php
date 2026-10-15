@@ -1195,8 +1195,7 @@ trait RegExpAnalysis
         // whatever Unicode version PHP's PCRE was built against
         // (often older than ICU's), and many test262 property tests
         // fail at codepoints PCRE2 and ICU disagree on. The custom
-        // matcher routes all lookups through IntlChar (ICU) for a
-        // consistent data source.
+        // matcher uses the bundled Unicode property tables.
         $hasUnicodePropertyEscape = false;
         // Unicode 16 added simple/common case-fold equivalences that
         // older ICU (Ubuntu CI ships ICU 70 / 74) doesn't know.
@@ -1519,22 +1518,10 @@ trait RegExpAnalysis
             return true;
         }
         if ($hasUnicodePropertyEscape) {
-            // Unicode property escapes use ICU's Unicode tables via
-            // IntlChar in the custom matcher. PCRE2's built-in
-            // tables can lag behind ICU (and the test262 generated
-            // data) by several Unicode versions, producing
-            // category mismatches on codepoints whose
-            // Bidi_Mirrored / Script / Script_Extensions /
-            // Alphabetic / ... state changed.
-            // Exception: /v patterns. The custom matcher's
-            // CharClass parser does not model set operations
-            // ([A--B], [A&&B]), nested classes ([[A]B]), or
-            // property-of-strings (\p{Emoji_Keycap_Sequence} and
-            // friends, which match multi-codepoint sequences).
-            // The transformVFlagPattern PCRE2 lowering already
-            // handles all three; keep /v patterns on that path
-            // until the custom matcher catches up.
-            if (!str_contains($flags, 'v')) {
+            // Bundled Unicode data is authoritative, including /v
+            // patterns that the AST matcher can represent. Set operations,
+            // nested classes and string sets still require PCRE lowering.
+            if (!str_contains($flags, 'v') || !self::vPatternNeedsPcreLowering($pattern)) {
                 return true;
             }
         }
@@ -1615,6 +1602,43 @@ trait RegExpAnalysis
             || $hasLoneSurrogateEscape
             || $hasUnicode16FoldCodepoint
             || $caselessNeedsCustom;
+    }
+
+    /** Whether a /v pattern contains set syntax absent from the AST matcher. */
+    private static function vPatternNeedsPcreLowering(string $pattern): bool
+    {
+        $inClass = false;
+        $length = strlen($pattern);
+        for ($i = 0; $i < $length; $i++) {
+            $char = $pattern[$i];
+            if ($char === '\\') {
+                $next = $pattern[++$i] ?? '';
+                if ($next === 'q') {
+                    return true;
+                }
+                if (($next === 'p' || $next === 'P') && ($pattern[$i + 1] ?? '') === '{') {
+                    $end = strpos($pattern, '}', $i + 2);
+                    if ($end !== false) {
+                        if (self::isVStringBinaryProperty(substr($pattern, $i + 2, $end - $i - 2))) {
+                            return true;
+                        }
+                        $i = $end;
+                    }
+                }
+                continue;
+            }
+            if ($char === '[') {
+                if ($inClass) {
+                    return true;
+                }
+                $inClass = true;
+            } elseif ($char === ']') {
+                $inClass = false;
+            } elseif ($inClass && ($char === '&' || $char === '-') && ($pattern[$i + 1] ?? '') === $char) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

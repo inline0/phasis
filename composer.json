@@ -29,8 +29,7 @@
         }
     },
     "bin": [
-        "bin/phasis",
-        "bin/test262"
+        "bin/phasis"
     ],
     "scripts": {
         "test": "@php -d memory_limit=512M ./vendor/bin/phpunit",

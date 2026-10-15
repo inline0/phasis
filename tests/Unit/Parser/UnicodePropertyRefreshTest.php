@@ -21,7 +21,11 @@ final class UnicodePropertyRefreshTest extends TestCase
             /\p{sc=Telugu}/u.test('\u{C5C}') &&
             /\p{Letter}/u.test('\u{16EA0}') &&
             !/\p{sc=Beria_Erfe}/u.test('A') &&
-            /\p{Script_Extensions=Unknown}/u.test('\uDC00')
+            /\p{Script_Extensions=Unknown}/u.test('\uDC00') &&
+            /[\p{sc=Beria_Erfe}A]/v.test('\u{16EA0}') &&
+            !/[\P{sc=Beria_Erfe}]/v.test('\u{16EA0}') &&
+            /[\p{ASCII}&&[A-Z]]/v.test('A') &&
+            !/[\p{ASCII}--[A-Z]]/v.test('A')
             JS));
     }
 }
