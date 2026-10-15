@@ -362,6 +362,8 @@ jobs:
 
       - name: Commit COMPAT.md
         if: success()
+        env:
+          COMPAT_TARGET_BRANCH: ${{ github.ref_name }}
         run: |
           set -e
           git config user.name "github-actions[bot]"
@@ -372,17 +374,16 @@ jobs:
             exit 0
           fi
           git commit -m "Update COMPAT.md from CI [skip ci]"
-          # The workflow can run for an hour+; rebase onto whatever main
-          # has moved to so the push does not fail on a conflict with
-          # unrelated commits. If rebase fails we bail gracefully; the
-          # artifact upload still carries the snapshot for manual commit.
-          git fetch origin main
-          if ! git rebase origin/main; then
+          # Rebase onto the dispatched branch after long runs. A snapshot from
+          # a refresh branch must not replace main's compatibility report.
+          # Conflicts leave the complete snapshot available in the artifact.
+          git fetch origin "$COMPAT_TARGET_BRANCH"
+          if ! git rebase "origin/$COMPAT_TARGET_BRANCH"; then
             git rebase --abort
             echo "Rebase conflict; snapshot is in the compat-report artifact."
             exit 0
           fi
-          if ! git push origin HEAD:main; then
+          if ! git push origin "HEAD:$COMPAT_TARGET_BRANCH"; then
             echo "Push failed; snapshot is in the compat-report artifact."
             exit 0
           fi
