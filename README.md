@@ -139,7 +139,7 @@ Current microbench numbers are committed in [`BENCH.md`](./BENCH.md) after each 
 
 ## Documentation
 
-Full documentation lives at [phasis.dev](https://phasis.dev) (or in [`docs/`](./docs) if you're reading the repo).
+Full documentation lives at [phasis.inline0.dev](https://phasis.inline0.dev) (or in [`docs/`](./docs) if you're reading the repo).
 
 - [Getting Started](./docs/getting-started.md): install and run your first script
 - [CLI](./docs/cli.md): `bin/phasis`, `bin/test262` and `bin/wpt`
