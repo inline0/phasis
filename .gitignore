@@ -13,3 +13,8 @@ tests/Wpt/upstream/
 tests/Jsx/oracle/node_modules/
 !tests/Jsx/oracle/package-lock.json
 tests/Jsx/oracle/.out/
+
+# Remix compatibility uses the published package without bundling or shims.
+tests/Remix/node_modules/
+!tests/Remix/package-lock.json
+tests/Remix/report.json

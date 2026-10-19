@@ -13,6 +13,7 @@
     <exclude-pattern>tests/Popular/*</exclude-pattern>
     <!-- JSX fixtures and the Node oracle toolchain; the PHP tests sit directly in tests/Jsx. -->
     <exclude-pattern>tests/Jsx/*/*</exclude-pattern>
+    <exclude-pattern>tests/Remix/node_modules/*</exclude-pattern>
     <exclude-pattern>tests/Unit/Formatter/fixtures/*</exclude-pattern>
     <exclude-pattern>tests/Wpt/fixtures/*</exclude-pattern>
     <exclude-pattern>tests/Wpt/testharness-shim.js</exclude-pattern>

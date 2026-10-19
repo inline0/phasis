@@ -49,6 +49,27 @@ Phasis verifies **205 widely-used libraries** byte-for-byte against Node.js (V8)
 
 Total: **205 libraries** all reproduce Node's exact output. All pinned to the latest upstream release as of the last bump.
 
+## Remix 3 framework audit
+
+Remix has a separate compatibility audit alongside the library smoke tests.
+It uses the original, unbundled `remix@3.0.0` npm release: all 99 JavaScript
+runtime exports are compared with Node 24, plus 13 behavior probes covering
+routing, headers, cookies, schemas, HTML, responses, CORS, component server
+rendering and sessions.
+
+This audit currently records compatibility gaps; Remix is **not** included in
+the count of fully passing library smoke fixtures above. A successful import
+checks namespace names and types, not every API. Browser hydration, external services
+and the complete upstream Remix suite are not covered.
+
+Run `php bin/test-remix --json` to see all passes, failures and blocked probes.
+It exits nonzero while gaps remain. The dedicated
+[`remix.yml` workflow](https://github.com/inline0/phasis/blob/main/.github/workflows/remix.yml)
+preserves previously passing probes and publishes the complete report. Its
+regression gate can pass while the report still lists known failures.
+See [`tests/Remix/README.md`](https://github.com/inline0/phasis/blob/main/tests/Remix/README.md)
+for installation, coverage limits and oracle maintenance.
+
 ## How it works
 
 Each scenario is a `tests/Popular/<lib>/` directory with three files:
