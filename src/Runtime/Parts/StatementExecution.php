@@ -1605,7 +1605,7 @@ trait StatementExecution
 
         if ($iterator !== null) {
             $nextMethod = $iterator->get('next');
-            if (!$nextMethod instanceof JsFunction) {
+            if (!$nextMethod instanceof JsFunction && !($nextMethod instanceof \Phasis\Value\JsProxy && $nextMethod->isCallable())) {
                 throw new TypeError('Iterator result next is not a function');
             }
 
@@ -1637,7 +1637,7 @@ trait StatementExecution
                 }
 
                 // Per spec GetMethod: non-callable → TypeError.
-                if (!$returnMethod instanceof JsFunction) {
+                if (!$returnMethod instanceof JsFunction && !($returnMethod instanceof \Phasis\Value\JsProxy && $returnMethod->isCallable())) {
                     if ($isOriginalThrow) {
                         return null;
                     }
@@ -1648,7 +1648,9 @@ trait StatementExecution
 
                 // Step 3c: innerResult = Call(return, iterator).
                 try {
-                    $innerResult = $this->callFunction($returnMethod, $iterator, []);
+                    $innerResult = $returnMethod instanceof \Phasis\Value\JsProxy
+                        ? $returnMethod->apply($iterator, [])
+                        : $this->callFunction($returnMethod, $iterator, []);
                     // Step 5: if original was throw, return it (ignore return() result).
                     if ($isOriginalThrow) {
                         return null;
@@ -1682,7 +1684,9 @@ trait StatementExecution
                     throw new InternalError('Maximum loop iterations exceeded');
                 }
 
-                $result = $this->callFunction($nextMethod, $iterator, []);
+                $result = $nextMethod instanceof \Phasis\Value\JsProxy
+                    ? $nextMethod->apply($iterator, [])
+                    : $this->callFunction($nextMethod, $iterator, []);
                 // For for-await-of, unwrap the promise returned by the async iterator.
                 if ($node->await) {
                     $result = $this->forAwaitUnwrap($result, $env);
@@ -2163,77 +2167,14 @@ trait StatementExecution
 
     private function getIterator(JsValue $iterable): ?JsObject
     {
-        // String iteration: produce a code-point iterator that correctly
-        // handles surrogate pairs and lone surrogates per spec 22.1.5.2.1.
-        if ($iterable instanceof JsString) {
-            $chars = [];
-            $u16 = JsString::utf8ToUtf16LE($iterable->value);
-            $u16Len = (int) (strlen($u16) / 2);
-            $si = 0;
-            while ($si < $u16Len) {
-                $cu = ord($u16[$si * 2]) | (ord($u16[$si * 2 + 1]) << 8);
-                if ($cu >= 0xD800 && $cu <= 0xDBFF && $si + 1 < $u16Len) {
-                    $next = ord($u16[($si + 1) * 2]) | (ord($u16[($si + 1) * 2 + 1]) << 8);
-                    if ($next >= 0xDC00 && $next <= 0xDFFF) {
-                        // Valid surrogate pair: combine into a single code point.
-                        $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
-                        $chars[] = mb_chr($cp, 'UTF-8');
-                        $si += 2;
-                        continue;
-                    }
-                }
-                // Lone surrogate or BMP character.
-                $chars[] = JsString::utf16CodeUnitToUtf8($cu);
-                $si++;
-            }
-            $index = 0;
-            $total = count($chars);
-
-            $iterator = new JsObject();
-            $nextFn = function () use (&$index, $total, &$chars): JsValue {
-                $result = new JsObject();
-                if ($index < $total) {
-                    $result->set('value', new JsString($chars[$index]));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            return $iterator;
-        }
-
-        // For non-string primitives, GetMethod(V, @@iterator) looks up on the
-        // wrapper prototype; an installed Symbol.iterator there must be called
-        // with the primitive as its receiver.
-        if (
-            $iterable instanceof JsNumber
-            || $iterable instanceof JsBoolean
-            || $iterable instanceof \Phasis\Value\JsBigInt
-            || $iterable instanceof JsSymbol
-        ) {
-            $wrapper = TypeConversion::toObject($iterable);
-            $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
-            $method = $wrapper->getBySymbol($iterSym);
-            if (!$method instanceof JsFunction) {
-                return null;
-            }
-            $result = $this->callFunction($method, $iterable, []);
-            if (!$result instanceof JsObject) {
-                throw new TypeError('Iterator method did not return an object');
-            }
-            return $result;
-        }
-        if (!$iterable instanceof JsObject) {
+        if ($iterable instanceof JsNull || $iterable instanceof JsUndefined) {
             return null;
         }
-
-        // Check for Symbol.iterator method.
+        // GetV boxes primitives for lookup but retains the original receiver
+        // for accessors and calls, including overridden string iterators.
+        $wrapper = $iterable instanceof JsObject ? $iterable : TypeConversion::toObject($iterable);
         $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
-        $iteratorMethod = $iterable->getBySymbol($iterSym);
+        $iteratorMethod = $wrapper->getBySymbolWithReceiver($iterSym, $iterable);
 
         $isCallable = $iteratorMethod instanceof JsFunction
             || ($iteratorMethod instanceof \Phasis\Value\JsProxy && $iteratorMethod->isCallable());
