@@ -188,7 +188,7 @@ final class CompiledFunction
      *        Frame directly and skip the per-call createChild
      *        allocation.
      * @param bool $parametersFromEnvironment Read initialized parameter
-     *        bindings after the interpreter applies defaults and parameter TDZ.
+     *        bindings after the interpreter applies defaults, rest arrays and parameter TDZ.
      * @param array<string, string>|null $capturedEnvironmentBindings Captured
      *        body var/let/const declarations. Null retains interpreter hoisting;
      *        parameters and function declarations have separate initialization.

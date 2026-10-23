@@ -4390,7 +4390,7 @@ trait ExpressionEvaluation
             $compiledBindings = $fn->compiled?->capturedEnvironmentBindings;
             if (
                 $compiledBindings !== null
-                && ($hasDefaultParams || $isNonSimpleParams || $argsObj !== null || !$this->vmOwnsFunctionHoists($fn))
+                && ($hasDefaultParams || $argsObj !== null || !$this->vmOwnsFunctionHoists($fn))
             ) {
                 $compiledBindings = null;
             }

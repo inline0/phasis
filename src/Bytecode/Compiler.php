@@ -338,6 +338,10 @@ final class Compiler
         }
 
         foreach ($fn->getParams() as $param) {
+            if ($param instanceof RestElement && $param->argument instanceof Identifier && !$fn->isGenerator()) {
+                $this->parametersFromEnvironment = true;
+                $param = $param->argument;
+            }
             if ($param instanceof AssignmentPattern && $param->left instanceof Identifier && !$fn->isGenerator()) {
                 if ($this->parameterInitializerCanCapture($param->right)) {
                     throw new CompilerBailout('parameter initializer captures bindings');
@@ -450,10 +454,20 @@ final class Compiler
     private function capturedEnvironmentBindings(JsFunction $fn): ?array
     {
         if (
-            $fn->isArrow() || $fn->isGenerator() || $this->parametersFromEnvironment
+            $fn->isArrow() || $fn->isGenerator()
             || $this->needsArguments || $this->classNodes !== [] || $this->arrayAssignmentReferences
         ) {
             return null;
+        }
+        // Plain and rest parameters are already bound in the body environment.
+        // Parameter expressions need the interpreter's separate body scope.
+        foreach ($fn->getParams() as $parameter) {
+            if (
+                !$parameter instanceof Identifier
+                && !($parameter instanceof RestElement && $parameter->argument instanceof Identifier)
+            ) {
+                return null;
+            }
         }
         $bindings = [];
         foreach ($this->capturedLocals as $name => $kind) {
