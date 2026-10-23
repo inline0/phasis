@@ -5776,22 +5776,11 @@ trait ExpressionEvaluation
     /**
      * Slow-path member read used by the bytecode VM when the receiver
      * is a primitive (string / number / boolean / bigint / symbol) or
-     * a Symbol-wrapper object: just synthesise a MemberExpression
-     * dispatch by calling the existing tree-walker helper rather than
-     * duplicating the auto-box / prototype-walk logic.
+     * a Symbol-wrapper object. Reuse the interpreter's boxing and
+     * prototype lookup while preserving the primitive receiver.
      */
     public function vmLookupPrimitiveMember(JsValue $obj, string $name): JsValue
     {
-        $synth = new MemberExpression(
-            location: new \Phasis\Lexer\SourceLocation(0, 0, 0),
-            object: new ThisExpression(new \Phasis\Lexer\SourceLocation(0, 0, 0)),
-            property: new Identifier(new \Phasis\Lexer\SourceLocation(0, 0, 0), $name),
-            computed: false,
-            optional: false,
-        );
-        // Re-use evalMemberExpression's full path by stashing $obj as
-        // the value of `this` for a one-shot scope. Cheaper to inline
-        // the relevant branches here:
         if ($obj instanceof JsString) {
             if ($name === 'length') {
                 return JsNumber::of((float) $obj->length());
