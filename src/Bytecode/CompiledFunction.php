@@ -189,6 +189,9 @@ final class CompiledFunction
      *        allocation.
      * @param bool $parametersFromEnvironment Read initialized parameter
      *        bindings after the interpreter applies defaults and parameter TDZ.
+     * @param array<string, string>|null $capturedEnvironmentBindings Captured
+     *        body var/let/const declarations. Null retains interpreter hoisting;
+     *        parameters and function declarations have separate initialization.
      */
     public function __construct(
         public readonly array $code,
@@ -203,6 +206,7 @@ final class CompiledFunction
         public readonly bool $canSkipEnvAlloc = false,
         public readonly bool $parametersFromEnvironment = false,
         public readonly bool $hasTailCalls = false,
+        public readonly ?array $capturedEnvironmentBindings = null,
     ) {
     }
 }

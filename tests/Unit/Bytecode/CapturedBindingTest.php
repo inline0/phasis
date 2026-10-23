@@ -10,6 +10,80 @@ use PHPUnit\Framework\TestCase;
 
 final class CapturedBindingTest extends TestCase
 {
+    public function testCapturedVarHoistsKeepParametersAndFreshConditionalBindings(): void
+    {
+        $engine = new Engine();
+        self::assertSame([[3, null], [7, 8], [11, null], 'outer'], $engine->eval(<<<'JS'
+const value = 'outer';
+function make(value, initialize) {
+    var value;
+    if (initialize) { var optional = value + 1; }
+    function read() { return [value, optional]; }
+    return read;
+}
+[make(3, false)(), make(7, true)(), make(11, false)(), value];
+JS));
+        $function = $engine->getGlobalEnv()->get('make');
+        self::assertInstanceOf(JsFunction::class, $function);
+        self::assertNotNull($function->compiled);
+        self::assertNotNull($function->compiled->capturedEnvironmentBindings);
+
+        $engine->setExecutionBudget(1.0);
+        self::assertSame([13, null], $engine->eval('make(13, false)()'));
+        $engine->setExecutionBudget(null);
+        self::assertSame([17, 18], $engine->eval('make(17, true)()'));
+    }
+
+    public function testCapturedFunctionHoistsStillReplaceParameterBindingsBeforeStatements(): void
+    {
+        $engine = new Engine();
+        self::assertSame([[true, true, true], [true, true, true], true], $engine->eval(<<<'JS'
+function make(read) {
+    var before = read;
+    function read() { return read; }
+    function other() { return read; }
+    var read;
+    return [before === read, read() === read, other() === read, read];
+}
+const first = make(0);
+const second = make(17);
+[first.slice(0, 3), second.slice(0, 3), first[3] !== second[3]];
+JS));
+        $function = $engine->getGlobalEnv()->get('make');
+        self::assertInstanceOf(JsFunction::class, $function);
+        self::assertNotNull($function->compiled?->capturedEnvironmentBindings);
+    }
+
+    public function testArgumentsAndDefaultsRetainTheirActivationSetupAfterCompilation(): void
+    {
+        $engine = new Engine();
+        self::assertSame([9, 11, [3, 4], [7, 8]], $engine->eval(<<<'JS'
+function defaults(value = 8) {
+    var value;
+    function read() { return value; }
+    value++;
+    return read;
+}
+function argumentCopy(value) {
+    'use strict';
+    var copy = arguments;
+    function read() { return [value, copy[0]]; }
+    arguments[0] = value + 1;
+    return read;
+}
+[defaults()(), defaults(10)(), argumentCopy(3)(), argumentCopy(7)()];
+JS));
+        foreach (['defaults', 'argumentCopy'] as $name) {
+            $function = $engine->getGlobalEnv()->get($name);
+            self::assertInstanceOf(JsFunction::class, $function);
+            self::assertNotNull($function->compiled);
+            self::assertNull($function->compiled->capturedEnvironmentBindings);
+        }
+
+        $engine->setExecutionBudget(1.0);
+        self::assertSame([13, [11, 12]], $engine->eval('[defaults(12)(), argumentCopy(11)()]'));
+    }
+
     public function testClosuresAndTheirCompiledParentShareMutableBindingsAcrossCalls(): void
     {
         $engine = new Engine();
@@ -59,6 +133,9 @@ function lexical() {
 [lexical(), lexical()];
 JS));
         $this->assertCompiled($engine, 'lexical');
+        $function = $engine->getGlobalEnv()->get('lexical');
+        self::assertInstanceOf(JsFunction::class, $function);
+        self::assertNotNull($function->compiled?->capturedEnvironmentBindings);
     }
 
     public function testNestedArrowParametersAndDefaultBodyScopesRemainIndependent(): void

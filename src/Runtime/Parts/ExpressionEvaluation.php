@@ -4358,6 +4358,14 @@ trait ExpressionEvaluation
                 $this->setupMappedArguments($argsObj, $params, $args, $fnEnv);
             }
 
+            $compiledBindings = $fn->compiled?->capturedEnvironmentBindings;
+            if (
+                $compiledBindings !== null
+                && ($hasDefaultParams || $isNonSimpleParams || $argsObj !== null || !$this->vmOwnsFunctionHoists($fn))
+            ) {
+                $compiledBindings = null;
+            }
+
             // Collect parameter names for Annex B hoisting checks.
             // Per spec FunctionDeclarationInstantiation step 22.f, when
             // an arguments object is created "arguments" is appended to
@@ -4372,6 +4380,7 @@ trait ExpressionEvaluation
             // (cached on JsFunction for BlockStatement bodies), the
             // swap is pure overhead — skip it.
             $needsParamNames = $body instanceof BlockStatement
+                && $compiledBindings === null
                 && $fn->bodyNeedsHoistingCache !== false;
             $savedParamNames = $this->currentParamNames;
             if ($needsParamNames) {
@@ -4467,13 +4476,30 @@ trait ExpressionEvaluation
                 // var/let/const/function/class declarations and no nested
                 // control flow that could contain them) trip none of the
                 // three hoist passes. Skip them on subsequent calls.
-                if ($fn->bodyNeedsHoistingCache === null) {
-                    $fn->bodyNeedsHoistingCache = $this->bodyNeedsHoisting($body->body);
-                }
-                if ($fn->bodyNeedsHoistingCache) {
-                    $this->forceHoistVarNames($body->body, $fnEnv);
-                    $this->hoistDeclarations($body->body, $fnEnv, $this->vmOwnsFunctionHoists($fn));
-                    $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
+                if ($compiledBindings !== null) {
+                    // The compiler keeps uncaptured locals in frame slots.
+                    // Only captured declarations need an Environment binding;
+                    // parameters are already bound and the VM hoists functions.
+                    foreach ($compiledBindings as $name => $kind) {
+                        if ($kind === 'var') {
+                            if (!$fnEnv->hasOwnBinding($name)) {
+                                $fnEnv->defineVar($name, JsUndefined::instance());
+                            }
+                        } elseif ($kind === 'let') {
+                            $fnEnv->declareLet($name);
+                        } else {
+                            $fnEnv->declareConst($name);
+                        }
+                    }
+                } else {
+                    if ($fn->bodyNeedsHoistingCache === null) {
+                        $fn->bodyNeedsHoistingCache = $this->bodyNeedsHoisting($body->body);
+                    }
+                    if ($fn->bodyNeedsHoistingCache) {
+                        $this->forceHoistVarNames($body->body, $fnEnv);
+                        $this->hoistDeclarations($body->body, $fnEnv, $this->vmOwnsFunctionHoists($fn));
+                        $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
+                    }
                 }
                 $this->currentParamNames = $savedParamNames;
                 $savedTailPos = $this->inTailPosition;

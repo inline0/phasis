@@ -434,12 +434,33 @@ final class Compiler
                 && !$this->needsArguments,
             parametersFromEnvironment: $this->parametersFromEnvironment,
             hasTailCalls: $this->hasTailCalls,
+            capturedEnvironmentBindings: $this->capturedEnvironmentBindings($fn),
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
         $cf->arrayBindings = $this->arrayBindings;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
+    }
+
+    /** @return array<string, string>|null */
+    private function capturedEnvironmentBindings(JsFunction $fn): ?array
+    {
+        if (
+            $fn->isArrow() || $fn->isGenerator() || $this->parametersFromEnvironment
+            || $this->needsArguments || $this->classNodes !== [] || $this->arrayAssignmentReferences
+        ) {
+            return null;
+        }
+        $bindings = [];
+        foreach ($this->capturedLocals as $name => $kind) {
+            if ($kind === 'var' || $kind === 'let' || $kind === 'const') {
+                $bindings[$name] = $kind;
+            } elseif ($kind !== 'parameter' && $kind !== 'function') {
+                return null;
+            }
+        }
+        return $bindings;
     }
 
     private function parameterInitializerCanCapture(Node $node): bool
