@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-10-23T15:08:10+00:00",
-    "updatedAt": "2026-10-23T15:08:10+00:00",
+    "generatedAt": "2026-10-23T15:39:53+00:00",
+    "updatedAt": "2026-10-23T15:39:53+00:00",
     "complete": true,
     "git": {
         "branch": "fix/test262-compliance-20261023",
-        "commit": "ba89bcaa",
+        "commit": "f9956589",
         "isDirty": true
     },
     "environment": {
@@ -19,8 +19,8 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "f6f8be023b4869c3bb0dfaab3c256a125779245b",
-        "runIdentity": "78f29bc087c73a065be9d2a9b12e968eb5053d9d2b4f5a4fc3b6845d11cfe4ca"
+        "fingerprint": "9a9dfdf2730be9475b759f70dd5dee30f3fabf25",
+        "runIdentity": "b273a76c95ecf2b991714aca189ffe58e23fc9859b4ba56b1181be4eedbc2c80"
     },
     "discovery": {
         "groupCount": 161,
@@ -199,16 +199,16 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 53499,
-            "fail": 110,
+            "pass": 53612,
+            "fail": 4,
             "skip": 0,
-            "blocked": 7,
+            "blocked": 0,
             "pending": 0,
             "running": 0,
-            "attempted": 53609,
+            "attempted": 53616,
             "known": 53616,
             "total": 53616,
-            "passRate": 99.8
+            "passRate": 100
         },
         "areas": [
             {
@@ -227,17 +227,17 @@
             },
             {
                 "name": "built-ins",
-                "status": "blocked",
-                "pass": 23804,
-                "fail": 17,
+                "status": "pass",
+                "pass": 23823,
+                "fail": 0,
                 "skip": 0,
-                "blocked": 2,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 23821,
+                "attempted": 23823,
                 "known": 23823,
                 "total": 23823,
-                "passRate": 99.9
+                "passRate": 100
             },
             {
                 "name": "harness",
@@ -255,9 +255,9 @@
             },
             {
                 "name": "intl402",
-                "status": "partial",
-                "pass": 3377,
-                "fail": 5,
+                "status": "pass",
+                "pass": 3382,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -265,13 +265,13 @@
                 "attempted": 3382,
                 "known": 3382,
                 "total": 3382,
-                "passRate": 99.9
+                "passRate": 100
             },
             {
                 "name": "language",
                 "status": "partial",
-                "pass": 23640,
-                "fail": 86,
+                "pass": 23725,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -279,21 +279,21 @@
                 "attempted": 23726,
                 "known": 23726,
                 "total": 23726,
-                "passRate": 99.6
+                "passRate": 100
             },
             {
                 "name": "staging",
-                "status": "blocked",
-                "pass": 1476,
-                "fail": 2,
+                "status": "partial",
+                "pass": 1480,
+                "fail": 3,
                 "skip": 0,
-                "blocked": 5,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 1478,
+                "attempted": 1483,
                 "known": 1483,
                 "total": 1483,
-                "passRate": 99.9
+                "passRate": 99.8
             }
         ],
         "groups": [
@@ -570,9 +570,9 @@
             {
                 "name": "built-ins/Array",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 3070,
-                "fail": 13,
+                "status": "pass",
+                "pass": 3083,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -580,7 +580,7 @@
                 "attempted": 3083,
                 "known": 3083,
                 "total": 3083,
-                "passRate": 99.6
+                "passRate": 100
             },
             {
                 "name": "built-ins/ArrayBuffer",
@@ -990,9 +990,9 @@
             {
                 "name": "built-ins/Number",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 337,
-                "fail": 3,
+                "status": "pass",
+                "pass": 340,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -1000,7 +1000,7 @@
                 "attempted": 340,
                 "known": 340,
                 "total": 340,
-                "passRate": 99.1
+                "passRate": 100
             },
             {
                 "name": "built-ins/Object",
@@ -1470,9 +1470,9 @@
             {
                 "name": "built-ins/Temporal/PlainDateTime",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 772,
-                "fail": 1,
+                "status": "pass",
+                "pass": 773,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -1480,7 +1480,7 @@
                 "attempted": 773,
                 "known": 773,
                 "total": 773,
-                "passRate": 99.9
+                "passRate": 100
             },
             {
                 "name": "built-ins/Temporal/PlainMonthDay",
@@ -1665,14 +1665,14 @@
             {
                 "name": "built-ins/decodeURI",
                 "area": "built-ins",
-                "status": "blocked",
-                "pass": 54,
+                "status": "pass",
+                "pass": 55,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 1,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 54,
+                "attempted": 55,
                 "known": 55,
                 "total": 55,
                 "passRate": 100
@@ -1680,14 +1680,14 @@
             {
                 "name": "built-ins/decodeURIComponent",
                 "area": "built-ins",
-                "status": "blocked",
-                "pass": 55,
+                "status": "pass",
+                "pass": 56,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 1,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 55,
+                "attempted": 56,
                 "known": 56,
                 "total": 56,
                 "passRate": 100
@@ -1920,9 +1920,9 @@
             {
                 "name": "intl402/DateTimeFormat",
                 "area": "intl402",
-                "status": "partial",
-                "pass": 243,
-                "fail": 2,
+                "status": "pass",
+                "pass": 245,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -1930,7 +1930,7 @@
                 "attempted": 245,
                 "known": 245,
                 "total": 245,
-                "passRate": 99.2
+                "passRate": 100
             },
             {
                 "name": "intl402/DisplayNames",
@@ -2040,9 +2040,9 @@
             {
                 "name": "intl402/NumberFormat",
                 "area": "intl402",
-                "status": "partial",
-                "pass": 250,
-                "fail": 1,
+                "status": "pass",
+                "pass": 251,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2050,7 +2050,7 @@
                 "attempted": 251,
                 "known": 251,
                 "total": 251,
-                "passRate": 99.6
+                "passRate": 100
             },
             {
                 "name": "intl402/PluralRules",
@@ -2115,9 +2115,9 @@
             {
                 "name": "intl402/Temporal",
                 "area": "intl402",
-                "status": "partial",
-                "pass": 2027,
-                "fail": 2,
+                "status": "pass",
+                "pass": 2029,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2125,7 +2125,7 @@
                 "attempted": 2029,
                 "known": 2029,
                 "total": 2029,
-                "passRate": 99.9
+                "passRate": 100
             },
             {
                 "name": "intl402/TypedArray",
@@ -2145,9 +2145,9 @@
             {
                 "name": "language/arguments-object",
                 "area": "language",
-                "status": "partial",
-                "pass": 262,
-                "fail": 1,
+                "status": "pass",
+                "pass": 263,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2155,7 +2155,7 @@
                 "attempted": 263,
                 "known": 263,
                 "total": 263,
-                "passRate": 99.6
+                "passRate": 100
             },
             {
                 "name": "language/asi",
@@ -2235,9 +2235,9 @@
             {
                 "name": "language/directive-prologue",
                 "area": "language",
-                "status": "partial",
-                "pass": 60,
-                "fail": 2,
+                "status": "pass",
+                "pass": 62,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2245,7 +2245,7 @@
                 "attempted": 62,
                 "known": 62,
                 "total": 62,
-                "passRate": 96.8
+                "passRate": 100
             },
             {
                 "name": "language/eval-code",
@@ -2281,8 +2281,8 @@
                 "name": "language/expressions",
                 "area": "language",
                 "status": "partial",
-                "pass": 11032,
-                "fail": 70,
+                "pass": 11101,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2290,7 +2290,7 @@
                 "attempted": 11102,
                 "known": 11102,
                 "total": 11102,
-                "passRate": 99.4
+                "passRate": 100
             },
             {
                 "name": "language/function-code",
@@ -2430,9 +2430,9 @@
             {
                 "name": "language/module-code",
                 "area": "language",
-                "status": "partial",
-                "pass": 598,
-                "fail": 1,
+                "status": "pass",
+                "pass": 599,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2440,7 +2440,7 @@
                 "attempted": 599,
                 "known": 599,
                 "total": 599,
-                "passRate": 99.8
+                "passRate": 100
             },
             {
                 "name": "language/punctuators",
@@ -2520,9 +2520,9 @@
             {
                 "name": "language/statements",
                 "area": "language",
-                "status": "partial",
-                "pass": 9335,
-                "fail": 12,
+                "status": "pass",
+                "pass": 9347,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2530,7 +2530,7 @@
                 "attempted": 9347,
                 "known": 9347,
                 "total": 9347,
-                "passRate": 99.9
+                "passRate": 100
             },
             {
                 "name": "language/types",
@@ -2670,17 +2670,17 @@
             {
                 "name": "staging/sm",
                 "area": "staging",
-                "status": "blocked",
-                "pass": 1399,
-                "fail": 2,
+                "status": "partial",
+                "pass": 1403,
+                "fail": 3,
                 "skip": 0,
-                "blocked": 5,
+                "blocked": 0,
                 "pending": 0,
                 "running": 0,
-                "attempted": 1401,
+                "attempted": 1406,
                 "known": 1406,
                 "total": 1406,
-                "passRate": 99.9
+                "passRate": 99.8
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2715,523 +2715,28 @@
         ],
         "failures": [
             {
-                "path": "test262/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: resArr.length Expected SameValue(\u00ab5\u00bb, \u00ab3\u00bb) to be true"
+                "path": "test262/test/language/expressions/object/__proto__-permitted-dup-shorthand.js",
+                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab[object Object]\u00bb, \u00ab2\u00bb) to be true"
             },
             {
-                "path": "test262/test/built-ins/Array/prototype/filter/15.4.4.20-9-3.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: resArr.length Expected SameValue(\u00ab5\u00bb, \u00ab3\u00bb) to be true"
+                "path": "test262/test/staging/sm/expressions/object-literal-__proto__.js",
+                "message": "runtime: Phasis\\Exceptions\\JsThrowable: nullProto, computedNull, shorthand Expected SameValue(\u00ab\"object\"\u00bb, \u00ab\"string\"\u00bb) to be true"
             },
             {
-                "path": "test262/test/built-ins/Array/prototype/filter/15.4.4.20-9-4.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: resArr.length Expected SameValue(\u00ab5\u00bb, \u00ab2\u00bb) to be true"
+                "path": "test262/test/staging/sm/extensions/destructuring-__proto__-shorthand-assignment-before-var.js",
+                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab[object Object]\u00bb, \u00ab17\u00bb) to be true"
             },
             {
-                "path": "test262/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: callCnt Expected SameValue(\u00ab5\u00bb, \u00ab4\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/forEach/15.4.4.18-7-3.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: callCnt Expected SameValue(\u00ab5\u00bb, \u00ab3\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/forEach/15.4.4.18-7-7.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: result !== true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: resArr[4] Expected SameValue(\u00ab1\u00bb, \u00ab0\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/map/15.4.4.19-8-3.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: resArr[4] Expected SameValue(\u00ab1\u00bb, \u00abundefined\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/map/15.4.4.19-8-4.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: callCnt Expected SameValue(\u00ab5\u00bb, \u00ab2\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/reduce/15.4.4.21-9-2.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: arr.reduce(callbackfn) Expected SameValue(\u00ab15\u00bb, \u00ab3\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/reduce/15.4.4.21-9-3.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: arr.reduce(callbackfn) Expected SameValue(\u00ab\"12345\"\u00bb, \u00ab\"123\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/reduce/15.4.4.21-9-4.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: arr.reduce(callbackfn) Expected SameValue(\u00ab15\u00bb, \u00ab3\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Array/prototype/reduce/15.4.4.21-9-c-1.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: callCnt Expected SameValue(\u00ab2\u00bb, \u00ab1\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Number/prototype/toFixed/S15.7.4.5_A1.3_T01.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: The result of evaluating (e instanceof RangeError) is expected to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Number/prototype/toFixed/S15.7.4.5_A1.3_T02.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: The result of evaluating (e instanceof RangeError) is expected to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Number/prototype/toFixed/S15.7.4.5_A1.4_T01.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: The result of evaluating (e instanceof RangeError) is expected to be true"
-            },
-            {
-                "path": "test262/test/built-ins/Temporal/PlainDateTime/from/limits.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: positive out of bounds (plain object, overflow = reject) Expected a RangeError to be thrown but no exception was thrown at all"
-            },
-            {
-                "path": "test262/test/intl402/DateTimeFormat/prototype/format/related-year-zh.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected true but got false"
-            },
-            {
-                "path": "test262/test/intl402/DateTimeFormat/prototype/formatToParts/related-year-zh.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: actual[1].value should be \u5df1\u4ea5 Expected SameValue(\u00ab\"\u58ec\u5bc5\"\u00bb, \u00ab\"\u5df1\u4ea5\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/NumberFormat/prototype/format/numbering-systems.js",
-                "message": "runtime: IntlException: NumberFormatter::__construct(): number formatter creation failed"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/ZonedDateTime/prototype/add/dst.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Day result: Samoa date line change, add 1 day and 1 hour. Expected SameValue(\u00ab29\u00bb, \u00ab31\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/intl402/Temporal/ZonedDateTime/prototype/subtract/dst.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Day result: Samoa date line change, subtract 1 day and 1 hour. Expected SameValue(\u00ab29\u00bb, \u00ab31\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/language/arguments-object/10.5-1gs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/directive-prologue/14.1-4gs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/directive-prologue/14.1-5gs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/arrow-function/syntax/early-errors/arrowparameters-bindingidentifier-no-arguments.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/arrow-function/syntax/early-errors/arrowparameters-bindingidentifier-no-eval.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/arrow-function/syntax/early-errors/arrowparameters-cover-no-arguments.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/arrow-function/syntax/early-errors/arrowparameters-cover-no-eval.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignment/fn-name-arrow.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: name descriptor value should be arrow; name value should be arrow"
-            },
-            {
-                "path": "test262/test/language/expressions/assignment/fn-name-cover.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: name descriptor value should be cover; name value should be cover"
-            },
-            {
-                "path": "test262/test/language/expressions/assignment/fn-name-fn.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: name descriptor value should be fn; name value should be fn"
-            },
-            {
-                "path": "test262/test/language/expressions/assignment/id-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignment/id-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignmenttargettype/direct-callexpression-in-logical-assignment.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignmenttargettype/direct-identifierreference-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignmenttargettype/direct-identifierreference-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignmenttargettype/parenthesized-callexpression-in-logical-assignment.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignmenttargettype/parenthesized-identifierreference-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/assignmenttargettype/parenthesized-identifierreference-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/async-function/early-errors-expression-binding-identifier-arguments.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/async-function/early-errors-expression-binding-identifier-eval.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/async-generator/early-errors-expression-binding-identifier-arguments.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/async-generator/early-errors-expression-binding-identifier-eval.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-getter-brand-check-multiple-evaluations-of-class-realm-function-ctor.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private method Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-getter-brand-check-multiple-evaluations-of-class-realm.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private method Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-method-brand-check-multiple-evaluations-of-class-realm-function-ctor.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private method Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-method-brand-check-multiple-evaluations-of-class-realm.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private method Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-setter-brand-check-multiple-evaluations-of-class-realm-function-ctor.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private method Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-setter-brand-check-multiple-evaluations-of-class-realm.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private method Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-static-field-multiple-evaluations-of-class-realm.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private static field Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-static-getter-multiple-evaluations-of-class-realm.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of C1 private static getter Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-static-method-brand-check-multiple-evaluations-of-class-realm.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of c1 private static method Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/class/private-static-setter-multiple-evaluations-of-class-realm.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: invalid access of C1 private static setter Expected a TypeError but got a different error constructor with the same name"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/11.13.2-6-1gs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/add-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/add-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/and-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/and-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/div-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/div-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/lshift-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/lshift-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/mod-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/mod-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/mult-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/mult-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/or-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/or-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/srshift-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/srshift-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/sub-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/sub-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/urshift-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/urshift-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/xor-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/compound-assignment/xor-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/dynamic-import/eval-self-once-script.js",
-                "message": "Async test did not signal completion before the event loop became idle"
-            },
-            {
-                "path": "test262/test/language/expressions/function/name-arguments-strict-body.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/function/name-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/function/name-eval-strict-body.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/function/name-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-and-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-and-assignment-operator-non-simple-lhs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-and-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-nullish-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-non-simple-lhs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-nullish-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-or-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-or-assignment-operator-non-simple-lhs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/logical-assignment/lgcl-or-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/expressions/new.target/unary-expr.js",
-                "message": "runtime: Phasis\\Parser\\ParseError: Delete of an unqualified identifier in strict mode (got delete \"delete\") at line 22, column 31"
-            },
-            {
-                "path": "test262/test/language/expressions/object/fn-name-arrow.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: name descriptor value should be id; name value should be id"
-            },
-            {
-                "path": "test262/test/language/expressions/object/fn-name-cover.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: name descriptor value should be id; name value should be id"
-            },
-            {
-                "path": "test262/test/language/expressions/object/fn-name-fn.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: name descriptor value should be id; name value should be id"
-            },
-            {
-                "path": "test262/test/language/module-code/export-expname-import-unpaired-surrogate.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/async-function/early-errors-declaration-binding-identifier-arguments.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/async-function/early-errors-declaration-binding-identifier-eval.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/13.0_4-5gs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/13.1-13gs.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/enable-strict-via-body.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/enable-strict-via-outer-body.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/enable-strict-via-outer-script.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/name-arguments-strict-body.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/name-arguments-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/name-eval-strict-body.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/function/name-eval-strict.js",
-                "message": "Expected a parse error, but parsing succeeded"
-            },
-            {
-                "path": "test262/test/language/statements/let/syntax/escaped-let.js",
-                "message": "runtime: Phasis\\Exceptions\\SyntaxError: Identifier 'a' has already been declared"
-            },
-            {
-                "path": "test262/test/staging/sm/Proxy/global-receiver.js",
-                "message": "runtime: Phasis\\Exceptions\\ReferenceError: bareword is not defined"
-            },
-            {
-                "path": "test262/test/staging/sm/expressions/destructuring-pattern-parenthesized.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected a SyntaxError to be thrown but no exception was thrown at all"
+                "path": "test262/test/staging/sm/extensions/destructuring-__proto__-shorthand-assignment.js",
+                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab[object Object]\u00bb, \u00ab42\u00bb) to be true"
             }
         ],
-        "blockedChunks": [
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
-                ],
-                "logFile": ".compat-state-builtins-lower-de/logs/57de13dadc41eb5da8994c7bc1de8fe5c0d55dd6.log"
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ],
-                "logFile": ".compat-state-builtins-lower-de/logs/f3e05d6b74efcc2f559417cc3812a891e061afb3.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/c12868dac0d45e7f814a67b08cc457879cf8068e.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/ae0e2fc2d9fb48e84f4bc5e58b25aae6c374bd51.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/e81bb285d552634f96c813a5e6a8bca0e62ce4d8.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/e2313ebc3d771f59bbcd8e04fd6f18cc4043ac43.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/8d6a32feb99c0730be596e0685cb98ca220032c5.log"
-            }
-        ],
+        "blockedChunks": [],
         "slowChunks": [
             {
                 "group": "built-ins/decodeURIComponent",
-                "kind": "timeout",
-                "durationSec": 289.782,
+                "kind": "normal",
+                "durationSec": 287.161,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
@@ -3239,8 +2744,8 @@
             },
             {
                 "group": "built-ins/decodeURI",
-                "kind": "timeout",
-                "durationSec": 263.541,
+                "kind": "normal",
+                "durationSec": 264.513,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
@@ -3248,8 +2753,8 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 260.716,
+                "kind": "normal",
+                "durationSec": 260.558,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
@@ -3257,8 +2762,8 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 259.237,
+                "kind": "normal",
+                "durationSec": 259.095,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
@@ -3266,8 +2771,8 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 258.716,
+                "kind": "normal",
+                "durationSec": 258.022,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
@@ -3275,8 +2780,8 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 258.231,
+                "kind": "normal",
+                "durationSec": 257.884,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
@@ -3284,8 +2789,8 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 250.67,
+                "kind": "normal",
+                "durationSec": 257.792,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
@@ -3294,7 +2799,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 226.38,
+                "durationSec": 227.676,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
@@ -3303,7 +2808,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 211.302,
+                "durationSec": 214.355,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
@@ -3312,7 +2817,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 183.867,
+                "durationSec": 189.385,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
@@ -3321,7 +2826,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 160.066,
+                "durationSec": 165.955,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
@@ -3330,7 +2835,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 117.558,
+                "durationSec": 134.802,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
@@ -3339,7 +2844,7 @@
             {
                 "group": "built-ins/decodeURI",
                 "kind": "normal",
-                "durationSec": 91.123,
+                "durationSec": 91.883,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
@@ -3352,7 +2857,7 @@
             {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 90.699,
+                "durationSec": 88.266,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
@@ -3363,22 +2868,9 @@
                 ]
             },
             {
-                "group": "intl402",
-                "kind": "normal",
-                "durationSec": 88.305,
-                "filesCount": 22,
-                "sampleFiles": [
-                    "test262/test/intl402/constructors-string-and-single-element-array.js",
-                    "test262/test/intl402/constructors-taint-Object-prototype-2.js",
-                    "...",
-                    "test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js",
-                    "test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js"
-                ]
-            },
-            {
                 "group": "language/literals",
                 "kind": "normal",
-                "durationSec": 82.516,
+                "durationSec": 68.154,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js",
@@ -3391,7 +2883,7 @@
             {
                 "group": "built-ins/TypedArray",
                 "kind": "normal",
-                "durationSec": 78.595,
+                "durationSec": 67.972,
                 "filesCount": 3,
                 "sampleFiles": [
                     "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
@@ -3400,31 +2892,35 @@
                 ]
             },
             {
+                "group": "intl402",
+                "kind": "normal",
+                "durationSec": 67.271,
+                "filesCount": 22,
+                "sampleFiles": [
+                    "test262/test/intl402/constructors-string-and-single-element-array.js",
+                    "test262/test/intl402/constructors-taint-Object-prototype-2.js",
+                    "...",
+                    "test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js",
+                    "test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js"
+                ]
+            },
+            {
                 "group": "intl402/DateTimeFormat",
                 "kind": "normal",
-                "durationSec": 67.416,
-                "filesCount": 12,
+                "durationSec": 63.782,
+                "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plainmonthday-formatting-timezonename.js",
                     "test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plaintime-formatting-timezonename.js",
                     "...",
-                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/dangi-calendar-dates.js",
-                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/date-constructor-not-called.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 63.656,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Array/toSpliced-dense.js"
+                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/name.js",
+                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/offset-timezone-correct.js"
                 ]
             },
             {
                 "group": "annexB/built-ins/RegExp",
                 "kind": "normal",
-                "durationSec": 61.941,
+                "durationSec": 61.311,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js",
@@ -3432,6 +2928,15 @@
                     "...",
                     "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js",
                     "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 60.853,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Array/toSpliced-dense.js"
                 ]
             }
         ]
