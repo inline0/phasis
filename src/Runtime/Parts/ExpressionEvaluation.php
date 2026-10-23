@@ -4431,7 +4431,7 @@ trait ExpressionEvaluation
                 // This is necessary because the body environment is separate from
                 // the parameter environment, and var declarations must create
                 // bindings in the body scope, not update parent scope bindings.
-                $this->hoistDeclarations($body->body, $bodyEnv);
+                $this->hoistDeclarations($body->body, $bodyEnv, $this->vmOwnsFunctionHoists($fn));
                 $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $savedTailPos = $this->inTailPosition;
@@ -4472,7 +4472,7 @@ trait ExpressionEvaluation
                 }
                 if ($fn->bodyNeedsHoistingCache) {
                     $this->forceHoistVarNames($body->body, $fnEnv);
-                    $this->hoistDeclarations($body->body, $fnEnv);
+                    $this->hoistDeclarations($body->body, $fnEnv, $this->vmOwnsFunctionHoists($fn));
                     $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 }
                 $this->currentParamNames = $savedParamNames;
@@ -6071,6 +6071,15 @@ trait ExpressionEvaluation
         }
         $name = $resolved instanceof JsString ? $resolved->value : TypeConversion::toString($resolved);
         return $this->vmLookupPrimitiveMember($obj, $name);
+    }
+
+    private function vmOwnsFunctionHoists(JsFunction $fn): bool
+    {
+        // A known bytecode body creates its own top-level functions before
+        // executing statements. Keep var and lexical setup, but avoid
+        // creating a second set of closures that the VM immediately replaces.
+        return $fn->compiled !== null && !$fn->compileFailed && $fn->phpCompileFailed
+            && $this->budget === null && !$fn->getClosure()->isUnderWithScope();
     }
 
     /**

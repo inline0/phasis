@@ -544,14 +544,10 @@ trait CompilerScope
             $this->nestedFns[] = $stmt;
             $this->emit(Op::MAKE_FUNCTION, $idx);
             $slot = $this->localSlots[$name] ?? $this->declareLocal($name);
-            // The tree-walker pre-hoist (Interpreter::hoistDeclarations,
-            // run on this body before the VM starts) already created an
-            // env binding pointing to its own JsFunction copy. STORE_LOCAL
-            // alone would leave that env binding stale, so any nested
-            // closure that LOAD_NAMEs `$name` (including the function
-            // referring to itself by name) would see a *different*
-            // JsFunction than what `return $name` returns from the slot.
-            // DUP + STORE_NAME syncs the env binding so both paths agree.
+            // Nested closures and self-references read the environment,
+            // while this body can read the frame slot. Both must receive
+            // the same function, including when interpreter hoisting was
+            // deferred to this bytecode prologue.
             $this->emit(Op::DUP);
             $this->emit(Op::STORE_LOCAL, $slot);
             // DEFINE_NAME (not STORE_NAME): defineVar semantics, so it

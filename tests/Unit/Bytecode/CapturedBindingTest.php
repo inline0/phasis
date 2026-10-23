@@ -86,6 +86,46 @@ JS));
         $this->assertCompiled($engine, 'redeclared');
     }
 
+    public function testWarmHoistedFunctionsReplaceParametersWithOneSharedIdentity(): void
+    {
+        $engine = new Engine();
+        self::assertSame([[true, true, true], [true, true, true], true], $engine->eval(<<<'JS'
+function make(read = 0) {
+    var before = read;
+    function read() { return read; }
+    function other() { return read; }
+    var read;
+    return [before === read, read() === read, other() === read, read];
+}
+const first = make();
+const second = make(17);
+[first.slice(0, 3), second.slice(0, 3), first[3] !== second[3]];
+JS));
+        $this->assertCompiled($engine, 'make');
+
+        $engine->setExecutionBudget(1.0);
+        self::assertSame([true, true, true], $engine->eval('make(23).slice(0, 3);'));
+    }
+
+    public function testLiteralPropertyNamesAndComputedKeysHaveDifferentCaptureSemantics(): void
+    {
+        $engine = new Engine();
+        self::assertSame([['value' => 3], ['value' => 3], ['first' => 'first'], ['second' => 'second']], $engine->eval(<<<'JS'
+function literal(value) {
+    const object = {value: 3};
+    function read() { return {value: object.value}; }
+    return read();
+}
+function computed(value) {
+    function read() { return {[value]: value}; }
+    return read;
+}
+[literal(8), literal(9), computed('first')(), computed('second')()];
+JS));
+        $this->assertCompiled($engine, 'literal');
+        $this->assertCompiled($engine, 'computed');
+    }
+
     public function testPerIterationAndCatchCapturesKeepInterpreterScopes(): void
     {
         $engine = new Engine();

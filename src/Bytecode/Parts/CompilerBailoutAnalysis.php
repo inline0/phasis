@@ -821,6 +821,12 @@ trait CompilerBailoutAnalysis
             // capture too.
             return $this->capturesOuterLocal($node);
         }
+        if ($node instanceof MemberExpression && !$node->computed) {
+            return $this->scanForOuterCapture($node->object, $shadow);
+        }
+        if ($node instanceof \Phasis\Ast\Expression\Property && !$node->computed) {
+            return $this->scanForOuterCapture($node->value, $shadow);
+        }
         $ref = new \ReflectionObject($node);
         foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             $value = $prop->getValue($node);

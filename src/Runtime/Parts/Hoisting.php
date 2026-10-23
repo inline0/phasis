@@ -104,7 +104,7 @@ trait Hoisting
     // -------------------------------------------------------------------------
 
     /** @param Node[] $statements */
-    private function hoistDeclarations(array $statements, Environment $env): void
+    private function hoistDeclarations(array $statements, Environment $env, bool $deferFunctionHoists = false): void
     {
         // Collect top-level lexical names (let/const) so hoistBlockFunctionDeclarations
         // can skip names that would conflict per B.3.3.1 step ii.
@@ -132,6 +132,9 @@ trait Hoisting
                 $stmt = $stmt->declaration;
             }
             if ($stmt instanceof FunctionDeclaration && $stmt->id !== null) {
+                if ($deferFunctionHoists) {
+                    continue;
+                }
                 $fn = new JsFunction(
                     $stmt->id->name,
                     $stmt->params,
