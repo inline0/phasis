@@ -5889,6 +5889,31 @@ trait ExpressionEvaluation
         return $this->getPropertyWithPrimitiveReceiver($boxed, $name, false, null, $obj);
     }
 
+    /** Check a pure inlined predicate before entering a body that cannot change call depth. */
+    public function hasPureCallCapacity(int $frames): bool
+    {
+        return $this->callStack->hasCapacity($frames);
+    }
+
+    /** Inspect an already realized primitive method without getters or cache initialization. */
+    public function hasCachedStringIntrinsic(string $name, string $kind): bool
+    {
+        $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+        $prototype = $realmInterpreter->cachedStringPrototype;
+        if ($prototype === null || get_class($prototype) !== JsObject::class) {
+            return false;
+        }
+        $value = $prototype->properties->dataSlots[$name] ?? null;
+        if ($value === null) {
+            $descriptor = $prototype->properties->descriptors[$name] ?? null;
+            if ($descriptor === null || !$descriptor->isDataDescriptor()) {
+                return false;
+            }
+            $value = $descriptor->value;
+        }
+        return $value instanceof JsFunction && $value->builtinKind === $kind && $value->getNativeCallable() !== null;
+    }
+
     /**
      * VM helper: lower a nested ArrowFunction or FunctionExpression
      * AST node into a runtime JsFunction whose closure is the

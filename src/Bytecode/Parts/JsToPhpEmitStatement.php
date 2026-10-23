@@ -40,11 +40,16 @@ trait JsToPhpEmitStatement
      */
     private function emitPrologue(array $params): void
     {
+        $this->emitScannerGuards();
         foreach ($params as $idx => $param) {
             if (!$param instanceof Identifier) {
                 throw new Bailout('non-identifier param');
             }
             $name = $param->name;
+            if (isset($this->scannerPlan?->stringParameters[$name])) {
+                $this->emitScannerStringParameter($name, $idx);
+                continue;
+            }
             // Params are always numeric in our profile — inferring
             // object-typed parameters would require call-site type
             // info we don't have. Object-typed locals can only come
@@ -138,6 +143,9 @@ trait JsToPhpEmitStatement
             return;
         }
         if ($node instanceof ExpressionStatement) {
+            if ($this->scannerPlan !== null && $node->expression instanceof Literal && is_string($node->expression->value)) {
+                return;
+            }
             // For a discarded call result we don't need the JsNumber
             // unbox assertion that emitCallExpression appends — it
             // forces a Bailout when the callee returns anything but a
@@ -234,7 +242,7 @@ trait JsToPhpEmitStatement
                     $callRaw = $this->emitFunctionValuedCall($decl->init);
                     $this->flushPending();
                     $this->emitLine($this->slotVar($name) . ' = ' . $callRaw . ';');
-                } elseif ($kind === 'numeric' && $decl->init instanceof CallExpression) {
+                } elseif ($kind === 'numeric' && $decl->init instanceof CallExpression && $this->scannerPlan === null) {
                     // `let r = callExpr()` where r's static type defaults
                     // to numeric. emitExpression would emit the call THEN
                     // a runtime `instanceof JsNumber` check that throws

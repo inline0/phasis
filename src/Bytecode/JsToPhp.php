@@ -62,6 +62,7 @@ final class JsToPhp
     use Parts\JsToPhpScope;
     use Parts\JsToPhpEmitStatement;
     use Parts\JsToPhpEmitExpression;
+    use Parts\JsToPhpStringScanners;
 
     /** @var array<string, true> */
     private array $declaredLocals = [];
@@ -208,7 +209,7 @@ final class JsToPhp
             return null;
         }
         $compiled = self::compileFunction($fn);
-        if ($compiled === null) {
+        if ($compiled === null && !StringScannerPlan::maySpecialize($fn)) {
             CompilationFailures::remember($fn, 'php', 'unsupported syntax');
         }
         return $compiled;
@@ -268,7 +269,8 @@ final class JsToPhp
         }
         $standard = self::compileWith($fn, false);
         if ($standard === null) {
-            return null;
+            $scanner = StringScannerPlan::analyze($fn);
+            return $scanner !== null ? self::compileWith($fn, false, $scanner) : null;
         }
         // Try to also compile a numeric-mode variant for the hot
         // JsToPhp-to-JsToPhp dispatch path. Eligibility is the same
@@ -289,7 +291,7 @@ final class JsToPhp
      * or null on bailout. Sets $fn->phpCompiledNodes when the
      * standard pass succeeds.
      */
-    private static function compileWith(JsFunction $fn, bool $numeric): ?\Closure
+    private static function compileWith(JsFunction $fn, bool $numeric, ?StringScannerPlan $scanner = null): ?\Closure
     {
         $body = $fn->getBody();
         $isExpressionBody = !$body instanceof BlockStatement;
@@ -298,6 +300,10 @@ final class JsToPhp
         }
         $compiler = new self();
         $compiler->numericMode = $numeric;
+        $compiler->scannerPlan = $scanner;
+        foreach ($scanner->stringParameters ?? [] as $name => $_) {
+            $compiler->localTypes[$name] = 'string';
+        }
         try {
             $params = $fn->getParams();
             foreach ($params as $p) {
@@ -396,6 +402,9 @@ final class JsToPhp
         $signature = $numeric
             ? 'function (array $rawArgs, $thisValue, $env, $interp, $nestedFns)'
             : 'function ($args, $thisValue, $env, $interp, $nestedFns)';
+        if ($scanner !== null) {
+            $signature .= ' use ($scannerGuards, $scannerRealm)';
+        }
         // Guard against unbounded recursion. The interpreter's
         // CallStack enforces its own (much larger) limit, but a
         // JsToPhp closure dispatching through phpCompiled bypasses
@@ -422,9 +431,24 @@ final class JsToPhp
             . $bodyPrologue . $compiler->out . $bodyEpilogue
             . "};";
         try {
-            /** @var \Closure $closure */
-            $closure = eval($php);
+            if ($scanner !== null) {
+                $factory = self::scannerClosureFactory($body, $php);
+                if ($factory === null) {
+                    return null;
+                }
+                $realm = $fn->realm;
+                if ($realm === null) {
+                    return null;
+                }
+                $guards = array_column($scanner->predicates, 'reference');
+                $closure = $factory($guards, \WeakReference::create($realm));
+            } else {
+                $closure = eval($php);
+            }
         } catch (\Throwable) {
+            return null;
+        }
+        if (!$closure instanceof \Closure) {
             return null;
         }
         if (!$numeric) {

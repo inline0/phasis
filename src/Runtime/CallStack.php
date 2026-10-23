@@ -69,6 +69,12 @@ class CallStack
         return $this->depth;
     }
 
+    /** Whether omitted effect-free frames would fit the configured stack limit. */
+    public function hasCapacity(int $frames = 1): bool
+    {
+        return $frames <= $this->maxDepth - $this->depth;
+    }
+
     /** @return list<CallFrame> */
     public function getFrames(): array
     {

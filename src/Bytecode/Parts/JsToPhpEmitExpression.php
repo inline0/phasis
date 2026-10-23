@@ -124,6 +124,9 @@ trait JsToPhpEmitExpression
             return 'unknown';
         }
         if ($node instanceof Identifier) {
+            if (isset($this->scannerSubstitutions[$node->name])) {
+                return 'numeric';
+            }
             if (isset($this->declaredLocals[$node->name])) {
                 $kind = $this->localTypes[$node->name] ?? 'numeric';
                 return $kind === 'numeric' ? 'numeric' : 'unknown';
@@ -133,6 +136,10 @@ trait JsToPhpEmitExpression
             return 'numeric';
         }
         if ($node instanceof CallExpression) {
+            $scannerType = $this->scannerCallType($node);
+            if ($scannerType !== null) {
+                return $scannerType;
+            }
             // CallExpression results are not statically typeable — the
             // callee may return any JsValue, including JsUndefined. We
             // used to claim 'numeric' here, which let
@@ -181,6 +188,9 @@ trait JsToPhpEmitExpression
             throw new Bailout('non-numeric literal');
         }
         if ($node instanceof Identifier) {
+            if (isset($this->scannerSubstitutions[$node->name])) {
+                return $this->scannerSubstitutions[$node->name];
+            }
             if (isset($this->declaredLocals[$node->name])) {
                 // Non-numeric locals can't be used in the numeric
                 // expression pipeline (the caller would feed a JsValue
@@ -616,6 +626,10 @@ trait JsToPhpEmitExpression
      */
     private function emitCallExpression(CallExpression $node): string
     {
+        $scannerCall = $this->emitScannerCall($node);
+        if ($scannerCall !== null) {
+            return $scannerCall;
+        }
         // Method call shortcut: `arr.push(val)` on an array-typed
         // local goes straight to JsArray::push without resolving the
         // method through the prototype chain. Returns the new length

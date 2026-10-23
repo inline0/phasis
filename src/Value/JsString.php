@@ -10,6 +10,7 @@ class JsString implements JsValue
 
     private ?string $utf16 = null;
     private ?int $codeUnitLength = null;
+    private ?bool $ascii = null;
 
     public static function setStringPrototype(JsObject $proto): void
     {
@@ -69,9 +70,15 @@ class JsString implements JsValue
     /** JavaScript String.length (UTF-16 code unit count). */
     public function length(): int
     {
-        return $this->codeUnitLength ??= mb_check_encoding($this->value, 'ASCII')
+        return $this->codeUnitLength ??= $this->isAscii()
             ? strlen($this->value)
             : (int) (strlen($this->utf16LE()) / 2);
+    }
+
+    /** Whether byte offsets and UTF-16 offsets are interchangeable for this immutable value. */
+    public function isAscii(): bool
+    {
+        return $this->ascii ??= mb_check_encoding($this->value, 'ASCII');
     }
 
     /** UTF-16 code units cached for this immutable string value. */
