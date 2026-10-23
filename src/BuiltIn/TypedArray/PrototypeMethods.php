@@ -113,7 +113,7 @@ trait PrototypeMethods
                         $srcLen = $source->getLength();
                         $srcObj = $source;
                     } elseif ($source instanceof JsObject) {
-                        $srcLen = (int) TypeConversion::toNumber($source->get('length'));
+                        $srcLen = TypeConversion::toLength($source->get('length'));
                         $srcObj = $source;
                     } elseif ($source instanceof JsString) {
                         $str = $source->value;
@@ -132,10 +132,7 @@ trait PrototypeMethods
                         // wrapper whose prototype may carry length/indexed
                         // properties (test262 monkey-patches Number.prototype).
                         $srcObj = TypeConversion::toObject($source);
-                        $srcLen = (int) TypeConversion::toNumber($srcObj->get('length'));
-                        if ($srcLen < 0) {
-                            $srcLen = 0;
-                        }
+                        $srcLen = TypeConversion::toLength($srcObj->get('length'));
                     }
 
                     // Per current spec, the size check uses the target length
