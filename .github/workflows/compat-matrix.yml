@@ -219,9 +219,9 @@ jobs:
           # test262_isolated_tests (config/support.php) get a wider
           # budget — those tests were isolated precisely because they
           # approach or exceed the default budget locally, and CI's
-          # slower interpreter pushes them past it. Tests that need
-          # multi-minute CI budgets even with isolation still belong
-          # in HOST_GAP_BLOCKLIST (tests/Oracle/Test262Runner.php).
+          # slower interpreter pushes them past it. The chunk budget
+          # must accommodate all required variants without changing the
+          # runner's independent deadline for each variant.
           TIMEOUT=90
           case '${{ matrix.shard.id }}' in
             builtins-RegExp-property-escapes-*)
@@ -235,9 +235,10 @@ jobs:
               # the slowest shards over 120s. built-ins/lower-de hosts
               # decodeURI/decodeURIComponent A2.5_T1 sweeps (~983K
               # four-byte percent-encoded sequences). Both shards run
-              # most chunks fast; only the isolated stress files need
-              # the extended budget.
-              TIMEOUT=240
+              # most chunks fast. Isolated unflagged files now run both
+              # sloppy and strict variants, each with its unchanged
+              # 200s runner deadline. Allow both within one chunk.
+              TIMEOUT=480
               ;;
           esac
           # Build --files-prefix / --files-exclude-prefix from optional

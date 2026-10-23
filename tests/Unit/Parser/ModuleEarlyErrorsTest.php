@@ -38,6 +38,11 @@ final class ModuleEarlyErrorsTest extends TestCase
         yield 'heritage excludes own private names' => ['class C extends value.#own { #own; }'];
         yield 'return in a top-level nested block' => ['if (false) { return; }'];
         yield 'super at module scope' => ['super.value;'];
+        yield 'import name with high surrogate' => ['import { "\uD83D" as value } from "dep";'];
+        yield 'import name with low surrogate' => ['import { "\uDCA9" as value } from "dep";'];
+        yield 're-export source name with surrogate' => ['export { "\uD83D" as value } from "dep";'];
+        yield 'exported name with surrogate' => ['let value; export { value as "\uDCA9" };'];
+        yield 'namespace export name with surrogate' => ['export * as "\uD83D" from "dep";'];
     }
 
     #[DataProvider('validModules')]
@@ -62,5 +67,10 @@ final class ModuleEarlyErrorsTest extends TestCase
         yield 'arrow return is local' => ['const f = () => { return 1; };'];
         yield 'super IdentifierName is not a reference' => ['const value = { super: 1 }; value.super;'];
         yield 'method super has its own context' => ['const value = { method() { return super.value; } };'];
+        yield 'import supplementary code point' => ['import { "\u{1F4A9}" as value } from "dep";'];
+        yield 'import surrogate pair' => ['import { "\uD83D\uDCA9" as value } from "dep";'];
+        yield 'import separately escaped surrogate pair' => ['import { "\u{D83D}\u{DCA9}" as value } from "dep";'];
+        yield 're-export well-formed name' => ['export { "\u{D83D}\u{DCA9}" as value } from "dep";'];
+        yield 'namespace export well-formed name' => ['export * as "\uD83D\uDCA9" from "dep";'];
     }
 }

@@ -529,6 +529,7 @@ class ModuleLoader
 
             // Create a fresh module environment linked to the global environment.
             $moduleEnv = new Environment($this->globalEnv);
+            $moduleEnv->markAsModuleEnvironment();
             $record->environment = $moduleEnv;
             $this->interpreter->setCurrentModulePath($absolutePath);
 

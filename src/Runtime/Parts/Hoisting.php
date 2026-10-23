@@ -1624,7 +1624,7 @@ trait Hoisting
             // For function/module/static-block scopes, only check if the binding
             // already exists in THIS scope (not up the chain) to allow var
             // declarations to shadow outer bindings.
-            $alreadyDeclared = $hoistEnv->getFunctionKind() !== null
+            $alreadyDeclared = $hoistEnv->getFunctionKind() !== null || $hoistEnv->isModuleEnvironment()
                 ? $hoistEnv->hasOwnBinding($pattern->name)
                 : $hoistEnv->has($pattern->name);
             if (!$alreadyDeclared) {

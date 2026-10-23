@@ -93,7 +93,7 @@ trait StatementParser
 
         // In sloppy mode, `let` is only a keyword when followed by an identifier,
         // `[`, or `{` (binding pattern starts). Otherwise treat it as an identifier.
-        if ($token->type === TokenType::Let) {
+        if ($token->type === TokenType::Let && $token->rawValue !== 'escaped') {
             $next = $this->peek();
             $isDeclaration = $next->type === TokenType::Identifier
                 || $next->type === TokenType::LeftBracket
@@ -834,9 +834,8 @@ trait StatementParser
         $localNames = [];
 
         while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
-            $importedToken = $this->current();
+            $importedToken = $this->parseModuleExportName();
             $imported = $importedToken->value;
-            $this->advance();
 
             $local = $imported;
             $localToken = $importedToken;
@@ -956,9 +955,8 @@ trait StatementParser
                     );
                 }
                 $this->advance();
-                $aliasToken = $this->current();
+                $aliasToken = $this->parseModuleExportName();
                 $allAs = $aliasToken->value;
-                $this->advance();
             }
             if ($this->current()->rawValue === 'escaped') {
                 throw new ParseError(
@@ -1026,16 +1024,6 @@ trait StatementParser
                     }
                 }
             }
-            // Exported name (as target) when a string must be well-formed
-            // Unicode: no lone UTF-16 surrogates.
-            foreach ($specifiers as $spec) {
-                if ($spec->exportedIsString && $this->containsLoneSurrogate($spec->exported)) {
-                    throw new ParseError(
-                        'Module export name contains lone surrogate',
-                        $this->current(),
-                    );
-                }
-            }
             $this->consumeSemicolon();
             return new ExportDeclaration($location, specifiers: $specifiers, source: $source, attributes: $attributes);
         }
@@ -1059,10 +1047,9 @@ trait StatementParser
         $specifiers = [];
 
         while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
-            $localToken = $this->current();
+            $localToken = $this->parseModuleExportName();
             $localIsString = $localToken->type === TokenType::String;
             $local = $localToken->value;
-            $this->advance();
 
             $exported = $local;
             $exportedIsString = $localIsString;
@@ -1074,10 +1061,9 @@ trait StatementParser
                     );
                 }
                 $this->advance();
-                $exportedToken = $this->current();
+                $exportedToken = $this->parseModuleExportName();
                 $exportedIsString = $exportedToken->type === TokenType::String;
                 $exported = $exportedToken->value;
-                $this->advance();
             }
 
             $specifiers[] = new ExportSpecifier(
@@ -1097,35 +1083,35 @@ trait StatementParser
         return $specifiers;
     }
 
-    /**
-     * Check if a JS string value contains unpaired UTF-16 surrogates.
-     * Token strings are stored as UTF-8 in PHP; walk the codepoints.
-     */
+    /** ModuleExportName has the same Unicode restriction in imports and exports. */
+    private function parseModuleExportName(): Token
+    {
+        $token = $this->advance();
+        if ($token->type === TokenType::String && $this->containsLoneSurrogate($token->value)) {
+            throw new ParseError('Module export name contains lone surrogate', $token);
+        }
+        return $token;
+    }
+
+    /** Check UTF-16 code units so every spelling of a valid surrogate pair is accepted. */
     private function containsLoneSurrogate(string $s): bool
     {
-        $len = strlen($s);
-        $i = 0;
-        while ($i < $len) {
-            $b = ord($s[$i]);
-            if (($b & 0x80) === 0) {
-                $i++;
-                continue;
-            }
-            if (($b & 0xE0) === 0xC0) {
-                $i += 2;
-                continue;
-            }
-            if (($b & 0xF0) === 0xE0 && $i + 2 < $len) {
-                $b1 = ord($s[$i + 1]);
-                $b2 = ord($s[$i + 2]);
-                $cp = (($b & 0x0F) << 12) | (($b1 & 0x3F) << 6) | ($b2 & 0x3F);
-                if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+        $units = \Phasis\Value\JsString::utf8ToUtf16LE($s);
+        $length = strlen($units);
+        for ($i = 0; $i < $length; $i += 2) {
+            $unit = ord($units[$i]) | (ord($units[$i + 1]) << 8);
+            if ($unit >= 0xD800 && $unit <= 0xDBFF) {
+                if ($i + 3 >= $length) {
                     return true;
                 }
-                $i += 3;
-                continue;
+                $next = ord($units[$i + 2]) | (ord($units[$i + 3]) << 8);
+                if ($next < 0xDC00 || $next > 0xDFFF) {
+                    return true;
+                }
+                $i += 2;
+            } elseif ($unit >= 0xDC00 && $unit <= 0xDFFF) {
+                return true;
             }
-            $i++;
         }
         return false;
     }
@@ -1541,10 +1527,7 @@ trait StatementParser
     private function isSimpleAssignmentTarget(Node $node): bool
     {
         if ($node instanceof Identifier) {
-            // `eval` and `arguments` would be restricted in strict mode but
-            // that check happens elsewhere; any identifier is structurally
-            // a simple target.
-            return true;
+            return !$this->strictMode || ($node->name !== 'eval' && $node->name !== 'arguments');
         }
         if ($node instanceof MemberExpression) {
             // OptionalExpression cannot be an AssignmentTarget per
@@ -1697,7 +1680,7 @@ trait StatementParser
         $this->topLevel = $prevTopLevel;
         $this->inStaticBlock = $prevStaticBlock;
 
-        $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location);
+        $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location, $id?->name);
         $this->validateParamLexBindingOverlap($params, $body);
         // Plain function declarations (not class methods) cannot contain
         // SuperCall, super.prop, or super[expr] — those are method-only.
@@ -1846,7 +1829,7 @@ trait StatementParser
      * setters in object literals, SequenceExpression elements, rest
      * elements that aren't last, etc.
      */
-    private function validateAsAssignmentPattern(Node $node): void
+    private function validateAsAssignmentPattern(Node $node, bool $allowWebCompatCall = false): void
     {
         // Per §13.15.5.1: a nested DestructuringAssignmentTarget that is a
         // parenthesized ObjectLiteral, ArrayLiteral, or AssignmentExpression
@@ -1986,7 +1969,8 @@ trait StatementParser
         if (
             !($node instanceof Identifier)
             && !($node instanceof MemberExpression)
-            && !(!$this->strictMode && $node instanceof CallExpression && !self::endsInOptionalChain($node))
+            && !($allowWebCompatCall && !$this->strictMode
+                && $node instanceof CallExpression && !self::endsInOptionalChain($node))
             && !($node instanceof \Phasis\Ast\Pattern\ArrayPattern)
             && !($node instanceof \Phasis\Ast\Pattern\ObjectPattern)
             && !($node instanceof \Phasis\Ast\Pattern\AssignmentPattern)
@@ -2233,12 +2217,10 @@ trait StatementParser
         array $params,
         Node $body,
         \Phasis\Lexer\SourceLocation $location,
+        ?string $functionName = null,
     ): void {
-        if (!$body instanceof \Phasis\Ast\Statement\BlockStatement) {
-            return;
-        }
         $nonSimple = self::hasNonSimpleParameterList($params);
-        $bodyStrict = self::bodyHasUseStrictDirective($body);
+        $bodyStrict = $body instanceof BlockStatement && self::bodyHasUseStrictDirective($body);
         if ($bodyStrict && $nonSimple) {
             throw new ParseError(
                 "Illegal 'use strict' directive in function with non-simple parameter list",
@@ -2257,6 +2239,16 @@ trait StatementParser
         // destructuring, rest) is always an error for duplicates even in
         // sloppy mode per §15.2.1 early error.
         $effectiveStrict = $this->strictMode || $bodyStrict;
+        if (
+            $effectiveStrict && $functionName !== null
+            && (in_array($functionName, ['arguments', 'eval', 'let', 'static', 'yield'], true)
+                || self::isStrictModeFutureReserved($functionName))
+        ) {
+            throw new ParseError(
+                "Function name '{$functionName}' may not be used in strict mode",
+                new \Phasis\Lexer\Token(TokenType::Identifier, $functionName, $location),
+            );
+        }
         if ($effectiveStrict || $nonSimple) {
             self::validateUniqueParameterNames($params, $location);
         }
@@ -3122,7 +3114,7 @@ trait StatementParser
             $this->inAsync = $prevAsync;
             $this->topLevel = $prevTopLevel;
             $this->inStaticBlock = $prevStaticBlock;
-            $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location);
+            $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location, $id->name);
             $this->validateParamLexBindingOverlap($params, $body);
             // Plain async/generator functions cannot reference super.
             self::validateNoSuperInPlainFunctionBody($params, $body);
@@ -3248,6 +3240,7 @@ trait StatementParser
         // Otherwise (followed by `in`, `of`, `;`, `=`, etc.) treat `let` as
         // an identifier expression.
         $isLetDecl = $this->check(TokenType::Let)
+            && $this->current()->rawValue !== 'escaped'
             && ($this->peekIs(TokenType::Identifier)
                 || $this->peekIs(TokenType::LeftBracket)
                 || $this->peekIs(TokenType::LeftBrace)
@@ -3516,7 +3509,9 @@ trait StatementParser
                     $this->current(),
                 );
             }
-            $this->validateAsAssignmentPattern($init);
+            // Annex B allows a call as the entire loop target, but calls
+            // nested in a destructuring pattern remain early errors.
+            $this->validateAsAssignmentPattern($init, allowWebCompatCall: true);
             if ($this->current()->rawValue === 'escaped') {
                 throw new ParseError(
                     "Keyword 'in' must not contain escaped characters",
@@ -3553,7 +3548,7 @@ trait StatementParser
                     $this->current(),
                 );
             }
-            $this->validateAsAssignmentPattern($init);
+            $this->validateAsAssignmentPattern($init, allowWebCompatCall: true);
             if ($this->current()->rawValue === 'escaped') {
                 throw new ParseError(
                     "Keyword 'of' must not contain escaped characters",

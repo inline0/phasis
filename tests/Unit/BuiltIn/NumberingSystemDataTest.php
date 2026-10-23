@@ -27,4 +27,11 @@ Intl.supportedValuesOf('numberingSystem').includes(system) &&
     formatter.resolvedOptions().numberingSystem === system;
 JS));
     }
+
+    public function testUnsupportedHostDigitsRetainLocalePunctuationBeforeSubstitution(): void
+    {
+        $formatter = NumberingSystemData::createFormatter('de_u_nu_notreal', \NumberFormatter::DECIMAL);
+        self::assertSame('1.234,5', $formatter->format(1234.5));
+        self::assertSame('๑.๒๓๔,๕', NumberingSystemData::substitute($formatter->format(1234.5), 'thai'));
+    }
 }

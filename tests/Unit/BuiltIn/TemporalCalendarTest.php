@@ -10,6 +10,30 @@ use PHPUnit\Framework\TestCase;
 /** Calendar arithmetic, interval rounding, and shared Intl calendar coverage. */
 final class TemporalCalendarTest extends TestCase
 {
+    public function testPlainDateTimeBoundsApplyToPropertyBagsAndNanosecondEdges(): void
+    {
+        self::assertSame('[true,true,true,true,true,true]', (new Engine())->eval(<<<'JS'
+            const results = [];
+            for (const overflow of ['constrain', 'reject']) {
+                for (const fields of [
+                    {year: -271821, month: 4, day: 19},
+                    {year: 275760, month: 9, day: 14},
+                ]) {
+                    try { Temporal.PlainDateTime.from(fields, {overflow}); results.push(false); }
+                    catch (error) { results.push(error instanceof RangeError); }
+                }
+            }
+            const min = Temporal.PlainDateTime.from({year: -271821, month: 4, day: 19, nanosecond: 1});
+            const max = Temporal.PlainDateTime.from({
+                year: 275760, month: 9, day: 13, hour: 23, minute: 59, second: 59,
+                millisecond: 999, microsecond: 999, nanosecond: 999,
+            });
+            results.push(min.equals('-271821-04-19T00:00:00.000000001'));
+            results.push(max.equals('+275760-09-13T23:59:59.999999999'));
+            JSON.stringify(results);
+            JS));
+    }
+
     public function testNativeFieldsRoundTripAcrossCalendarExtremes(): void
     {
         self::assertTrue((new Engine())->eval(<<<'JS'
@@ -74,6 +98,48 @@ final class TemporalCalendarTest extends TestCase
             later.add({ nanoseconds: 0 }).equals(later) &&
             later.until(earlier, { largestUnit: 'year' }).minutes === -59 &&
             Temporal.Duration.from({ hours: 2 }).total({ unit: 'day', relativeTo: later }) === 1 / 12
+            JS));
+    }
+
+    public function testDateLineGapDisambiguationAndCalendarArithmetic(): void
+    {
+        self::assertSame('[29,31,31,true,31,23,31,22,29,22]', (new Engine())->eval(<<<'JS'
+            const gap = new Temporal.PlainDateTime(2011, 12, 30, 22);
+            const zone = 'Pacific/Apia';
+            const earlier = gap.toZonedDateTime(zone, {disambiguation: 'earlier'});
+            const later = gap.toZonedDateTime(zone, {disambiguation: 'later'});
+            const compatible = gap.toZonedDateTime(zone);
+            let rejected = false;
+            try { gap.toZonedDateTime(zone, {disambiguation: 'reject'}); }
+            catch (error) { rejected = error instanceof RangeError; }
+            const before = new Temporal.PlainDateTime(2011, 12, 29, 22).toZonedDateTime(zone);
+            const after = new Temporal.PlainDateTime(2011, 12, 31, 23).toZonedDateTime(zone);
+            const added = before.add({days: 1, hours: 1});
+            const subtracted = after.subtract({days: 1, hours: 1});
+            const twoDays = after.subtract({days: 2, hours: 1});
+            JSON.stringify([
+                earlier.day, later.day, compatible.day, rejected,
+                added.day, added.hour, subtracted.day, subtracted.hour, twoDays.day, twoDays.hour,
+            ]);
+            JS));
+    }
+
+    public function testChineseCyclicalYearsUseTheRelatedGregorianYear(): void
+    {
+        self::assertTrue((new Engine())->eval(<<<'JS'
+            let matches = true;
+            for (const calendar of ['chinese', 'dangi']) {
+                const formatter = new Intl.DateTimeFormat('zh', {
+                    calendar, year: 'numeric', timeZone: 'UTC',
+                });
+                for (const [year, cycle] of [[2019, '己亥'], [2020, '庚子'], [2022, '壬寅']]) {
+                    const date = new Date(Date.UTC(year, 5, 1));
+                    const parts = formatter.formatToParts(date);
+                    if (parts.find(part => part.type === 'yearName').value !== cycle) matches = false;
+                    if (formatter.format(date) !== parts.map(part => part.value).join('')) matches = false;
+                }
+            }
+            matches;
             JS));
     }
 

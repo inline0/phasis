@@ -148,8 +148,29 @@ trait TemporalCalendarFormattingHelpers
         if ($cal === null) {
             return null;
         }
+        $yearOffset = 0;
+        if (in_array($calendar, ['chinese', 'dangi'], true)) {
+            // ICU releases use different epochs for extended lunisolar
+            // years. Relate the native extended year to its Gregorian
+            // related year instead of assuming an epoch or ICU version.
+            static $yearOffsets = [];
+            if (!isset($yearOffsets[$calendar])) {
+                $cal->setTime(0);
+                $relatedYear = new \IntlDateFormatter(
+                    'en@numbers=latn',
+                    \IntlDateFormatter::NONE,
+                    \IntlDateFormatter::NONE,
+                    'UTC',
+                    $cal,
+                    'r',
+                );
+                $yearOffsets[$calendar] = $cal->get(\IntlCalendar::FIELD_EXTENDED_YEAR)
+                    - (int) $relatedYear->format(0);
+            }
+            $yearOffset = $yearOffsets[$calendar];
+        }
         $cal->clear();
-        $cal->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $year);
+        $cal->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $year + $yearOffset);
         $cal->set(\IntlCalendar::FIELD_MONTH, $month);
         $cal->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, $leap ? 1 : 0);
         $cal->set(\IntlCalendar::FIELD_DAY_OF_MONTH, 1);
@@ -165,7 +186,7 @@ trait TemporalCalendarFormattingHelpers
                 ); $distance++
             ) {
                 $cal->clear();
-                $cal->set(\IntlCalendar::FIELD_EXTENDED_YEAR, 1972 - $distance);
+                $cal->set(\IntlCalendar::FIELD_EXTENDED_YEAR, 1972 - $distance + $yearOffset);
                 $cal->set(\IntlCalendar::FIELD_MONTH, $month);
                 $cal->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 1);
                 $cal->set(\IntlCalendar::FIELD_DAY_OF_MONTH, 1);

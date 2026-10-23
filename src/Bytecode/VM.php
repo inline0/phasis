@@ -407,8 +407,8 @@ final class VM
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
                     ? $args[1] : JsUndefined::instance();
                 $len = $receiver->getLength();
-                $elements = $receiver->getDenseElements();
                 $result = new \Phasis\Value\JsArray();
+                $result->setLength($len);
                 // The callback's phpCompiled / phpCompiledNumeric may
                 // be null on first iter and populate on the first call
                 // (lazy compile inside callFunction). Read live each
@@ -416,10 +416,13 @@ final class VM
                 $maxParams = count($callback->getParams());
                 $numericFits = $maxParams <= 2;
                 for ($i = 0; $i < $len; $i++) {
-                    $val = $elements[$i] ?? null;
-                    if ($val === null) {
-                        return null;
+                    // A callback can mutate any later index, its descriptor,
+                    // or the prototype chain through an alias of the receiver.
+                    $key = (string) $i;
+                    if (!$receiver->has($key)) {
+                        continue;
                     }
+                    $val = $receiver->get($key);
                     $numeric = $callback->phpCompiledNumeric;
                     if ($numeric !== null && $numericFits && $val instanceof JsNumber) {
                         try {
@@ -430,7 +433,7 @@ final class VM
                                 $this->interp,
                                 $callback->phpCompiledNodes,
                             );
-                            $result->push(JsNumber::of($rawResult));
+                            $result->setDenseElement($i, JsNumber::of($rawResult));
                             continue;
                         } catch (\Phasis\Bytecode\Bailout) {
                             // Fall through to the standard / spec path.
@@ -453,7 +456,7 @@ final class VM
                     } else {
                         $mapped = $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
                     }
-                    $result->push($mapped);
+                    $result->setDenseElement($i, $mapped);
                 }
                 return $result;
 
@@ -470,29 +473,29 @@ final class VM
                     return null;
                 }
                 $len = $receiver->getLength();
-                $elements = $receiver->getDenseElements();
                 $hasInitial = $argc >= 2;
-                if (!$hasInitial && $len === 0) {
-                    return null;
-                }
                 $start = 0;
                 if ($hasInitial) {
                     $acc = $args[1];
                 } else {
-                    $acc = $elements[0] ?? null;
-                    if ($acc === null) {
-                        return null;
+                    while ($start < $len && !$receiver->has((string) $start)) {
+                        $start++;
                     }
-                    $start = 1;
+                    if ($start === $len) {
+                        throw new TypeError('Reduce of empty array with no initial value');
+                    }
+                    $acc = $receiver->get((string) $start);
+                    $start++;
                 }
                 $undef = JsUndefined::instance();
                 $numericFits = count($callback->getParams()) <= 2;
                 $accIsNumber = $acc instanceof JsNumber;
                 for ($i = $start; $i < $len; $i++) {
-                    $val = $elements[$i] ?? null;
-                    if ($val === null) {
-                        return null;
+                    $key = (string) $i;
+                    if (!$receiver->has($key)) {
+                        continue;
                     }
+                    $val = $receiver->get($key);
                     $numeric = $callback->phpCompiledNumeric;
                     if ($numeric !== null && $numericFits && $accIsNumber && $val instanceof JsNumber) {
                         try {
@@ -550,13 +553,13 @@ final class VM
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
                     ? $args[1] : JsUndefined::instance();
                 $len = $receiver->getLength();
-                $elements = $receiver->getDenseElements();
                 $compiled = $callback->phpCompiled;
                 for ($i = 0; $i < $len; $i++) {
-                    $val = $elements[$i] ?? null;
-                    if ($val === null) {
-                        return null;
+                    $key = (string) $i;
+                    if (!$receiver->has($key)) {
+                        continue;
                     }
+                    $val = $receiver->get($key);
                     $idx = JsNumber::of((float) $i);
                     if ($compiled !== null) {
                         try {
@@ -596,14 +599,14 @@ final class VM
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
                     ? $args[1] : JsUndefined::instance();
                 $len = $receiver->getLength();
-                $elements = $receiver->getDenseElements();
                 $result = new \Phasis\Value\JsArray();
                 $compiled = $callback->phpCompiled;
                 for ($i = 0; $i < $len; $i++) {
-                    $val = $elements[$i] ?? null;
-                    if ($val === null) {
-                        return null;
+                    $key = (string) $i;
+                    if (!$receiver->has($key)) {
+                        continue;
                     }
+                    $val = $receiver->get($key);
                     $idx = JsNumber::of((float) $i);
                     if ($compiled !== null) {
                         try {

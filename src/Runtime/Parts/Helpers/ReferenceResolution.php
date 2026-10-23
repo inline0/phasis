@@ -235,7 +235,7 @@ trait ReferenceResolution
             if (
                 $linked !== null
                 && $cursor->getParent() === null
-                && $linked->hasOwnProperty($name)
+                && $linked->has($name)
             ) {
                 return $cursor;
             }
@@ -278,9 +278,9 @@ trait ReferenceResolution
             if ($cur->hasOwnBinding($name)) {
                 return new Reference($cur, $name, $this->strictMode);
             }
-            // Also check the linked global object for properties set directly.
+            // The global object environment resolves inherited properties too.
             $linked = $cur->getLinkedObject();
-            if ($linked !== null && $cur->getParent() === null && $linked->hasOwnProperty($name)) {
+            if ($linked !== null && $cur->getParent() === null && $linked->has($name)) {
                 return new Reference($cur, $name, $this->strictMode);
             }
             $cur = $cur->getParent();

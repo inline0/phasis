@@ -1278,7 +1278,7 @@ trait StatementExecution
         try {
             $completion = $this->executeBody($node->body, $blockEnv);
         } catch (\Phasis\Exceptions\JsThrowable | \Phasis\Exceptions\RuntimeError $exception) {
-            $completion = Completion::throw($this->phpExceptionToJsValue($exception));
+            $completion = Completion::throw($this->activeRealmExceptionToJsValue($exception));
         }
         return $this->applyDisposals($blockEnv, $completion);
     }
@@ -1334,7 +1334,7 @@ trait StatementExecution
         try {
             $completion = $this->execForStatementBody($node, $env, $loopEnv, $label);
         } catch (\Phasis\Exceptions\JsThrowable | \Phasis\Exceptions\RuntimeError $exception) {
-            $completion = Completion::throw($this->phpExceptionToJsValue($exception));
+            $completion = Completion::throw($this->activeRealmExceptionToJsValue($exception));
         }
         return $this->applyDisposals($loopEnv, $completion);
     }
@@ -2061,7 +2061,10 @@ trait StatementExecution
     {
         $fiber = \Fiber::getCurrent();
         $kind = $env->getEnclosingFunctionKind();
-        if ($fiber !== null && ($kind === 'async' || $kind === 'async-generator')) {
+        if (
+            $fiber !== null && ($kind === 'async' || $kind === 'async-generator'
+                || $env->getVariableEnvironment()->isModuleEnvironment())
+        ) {
             try {
                 $resumed = \Fiber::suspend(new \Phasis\Value\AwaitSuspension($value));
             } catch (\Phasis\Exceptions\JsThrowable $e) {
@@ -2996,12 +2999,12 @@ trait StatementExecution
             // A PHP SyntaxError (e.g. from eval parsing). Convert to a JS
             // SyntaxError so the catch handler can process it.
             $this->inTailPosition = $savedTailPosForTry;
-            $completion = Completion::throw($this->phpExceptionToJsValue($e));
+            $completion = Completion::throw($this->activeRealmExceptionToJsValue($e));
         } catch (\Phasis\Exceptions\RuntimeError $e) {
             // A PHP exception representing a JS runtime error. Convert to
             // a Throw completion so the JS catch handler can process it.
             $this->inTailPosition = $savedTailPosForTry;
-            $completion = Completion::throw($this->phpExceptionToJsValue($e));
+            $completion = Completion::throw($this->activeRealmExceptionToJsValue($e));
         }
 
         if ($completion->type === CompletionType::Throw && $node->handler !== null) {

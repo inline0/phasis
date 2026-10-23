@@ -26,6 +26,17 @@ final class NumberingSystemData
         return array_keys(self::systems());
     }
 
+    /** Older ICU releases can format the locale before bundled digit substitution. */
+    public static function createFormatter(string $locale, int $style): \NumberFormatter
+    {
+        try {
+            return new \NumberFormatter($locale, $style);
+        } catch (\IntlException) {
+            $baseLocale = explode('@', $locale, 2)[0];
+            return new \NumberFormatter($baseLocale . '@numbers=latn', $style);
+        }
+    }
+
     /** Substitute decimal digits while preserving locale punctuation and labels. */
     public static function substitute(string $formatted, string $system): string
     {

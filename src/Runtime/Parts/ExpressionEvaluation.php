@@ -1121,14 +1121,8 @@ trait ExpressionEvaluation
                 $bindingEnv->set($name, $right, $this->strictMode);
                 return $right;
             }
-            // Unresolvable LHS: in strict mode, the spec throws
-            // ReferenceError before evaluating RHS. Fall through to the
-            // slow path so it can produce that error correctly.
-            if ($this->strictMode) {
-                throw new ReferenceError("{$name} is not defined");
-            }
-            // Sloppy: evaluate RHS and let the slow path implicitly
-            // create the global binding.
+            // Preserve an unresolvable reference through RHS evaluation.
+            // The reference path throws on PutValue only after the RHS succeeds.
         }
 
         // Fast path: compound assignment (`x += y`) where LHS is a plain
@@ -1200,14 +1194,12 @@ trait ExpressionEvaluation
 
         $ref = $this->resolveReference($node->left, $env);
 
-        // Per spec 13.15.2 step 1.c: if lref is a strict unresolvable reference,
-        // throw ReferenceError BEFORE evaluating the RHS.
-        if (
-            $this->strictMode
+        $unresolvable = $this->strictMode
             && $node->left instanceof Identifier
             && $ref->base instanceof Environment
-            && !$ref->base->has($ref->name)
-        ) {
+            && !$ref->base->has($ref->name);
+        // Compound assignments read the LHS before evaluating the RHS.
+        if ($unresolvable && $node->operator !== '=') {
             throw new ReferenceError("{$ref->name} is not defined");
         }
 
@@ -1237,6 +1229,11 @@ trait ExpressionEvaluation
                 && !$this->hasExplicitNameProperty($right)
             ) {
                 $right->setName($node->left->name);
+            }
+            // A new global binding created by the RHS cannot resolve the
+            // reference that was already captured before evaluating it.
+            if ($unresolvable) {
+                throw new ReferenceError("{$ref->name} is not defined");
             }
             $this->withSetMutableBindingCheck($ref, $right);
             return $right;
@@ -7764,8 +7761,8 @@ trait ExpressionEvaluation
      * lexical contexts, so an arrow-only walk to the root means the
      * await belongs to an async arrow that's already wrapped in an
      * executeAsyncFunction Fiber: suspension routes back to that fiber,
-     * which is what we want. Module top-level await sets kind='async'
-     * on the module env, so it's covered too.
+     * which is what we want. Module top-level await has its own variable
+     * environment, without a function's new.target or arguments context.
      */
     private function isInAsyncContext(Environment $env): bool
     {
@@ -7777,7 +7774,8 @@ trait ExpressionEvaluation
             // async), and that arrow runs inside an executeAsyncFunction
             // Fiber. Suspending here delivers the AwaitSuspension to the
             // right driver.
-            return $env->getEnclosingFunctionKind() === 'arrow';
+            return $env->getEnclosingFunctionKind() === 'arrow'
+                || $env->getVariableEnvironment()->isModuleEnvironment();
         }
         return $kind === 'async' || $kind === 'async-generator';
     }
@@ -8209,7 +8207,6 @@ trait ExpressionEvaluation
         // this wrap, the synchronous loop blocks all microtasks until
         // each await unwraps inline, breaking spec tick ordering.
         if ($this->astContainsTopLevelAwait($body)) {
-            $moduleEnv->setFunctionKind('async');
             $this->strictMode = $prevStrict;
             return $this->executeModuleBodyAsync($body, $moduleEnv, $onAsyncStart);
         }

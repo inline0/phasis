@@ -207,6 +207,11 @@ trait CompilerExpression
             if ($prop->method) {
                 throw new CompilerBailout('method shorthand');
             }
+            // Property NamedEvaluation must use the evaluated key, including
+            // Symbol descriptions and names visible during class evaluation.
+            if (self::initNeedsNamedEvaluation($prop->value)) {
+                throw new CompilerBailout('object property needs named evaluation');
+            }
             if ($prop->computed) {
                 // [expr]: val — push key, push val, SET_COMPUTED.
                 $this->compileExpression($prop->key);
@@ -708,6 +713,9 @@ trait CompilerExpression
                 throw new CompilerBailout('strict-mode non-local identifier assignment');
             }
             if ($op === '=') {
+                if (self::initNeedsNamedEvaluation($node->right)) {
+                    throw new CompilerBailout('identifier assignment needs named evaluation');
+                }
                 $this->compileExpression($node->right);
                 $this->emit(Op::DUP);
                 if ($isLocal) {

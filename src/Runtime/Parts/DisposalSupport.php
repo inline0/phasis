@@ -159,6 +159,13 @@ trait DisposalSupport
         return $error !== null ? Completion::throw($error) : Completion::normal(JsUndefined::instance());
     }
 
+    /** Preserve the executing function's realm when creating an abrupt completion. */
+    private function activeRealmExceptionToJsValue(\Throwable $error): JsValue
+    {
+        $interpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+        return $interpreter->phpExceptionToJsValue($error);
+    }
+
     /** Convert a PHP exception into a JS value for SuppressedError chaining. */
     public function phpExceptionToJsValue(\Throwable $e): JsValue
     {
@@ -236,7 +243,7 @@ trait DisposalSupport
         try {
             $completion = $this->executeBody($body, $env);
         } catch (\Phasis\Exceptions\JsThrowable | \Phasis\Exceptions\RuntimeError $error) {
-            $completion = Completion::throw($this->phpExceptionToJsValue($error));
+            $completion = Completion::throw($this->activeRealmExceptionToJsValue($error));
         }
         return $this->applyDisposals($env, $completion);
     }

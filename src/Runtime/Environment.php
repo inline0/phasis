@@ -86,6 +86,9 @@ class Environment
      */
     private ?string $functionKind = null;
 
+    /** Modules have their own variable scope without creating a function context. */
+    private bool $moduleEnvironment = false;
+
     /**
      * Whether the enclosing function has non-simple parameters (defaults,
      * rest, destructuring). Per EvalDeclarationInstantiation, eval("var
@@ -732,20 +735,11 @@ class Environment
         }
 
         // At the global (root) environment and the binding was not found
-        // in $this->bindings. Check if the linked global object has this
-        // property (e.g. set via Object.defineProperty on the global object).
-        if ($this->linkedObject !== null && $this->linkedObject->hasOwnProperty($name)) {
-            $desc = $this->linkedObject->getOwnPropertyDescriptor($name);
-            if ($desc !== null && $desc->writable === false) {
-                if ($strict) {
-                    throw new TypeError(
-                        "Cannot assign to read only property '{$name}'"
-                    );
-                }
-                return; // Silently fail in sloppy mode
-            }
-            $this->bindings[$name] = $value;
-            $this->linkedObject->set($name, $value);
+        // in $this->bindings. Object environment records also resolve
+        // inherited properties. A proxy or inherited setter may handle the
+        // write without creating an own property or a declarative binding.
+        if ($this->linkedObject !== null && $this->linkedObject->has($name)) {
+            $this->linkedObject->set($name, $value, $strict);
             return;
         }
 
@@ -800,8 +794,8 @@ class Environment
             return $this->parent->has($name);
         }
 
-        // Check the linked global object for directly-set properties.
-        if ($this->linkedObject !== null && $this->linkedObject->hasOwnProperty($name)) {
+        // Global object bindings include properties inherited through proxies.
+        if ($this->linkedObject !== null && $this->linkedObject->has($name)) {
             return true;
         }
 
@@ -937,6 +931,24 @@ class Environment
         return $this->functionKind;
     }
 
+    /** Mark this environment as the variable and lexical scope of a module. */
+    public function markAsModuleEnvironment(): void
+    {
+        $this->moduleEnvironment = true;
+    }
+
+    /** Whether this environment is a module scope rather than a function or block. */
+    public function isModuleEnvironment(): bool
+    {
+        return $this->moduleEnvironment;
+    }
+
+    private function isVariableScopeBoundary(): bool
+    {
+        return $this->moduleEnvironment || $this->functionKind !== null
+            || $this->linkedObject !== null || $this->parent === null;
+    }
+
     /** Mark this function environment as having non-simple parameters. */
     public function setHasNonSimpleParams(bool $value): void
     {
@@ -952,6 +964,9 @@ class Environment
     {
         $env = $this;
         while ($env !== null) {
+            if ($env->moduleEnvironment) {
+                return false;
+            }
             if ($env->functionKind !== null) {
                 return $env->hasNonSimpleParams;
             }
@@ -969,6 +984,9 @@ class Environment
     {
         $env = $this;
         while ($env !== null) {
+            if ($env->moduleEnvironment) {
+                return null;
+            }
             if ($env->functionKind !== null) {
                 return $env->functionKind;
             }
@@ -989,6 +1007,9 @@ class Environment
     {
         $env = $this;
         while ($env !== null) {
+            if ($env->moduleEnvironment) {
+                return null;
+            }
             if ($env->functionKind !== null && $env->functionKind !== 'arrow') {
                 return $env->functionKind;
             }
@@ -1013,6 +1034,9 @@ class Environment
     {
         $env = $this;
         while ($env !== null) {
+            if ($env->moduleEnvironment) {
+                return false;
+            }
             if ($env->functionKind !== null && $env->functionKind !== 'arrow') {
                 return $env->hasOwnBinding('[[HomeObject]]');
             }
@@ -1028,15 +1052,14 @@ class Environment
     }
 
     /**
-     * Find the nearest variable environment (function scope or global scope).
-     * Per spec, the VariableEnvironment is the enclosing function scope or
-     * the global scope. Block scopes (if, for, try, etc.) are lexical
+     * Find the nearest variable environment (function, module, or global scope).
+     * Block scopes (if, for, try, etc.) are lexical
      * environments, not variable environments.
      */
     public function getVariableEnvironment(): self
     {
         $env = $this;
-        while ($env->parent !== null && $env->functionKind === null && $env->linkedObject === null) {
+        while ($env->parent !== null && !$env->isVariableScopeBoundary()) {
             $env = $env->parent;
         }
         return $env;
@@ -1054,8 +1077,7 @@ class Environment
             if (isset($env->lexical['arguments'])) {
                 return true;
             }
-            // If this environment is a function boundary, stop.
-            if ($env->functionKind !== null) {
+            if ($env->isVariableScopeBoundary()) {
                 return false;
             }
             $env = $env->parent;
@@ -1065,7 +1087,7 @@ class Environment
 
     /**
      * Check if a name has a TDZ (let/const) binding in the scope chain
-     * between the current environment and the enclosing function's varEnv.
+     * between the current environment and the enclosing variable environment.
      * Per EvalDeclarationInstantiation, a var declaration in eval must not
      * conflict with existing lexical declarations.
      */
@@ -1076,8 +1098,7 @@ class Environment
             if (isset($env->lexical[$name])) {
                 return true;
             }
-            // Stop at function boundaries or at the global environment.
-            if ($env->functionKind !== null || $env->parent === null) {
+            if ($env->isVariableScopeBoundary()) {
                 return false;
             }
             $env = $env->parent;
@@ -1101,7 +1122,7 @@ class Environment
             ) {
                 return true;
             }
-            if ($env->functionKind !== null) {
+            if ($env->isVariableScopeBoundary()) {
                 return false;
             }
             $env = $env->parent;

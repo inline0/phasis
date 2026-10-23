@@ -1298,14 +1298,13 @@ trait TimezoneHelpers
             (string) ($h * 3600 + $min * 60 + $s),
             0,
         );
-        // Probe the timezone's offset 12h before and 12h after the
-        // wall-clock instant to detect DST transitions in the
-        // window. If both probes return the same offset there's no
-        // ambiguity.
+        // UTC offsets can exceed twelve hours and date-line gaps can
+        // skip a whole day. Bracket every candidate with a full day
+        // on each side of the wall-clock instant.
         try {
             $tzObj = self::resolveTimeZone($tz);
-            $beforeSec = bcsub($wallUtcSec, '43200', 0);
-            $afterSec = bcadd($wallUtcSec, '43200', 0);
+            $beforeSec = bcsub($wallUtcSec, '86400', 0);
+            $afterSec = bcadd($wallUtcSec, '86400', 0);
             $offBefore = (int) (new \DateTimeImmutable('@' . $beforeSec))
                 ->setTimezone($tzObj)->format('Z');
             $offAfter = (int) (new \DateTimeImmutable('@' . $afterSec))
@@ -1359,17 +1358,8 @@ trait TimezoneHelpers
                 ? $epochWithBefore : $epochWithAfter;
             $laterEpoch = bccomp($epochWithBefore, $epochWithAfter, 0) < 0
                 ? $epochWithAfter : $epochWithBefore;
-            // For gap, "earlier" picks the moment with the wall-
-            // clock interpretation that points BEFORE the gap;
-            // "later"/"compatible" point AFTER. The "before" offset
-            // applied to the wall lands AT or BEFORE the
-            // transition; the "after" offset lands AT or AFTER.
-            // "earlier" disambiguation -> use the BEFORE offset's
-            // candidate, which lies AFTER the actual transition (so
-            // ironically the LATER UTC). The spec is:
-            //   earlier: pick offset that gives the earlier UTC
-            //   later:   pick offset that gives the later UTC
-            //   compatible (gap): later
+            // Earlier shifts backward by the gap; later and compatible
+            // shift forward by the gap.
             $epochSec = ($disam === 'earlier') ? $earlierEpoch : $laterEpoch;
             return bcadd(bcmul($epochSec, '1000000000', 0), (string) $nsPart, 0);
         }

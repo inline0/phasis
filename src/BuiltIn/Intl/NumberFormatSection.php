@@ -1159,7 +1159,7 @@ trait NumberFormatSection
         $groupSym = ',';
         if (extension_loaded('intl')) {
             $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
-            $sf = new \NumberFormatter(
+            $sf = NumberingSystemData::createFormatter(
                 str_replace('-', '_', $locale),
                 \NumberFormatter::DECIMAL,
             );
@@ -1384,7 +1384,7 @@ trait NumberFormatSection
         // symbol (de-DE renders 3,45E-4 rather than 3.45E-4).
         if (extension_loaded('intl')) {
             $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
-            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+            $sf = NumberingSystemData::createFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
             $decimalSym = $sf->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL) ?: '.';
             if ($decimalSym !== '.') {
                 $mantissaStr = str_replace('.', $decimalSym, $mantissaStr);
@@ -1830,7 +1830,7 @@ trait NumberFormatSection
             return 'NaN';
         }
         try {
-            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+            $sf = NumberingSystemData::createFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
             $sym = $sf->getSymbol(\NumberFormatter::NAN_SYMBOL);
             return $sym !== '' ? $sym : 'NaN';
         } catch (\Throwable) {
@@ -1844,7 +1844,7 @@ trait NumberFormatSection
             return '∞';
         }
         try {
-            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+            $sf = NumberingSystemData::createFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
             $sym = $sf->getSymbol(\NumberFormatter::INFINITY_SYMBOL);
             return $sym !== '' ? $sym : '∞';
         } catch (\Throwable) {
@@ -2519,7 +2519,7 @@ trait NumberFormatSection
         if ($numberingSystem !== 'latn' && $numberingSystem !== '') {
             $icuLocale = $icuLocale . '@numbers=' . $numberingSystem;
         }
-        $formatter = new \NumberFormatter($icuLocale, $fmtStyle);
+        $formatter = NumberingSystemData::createFormatter($icuLocale, $fmtStyle);
 
         $minInt = (int) self::extractInternalNumber($nf, '[[MinimumIntegerDigits]]', 1);
         $formatter->setAttribute(\NumberFormatter::MIN_INTEGER_DIGITS, $minInt);
@@ -2631,7 +2631,7 @@ trait NumberFormatSection
             // surrounds negative amounts with parentheses per CLDR.
             $currencySign = self::extractInternalString($nf, '[[CurrencySign]]', 'standard');
             if ($currencySign === 'accounting') {
-                $accountingFmt = new \NumberFormatter(
+                $accountingFmt = NumberingSystemData::createFormatter(
                     $icuLocale,
                     \NumberFormatter::CURRENCY_ACCOUNTING,
                 );

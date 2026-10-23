@@ -162,7 +162,12 @@ trait ExpressionParser
             // expression, unary expression, etc.) is a parse-time
             // SyntaxError. Only = allows ObjectLiteral/ArrayLiteral as
             // destructuring patterns; compound assignments don't.
-            if (!$this->isValidAssignmentTarget($left, $op->value === '=')) {
+            // Annex B call targets are permitted for ordinary assignments,
+            // but logical assignments require a simple target in every mode.
+            if (
+                !$this->isValidAssignmentTarget($left, $op->value === '=')
+                || ($left instanceof CallExpression && in_array($op->value, ['&&=', '||=', '??='], true))
+            ) {
                 throw new ParseError(
                     "Invalid left-hand side in assignment",
                     $op,
@@ -593,7 +598,10 @@ trait ExpressionParser
                 self::validateDeleteArgument($argument, $token);
                 // Per §13.5.1.1: in strict mode, `delete` applied to a bare
                 // IdentifierReference is a SyntaxError.
-                if ($this->strictMode && $argument instanceof Identifier) {
+                if (
+                    $this->strictMode && $argument instanceof Identifier
+                    && $argument->name !== '[[NewTarget]]' && $argument->name !== '[[ImportMeta]]'
+                ) {
                     throw new ParseError(
                         'Delete of an unqualified identifier in strict mode',
                         $token,
@@ -2682,6 +2690,7 @@ trait ExpressionParser
         $this->inAsync = $prevAsync;
         $this->topLevel = $prevTopLevel;
         $this->inStaticBlock = $prevStaticBlock;
+        $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location);
         if (!$this->inMethodLike) {
             self::validateNoSuperInPlainFunctionBody($params, $body);
         } else {
@@ -3379,7 +3388,7 @@ trait ExpressionParser
         $this->topLevel = $prevTopLevel;
         $this->inStaticBlock = $prevStaticBlock;
 
-        $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location);
+        $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location, $name);
         $this->validateParamLexBindingOverlap($params, $body);
         // Plain function expressions cannot reference super.
         self::validateNoSuperInPlainFunctionBody($params, $body);
@@ -3539,7 +3548,7 @@ trait ExpressionParser
         $this->topLevel = $prevTopLevel;
         $this->inStaticBlock = $prevStaticBlock;
 
-        $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location);
+        $this->validateStrictDirectiveWithNonSimpleParams($params, $body, $location, $name);
         $this->validateParamLexBindingOverlap($params, $body);
         // Plain async function expressions cannot reference super.
         self::validateNoSuperInPlainFunctionBody($params, $body);
