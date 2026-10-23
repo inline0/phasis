@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-10-23T16:03:28+00:00",
-    "updatedAt": "2026-10-23T16:03:28+00:00",
+    "generatedAt": "2026-10-23T18:45:09+00:00",
+    "updatedAt": "2026-10-23T18:45:09+00:00",
     "complete": true,
     "git": {
-        "branch": "fix/test262-compliance-20261023",
-        "commit": "8f305b5c",
+        "branch": "feat/express-hono-compatibility",
+        "commit": "3ac7add4",
         "isDirty": true
     },
     "environment": {
@@ -19,8 +19,8 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "b1febb17a2c362ebd13089d15b373dfb893ba458",
-        "runIdentity": "a86d7ea584bb57f1fbf242fcd625f2b237204ab14ddf6f9d6b624086bd9a4ef5"
+        "fingerprint": "94ed41d682b079b976f2e9b4fd63434c3659259c",
+        "runIdentity": "3355ba33b0d9db4fa165fcde286b12d8895562484fbde1543a1004c859e8421a"
     },
     "discovery": {
         "groupCount": 161,
@@ -2717,81 +2717,18 @@
         "blockedChunks": [],
         "slowChunks": [
             {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 270.309,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 268.329,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 263.033,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 261.889,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 259.048,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 228.625,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
-                ]
-            },
-            {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 225.385,
+                "durationSec": 290.158,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 213.468,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
-                ]
-            },
-            {
                 "group": "built-ins/decodeURI",
                 "kind": "normal",
-                "durationSec": 205.779,
+                "durationSec": 262.427,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
@@ -2800,7 +2737,61 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 192.702,
+                "durationSec": 173.911,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 173.728,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 172.73,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 171.487,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 169.559,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 149.649,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 148.734,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
@@ -2809,7 +2800,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 165.142,
+                "durationSec": 145.401,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
@@ -2818,27 +2809,25 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 138.127,
+                "durationSec": 135,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 116.964,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
                 ]
             },
             {
-                "group": "built-ins/TypedArray",
-                "kind": "normal",
-                "durationSec": 78.193,
-                "filesCount": 3,
-                "sampleFiles": [
-                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
-                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
-                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end.js"
-                ]
-            },
-            {
                 "group": "built-ins/decodeURI",
                 "kind": "normal",
-                "durationSec": 69.761,
+                "durationSec": 94.553,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
@@ -2851,7 +2840,7 @@
             {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 69.395,
+                "durationSec": 94.443,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
@@ -2862,9 +2851,46 @@
                 ]
             },
             {
+                "group": "built-ins/TypedArray",
+                "kind": "normal",
+                "durationSec": 77.784,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end.js"
+                ]
+            },
+            {
+                "group": "language/literals",
+                "kind": "normal",
+                "durationSec": 70.363,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js",
+                    "...",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js"
+                ]
+            },
+            {
+                "group": "intl402/DateTimeFormat",
+                "kind": "normal",
+                "durationSec": 68.395,
+                "filesCount": 12,
+                "sampleFiles": [
+                    "test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plainmonthday-formatting-timezonename.js",
+                    "test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plaintime-formatting-timezonename.js",
+                    "...",
+                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/dangi-calendar-dates.js",
+                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/date-constructor-not-called.js"
+                ]
+            },
+            {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 62.442,
+                "durationSec": 63.85,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Array/toSpliced-dense.js"
@@ -2873,45 +2899,27 @@
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 59.976,
-                "filesCount": 3,
+                "durationSec": 59.852,
+                "filesCount": 5,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cuneiform.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypriot.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypro_Minoan.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/IDS_Trinary_Operator.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/ID_Continue.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/ID_Start.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Join_Control.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 59.944,
-                "filesCount": 3,
+                "durationSec": 59.712,
+                "filesCount": 5,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Linear_A.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Linear_B.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lisu.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 59.836,
-                "filesCount": 3,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Devanagari.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dives_Akuru.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dogra.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/property-escapes/generated",
-                "kind": "normal",
-                "durationSec": 59.263,
-                "filesCount": 3,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kirat_Rai.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lao.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Dash.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Default_Ignorable_Code_Point.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Deprecated.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Diacritic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Emoji.js"
                 ]
             }
         ]
