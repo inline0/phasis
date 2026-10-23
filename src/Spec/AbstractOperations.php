@@ -115,11 +115,10 @@ final class AbstractOperations
         \Phasis\Runtime\Environment $globalEnv,
         string $constructorName,
     ): ?JsObject {
-        // Map well-known constructor names that are not exposed as
-        // globals to their per-realm prototype slot. Each entry maps the
-        // constructor's [[Name]] to the reserved env binding holding
-        // realm's %ConstructorName.prototype% intrinsic.
+        // Retained intrinsics must win over mutable constructor globals.
+        // This also covers function constructors that have no named global.
         static $hiddenIntrinsics = [
+            'Object' => '__ObjectPrototype__',
             'AsyncFunction' => '__AsyncFunctionPrototype__',
             'GeneratorFunction' => '__GeneratorFunctionPrototype__',
             'AsyncGeneratorFunction' => '__AsyncGeneratorFunctionPrototype__',

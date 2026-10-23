@@ -1904,17 +1904,19 @@ final class VM
                                     }
                                 }
                                 if ($newInlineable) {
-                                    // Inline the dataSlots-fast-path of
-                                    // $callee->get('prototype'): regular
-                                    // function instances always carry
-                                    // `prototype` as an own data slot,
-                                    // so the hit lands in one array
-                                    // lookup with no method dispatch.
-                                    // Fall back to the spec getter only
-                                    // if the slot was deleted (rare).
+                                    // Default-attribute slots can be read directly.
+                                    // Other descriptors go through [[Get]], including
+                                    // deferred ordinary function prototypes.
                                     $proto = $callee->properties->dataSlots['prototype']
                                         ?? $callee->get('prototype');
-                                    $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+                                    if (!$proto instanceof JsObject) {
+                                        $realm = AbstractOperations::getFunctionRealm($callee);
+                                        $proto = $realm === null ? null : AbstractOperations::realmIntrinsicPrototype(
+                                            $realm->getGlobalEnv(),
+                                            'Object',
+                                        );
+                                    }
+                                    $newObj = new JsObject($proto);
                                     // Skip the [[NewTarget]] install
                                     // for function bodies that don't
                                     // read new.target / super(). The

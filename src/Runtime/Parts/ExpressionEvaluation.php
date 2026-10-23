@@ -3292,7 +3292,11 @@ trait ExpressionEvaluation
 
         // Create a new object with the constructor's prototype
         $proto = $callee->get('prototype');
-        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        if (!$proto instanceof JsObject) {
+            $realm = AbstractOperations::getFunctionRealm($callee);
+            $proto = $realm === null ? null : AbstractOperations::realmIntrinsicPrototype($realm->getGlobalEnv(), 'Object');
+        }
+        $newObj = new JsObject($proto);
         // Mark as new.target so constructors can detect new vs call.
         // Use a non-enumerable, non-configurable property so it does not leak into iteration.
         $newObj->defineOwnProperty(
@@ -3936,7 +3940,7 @@ trait ExpressionEvaluation
     /**
      * Install the .prototype property on a newly created function.
      *
-     * For normal functions: creates {constructor: fn} with Object.prototype as prototype.
+     * Normal functions defer their {constructor: fn} object until its value is read.
      * For generator functions: creates a plain object with %GeneratorPrototype% as prototype,
      * NO constructor property (per spec §27.3.4).
      */
@@ -3962,6 +3966,7 @@ trait ExpressionEvaluation
             $proto = new JsObject($generatorProto);
             // Non-constructable: generators can't be called with new.
             $fn->setNonConstructable();
+            $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
         } else {
             // Resolve %Object.prototype% for THIS realm so a sibling
             // Engine cannot leak its Object.prototype through the
@@ -3977,13 +3982,8 @@ trait ExpressionEvaluation
                     $objProto = $candidate;
                 }
             }
-            $proto = new JsObject($objProto);
-            // Per spec, constructor is writable, non-enumerable, configurable.
-            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
+            $fn->installOrdinaryPrototype($objProto);
         }
-        // Per spec §27.3.4 / §10.2.4: .prototype is writable, non-enumerable, non-configurable for generators;
-        // writable, non-enumerable, non-configurable for regular functions too.
-        $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
 
         // Annex B legacy `function.caller` / `function.arguments`: install
         // own slots (default null) on non-strict, non-arrow, non-async,
@@ -6020,7 +6020,11 @@ trait ExpressionEvaluation
         // initializers, derived-constructor checks, and the
         // [[NewTarget]] cleanup all match the tree-walker exactly.
         $proto = $callee->get('prototype');
-        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        if (!$proto instanceof JsObject) {
+            $realm = AbstractOperations::getFunctionRealm($callee);
+            $proto = $realm === null ? null : AbstractOperations::realmIntrinsicPrototype($realm->getGlobalEnv(), 'Object');
+        }
+        $newObj = new JsObject($proto);
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
             \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),

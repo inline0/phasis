@@ -42,6 +42,56 @@ class JsFunction extends JsObject
     /** %AsyncGeneratorFunction.prototype% intrinsic. */
     private static ?JsObject $asyncGeneratorFunctionPrototype = null;
 
+    /** An internal value that never escapes through JavaScript property reads. */
+    private static ?JsObject $uninitializedOrdinaryPrototype = null;
+
+    /** The defining realm's intrinsic, independent of later global Object assignments. */
+    private ?JsObject $ordinaryPrototypeParent = null;
+
+    /**
+     * Install the ordinary constructor's data property without creating the
+     * function/prototype/constructor cycle until its value is observed.
+     */
+    public function installOrdinaryPrototype(?JsObject $objectPrototype): void
+    {
+        self::$uninitializedOrdinaryPrototype ??= JsObject::createNullPrototype();
+        $this->ordinaryPrototypeParent = $objectPrototype ?? JsObject::getGlobalPrototype();
+        $this->defineOwnProperty('prototype', \Phasis\Object\PropertyDescriptor::data(
+            self::$uninitializedOrdinaryPrototype,
+            true,
+            false,
+            false,
+        ));
+    }
+
+    private function materializeOrdinaryPrototype(): void
+    {
+        $descriptor = $this->properties->descriptors['prototype'] ?? null;
+        if (
+            self::$uninitializedOrdinaryPrototype === null
+            || $descriptor === null
+            || $descriptor->value !== self::$uninitializedOrdinaryPrototype
+        ) {
+            return;
+        }
+
+        $prototype = $this->ordinaryPrototypeParent === null
+            ? JsObject::createNullPrototype()
+            : new JsObject($this->ordinaryPrototypeParent);
+        $prototype->defineOwnProperty('constructor', \Phasis\Object\PropertyDescriptor::data(
+            $this,
+            true,
+            false,
+            true,
+        ));
+        // Partial descriptor updates may already have frozen the property.
+        // Realization changes its representation, not its observable attributes.
+        $descriptor->value = $prototype;
+        $this->ordinaryPrototypeParent = null;
+        $this->properties->version++;
+        $this->properties->mutationVersion++;
+    }
+
     public static function setFunctionPrototype(JsObject $proto): void
     {
         self::$functionPrototype = $proto;
@@ -662,11 +712,36 @@ class JsFunction extends JsObject
                 return $live;
             }
         }
-        return parent::getWithReceiver($name, $receiver);
+        return $this->getWithValueReceiver($name, $receiver);
+    }
+
+    public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
+    {
+        if ($name === 'prototype') {
+            $this->materializeOrdinaryPrototype();
+        }
+        return parent::getWithValueReceiver($name, $receiver);
+    }
+
+    public function getOwnPropertyDescriptorRaw(string $name): ?\Phasis\Object\PropertyDescriptor
+    {
+        if ($name === 'prototype') {
+            $this->materializeOrdinaryPrototype();
+        }
+        return parent::getOwnPropertyDescriptorRaw($name);
+    }
+
+    public function getProperties(): \Phasis\Object\PropertyMap
+    {
+        $this->materializeOrdinaryPrototype();
+        return parent::getProperties();
     }
 
     public function getOwnPropertyDescriptor(string $name): ?\Phasis\Object\PropertyDescriptor
     {
+        if ($name === 'prototype') {
+            $this->materializeOrdinaryPrototype();
+        }
         if ($name === 'caller' || $name === 'arguments') {
             $live = $this->liveAnnexBValue($name);
             if ($live !== null) {
