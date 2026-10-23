@@ -15,28 +15,27 @@ use PHPUnit\Framework\TestCase;
 
 final class CompilationFailuresTest extends TestCase
 {
-    public function testStrictTailCallBailoutDoesNotDisableSloppyCompilationOfTheSameSyntax(): void
+    public function testAsyncBailoutDoesNotDisableOrdinaryCompilationOfTheSameSyntax(): void
     {
         $engine = new Engine();
         $engine->eval(<<<'JS'
 function helper(value) { return value + 1; }
-function template(value) { try { return helper(value); } catch (error) { return 0; } }
+function template(value) { return helper(value); }
 JS);
         $template = $engine->getGlobalEnv()->get('template');
         self::assertInstanceOf(JsFunction::class, $template);
-        $strict = new JsFunction('strict', $template->getParams(), $template->getBody(), $template->getClosure(), strict: true);
-        self::assertNull(JsToPhp::compile($strict));
+        $async = new JsFunction('async', $template->getParams(), $template->getBody(), $template->getClosure(), isAsync: true);
+        self::assertNull(JsToPhp::compile($async));
         try {
-            (new Compiler())->compile($strict);
-            self::fail('Strict tail calls require the interpreter trampoline.');
+            (new Compiler())->compile($async);
+            self::fail('Async functions require the interpreter.');
         } catch (CompilerBailout $error) {
-            self::assertStringContainsString('tail', $error->getMessage());
+            self::assertSame('non-ordinary function kind', $error->getMessage());
         }
-        $sloppy = new JsFunction('sloppy', $template->getParams(), $template->getBody(), $template->getClosure());
-        self::assertInstanceOf(CompiledFunction::class, (new Compiler())->compile($sloppy));
-        $engine->setGlobalJsValue('strict', $strict);
-        $engine->setGlobalJsValue('sloppy', $sloppy);
-        self::assertSame('3:5', $engine->eval('[strict(2), sloppy(4)].join(":")'));
+        $ordinary = new JsFunction('ordinary', $template->getParams(), $template->getBody(), $template->getClosure());
+        self::assertInstanceOf(CompiledFunction::class, (new Compiler())->compile($ordinary));
+        $engine->setGlobalJsValue('ordinary', $ordinary);
+        self::assertSame(5, $engine->eval('ordinary(4)'));
     }
 
     public function testMethodBailoutDoesNotDisableOrdinaryNumericCompilation(): void

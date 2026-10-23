@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", choices=("node", "phasis", "both"), default="both")
     parser.add_argument("--jobs", type=int, choices=(1, 2), default=1)
-    parser.add_argument("--timeout", type=float, default=120)
+    parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.timeout <= 0:

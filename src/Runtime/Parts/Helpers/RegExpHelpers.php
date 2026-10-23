@@ -159,8 +159,143 @@ trait RegExpHelpers
         return $newObj;
     }
 
+    /** @var array<string, array{pattern: string, flags: string, pcre: string, groups: array<string, string>, names: list<string>, custom: bool}> */
+    private array $preparedRegExpPatterns = [];
+
     private function createRegExpObject(string $pattern, string $flags): JsObject
     {
+        $originalPattern = $pattern;
+        $prepared = $this->prepareRegExpPattern($pattern, $flags);
+        $pattern = $prepared['pattern'];
+        $sortedFlags = $prepared['flags'];
+        $pcrePattern = $prepared['pcre'];
+        $groupNameMap = $prepared['groups'];
+
+        $regexpProto = $this->globalEnv->getIntrinsic('RegExpPrototype');
+        if (!$regexpProto instanceof JsObject && $this->globalEnv->has('RegExp')) {
+            // Force lazy installation before reading the private intrinsic.
+            $this->globalEnv->get('RegExp');
+            $regexpProto = $this->globalEnv->getIntrinsic('RegExpPrototype');
+        }
+        $obj = new JsObject($regexpProto instanceof JsObject ? $regexpProto : null);
+
+        // Internal slots for compile() and prototype getters.
+        // These are not affected by user-visible property overrides.
+        // [[OriginalSource]] preserves the literal pattern text users wrote
+        // (including any pathological leading zeros in `\u{0…0XXXX}` escapes
+        // that the canonical-form pre-pass elided from the working pattern).
+        $obj->defineOwnProperty(
+            '[[OriginalSource]]',
+            PropertyDescriptor::data(new JsString($originalPattern), false, false, false),
+        );
+        $obj->defineOwnProperty(
+            '[[OriginalFlags]]',
+            PropertyDescriptor::data(new JsString($sortedFlags), false, false, false),
+        );
+        // Per spec, source/flags/global/ignoreCase/multiline/dotAll/unicode/
+        // unicodeSets/sticky/hasIndices are prototype accessor properties, not
+        // own data properties. Do not install them as own properties so that
+        // Object.defineProperty overrides and the prototype getters work correctly.
+        // lastIndex is writable but not enumerable, not configurable per spec.
+        $obj->defineOwnProperty('lastIndex', PropertyDescriptor::data(JsNumber::of(0.0), true, false, false));
+
+        // Store the compiled PCRE pattern as a non-enumerable internal slot so prototype
+        // methods (exec, test) installed on RegExp.prototype can access it via $this_.
+        $obj->defineOwnProperty(
+            '[[PCREPattern]]',
+            PropertyDescriptor::data(new JsString($pcrePattern), false, false, false),
+        );
+        // [[GroupNameMap]] is the safe-name → original-name mapping used by
+        // exec/match to reconstruct user-visible named-capture keys.
+        if (!empty($groupNameMap)) {
+            $mapValue = JsObject::createNullPrototype();
+            foreach ($groupNameMap as $safe => $orig) {
+                $mapValue->defineOwnProperty(
+                    $safe,
+                    PropertyDescriptor::data(new JsString($orig), false, false, false),
+                );
+            }
+            $obj->defineOwnProperty(
+                '[[GroupNameMap]]',
+                PropertyDescriptor::data($mapValue, false, false, false),
+            );
+        }
+
+        // [[CustomMatcher]] is set when the pattern uses a feature that
+        // PCRE2 cannot match exactly:
+        //   - lookbehind containing capture groups (capture order),
+        //   - quantified group containing captures (capture reset),
+        //   - any `.` in non-unicode mode (PCRE2 matches UTF-8 code
+        //     points; ES non-unicode mode requires UTF-16 code units,
+        //     so `.` must NOT match an astral character).
+        // exec() routes through the in-engine matcher in those cases.
+        if ($prepared['custom']) {
+            try {
+                // The AST parser consumes ordinary alternatives after Unicode string sets are lowered.
+                $customPattern = str_contains($flags, 'v') ? $this->transformVFlagPattern($pattern) : $pattern;
+                $regexAst = (new \Phasis\Regex\Parser($customPattern, $flags))->parse();
+                $obj->defineOwnProperty(
+                    '[[CustomRegexAst]]',
+                    PropertyDescriptor::data(
+                        new \Phasis\Value\JsHostValue($regexAst),
+                        false,
+                        false,
+                        false,
+                    ),
+                );
+                $obj->defineOwnProperty(
+                    '[[CustomRegexFlags]]',
+                    PropertyDescriptor::data(
+                        new JsString($flags),
+                        false,
+                        false,
+                        false,
+                    ),
+                );
+            } catch (\Throwable) {
+                // If our parser bails on something it doesn't model
+                // yet, fall back to PCRE2.
+            }
+        }
+
+        // [[NamedGroupNames]] preserves every distinct named group in the
+        // pattern in source order. exec() uses this to pre-populate the
+        // result.groups object so groups that did not participate in the
+        // match still appear (with value undefined) — required by the
+        // duplicate-named-groups proposal.
+        $namedGroupNames = $prepared['names'];
+        if (!empty($namedGroupNames)) {
+            $namedListArr = [];
+            foreach ($namedGroupNames as $n) {
+                $namedListArr[] = new JsString($n);
+            }
+            $obj->defineOwnProperty(
+                '[[NamedGroupNames]]',
+                PropertyDescriptor::data(
+                    JsArray::fromArray($namedListArr),
+                    false,
+                    false,
+                    false,
+                ),
+            );
+        }
+
+        return $obj;
+    }
+
+    /**
+     * Reuse immutable preprocessing only; every instance keeps fresh lastIndex,
+     * prototype, named-group objects and custom matcher state.
+     * @return array{pattern: string, flags: string, pcre: string, groups: array<string, string>, names: list<string>, custom: bool}
+     */
+    private function prepareRegExpPattern(string $pattern, string $flags): array
+    {
+        $key = strlen($pattern) <= 4096 && strlen($flags) <= 8
+            ? strlen($flags) . ':' . $flags . $pattern
+            : null;
+        if ($key !== null && isset($this->preparedRegExpPatterns[$key])) {
+            return $this->preparedRegExpPatterns[$key];
+        }
         // Pathological `\u{0…0XXXX}` braced escapes (test262
         // unicode-braced.js / unicode-class-braced.js construct 16M-char
         // patterns) make every downstream char-by-char scan an O(n)
@@ -169,7 +304,6 @@ trait RegExpHelpers
         // and the custom-matcher parser all work on a small string.
         // [[OriginalSource]] is set later from $originalPattern, so the
         // user-visible `.source` still reflects what the program wrote.
-        $originalPattern = $pattern;
         if (
             (str_contains($flags, 'u') || str_contains($flags, 'v'))
             && strlen($pattern) > 64
@@ -212,14 +346,6 @@ trait RegExpHelpers
             throw $e;
         }
 
-        $regexpProto = $this->globalEnv->getIntrinsic('RegExpPrototype');
-        if (!$regexpProto instanceof JsObject && $this->globalEnv->has('RegExp')) {
-            // Force lazy installation before reading the private intrinsic.
-            $this->globalEnv->get('RegExp');
-            $regexpProto = $this->globalEnv->getIntrinsic('RegExpPrototype');
-        }
-        $obj = new JsObject($regexpProto instanceof JsObject ? $regexpProto : null);
-
         // Per spec §22.2.5.3 get RegExp.prototype.flags, flags are returned in canonical order:
         // d, g, i, m, s, u, v, y (alphabetical subset of valid flag characters).
         $canonicalFlagOrder = 'dgimsuvy';
@@ -229,30 +355,6 @@ trait RegExpHelpers
                 $sortedFlags .= $canonicalFlagOrder[$fi];
             }
         }
-
-        // Per spec §22.2.6, regexp instance own properties are non-writable, non-enumerable.
-        // source and flags are configurable (per modern ES), others are non-configurable.
-        // Making all configurable to allow Object.defineProperty overrides in tests.
-        $noenum = static fn (JsValue $v) => PropertyDescriptor::data($v, false, false, true);
-        // Internal slots for compile() and prototype getters.
-        // These are not affected by user-visible property overrides.
-        // [[OriginalSource]] preserves the literal pattern text users wrote
-        // (including any pathological leading zeros in `\u{0…0XXXX}` escapes
-        // that the canonical-form pre-pass elided from the working pattern).
-        $obj->defineOwnProperty(
-            '[[OriginalSource]]',
-            PropertyDescriptor::data(new JsString($originalPattern), false, false, false),
-        );
-        $obj->defineOwnProperty(
-            '[[OriginalFlags]]',
-            PropertyDescriptor::data(new JsString($sortedFlags), false, false, false),
-        );
-        // Per spec, source/flags/global/ignoreCase/multiline/dotAll/unicode/
-        // unicodeSets/sticky/hasIndices are prototype accessor properties, not
-        // own data properties. Do not install them as own properties so that
-        // Object.defineProperty overrides and the prototype getters work correctly.
-        // lastIndex is writable but not enumerable, not configurable per spec.
-        $obj->defineOwnProperty('lastIndex', PropertyDescriptor::data(JsNumber::of(0.0), true, false, false));
 
         // Build PCRE pattern.
         $pcreFlags = '';
@@ -339,339 +441,21 @@ trait RegExpHelpers
             }
         }
 
-        $isGlobal = str_contains($flags, 'g');
-        $isSticky = str_contains($flags, 'y');
-        $hasIndices = str_contains($flags, 'd');
-
-        // Analyze the original ES pattern for repeated groups that need
-        // ES-compliant capture reset and nullable quantifier handling.
-        $repeatedGroupAnalysis = self::analyzeRepeatedGroups($pattern);
-        $hasRepeatedGroupFixes = !empty($repeatedGroupAnalysis['repeatedGroups'])
-            || !empty($repeatedGroupAnalysis['nullableNonCapturingGroups']);
-
-        // Build the PCRE flags string (without the delimiter and 'u') for inner patterns.
-        $innerPcreFlags = $pcreFlags . 'u';
-
-        // Transform function for building PCRE patterns from ES sub-patterns.
-        $self = $this;
-        $transformFn = static function (string $esSubPattern) use ($self, $flags): string {
-            $transformed = $self->transformEsPatternForPcre($esSubPattern, $flags);
-            return $self->escapeForPcreDelimiter($transformed);
-        };
-
-        // Store the compiled PCRE pattern as a non-enumerable internal slot so prototype
-        // methods (exec, test) installed on RegExp.prototype can access it via $this_.
-        $obj->defineOwnProperty(
-            '[[PCREPattern]]',
-            PropertyDescriptor::data(new JsString($pcrePattern), false, false, false),
-        );
-        // [[GroupNameMap]] is the safe-name → original-name mapping used by
-        // exec/match to reconstruct user-visible named-capture keys.
-        if (!empty($groupNameMap)) {
-            $mapValue = JsObject::createNullPrototype();
-            foreach ($groupNameMap as $safe => $orig) {
-                $mapValue->defineOwnProperty(
-                    $safe,
-                    PropertyDescriptor::data(new JsString($orig), false, false, false),
-                );
+        $prepared = [
+            'pattern' => $pattern,
+            'flags' => $sortedFlags,
+            'pcre' => $pcrePattern,
+            'groups' => $groupNameMap,
+            'names' => self::extractNamedGroupNames($pattern),
+            'custom' => self::patternNeedsCustomMatcher($pattern, $flags),
+        ];
+        if ($key !== null && !$prepared['custom'] && strlen($pcrePattern) <= 16384) {
+            if (count($this->preparedRegExpPatterns) >= 128) {
+                array_shift($this->preparedRegExpPatterns);
             }
-            $obj->defineOwnProperty(
-                '[[GroupNameMap]]',
-                PropertyDescriptor::data($mapValue, false, false, false),
-            );
+            $this->preparedRegExpPatterns[$key] = $prepared;
         }
-
-        // [[CustomMatcher]] is set when the pattern uses a feature that
-        // PCRE2 cannot match exactly:
-        //   - lookbehind containing capture groups (capture order),
-        //   - quantified group containing captures (capture reset),
-        //   - any `.` in non-unicode mode (PCRE2 matches UTF-8 code
-        //     points; ES non-unicode mode requires UTF-16 code units,
-        //     so `.` must NOT match an astral character).
-        // exec() routes through the in-engine matcher in those cases.
-        if (self::patternNeedsCustomMatcher($pattern, $flags)) {
-            try {
-                // The AST parser consumes ordinary alternatives after Unicode string sets are lowered.
-                $customPattern = str_contains($flags, 'v') ? $this->transformVFlagPattern($pattern) : $pattern;
-                $regexAst = (new \Phasis\Regex\Parser($customPattern, $flags))->parse();
-                $obj->defineOwnProperty(
-                    '[[CustomRegexAst]]',
-                    PropertyDescriptor::data(
-                        new \Phasis\Value\JsHostValue($regexAst),
-                        false,
-                        false,
-                        false,
-                    ),
-                );
-                $obj->defineOwnProperty(
-                    '[[CustomRegexFlags]]',
-                    PropertyDescriptor::data(
-                        new JsString($flags),
-                        false,
-                        false,
-                        false,
-                    ),
-                );
-            } catch (\Throwable) {
-                // If our parser bails on something it doesn't model
-                // yet, fall back to PCRE2.
-            }
-        }
-
-        // [[NamedGroupNames]] preserves every distinct named group in the
-        // pattern in source order. exec() uses this to pre-populate the
-        // result.groups object so groups that did not participate in the
-        // match still appear (with value undefined) — required by the
-        // duplicate-named-groups proposal.
-        $namedGroupNames = self::extractNamedGroupNames($pattern);
-        if (!empty($namedGroupNames)) {
-            $namedListArr = [];
-            foreach ($namedGroupNames as $n) {
-                $namedListArr[] = new JsString($n);
-            }
-            $obj->defineOwnProperty(
-                '[[NamedGroupNames]]',
-                PropertyDescriptor::data(
-                    JsArray::fromArray($namedListArr),
-                    false,
-                    false,
-                    false,
-                ),
-            );
-        }
-
-        // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
-        $execFn = function (
-            JsValue $this_,
-            array $args
-        ) use (
-            $pcrePattern,
-            $obj,
-            $isGlobal,
-            $isSticky,
-            $hasIndices,
-            $hasRepeatedGroupFixes,
-            $repeatedGroupAnalysis,
-            $innerPcreFlags,
-            $transformFn,
-        ): JsValue {
-            // Per spec: if no argument, convert undefined to "undefined".
-            $str = isset($args[0]) ? TypeConversion::toString($args[0])
-                : TypeConversion::toString(JsUndefined::instance());
-            // lastIndex is a UTF-16 code unit offset; comparing it
-            // against mb_strlen (codepoints) short-circuits any iter
-            // that has stepped past mb_strlen units into the second
-            // half of an astral. Use UTF-16 unit count instead.
-            $strLen = (int) (strlen(JsString::utf8ToUtf16LE($str)) / 2);
-
-            // Per spec step 4: always read lastIndex (for observable side effects
-            // like valueOf calls), even when global/sticky are unset.
-            $lastIndexVal = $obj->get('lastIndex');
-            $lastIndex = TypeConversion::toLength($lastIndexVal);
-
-            if (!$isGlobal && !$isSticky) {
-                $lastIndex = 0;
-            }
-
-            if ($lastIndex > $strLen) {
-                if ($isGlobal || $isSticky) {
-                    // Per spec: Set(R, "lastIndex", 0, Throw=true).
-                    $obj->set('lastIndex', JsNumber::of(0.0), true);
-                }
-                return JsNull::instance();
-            }
-
-            // Use byte offset for PCRE: convert character offset to byte offset.
-            $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
-
-            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
-                $matchBytePos = $matches[0][1];
-                // For sticky regex, the match must start exactly at lastIndex.
-                if ($isSticky && $matchBytePos !== $byteOffset) {
-                    // Per spec: Set(R, "lastIndex", 0, Throw=true).
-                    $obj->set('lastIndex', JsNumber::of(0.0), true);
-                    return JsNull::instance();
-                }
-
-                // Apply ES-compliant fixes for repeated groups.
-                if ($hasRepeatedGroupFixes) {
-                    // Fix 1: Extend match for nullable quantified groups.
-                    $matches = self::fixNullableQuantifier(
-                        $matches,
-                        $repeatedGroupAnalysis,
-                        $str,
-                        $innerPcreFlags,
-                        $transformFn,
-                    );
-                    // Fix 2: Reset captures inside repeated groups to last iteration values.
-                    $matches = self::fixRepeatedGroupCaptures(
-                        $matches,
-                        $repeatedGroupAnalysis,
-                        $innerPcreFlags,
-                        $transformFn,
-                    );
-                    // Fix 3: Reset captures inside nullable non-capturing groups.
-                    // Per ES spec RepeatMatcher step 2.b: when min=0 and the body
-                    // matched zero-length, the repetition fails and captures inside
-                    // are reset to undefined.
-                    $matches = self::fixNullableNonCapturingGroupCaptures(
-                        $matches,
-                        $repeatedGroupAnalysis,
-                    );
-                }
-
-                // Convert byte position back to character position.
-                $matchCharPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
-                $matchStr = $matches[0][0];
-                $matchCharLen = mb_strlen($matchStr, 'UTF-8');
-
-                if ($isGlobal || $isSticky) {
-                    // Per spec: Set(R, "lastIndex", matchEnd, Throw=true).
-                    $obj->set('lastIndex', JsNumber::of((float) ($matchCharPos + $matchCharLen)), true);
-                }
-
-                // Build result array with numeric capture groups.
-                $numericCount = 0;
-                $elements = [];
-                foreach ($matches as $key => $match) {
-                    if (is_int($key)) {
-                        $elements[] = ($match[1] === -1 || $match[0] === null)
-                            ? JsUndefined::instance()
-                            : new JsString($match[0]);
-                        $numericCount++;
-                    }
-                }
-                $result = JsArray::fromArray($elements);
-                // Per spec, index/input/groups are added via CreateDataProperty.
-                $result->defineOwnProperty(
-                    'index',
-                    PropertyDescriptor::data(JsNumber::of((float) $matchCharPos), true, true, true),
-                );
-                $result->defineOwnProperty(
-                    'input',
-                    PropertyDescriptor::data(new JsString($str), true, true, true),
-                );
-
-                // Named capture groups.
-                $groups = new JsObject(null);
-                $hasGroups = false;
-                foreach ($matches as $key => $match) {
-                    if (is_string($key)) {
-                        $hasGroups = true;
-                        $groups->defineOwnProperty($key, PropertyDescriptor::data(
-                            ($match[1] === -1 || $match[0] === null)
-                                ? JsUndefined::instance()
-                                : new JsString($match[0]),
-                            true,
-                            true,
-                            true,
-                        ));
-                    }
-                }
-                $result->defineOwnProperty(
-                    'groups',
-                    PropertyDescriptor::data(
-                        $hasGroups ? $groups : JsUndefined::instance(),
-                        true,
-                        true,
-                        true,
-                    ),
-                );
-
-                if ($hasIndices) {
-                    $indEls = [];
-                    foreach ($matches as $ik => $im) {
-                        if (!is_int($ik)) {
-                            continue;
-                        }
-                        if ($im[1] === -1 || $im[0] === null) {
-                            $indEls[] = JsUndefined::instance();
-                        } else {
-                            $isc = mb_strlen(
-                                substr($str, 0, $im[1]),
-                                'UTF-8'
-                            );
-                            $iec = $isc + mb_strlen(
-                                $im[0],
-                                'UTF-8'
-                            );
-                            $indEls[] = JsArray::fromArray([
-                                JsNumber::of((float) $isc),
-                                JsNumber::of((float) $iec),
-                            ]);
-                        }
-                    }
-                    $iArr = JsArray::fromArray($indEls);
-                    $iGrp = new JsObject(null);
-                    $iHasGrp = false;
-                    foreach ($matches as $ik => $im) {
-                        if (!is_string($ik)) {
-                            continue;
-                        }
-                        $iHasGrp = true;
-                        if ($im[1] === -1 || $im[0] === null) {
-                            $iGrp->defineOwnProperty(
-                                $ik,
-                                PropertyDescriptor::data(
-                                    JsUndefined::instance()
-                                )
-                            );
-                        } else {
-                            $igsc = mb_strlen(
-                                substr($str, 0, $im[1]),
-                                'UTF-8'
-                            );
-                            $igec = $igsc + mb_strlen(
-                                $im[0],
-                                'UTF-8'
-                            );
-                            $iGrp->defineOwnProperty(
-                                $ik,
-                                PropertyDescriptor::data(
-                                    JsArray::fromArray([
-                                        JsNumber::of((float) $igsc),
-                                        JsNumber::of((float) $igec),
-                                    ])
-                                )
-                            );
-                        }
-                    }
-                    $iArr->defineOwnProperty(
-                        'groups',
-                        PropertyDescriptor::data(
-                            $iHasGrp
-                                ? $iGrp
-                                : JsUndefined::instance(),
-                            true,
-                            true,
-                            true
-                        )
-                    );
-                    $result->defineOwnProperty(
-                        'indices',
-                        PropertyDescriptor::data(
-                            $iArr,
-                            true,
-                            true,
-                            true
-                        )
-                    );
-                }
-
-                return $result;
-            }
-
-            if ($isGlobal || $isSticky) {
-                // Per spec: Set(R, "lastIndex", 0, Throw=true).
-                $obj->set('lastIndex', JsNumber::of(0.0), true);
-            }
-            return JsNull::instance();
-        };
-        // exec, test, toString are inherited from RegExp.prototype.
-        // Do NOT install own properties here; the prototype methods read
-        // [[PCREPattern]] and flags from the instance via 'this'.
-
-        return $obj;
+        return $prepared;
     }
 
     /**

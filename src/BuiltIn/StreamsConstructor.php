@@ -10,6 +10,7 @@ use Phasis\BuiltIn\Streams\ReadableStream;
 use Phasis\BuiltIn\Streams\TransformStream;
 use Phasis\BuiltIn\Streams\WritableStream;
 use Phasis\Runtime\Environment;
+use Phasis\Value\JsObject;
 
 /**
  * Entry point for the WHATWG Streams API.
@@ -41,5 +42,18 @@ final class StreamsConstructor
         WritableStream::install($env);
         TransformStream::install($env);
         QueuingStrategy::install($env);
+        $names = [
+            'ReadableStream', 'ReadableStreamDefaultController', 'ReadableStreamDefaultReader',
+            'ReadableByteStreamController', 'ReadableStreamBYOBReader', 'ReadableStreamBYOBRequest',
+            'WritableStream', 'WritableStreamDefaultController', 'WritableStreamDefaultWriter',
+            'TransformStream', 'TransformStreamDefaultController',
+        ];
+        foreach ($names as $name) {
+            $constructor = $env->get($name);
+            $prototype = $constructor instanceof JsObject ? $constructor->get('prototype') : null;
+            if ($prototype instanceof JsObject) {
+                $env->setIntrinsic($name . '.prototype', $prototype);
+            }
+        }
     }
 }

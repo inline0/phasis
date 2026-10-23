@@ -332,7 +332,7 @@ trait ExpressionEvaluation
             '&' => $this->bitwiseBinaryOp($left, $right, '&'),
             '|' => $this->bitwiseBinaryOp($left, $right, '|'),
             '^' => $this->bitwiseBinaryOp($left, $right, '^'),
-            'in' => $this->evalInOperator($left, $right),
+            'in' => new JsBoolean(AbstractOperations::inOperator($left, $right)),
             'instanceof' => new JsBoolean(AbstractOperations::instanceofOperator($left, $right)),
             default => throw new InternalError("Unknown binary operator: {$node->operator}"),
         };
@@ -739,29 +739,6 @@ trait ExpressionEvaluation
         }
 
         return $value;
-    }
-
-    private function evalInOperator(JsValue $left, JsValue $right): JsValue
-    {
-        if (!$right instanceof JsObject) {
-            throw new TypeError(
-                'Cannot use "in" operator to search for "'
-                . (
-                    $left instanceof JsSymbol
-                        ? $left->toString()
-                        : TypeConversion::toString($left)
-                )
-                . '" in ' . TypeConversion::toString($right)
-            );
-        }
-        // Spec §13.10.2 step 5: the key goes through ToPropertyKey, which
-        // returns the unboxed Symbol for a Symbol wrapper instead of
-        // attempting ToString on it.
-        $propKey = TypeConversion::toPropertyKey($left);
-        if ($propKey instanceof JsSymbol) {
-            return new JsBoolean($right->hasBySymbol($propKey));
-        }
-        return new JsBoolean($right->has(TypeConversion::toString($propKey)));
     }
 
     private function evalLogicalExpression(LogicalExpression $node, Environment $env): JsValue
@@ -1520,6 +1497,13 @@ trait ExpressionEvaluation
             $rawCallKey = null;
             if ($node->callee->computed) {
                 $rawCallKey = $this->evaluate($node->callee->property, $env);
+                // RequireObjectCoercible precedes ToPropertyKey, so a null
+                // receiver must not invoke the computed key's coercion hook.
+                if ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined) {
+                    throw new TypeError('Cannot read properties of '
+                        . ($rawObj instanceof JsNull ? 'null' : 'undefined'));
+                }
+                $rawCallKey = TypeConversion::toPropertyKey($rawCallKey);
             }
             $isSymbolCallKey = $rawCallKey instanceof JsSymbol;
             $key = $isSymbolCallKey ? '' : ($node->callee->computed
@@ -1611,7 +1595,7 @@ trait ExpressionEvaluation
             }
             $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
             $callee = $isSymbolCallKey ? $obj->getBySymbol($rawCallKey) : $obj->get($key);
-            $thisValue = $obj;
+            $thisValue = $rawObj;
             $isMethodCall = true;
         } else {
             // Per spec 12.3.4.1 step 4.b: if the callee is an identifier resolved
@@ -3772,39 +3756,14 @@ trait ExpressionEvaluation
      */
     private function spreadInto(JsValue $iterable, array &$target): void
     {
-        $iterator = $this->getIterator($iterable);
-        if ($iterator !== null) {
-            $nextMethod = $iterator->get('next');
-            if ($nextMethod instanceof JsFunction) {
-                while (true) {
-                    $result = $this->callFunction($nextMethod, $iterator, []);
-                    // Spec IteratorStep: if next() does not return an Object,
-                    // throw TypeError instead of treating it as iteration end.
-                    if (!$result instanceof JsObject) {
-                        throw new TypeError('iterator.next() returned a non-object value');
-                    }
-                    if (TypeConversion::toBoolean($result->get('done'))) {
-                        break;
-                    }
-                    $target[] = $result->get('value');
-                }
-                return;
+        [$iterator, $nextMethod] = $this->getIteratorOrThrow($iterable);
+        $done = false;
+        while (!$done) {
+            $value = $this->iteratorNext($iterator, $nextMethod, $done);
+            if (!$done) {
+                $target[] = $value;
             }
         }
-
-        // Fallback for plain JsArray without Symbol.iterator.
-        if ($iterable instanceof JsArray) {
-            $len = $iterable->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                $target[] = $iterable->get((string) $i);
-            }
-            return;
-        }
-
-        // Per spec, if the value is not iterable, throw TypeError.
-        throw new TypeError(
-            TypeConversion::toString($iterable) . ' is not iterable',
-        );
     }
 
     /** @param JsValue[] $args */
@@ -6214,8 +6173,8 @@ trait ExpressionEvaluation
         // Pool a Frame per active call depth: at depth N, reuse
         // framePool[N] if it exists, else allocate one and stash it.
         // Reset clears non-param slots only; param slots are about
-        // to be overwritten by the param-binding loop. Stack is left
-        // in place since sp = 0 makes prior entries unreachable.
+        // to be overwritten by the param-binding loop. Released frames
+        // retain their slot layout but no values from completed calls.
         $depth = $this->framePoolDepth;
         if ($depth < count($this->framePool)) {
             $frame = $this->framePool[$depth];
@@ -6246,7 +6205,9 @@ trait ExpressionEvaluation
         try {
             return $this->vm->execute($cf, $frame);
         } finally {
-            $this->framePoolDepth = $depth;
+            while ($this->framePoolDepth > $depth) {
+                $this->framePool[--$this->framePoolDepth]->release($undef);
+            }
         }
     }
 
@@ -6729,7 +6690,7 @@ trait ExpressionEvaluation
                     $done = true; // rest consumes remaining elements
                     break;
                 }
-                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done, $element !== null);
                 if ($element === null) {
                     // Elision: advance iterator but discard value.
                     continue;

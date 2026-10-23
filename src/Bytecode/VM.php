@@ -31,6 +31,19 @@ final class VM
     {
     }
 
+    /** @return list<JsValue> */
+    private function unpackArgumentList(JsValue $value): array
+    {
+        if (!$value instanceof \Phasis\Value\JsArray || !$value->isDenseMode()) {
+            throw new \LogicException('Compiled argument list must be a dense array');
+        }
+        // The compiler creates this array and only appends data properties.
+        // It cannot contain holes or be exposed to a user-defined accessor.
+        /** @var list<JsValue> $arguments */
+        $arguments = $value->getDenseElements();
+        return $arguments;
+    }
+
     /**
      * Property-read helper shared by LOAD_MEMBER (with a literal name)
      * and CALL_METHOD (which fetches the callee). For plain
@@ -880,8 +893,13 @@ final class VM
                             // `fib` inside fib's body otherwise burns ~10 hash
                             // ops per call, repeated on every recursive entry.
                             $ic = $cf->loadNameIc[$pc] ?? null;
-                            if ($ic !== null && $ic[1] === \Phasis\Runtime\Environment::$globalBindingsVersion) {
-                                $stack[$sp++] = $ic[0];
+                            if (
+                                $ic !== null
+                                && $ic[1] === \Phasis\Runtime\Environment::$globalBindingsVersion
+                                && $ic[2]->get() === $env
+                                && ($cachedNameValue = $ic[0] instanceof \WeakReference ? $ic[0]->get() : $ic[0]) !== null
+                            ) {
+                                $stack[$sp++] = $cachedNameValue;
                             } else {
                                 $name = $names[$code[$pc + 1]];
                                 $resolved = $env->get($name, $strict);
@@ -890,8 +908,9 @@ final class VM
                                 // declarative bindings covered by its version.
                                 if ($env->findBindingDepth($name) !== null) {
                                     $cf->loadNameIc[$pc] = [
-                                        $resolved,
+                                        $resolved instanceof JsObject ? \WeakReference::create($resolved) : $resolved,
                                         \Phasis\Runtime\Environment::$globalBindingsVersion,
+                                        \WeakReference::create($env),
                                     ];
                                 } else {
                                     unset($cf->loadNameIc[$pc]);
@@ -1098,6 +1117,17 @@ final class VM
                             } else {
                                 $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $false : $true;
                             }
+                            $pc++;
+                            break;
+
+                        case Op::IN:
+                        case Op::INSTANCEOF:
+                            $right = $stack[--$sp];
+                            $left = $stack[--$sp];
+                            $result = $op === Op::IN
+                                ? AbstractOperations::inOperator($left, $right)
+                                : AbstractOperations::instanceofOperator($left, $right);
+                            $stack[$sp++] = $result ? $true : $false;
                             $pc++;
                             break;
 
@@ -1443,8 +1473,9 @@ final class VM
                         case Op::TAIL_CALL:
                         case Op::TAIL_CALL_METHOD:
                             $argc = $code[$pc + 1];
-                            $base = $sp - $argc;
-                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            $base = $sp - ($argc === -1 ? 1 : $argc);
+                            $args = $argc === -1 ? $this->unpackArgumentList($stack[$base])
+                                : ($argc === 0 ? [] : array_slice($stack, $base, $argc));
                             $callee = $stack[$base - 1];
                             $methodCall = $code[$pc] === Op::TAIL_CALL_METHOD;
                             $receiver = $methodCall ? $stack[$base - 2] : $undef;
@@ -1472,6 +1503,10 @@ final class VM
                                 $args = [$stack[$base]];
                             } elseif ($argc === 2) {
                                 $args = [$stack[$base], $stack[$base + 1]];
+                            } elseif ($argc === -1) {
+                                $base = $sp - 1;
+                                $args = $this->unpackArgumentList($stack[$base]);
+                                $argc = count($args);
                             } else {
                                 $args = array_slice($stack, $base, $argc);
                             }
@@ -1613,7 +1648,8 @@ final class VM
                             // strict / arrow / sloppy callees.
                             $inlineable = $callee->vmInlineCallCache;
                             if ($inlineable === null) {
-                                $inlineable = $eligible && $callee->getBoundTarget() === null;
+                                $inlineable = $eligible && !$callee->compiled->hasTailCalls
+                                    && $callee->getBoundTarget() === null;
                                 if ($inlineable) {
                                     $callee->vmInlineCallCache = true;
                                 }
@@ -1756,6 +1792,15 @@ final class VM
                             $array->setLength($array->getLength() + 1);
                             $pc++;
                             break;
+                        case Op::BIND_ARRAY:
+                            $this->interp->vmBindArray(
+                                $stack[--$sp],
+                                $cf->arrayBindings[$code[$pc + 1]],
+                                $locals,
+                                $env,
+                            );
+                            $pc += 2;
+                            break;
                         case Op::SET_PROP:
                             // Stack: [obj, val] -> [obj]; effect: obj.name = val.
                             $val = $stack[--$sp];
@@ -1797,6 +1842,10 @@ final class VM
                                 $args = [$stack[$base]];
                             } elseif ($argc === 2) {
                                 $args = [$stack[$base], $stack[$base + 1]];
+                            } elseif ($argc === -1) {
+                                $base = $sp - 1;
+                                $args = $this->unpackArgumentList($stack[$base]);
+                                $argc = count($args);
                             } else {
                                 $args = array_slice($stack, $base, $argc);
                             }
@@ -1841,6 +1890,7 @@ final class VM
                                 if ($newInlineable === null) {
                                     $newInlineable = $callee->compiled !== null
                                         && $callee->compiled->canSkipEnvAlloc
+                                        && !$callee->compiled->hasTailCalls
                                         && $callee->isConstructable()
                                         && !$callee->isDerivedConstructor()
                                         && $callee->getBoundTarget() === null
@@ -1966,6 +2016,10 @@ final class VM
                                 $args = [$stack[$base]];
                             } elseif ($argc === 2) {
                                 $args = [$stack[$base], $stack[$base + 1]];
+                            } elseif ($argc === -1) {
+                                $base = $sp - 1;
+                                $args = $this->unpackArgumentList($stack[$base]);
+                                $argc = count($args);
                             } else {
                                 $args = array_slice($stack, $base, $argc);
                             }
@@ -2133,6 +2187,7 @@ final class VM
                             $methodInlineable = $method->vmInlineCallCache;
                             if ($methodInlineable === null) {
                                 $methodInlineable = $methodEligible
+                                    && !$method->compiled->hasTailCalls
                                     && $method->getBoundTarget() === null;
                                 if ($methodInlineable) {
                                     $method->vmInlineCallCache = true;
@@ -2645,6 +2700,7 @@ final class VM
                                 $strict = $sf->strict;
                                 $hasHandlers = $sf->hasHandlers;
                                 $pc = $sf->returnPc;
+                                $sf->release();
                                 $stack[$sp++] = $finalResult;
                                 break;
                             }
@@ -2759,6 +2815,7 @@ final class VM
                     $strict = $sf->strict;
                     $hasHandlers = $sf->hasHandlers;
                     $pc = $sf->returnPc - 2;
+                    $sf->release();
                 }
                 // Convert the PHP exception to a JsValue for the catch
                 // parameter. JsThrowable wraps a user-thrown JS value;

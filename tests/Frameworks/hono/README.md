@@ -60,7 +60,11 @@ Captured real timers and monotonic time keep deadlines effective under fake
 timers and synchronous or microtask starvation. Failed suite setup is recorded
 as a suite failure with blocked cases, separately from upstream skip declarations.
 The self-test compares intentional async, synchronous, microtask, mock-timer
-and hook deadline failures against the actual pinned Vitest runner.
+and hook deadline failures against the actual pinned Vitest runner. It also
+compares `nextTick`, Promise, microtask and immediate ordering across hooks,
+synchronous tests, asynchronous tests and an explicit host turn. Execution
+starts after a microtask boundary, matching Vitest's asynchronous collection;
+the runner does not insert extra host turns between tests.
 
 Every invocation writes an immutable run directory under `results/runs/`.
 Its manifest records the upstream revision, project, complete project

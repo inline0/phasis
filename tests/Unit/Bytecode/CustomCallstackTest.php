@@ -112,12 +112,8 @@ JS);
         $this->assertSame(610, $sum);
     }
 
-    public function testFinallyTreeWalkerFallbackStillWorks(): void
+    public function testFinallyRunsBeforeAnExceptionUnwindsToTheCaller(): void
     {
-        // try/finally bails out of the bytecode compiler today, so
-        // these run on the tree-walker — the inlined path isn't
-        // involved. Pinning the test ensures the slow-path RET
-        // semantics keep matching the inlined-path RET.
         $engine = new Engine();
         $result = $engine->eval(<<<'JS'
 "use strict";

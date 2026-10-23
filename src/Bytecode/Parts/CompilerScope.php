@@ -376,6 +376,25 @@ trait CompilerScope
                     }
                     continue;
                 }
+                if ($decl->id instanceof ArrayPattern) {
+                    foreach ($decl->id->elements as $element) {
+                        if ($element === null) {
+                            continue;
+                        }
+                        $target = $element instanceof RestElement ? $element->argument : $element;
+                        if (!$target instanceof Identifier) {
+                            throw new CompilerBailout('complex array pattern');
+                        }
+                        if ($isLexical && isset($this->localSlots[$target->name])) {
+                            throw new CompilerBailout('let/const pattern shadowing');
+                        }
+                        if (!$isLexical) {
+                            $this->varDeclaredNames[$target->name] = true;
+                        }
+                        $this->declareLocal($target->name);
+                    }
+                    continue;
+                }
                 throw new CompilerBailout('destructuring declaration');
             }
             return;

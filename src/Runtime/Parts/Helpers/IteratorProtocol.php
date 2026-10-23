@@ -104,6 +104,50 @@ use Phasis\Runtime\Reference;
 trait IteratorProtocol
 {
     /**
+     * Initialize a compiled flat array binding without reading ahead. Iterator
+     * methods can observe each earlier binding through captured closures.
+     *
+     * @param array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|null>} $binding
+     * @param list<JsValue> $locals
+     */
+    public function vmBindArray(JsValue $value, array $binding, array &$locals, Environment $env): void
+    {
+        [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
+        $done = false;
+        try {
+            foreach ($binding['elements'] as $element) {
+                if ($element === null) {
+                    $this->iteratorNext($iterator, $nextMethod, $done, false);
+                    continue;
+                }
+                $item = $element['rest']
+                    ? $this->iteratorRest($iterator, $nextMethod, $done)
+                    : $this->iteratorNext($iterator, $nextMethod, $done);
+                $name = $element['capturedName'];
+                if ($name === null) {
+                    $slot = $element['slot'];
+                    if (!isset($locals[$slot])) {
+                        throw new \LogicException('Array binding references an unallocated local slot');
+                    }
+                    $locals[$slot] = $item;
+                } elseif ($binding['kind'] === 'var') {
+                    $env->set($name, $item);
+                } else {
+                    $env->initialize($name, $item);
+                }
+            }
+        } catch (\Throwable $error) {
+            if (!$done) {
+                $this->iteratorClose($iterator, $error);
+            }
+            throw $error;
+        }
+        if (!$done) {
+            $this->iteratorClose($iterator);
+        }
+    }
+
+    /**
      * Get the iterator for a value; throw TypeError if not iterable.
      * Returns [iterator, nextMethod]. The next-method may be any JsValue;
      * the "next is not a function" TypeError surfaces later when iteration
@@ -132,7 +176,7 @@ trait IteratorProtocol
      * Advance an iterator one step. Returns the value, or undefined when done.
      * Sets $done to true once the iterator reports done.
      */
-    private function iteratorNext(JsObject $iterator, JsValue $nextMethod, bool &$done): JsValue
+    private function iteratorNext(JsObject $iterator, JsValue $nextMethod, bool &$done, bool $readValue = true): JsValue
     {
         if ($done) {
             return JsUndefined::instance();
@@ -161,11 +205,16 @@ trait IteratorProtocol
             $done = true;
             throw new \Phasis\Exceptions\TypeError('Iterator result is not an object');
         }
-        if (TypeConversion::toBoolean($result->get('done'))) {
+        try {
+            if (!TypeConversion::toBoolean($result->get('done'))) {
+                return $readValue ? $result->get('value') : JsUndefined::instance();
+            }
+        } catch (\Throwable $error) {
             $done = true;
-            return JsUndefined::instance();
+            throw $error;
         }
-        return $result->get('value');
+        $done = true;
+        return JsUndefined::instance();
     }
 
     /**
@@ -217,7 +266,7 @@ trait IteratorProtocol
                 }
                 return;
             }
-            if (!$returnMethod instanceof JsFunction) {
+            if (!$returnMethod instanceof JsFunction && !($returnMethod instanceof JsProxy && $returnMethod->isCallable())) {
                 if ($completionIsThrow) {
                     throw $completion;
                 }
@@ -231,7 +280,9 @@ trait IteratorProtocol
         $innerResult = null;
         if ($innerException === null) {
             try {
-                $innerResult = $this->callFunction($returnMethod, $iterator, []);
+                $innerResult = $returnMethod instanceof JsProxy
+                    ? $returnMethod->apply($iterator, [])
+                    : $this->callFunction($returnMethod, $iterator, []);
             } catch (\Throwable $e) {
                 $innerException = $e;
             }

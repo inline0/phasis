@@ -259,10 +259,14 @@ trait CompilerBailoutAnalysis
             return;
         }
         $node = $statements;
-        if ($node instanceof Identifier && ($node->name === 'eval' || $node->name === 'arguments')) {
-            // `arguments` in body forces argsObj construction; let
-            // the tree-walker keep that path. `eval` is dynamic.
+        if ($node instanceof Identifier && $node->name === 'eval') {
             throw new CompilerBailout('uses ' . $node->name);
+        }
+        if ($node instanceof Identifier && $node->name === 'arguments') {
+            if (!$this->argumentsAllowed) {
+                throw new CompilerBailout('uses mapped or unavailable arguments');
+            }
+            $this->needsArguments = true;
         }
         if ($node instanceof Identifier && $node->name === '[[NewTarget]]') {
             // `new.target` reads need an env binding the VM-compiled
@@ -864,57 +868,6 @@ trait CompilerBailoutAnalysis
             if ($expr->value === 'use strict' && $expr->verbatim) {
                 return true;
             }
-        }
-        return false;
-    }
-
-    private static function bytecodeBailsForTailCall(\Phasis\Ast\Node $body): bool
-    {
-        if ($body instanceof ReturnStatement) {
-            return $body->argument !== null
-                && self::tailCallExpr($body->argument);
-        }
-        if (
-            $body instanceof \Phasis\Ast\Declaration\FunctionDeclaration
-            || $body instanceof \Phasis\Ast\Expression\FunctionExpression
-            || $body instanceof \Phasis\Ast\Expression\ArrowFunction
-        ) {
-            return false;
-        }
-        foreach ((array) $body as $value) {
-            if ($value instanceof \Phasis\Ast\Node) {
-                if (self::bytecodeBailsForTailCall($value)) {
-                    return true;
-                }
-                continue;
-            }
-            if (is_array($value)) {
-                foreach ($value as $item) {
-                    if ($item instanceof \Phasis\Ast\Node && self::bytecodeBailsForTailCall($item)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    private static function tailCallExpr(\Phasis\Ast\Node $node): bool
-    {
-        if ($node instanceof CallExpression) {
-            return true;
-        }
-        if ($node instanceof ConditionalExpression) {
-            return self::tailCallExpr($node->consequent)
-                || self::tailCallExpr($node->alternate);
-        }
-        if ($node instanceof \Phasis\Ast\Expression\LogicalExpression) {
-            return self::tailCallExpr($node->left)
-                || self::tailCallExpr($node->right);
-        }
-        if ($node instanceof \Phasis\Ast\Expression\SequenceExpression) {
-            $exprs = $node->expressions;
-            return $exprs !== [] && self::tailCallExpr($exprs[count($exprs) - 1]);
         }
         return false;
     }

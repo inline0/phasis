@@ -131,6 +131,22 @@ JS));
         $this->assertCompiled($engine, 'loop');
     }
 
+    public function testRecursiveActivationsCannotReuseInnerCapturedNameCacheValues(): void
+    {
+        $engine = new Engine();
+        self::assertSame([['a' => ['b' => 3]], ['a' => ['b' => 5]]], $engine->eval(<<<'JS'
+function clone(source) {
+    var result = {};
+    Object.keys(source).forEach(function (key) {
+        result[key] = source[key] instanceof Object ? clone(source[key]) : source[key];
+    });
+    return result;
+}
+[clone({a: {b: 3}}), clone({a: {b: 5}})];
+JS));
+        $this->assertCompiled($engine, 'clone');
+    }
+
     private function assertCompiled(Engine $engine, string $name): void
     {
         $function = $engine->getGlobalEnv()->get($name);

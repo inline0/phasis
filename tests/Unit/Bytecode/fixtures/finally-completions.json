@@ -1,0 +1,172 @@
+[
+  [
+    "return",
+    "2"
+  ],
+  [
+    "return",
+    "1"
+  ],
+  [
+    "return",
+    "undefined"
+  ],
+  [
+    "return",
+    "undefined"
+  ],
+  [
+    "return",
+    "caught"
+  ],
+  [
+    "throw",
+    "replacement"
+  ],
+  [
+    "return",
+    "override"
+  ],
+  [
+    "throw",
+    "final"
+  ],
+  [
+    "nested return",
+    "inner"
+  ],
+  [
+    "nested throw",
+    "inner"
+  ],
+  [
+    "nested return",
+    "outer"
+  ],
+  "from finally",
+  "getter",
+  9,
+  3,
+  10,
+  [
+    "return",
+    "2"
+  ],
+  [
+    "return",
+    "1"
+  ],
+  [
+    "return",
+    "undefined"
+  ],
+  [
+    "return",
+    "undefined"
+  ],
+  [
+    "return",
+    "caught"
+  ],
+  [
+    "throw",
+    "replacement"
+  ],
+  [
+    "return",
+    "override"
+  ],
+  [
+    "throw",
+    "final"
+  ],
+  [
+    "nested return",
+    "inner"
+  ],
+  [
+    "nested throw",
+    "inner"
+  ],
+  [
+    "nested return",
+    "outer"
+  ],
+  "from finally",
+  "getter",
+  9,
+  3,
+  10,
+  [
+    "try:-1",
+    "finally:-1",
+    "try:0",
+    "finally:0",
+    "try:1",
+    "finally:1",
+    "try:2",
+    "catch:undefined",
+    "finally:2",
+    "try:3",
+    "catch:initial",
+    "finally:3",
+    "try:4",
+    "catch:initial",
+    "finally:4",
+    "try:5",
+    "catch:initial",
+    "finally:5",
+    "try:6",
+    "catch:initial",
+    "finally:6",
+    "inner",
+    "outer",
+    "inner",
+    "outer",
+    "inner",
+    "outer",
+    "outer catch",
+    "outer cleanup",
+    "expression cleanup",
+    "expression cleanup",
+    "loop:0",
+    "loop:1",
+    "loop:2",
+    "loop:3",
+    "try:-1",
+    "finally:-1",
+    "try:0",
+    "finally:0",
+    "try:1",
+    "finally:1",
+    "try:2",
+    "catch:undefined",
+    "finally:2",
+    "try:3",
+    "catch:initial",
+    "finally:3",
+    "try:4",
+    "catch:initial",
+    "finally:4",
+    "try:5",
+    "catch:initial",
+    "finally:5",
+    "try:6",
+    "catch:initial",
+    "finally:6",
+    "inner",
+    "outer",
+    "inner",
+    "outer",
+    "inner",
+    "outer",
+    "outer catch",
+    "outer cleanup",
+    "expression cleanup",
+    "expression cleanup",
+    "loop:0",
+    "loop:1",
+    "loop:2",
+    "loop:3"
+  ]
+]

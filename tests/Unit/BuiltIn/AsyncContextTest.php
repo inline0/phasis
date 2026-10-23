@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace Phasis\Tests\Unit\BuiltIn;
 
 use Phasis\Engine;
+use Phasis\Runtime\AsyncContextStorage;
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsPromise;
+use Phasis\Value\JsString;
+use Phasis\Value\JsUndefined;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -96,6 +102,34 @@ JS);
             $engine->eval('seen'),
         );
         self::assertSame('outside', $engine->eval('context.get()'));
+    }
+
+    public function testNativePendingFinallySubscriptionsRetainRegistrationContext(): void
+    {
+        new Engine();
+        $storage = AsyncContextStorage::active();
+        $variable = new JsObject();
+        $seen = [];
+        $snapshot = $storage->snapshot();
+        try {
+            foreach (['resolve', 'reject'] as $settle) {
+                $promise = new JsPromise();
+                $storage->set($variable, new JsString('registered:' . $settle));
+                $child = $promise->finallyHandler([JsFunction::fromCallable('', function () use ($storage, $variable, &$seen): JsUndefined {
+                    $seen[] = $storage->getRaw($variable)?->toJsString();
+                    return JsUndefined::instance();
+                })]);
+                $storage->set($variable, new JsString('settlement'));
+                $promise->{$settle}(new JsString('original'));
+                JsPromise::drainMicrotasks();
+                self::assertSame($promise->getState(), $child->getState());
+                self::assertSame('original', $child->getResolvedValue()->toJsString());
+                self::assertSame('settlement', $storage->getRaw($variable)?->toJsString());
+            }
+            self::assertSame(['registered:resolve', 'registered:reject'], $seen);
+        } finally {
+            $storage->restore($snapshot);
+        }
     }
 
     public function testContextPropagatesAcrossQueueMicrotask(): void

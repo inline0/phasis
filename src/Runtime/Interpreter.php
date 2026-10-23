@@ -181,6 +181,7 @@ class Interpreter
     {
         if ($this->framePoolDepth > 0) {
             $this->framePoolDepth--;
+            $this->framePool[$this->framePoolDepth]->release(JsUndefined::instance());
         }
     }
 

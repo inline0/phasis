@@ -29,7 +29,7 @@ JS);
         self::assertNotNull($second->compiled);
         self::assertNotSame($first->compiled, $second->compiled);
         self::assertSame($first->compiled->code, $second->compiled->code);
-        $first->compiled->loadNameIc[9876] = [JsNumber::of(30), 0];
+        $first->compiled->loadNameIc[9876] = [JsNumber::of(30), 0, \WeakReference::create($first->getClosure())];
         self::assertArrayNotHasKey(9876, $second->compiled->loadNameIc);
         self::assertSame([1, 9, 1, 9], $engine->eval('[first(), second(), first(), second()]'));
     }
@@ -50,5 +50,31 @@ JS);
         gc_collect_cycles();
         self::assertNull($bodyReference->get());
         self::assertNull($closureReference->get());
+    }
+
+    public function testWarmedNameCacheDoesNotRetainAnObjectContainingAClosure(): void
+    {
+        $engine = new Engine();
+        $engine->eval(<<<'JS'
+function make(value) { return {read: function () { return value; }}; }
+let held = make(7);
+function readCached() { return [held]; }
+readCached(); readCached();
+JS);
+        $held = $engine->getGlobalEnv()->get('held');
+        self::assertInstanceOf(\Phasis\Value\JsObject::class, $held);
+        $read = $held->get('read');
+        self::assertInstanceOf(JsFunction::class, $read);
+        $activation = \WeakReference::create($read->getClosure());
+        $holder = \WeakReference::create($held);
+        $cached = $engine->getGlobalEnv()->get('readCached');
+        self::assertInstanceOf(JsFunction::class, $cached);
+        self::assertNotNull($cached->compiled);
+        self::assertNotEmpty($cached->compiled->loadNameIc);
+        $engine->eval('held = undefined;');
+        unset($held, $read);
+        gc_collect_cycles();
+        self::assertNull($holder->get());
+        self::assertNull($activation->get());
     }
 }

@@ -14,10 +14,9 @@ namespace Phasis\Bytecode;
  * parameter's local slot, resets the operand stack to the entry depth,
  * and jumps to catchPc.
  *
- * Phase 1 covers `try / catch` only. `try / finally` and `try / catch /
- * finally` keep using the tree-walker (compiler bails) because the
- * completion-record dance for re-triggering pending return/break/continue
- * after finally still needs design work.
+ * Finalizer handlers save the thrown value in an internal local slot.
+ * The compiler routes normal, throw and return completions through the
+ * finalizer outside these protected ranges before resuming the completion.
  */
 final class HandlerEntry
 {

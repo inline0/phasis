@@ -323,16 +323,8 @@ trait CompilerExpression
 
     private function compileNew(NewExpression $node): void
     {
-        foreach ($node->arguments as $arg) {
-            if ($arg instanceof SpreadElement) {
-                throw new CompilerBailout('spread in new');
-            }
-        }
         $this->compileExpression($node->callee);
-        foreach ($node->arguments as $arg) {
-            $this->compileExpression($arg);
-        }
-        $this->emit(Op::NEW_CALL, count($node->arguments));
+        $this->emit(Op::NEW_CALL, $this->compileArguments($node->arguments));
     }
 
     /**
@@ -582,9 +574,6 @@ trait CompilerExpression
 
     private function compileBinary(BinaryExpression $node): void
     {
-        // Bail on operators that need special left-side handling (in,
-        // instanceof, with-private-field) for now. They're not on the
-        // hot path of fib / loop microbenchmarks.
         $op = $node->operator;
         $opcode = match ($op) {
             '+'   => Op::ADD,
@@ -601,6 +590,8 @@ trait CompilerExpression
             '!='  => Op::NEQ,
             '===' => Op::SEQ,
             '!==' => Op::SNEQ,
+            'in' => Op::IN,
+            'instanceof' => Op::INSTANCEOF,
             '&'   => Op::BAND,
             '|'   => Op::BOR,
             '^'   => Op::BXOR,
@@ -627,7 +618,7 @@ trait CompilerExpression
 
     private function compileCall(CallExpression $node): void
     {
-        // No optional calls / direct eval / spread args yet.
+        // Optional chains and direct eval retain the interpreter path.
         if ($node->optional) {
             throw new CompilerBailout('optional call');
         }
@@ -636,11 +627,6 @@ trait CompilerExpression
         }
         if ($node->callee instanceof Identifier && $node->callee->name === 'super') {
             throw new CompilerBailout('super call');
-        }
-        foreach ($node->arguments as $arg) {
-            if ($arg instanceof SpreadElement) {
-                throw new CompilerBailout('spread call argument');
-            }
         }
 
         // Method call: `obj.m(...)` and `obj[k](...)`. Emit
@@ -652,12 +638,6 @@ trait CompilerExpression
             && !($node->callee->property instanceof PrivateIdentifier)
             && !($node->callee->object instanceof Identifier && $node->callee->object->name === 'super')
         ) {
-            if ($node->callee->computed) {
-                throw new CompilerBailout('computed method call');
-            }
-            if (!($node->callee->property instanceof Identifier)) {
-                throw new CompilerBailout('non-identifier method name');
-            }
             // Spec evaluation order: look up the method (and surface
             // any TypeError on null/undefined receivers) BEFORE
             // evaluating any arguments. Stack layout:
@@ -668,16 +648,21 @@ trait CompilerExpression
             // `this`, leaves result.
             $this->compileExpression($node->callee->object);
             $this->emit(Op::DUP);
-            $this->emit(Op::LOAD_MEMBER, $this->internName($node->callee->property->name));
-            foreach ($node->arguments as $arg) {
-                $this->compileExpression($arg);
+            if ($node->callee->computed) {
+                $this->compileExpression($node->callee->property);
+                $this->emit(Op::LOAD_COMPUTED);
+            } elseif ($node->callee->property instanceof Identifier) {
+                $this->emit(Op::LOAD_MEMBER, $this->internName($node->callee->property->name));
+            } else {
+                throw new CompilerBailout('non-identifier method name');
             }
+            $argc = $this->compileArguments($node->arguments);
             // Render the call-site source for the "is not a function"
             // error before emit so the PC we record actually points at
             // the CALL_METHOD opcode.
             $display = $this->renderMethodCallDisplay($node->callee);
             $callMethodPc = count($this->code);
-            $this->emit(Op::CALL_METHOD, count($node->arguments));
+            $this->emit(Op::CALL_METHOD, $argc);
             if ($display !== null) {
                 $this->callMethodDisplays[$callMethodPc] = $display;
             }
@@ -687,10 +672,37 @@ trait CompilerExpression
         // Direct function call: callee is anything except a member
         // expression (i.e. `f(...)` not `obj.m(...)`).
         $this->compileExpression($node->callee);
-        foreach ($node->arguments as $arg) {
-            $this->compileExpression($arg);
+        $this->emit(Op::CALL, $this->compileArguments($node->arguments));
+    }
+
+    /**
+     * Return the fixed argument count, or -1 for an internal dense argument
+     * array. The array is never exposed to JavaScript; spread consumes each
+     * iterator before evaluating the next argument.
+     *
+     * @param list<Node> $arguments
+     */
+    private function compileArguments(array $arguments): int
+    {
+        $hasSpread = false;
+        foreach ($arguments as $argument) {
+            $hasSpread = $hasSpread || $argument instanceof SpreadElement;
         }
-        $this->emit(Op::CALL, count($node->arguments));
+        if ($hasSpread) {
+            $this->emit(Op::NEW_ARRAY, 0);
+        }
+        foreach ($arguments as $argument) {
+            if ($argument instanceof SpreadElement) {
+                $this->compileExpression($argument->argument);
+                $this->emit(Op::ARRAY_SPREAD);
+            } else {
+                $this->compileExpression($argument);
+                if ($hasSpread) {
+                    $this->emit(Op::ARRAY_APPEND);
+                }
+            }
+        }
+        return $hasSpread ? -1 : count($arguments);
     }
 
     private function compileMember(MemberExpression $node): void
@@ -724,12 +736,13 @@ trait CompilerExpression
         }
         $left = $node->left;
         $op = $node->operator;
+        if ($op === '&&=' || $op === '||=' || $op === '??=') {
+            $this->compileLogicalAssignment($node);
+            return;
+        }
 
         // Compound op (`+=`, `-=`, ...) gets lowered to:
         //   load lhs; compile rhs; <op>; <store-keep>
-        // Logical compound (`&&=` / `||=` / `??=`) goes to the
-        // tree-walker because of subtle short-circuit semantics
-        // around with-environments.
         $binaryOpcode = match ($op) {
             '='   => null,
             '+='  => Op::ADD,
@@ -865,5 +878,58 @@ trait CompilerExpression
         }
 
         throw new CompilerBailout('unsupported assignment target');
+    }
+
+    private function compileLogicalAssignment(AssignmentExpression $node): void
+    {
+        $left = $node->left;
+        $receiverSlot = null;
+        $nameIndex = null;
+        if ($left instanceof Identifier) {
+            $slot = $this->localSlots[$left->name] ?? null;
+            if ($slot === null || isset($this->constSlots[$slot]) || $left->name === 'arguments') {
+                throw new CompilerBailout('logical assignment requires a mutable local binding');
+            }
+            if (self::initNeedsNamedEvaluation($node->right)) {
+                throw new CompilerBailout('logical assignment needs named evaluation');
+            }
+            $this->emitLoadLocal($slot);
+        } elseif (
+            $left instanceof MemberExpression && !$left->optional && !$left->computed
+            && $left->property instanceof Identifier
+            && !($left->object instanceof Identifier && $left->object->name === 'super')
+        ) {
+            // Save the receiver before its getter or RHS can change the
+            // source binding. Each reference and getter is evaluated once.
+            $receiverSlot = count($this->localNames);
+            $this->localNames[] = '[[logicalReceiver]]';
+            $nameIndex = $this->internName($left->property->name);
+            $this->compileExpression($left->object);
+            $this->emit(Op::DUP);
+            $this->emit(Op::STORE_LOCAL, $receiverSlot);
+            $this->emit(Op::LOAD_MEMBER, $nameIndex);
+        } else {
+            throw new CompilerBailout('unsupported logical assignment reference');
+        }
+
+        if ($node->operator === '??=') {
+            $assign = $this->emitJump(Op::JUMP_IF_NULLISH);
+            $end = $this->emitJump(Op::JUMP);
+            $this->patchJumpToHere($assign);
+        } else {
+            $end = $this->emitJump($node->operator === '&&='
+                ? Op::JUMP_IF_FALSY_KEEP : Op::JUMP_IF_TRUTHY_KEEP);
+        }
+        if ($receiverSlot !== null) {
+            $this->emit(Op::LOAD_LOCAL, $receiverSlot);
+        }
+        $this->compileExpression($node->right);
+        if ($receiverSlot !== null) {
+            $this->emit(Op::STORE_MEMBER, $nameIndex);
+        } else {
+            $this->emit(Op::DUP);
+            $this->emitStoreLocal($slot);
+        }
+        $this->patchJumpToHere($end);
     }
 }

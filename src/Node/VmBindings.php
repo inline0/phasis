@@ -64,12 +64,11 @@ final class VmBindings
         }
         $state = VmRealmState::capture();
         try {
-            // Materialize intrinsics before linking the sandbox so lazy installation cannot leak globals into it.
-            $engine = new Engine(eager: true);
+            $engine = new Engine();
             $engine->getInterpreter()->inheritLimits($this->owner->getInterpreter());
             $env = $engine->getGlobalEnv();
             $intrinsics = self::object($env->get('globalThis'));
-            $global = new VmGlobalObject($sandbox, $intrinsics);
+            $global = new VmGlobalObject($sandbox, $intrinsics, $engine);
             $env->defineVar('this', $global);
             $env->defineVar('globalThis', $global);
             $intrinsics->set('globalThis', $global);

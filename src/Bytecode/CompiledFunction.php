@@ -21,6 +21,14 @@ use Phasis\Value\JsValue;
 final class CompiledFunction
 {
     /**
+     * Ordered flat array bindings reuse the interpreter's iterator protocol.
+     * Captured identifiers retain their live Environment binding.
+     *
+     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|null>}>
+     */
+    public array $arrayBindings = [];
+
+    /**
      * Inline cache for LOAD_NAME, indexed by PC. Stores the resolved
      * JsValue at first dispatch; subsequent LOAD_NAMEs at the same PC
      * skip the Environment walk entirely.
@@ -28,8 +36,12 @@ final class CompiledFunction
      * Only declarative bindings are cached. Object-backed globals,
      * getters, imports and with bindings are resolved on every read.
      * Environment::set invalidates cached values through a global counter.
+     * The originating environment must also match: recursive activations of
+     * one function share bytecode but have distinct captured local bindings.
+     * Weak references to environments and object values keep the cache from
+     * retaining a completed activation through a returned closure or object.
      *
-     * @var array<int, array{0: JsValue, 1: int}>
+     * @var array<int, array{0: JsValue|\WeakReference<\Phasis\Value\JsObject>, 1: int, 2: \WeakReference<\Phasis\Runtime\Environment>}>
      */
     public array $loadNameIc = [];
 
@@ -181,6 +193,7 @@ final class CompiledFunction
         public readonly bool $needsArgsBinding = true,
         public readonly bool $canSkipEnvAlloc = false,
         public readonly bool $parametersFromEnvironment = false,
+        public readonly bool $hasTailCalls = false,
     ) {
     }
 }

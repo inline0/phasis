@@ -526,6 +526,18 @@ final class AbstractOperations
         return $deleted;
     }
 
+    /** Check the right-hand type before coercing the key, as required by `in`. */
+    public static function inOperator(JsValue $left, JsValue $right): bool
+    {
+        if (!$right instanceof JsObject) {
+            throw new TypeError('Right-hand side of in is not an object');
+        }
+        $key = TypeConversion::toPropertyKey($left);
+        return $key instanceof JsSymbol
+            ? $right->hasBySymbol($key)
+            : $right->has($key->toJsString());
+    }
+
     /**
      * 13.10.2 InstanceofOperator(V, target).
      *
@@ -547,10 +559,15 @@ final class AbstractOperations
         // GetMethod returns undefined for both undefined and null property values.
         // Step 4: if instOfHandler is defined, return ToBoolean(Call(instOfHandler, C, [O])).
         if (!$instOfHandler instanceof JsUndefined && !$instOfHandler instanceof JsNull) {
-            if (!$instOfHandler instanceof JsFunction) {
+            if (
+                !$instOfHandler instanceof JsFunction
+                && !($instOfHandler instanceof \Phasis\Value\JsProxy && $instOfHandler->isCallable())
+            ) {
                 throw new TypeError('Right-hand side of instanceof is not callable');
             }
-            $result = $instOfHandler->call($right, [$left]);
+            $result = $instOfHandler instanceof \Phasis\Value\JsProxy
+                ? $instOfHandler->apply($right, [$left])
+                : $instOfHandler->call($right, [$left]);
             return TypeConversion::toBoolean($result);
         }
 

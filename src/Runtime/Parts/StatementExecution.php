@@ -236,7 +236,7 @@ trait StatementExecution
                         $done = true;
                         break;
                     }
-                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done, $element !== null);
                     if ($element === null) {
                         continue;
                     }
@@ -2303,7 +2303,7 @@ trait StatementExecution
                         $done = true;
                         break;
                     }
-                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done, $element !== null);
                     if ($element === null) {
                         continue;
                     }

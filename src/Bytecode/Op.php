@@ -67,6 +67,9 @@ final class Op
     public const ARRAY_APPEND = 34; // Append a data element to the array below it on the stack.
     public const ARRAY_SPREAD = 35; // Consume an iterable into the array below it on the stack.
     public const ARRAY_HOLE = 36; // Extend the array's length without defining an element.
+    public const BIND_ARRAY = 37; // I: pop iterable, initialize the indexed flat binding pattern in order.
+    public const IN = 38; // Pop object and key, perform HasProperty after ToPropertyKey.
+    public const INSTANCEOF = 39; // Pop constructor and value, use InstanceofOperator.
 
     // ---- Arithmetic & comparison ----------------------------------------
     public const ADD = 40;
@@ -130,6 +133,8 @@ final class Op
     public const JUMP_IF_LOCAL_GT_CONST = 79; // for `i <= N` test
 
     // ---- Calls & returns -----------------------------------------------
+    // Each call opcode accepts argc=-1 for a compiler-owned dense argument
+    // array on top of the stack, allowing spread without changing call order.
     public const CALL = 80;          // I — argc; callee at stack[-argc-1]
     public const CALL_METHOD = 81;   // I — argc; stack: [obj, method, args...]
                                        // Pops method + args, peeks obj as receiver,
@@ -212,6 +217,8 @@ final class Op
             case self::NEQ:
             case self::SEQ:
             case self::SNEQ:
+            case self::IN:
+            case self::INSTANCEOF:
             case self::NOT:
             case self::TYPEOF:
             case self::BAND:
@@ -246,6 +253,7 @@ final class Op
             case self::STORE_NAME:
             case self::DEFINE_NAME:
             case self::INITIALIZE_NAME:
+            case self::BIND_ARRAY:
             case self::TYPEOF_NAME:
             case self::DELETE_NAME:
             case self::JUMP:

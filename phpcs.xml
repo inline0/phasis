@@ -19,6 +19,8 @@
     <!-- JSX fixtures and the Node oracle toolchain; the PHP tests sit directly in tests/Jsx. -->
     <exclude-pattern>tests/Jsx/*/*</exclude-pattern>
     <exclude-pattern>tests/Unit/Formatter/fixtures/*</exclude-pattern>
+    <exclude-pattern>tests/Unit/BuiltIn/fixtures/*</exclude-pattern>
+    <exclude-pattern>tests/Unit/Bytecode/fixtures/*</exclude-pattern>
     <exclude-pattern>tests/Wpt/fixtures/*</exclude-pattern>
     <exclude-pattern>tests/Wpt/testharness-shim.js</exclude-pattern>
     <exclude-pattern>tests/Wpt/upstream/*</exclude-pattern>

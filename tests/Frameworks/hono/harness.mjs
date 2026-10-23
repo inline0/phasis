@@ -289,6 +289,8 @@ async function runSuite(current, ancestors, results, inheritedError) {
   }
 }
 export async function run() {
+  // Vitest starts test execution after asynchronous module collection.
+  await Promise.resolve();
   while (pendingCollections.length) await Promise.all(pendingCollections.splice(0));
   const results = [];
   await runSuite(root, [], results);

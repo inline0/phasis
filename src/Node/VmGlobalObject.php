@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Phasis\Node;
 
+use Phasis\Engine;
 use Phasis\Object\PropertyDescriptor;
 use Phasis\Value\JsObject;
 use Phasis\Value\JsString;
@@ -13,8 +14,14 @@ use Phasis\Value\JsValue;
 /** Contextified global properties with private intrinsics and a live external sandbox. */
 final class VmGlobalObject extends JsObject
 {
-    public function __construct(private readonly JsObject $sandbox, private readonly JsObject $intrinsics)
-    {
+    /** @var array<string, true> Deleted names must not reappear when a sibling intrinsic realizes. */
+    private array $deletedIntrinsics = [];
+
+    public function __construct(
+        private readonly JsObject $sandbox,
+        private readonly JsObject $intrinsics,
+        private readonly Engine $engine,
+    ) {
         parent::__construct($intrinsics->getPrototype());
     }
 
@@ -28,6 +35,7 @@ final class VmGlobalObject extends JsObject
         if ($this->sandbox->has($name)) {
             return $this->sandbox->getWithValueReceiver($name, $receiver);
         }
+        $this->materializeIntrinsic($name);
         return $this->intrinsics->getWithValueReceiver($name, $receiver);
     }
 
@@ -59,7 +67,12 @@ final class VmGlobalObject extends JsObject
 
     public function getOwnPropertyDescriptor(string $name): ?PropertyDescriptor
     {
-        return $this->sandbox->getOwnPropertyDescriptor($name) ?? $this->intrinsics->getOwnPropertyDescriptor($name);
+        $descriptor = $this->sandbox->getOwnPropertyDescriptor($name);
+        if ($descriptor !== null) {
+            return $descriptor;
+        }
+        $this->materializeIntrinsic($name);
+        return $this->intrinsics->getOwnPropertyDescriptor($name);
     }
 
     public function getOwnPropertyDescriptorRaw(string $name): ?PropertyDescriptor
@@ -70,9 +83,43 @@ final class VmGlobalObject extends JsObject
     public function delete(string $name, bool $strict = false): bool
     {
         if ($this->sandbox->hasOwnProperty($name)) {
-            return $this->sandbox->delete($name, $strict);
+            if (!$this->sandbox->delete($name, $strict)) {
+                return false;
+            }
         }
-        return $this->intrinsics->delete($name, $strict);
+        $deleted = $this->intrinsics->delete($name, $strict);
+        if ($deleted && $this->engine->getLazyBuiltinRegistry()->has($name)) {
+            $this->deletedIntrinsics[$name] = true;
+        }
+        return $deleted;
+    }
+
+    /** Install one intrinsic family privately, without overwriting sandbox globals. */
+    private function materializeIntrinsic(string $name): void
+    {
+        if (!$this->engine->getLazyBuiltinRegistry()->has($name)) {
+            return;
+        }
+        $descriptor = $this->intrinsics->getOwnPropertyDescriptorRaw($name);
+        if ($descriptor === null || !$descriptor->isAccessorDescriptor()) {
+            return;
+        }
+        $state = VmRealmState::capture();
+        $environment = $this->engine->getGlobalEnv();
+        $linked = $environment->getLinkedObject();
+        $environment->linkGlobalObject($this->intrinsics);
+        try {
+            VmRealmState::activate($this->engine);
+            $this->intrinsics->get($name);
+            foreach ($this->deletedIntrinsics as $deletedName => $_) {
+                $this->intrinsics->delete($deletedName);
+            }
+        } finally {
+            if ($linked !== null) {
+                $environment->linkGlobalObject($linked);
+            }
+            $state->restore();
+        }
     }
 
     /** @return list<string> */

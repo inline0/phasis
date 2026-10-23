@@ -99,8 +99,9 @@ trait StringSearch
             // byte strings and search by byte, then divide by 2. Using
             // mb_strpos with UTF-8 counts codepoints which misaligns for
             // strings that contain surrogate pairs (chars above U+FFFF).
-            $hayU16 = JsString::utf8ToUtf16LE($str);
-            $needleU16 = JsString::utf8ToUtf16LE($search);
+            $hayU16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
+            $needle = $args[0] ?? null;
+            $needleU16 = $needle instanceof JsString ? $needle->utf16LE() : JsString::utf8ToUtf16LE($search);
             $hayLen = strlen($hayU16) / 2;
 
             $posFloat = isset($args[1])

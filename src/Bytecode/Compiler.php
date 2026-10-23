@@ -96,6 +96,10 @@ final class Compiler
 
     private bool $hasTailCalls = false;
 
+    private bool $argumentsAllowed = false;
+
+    private bool $needsArguments = false;
+
     /** @var array<string, string> Captured function-scope bindings and declaration kinds. */
     private array $capturedLocals = [];
 
@@ -165,6 +169,11 @@ final class Compiler
     private array $classNodes = [];
 
     /**
+     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|null>}>
+     */
+    private array $arrayBindings = [];
+
+    /**
      * Source-like display string for each CALL_METHOD opcode emitted,
      * keyed by the PC of the opcode. The VM reads this on the
      * "is not a function" error path so the message matches V8 /
@@ -192,18 +201,21 @@ final class Compiler
     private int $tryEntryStackDepth = 0;
 
     /**
-     * Phase 2 finally guard: stack of loopStack sizes captured at
-     * each try-with-finally entry. Used to detect whether a
-     * break / continue inside the protected block targets a loop
-     * outside the try (bail) versus a nested loop entirely within
-     * the try (fine — finally still runs because the inner break
-     * doesn't escape the try). A non-empty stack also forces return
-     * inside the protected block to bail, since we'd have to inline
-     * the finally body before RET to preserve spec semantics.
+     * Loop depths at each active finalizer keep unsupported escaping loop
+     * completions on the interpreter path.
      *
      * @var list<int>
      */
     private array $finallyLoopBoundaries = [];
+
+    /**
+     * Return jumps target the innermost pending finalizer. A finalizer's
+     * body is compiled after removing its own context, so a return there
+     * overrides the saved completion and proceeds to any outer finalizer.
+     *
+     * @var list<array{valueSlot: int, completionSlot: int, jumps: list<int>}>
+     */
+    private array $finallyContexts = [];
 
     /**
      * THROW opcode operand: a single int that the VM uses to look
@@ -285,11 +297,16 @@ final class Compiler
             }
             $this->inGenerator = true;
         }
-        $this->tailCallsEnabled = $fn->isStrict() && !$fn->isGenerator();
-        if ($this->tailCallsEnabled) {
-            $this->checkTailCallShapes($fn->getBody());
-        }
         $body = $fn->getBody();
+        $functionStrict = $fn->isStrict()
+            || ($body instanceof BlockStatement && self::programHasUseStrictDirective($body->body));
+        $this->tailCallsEnabled = $functionStrict && !$fn->isGenerator();
+        // Unmapped arguments and zero-parameter ordinary functions can use
+        // the interpreter's existing arguments object without slot aliases.
+        // Sloppy mapped parameter lists retain the interpreter path.
+        $this->argumentsAllowed = !$fn->isGenerator() && (
+            $fn->isArrow() || $functionStrict || $fn->getParams() === []
+        );
         $isExpressionBody = !$body instanceof BlockStatement;
         if ($isExpressionBody && !$body instanceof Node) {
             throw new CompilerBailout('non-AST body');
@@ -343,10 +360,11 @@ final class Compiler
                 slotCount: max(1, count($this->localNames)),
                 nestedFns: $this->nestedFns,
                 needsThis: $needsEnvThis,
-                needsArgsBinding: $this->capturedLocals !== [],
+                needsArgsBinding: $this->capturedLocals !== [] || $this->needsArguments,
                 canSkipEnvAlloc: !$needsEnvThis && !$this->parametersFromEnvironment
-                    && $this->capturedLocals === [] && !$this->hasTailCalls,
+                    && $this->capturedLocals === [] && !$this->needsArguments,
                 parametersFromEnvironment: $this->parametersFromEnvironment,
+                hasTailCalls: $this->hasTailCalls,
             );
             $cf->callMethodDisplays = $this->callMethodDisplays;
             return $cf;
@@ -355,6 +373,9 @@ final class Compiler
         // Pre-walk: collect every var/let/const/function name in
         // the body so each is assigned a unique frame slot up front.
         $this->collectFunctionLocals($body->body);
+        if ($this->needsArguments && isset($this->localSlots['arguments'])) {
+            throw new CompilerBailout('local arguments binding');
+        }
         $this->collectCapturedLocals($body);
 
         // TDZ guard: bail if any let/const name appears in source
@@ -392,38 +413,18 @@ final class Compiler
             slotCount: max(1, count($this->localNames)),
             nestedFns: $this->nestedFns,
             needsThis: $needsEnvThis,
-            needsArgsBinding: $this->capturedLocals !== [],
+            needsArgsBinding: $this->capturedLocals !== [] || $this->needsArguments,
             canSkipEnvAlloc: !$needsEnvThis && !$this->parametersFromEnvironment
-                && $this->capturedLocals === [] && $this->nestedFns === [] && !$this->hasTailCalls,
+                && $this->capturedLocals === [] && $this->nestedFns === []
+                && !$this->needsArguments,
             parametersFromEnvironment: $this->parametersFromEnvironment,
+            hasTailCalls: $this->hasTailCalls,
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
+        $cf->arrayBindings = $this->arrayBindings;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
-    }
-
-    private function checkTailCallShapes(Node $node): void
-    {
-        if (
-            $node instanceof FunctionDeclaration
-            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
-            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
-            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
-            || $node instanceof \Phasis\Ast\Expression\ClassExpression
-        ) {
-            return;
-        }
-        if ($node instanceof \Phasis\Ast\Statement\TryStatement && self::bytecodeBailsForTailCall($node)) {
-            throw new CompilerBailout('tail calls in try statement');
-        }
-        foreach (get_object_vars($node) as $value) {
-            foreach (is_array($value) ? $value : [$value] as $child) {
-                if ($child instanceof Node) {
-                    $this->checkTailCallShapes($child);
-                }
-            }
-        }
     }
 
     private function parameterInitializerCanCapture(Node $node): bool
@@ -566,6 +567,7 @@ final class Compiler
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
+        $cf->arrayBindings = $this->arrayBindings;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
     }

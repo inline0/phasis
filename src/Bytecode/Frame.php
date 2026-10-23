@@ -48,8 +48,8 @@ final class Frame
      * Reuse this Frame for a new call. Resets state that varies per
      * call (env, thisValue, locals, stack pointer) and grows the
      * locals array if the new slot count is larger than what's
-     * currently allocated. Stack is left in place — sp = 0 makes any
-     * leftover entries unreachable.
+     * currently allocated. Completed calls release all references before
+     * their frames return to the pool.
      *
      * Param slots [0..paramCount-1] are NOT cleared here because the
      * caller's param-binding loop overwrites them immediately. Skipping
@@ -82,5 +82,18 @@ final class Frame
         for ($i = $paramCount; $i < $needed; $i++) {
             $this->locals[$i] = $undefined;
         }
+    }
+
+    /** Release completed activation references while retaining reusable local slots. */
+    public function release(JsValue $undefined): void
+    {
+        unset($this->env);
+        $this->thisValue = $undefined;
+        $count = count($this->locals);
+        for ($i = 0; $i < $count; $i++) {
+            $this->locals[$i] = $undefined;
+        }
+        $this->stack = [];
+        $this->sp = 0;
     }
 }

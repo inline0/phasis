@@ -593,7 +593,7 @@ class JsPromise extends JsObject
                 }
                 return JsUndefined::instance();
             }, 1);
-            $this->pendingHandlers[] = [$fulfilled, $rejected, null];
+            $this->pendingHandlers[] = [$fulfilled, $rejected, null, AsyncContextStorage::active()->snapshot()];
             return $child;
         }
 

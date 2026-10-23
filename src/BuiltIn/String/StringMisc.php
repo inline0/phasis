@@ -76,22 +76,6 @@ trait StringMisc
         if ($this_ instanceof JsString) {
             return $this_->value;
         }
-        if ($this_ instanceof JsObject) {
-            $prim = $this_->get('[[PrimitiveValue]]');
-            if ($prim instanceof JsString) {
-                return $prim->value;
-            }
-            // Object wrapping a non-string primitive (e.g. new Object(42),
-            // new Object(true)): convert the inner primitive to string so
-            // that String.prototype methods called on the wrapper produce
-            // the same result as in V8.
-            if (
-                !($prim instanceof JsUndefined)
-                && !($prim instanceof JsObject)
-            ) {
-                return TypeConversion::toString($prim);
-            }
-        }
         return TypeConversion::toString($this_);
     }
 
