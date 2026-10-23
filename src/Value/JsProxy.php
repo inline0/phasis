@@ -1424,20 +1424,28 @@ class JsProxy extends JsObject
 
     public function setBySymbol(JsSymbol $symbol, JsValue $value, bool $strict = false): void
     {
+        if (!$this->setBySymbolWithValueReceiver($symbol, $value, $this) && $strict) {
+            $key = self::formatKeyForError($symbol);
+            throw new TypeError("'set' on proxy: trap returned falsish for property {$key}");
+        }
+    }
+
+    /** Symbol [[Set]] preserves the receiver through the trap and target fallback. */
+    public function setBySymbolWithValueReceiver(JsSymbol $symbol, JsValue $value, JsValue $receiver): bool
+    {
         $this->assertNotRevoked('set');
         $target = $this->target;
         $handler = $this->handler;
         $trap = $this->getTrap('set');
         if ($trap !== null) {
-            $result = $trap->call($handler, [$target, $symbol, $value, $this]);
-            $boolean = \Phasis\Spec\TypeConversion::toBoolean($result);
-            if ($boolean) {
-                // Validate invariants per spec 10.5.9 step 14.
-                $this->validateSetInvariants($symbol, $value, $target);
+            $result = $trap->call($handler, [$target, $symbol, $value, $receiver]);
+            if (!\Phasis\Spec\TypeConversion::toBoolean($result)) {
+                return false;
             }
-            return;
+            $this->validateSetInvariants($symbol, $value, $target);
+            return true;
         }
-        $target->setBySymbol($symbol, $value);
+        return $target->setBySymbolWithValueReceiver($symbol, $value, $receiver);
     }
 
     public function hasBySymbol(JsSymbol $symbol): bool
