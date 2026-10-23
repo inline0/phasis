@@ -2513,6 +2513,19 @@ final class VM
                                     }
                                 }
                             }
+                            if (
+                                $obj instanceof \Phasis\Value\JsTypedArray && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
+                            ) {
+                                $index = (int) $key->value;
+                                if ((float) $index === $key->value) {
+                                    // Numeric integer keys need no property-key coercion.
+                                    // Keep detached and resizable checks in the getter.
+                                    $stack[$sp++] = $obj->getIndex($index);
+                                    $pc++;
+                                    break;
+                                }
+                            }
                             $stack[$sp++] = $this->lookupComputed($obj, $key);
                             $pc++;
                             break;
