@@ -14,6 +14,8 @@ export default defineConfig({
     globals: true,
     coverage: { enabled: false },
     maxWorkers: 1,
+    // Case identities must retain parameter values in the independent JSON report.
+    taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
     include,
     env: project === 'node' ? { NAME: 'Node' } : {},
     exclude: [...configDefaults.exclude, '**/sandbox/**', '**/*.case.test.*'],

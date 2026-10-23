@@ -111,6 +111,8 @@ python3 tests/Frameworks/hono/compare-native.py /tmp/hono-native.json \
 ```
 
 This compares names, multiplicities and outcomes for every selected file.
+The native configuration retains complete parameter values in test titles so
+Vitest's display truncation cannot change the identities in its JSON report.
 Missing reports and native collection failures are explicit failures.
 
 The upstream main project contains 122 source test files and two build test
