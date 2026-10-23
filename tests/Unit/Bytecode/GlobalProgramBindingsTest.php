@@ -6,12 +6,34 @@ namespace Phasis\Tests\Unit\Bytecode;
 
 use Phasis\Engine;
 use Phasis\Object\PropertyDescriptor;
+use Phasis\Parser\Parser;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsNumber;
 use PHPUnit\Framework\TestCase;
 
 class GlobalProgramBindingsTest extends TestCase
 {
+    public function testCompiledFunctionsReadLiveImportsAfterHostMutations(): void
+    {
+        $engine = new Engine();
+        $value = 1;
+        $scope = $engine->getGlobalEnv()->createChild();
+        $scope->defineImportBinding('current', static function () use (&$value): JsNumber {
+            return JsNumber::of((float) $value);
+        });
+        $engine->setGlobal('advanceImport', static function () use (&$value): void {
+            $value++;
+        });
+        $program = (new Parser('function read() { const first = current; advanceImport(); return [first, current]; }'))->parse();
+        $declaration = $program->body[0];
+        self::assertInstanceOf(\Phasis\Ast\Declaration\FunctionDeclaration::class, $declaration);
+        $function = new JsFunction('read', $declaration->params, $declaration->body, $scope, strict: true);
+        $engine->setGlobalJsValue('readImported', $function);
+
+        self::assertSame([[1, 2], [2, 3]], $engine->eval('[readImported(), readImported()]'));
+        self::assertNotNull($function->compiled);
+    }
+
     public function testDynamicFunctionReadsAndWritesLiveProgramVariables(): void
     {
         $engine = new Engine();

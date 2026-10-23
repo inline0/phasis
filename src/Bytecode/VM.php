@@ -903,17 +903,19 @@ final class VM
                                 $stack[$sp++] = $cachedNameValue;
                             } else {
                                 $name = $names[$code[$pc + 1]];
-                                $resolved = $env->get($name, $strict);
-                                // Object-backed globals and accessors can change
-                                // without an Environment mutation. Only cache
-                                // declarative bindings covered by its version.
-                                if ($env->findBindingDepth($name) !== null) {
+                                // A declarative lookup already returns its value.
+                                // Repeating the same walk through get() would only
+                                // add work. Dynamic bindings retain their full read.
+                                $binding = $env->findBindingDepth($name);
+                                if ($binding !== null) {
+                                    $resolved = $binding[0];
                                     $cf->loadNameIc[$pc] = [
                                         $resolved instanceof JsObject ? \WeakReference::create($resolved) : $resolved,
                                         \Phasis\Runtime\Environment::$globalBindingsVersion,
                                         \WeakReference::create($env),
                                     ];
                                 } else {
+                                    $resolved = $env->get($name, $strict);
                                     unset($cf->loadNameIc[$pc]);
                                 }
                                 $stack[$sp++] = $resolved;
