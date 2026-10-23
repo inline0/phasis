@@ -119,6 +119,7 @@ final class AbstractOperations
         // This also covers function constructors that have no named global.
         static $hiddenIntrinsics = [
             'Object' => '__ObjectPrototype__',
+            'Array' => '__ArrayPrototype__',
             'AsyncFunction' => '__AsyncFunctionPrototype__',
             'GeneratorFunction' => '__GeneratorFunctionPrototype__',
             'AsyncGeneratorFunction' => '__AsyncGeneratorFunctionPrototype__',

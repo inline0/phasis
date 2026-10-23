@@ -15,6 +15,7 @@
 - JSON property names and Unicode separators, callable proxies, and UTF-16 string indexing preserve JavaScript behavior across framework workloads.
 - Recursive compiled calls keep captured bindings separate, completed VM frames release their references, and WeakMap entries release unreachable keys without overflowing the host stack on deep chains.
 - Symbol property writes preserve Proxy traps and receivers; typed-array copies clamp array-like lengths before checking destination bounds.
+- Array literals and built-in array results retain their realm's intrinsic prototype when the global Array constructor is replaced.
 - Compiled identifier updates and strict program assignments retain their original references through coercion and right-hand-side effects.
 - Stream controllers, readers and writers retain their originating realm after VM context creation; pending Promise finalizers retain their registered async context.
 - Temporal calendar fields, arithmetic, rounding, parsing, timezone boundaries, and Intl formatting use consistent calendar data and option validation.
