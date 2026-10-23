@@ -1,27 +1,31 @@
 (() => {
-  'use strict';
-  const observations = [];
-  const attempt = callback => {
-    try { return callback(); } catch (error) { return error.name; }
-  };
-  const attributes = descriptor => [
+    'use strict';
+    const observations = [];
+    const attempt = callback => {
+        try {
+            return callback(); } catch (error) {
+                    return error.name; }
+    };
+    const attributes = descriptor => [
     descriptor.writable, descriptor.enumerable, descriptor.configurable,
     'get' in descriptor, 'set' in descriptor
-  ];
+    ];
 
-  const first = function First() {};
-  first.extra = 1;
-  const order = Reflect.ownKeys(first);
-  const descriptor = Object.getOwnPropertyDescriptor(first, 'prototype');
-  const prototype = descriptor.value;
-  observations.push([
+    const first = function First()
+    {};
+    first.extra = 1;
+    const order = Reflect.ownKeys(first);
+    const descriptor = Object.getOwnPropertyDescriptor(first, 'prototype');
+    const prototype = descriptor.value;
+    observations.push([
     order, Reflect.ownKeys(first), attributes(descriptor),
     Reflect.ownKeys(prototype), attributes(Object.getOwnPropertyDescriptor(prototype, 'constructor')),
     prototype.constructor === first, Object.getPrototypeOf(prototype) === Object.prototype,
     prototype === first.prototype, Object.getPrototypeOf(new first()) === prototype
-  ]);
+    ]);
 
-  const inherited = function Inherited() {};
+  const inherited = function Inherited()
+  {};
   const child = Object.create(inherited);
   const inheritedPrototype = child.prototype;
   observations.push([
@@ -31,18 +35,20 @@
     Object.getOwnPropertyDescriptors(inherited).prototype.value === inheritedPrototype
   ]);
 
-  for (const value of [undefined, null, 23, 'replacement', { custom: true }]) {
-    const changed = function Changed() {};
+for (const value of [undefined, null, 23, 'replacement', { custom: true }]) {
+    const changed = function Changed()
+    {};
     changed.prototype = value;
     observations.push([
-      changed.prototype === value,
-      Object.getOwnPropertyDescriptor(changed, 'prototype').value === value,
-      attributes(Object.getOwnPropertyDescriptor(changed, 'prototype')),
-      Object.getPrototypeOf(new changed()) === (typeof value === 'object' && value !== null ? value : Object.prototype)
+    changed.prototype === value,
+    Object.getOwnPropertyDescriptor(changed, 'prototype').value === value,
+    attributes(Object.getOwnPropertyDescriptor(changed, 'prototype')),
+    Object.getPrototypeOf(new changed()) === (typeof value === 'object' && value !== null ? value : Object.prototype)
     ]);
-  }
+}
 
-  const defined = function Defined() {};
+  const defined = function Defined()
+  {};
   const replacement = {};
   Object.defineProperty(defined, 'prototype', { value: replacement, writable: false });
   observations.push([
@@ -54,7 +60,8 @@
     attributes(Object.getOwnPropertyDescriptor(defined, 'prototype'))
   ]);
 
-  const locked = function Locked() {};
+  const locked = function Locked()
+  {};
   Object.defineProperty(locked, 'prototype', { writable: false });
   observations.push([
     typeof locked.prototype, locked.prototype.constructor === locked,
@@ -65,8 +72,9 @@
     attributes(Object.getOwnPropertyDescriptor(locked, 'prototype'))
   ]);
 
-  for (const operation of [Object.preventExtensions, Object.seal, Object.freeze]) {
-    const restricted = function Restricted() {};
+for (const operation of [Object.preventExtensions, Object.seal, Object.freeze]) {
+    const restricted = function Restricted()
+    {};
     // Node 26.12 reports a sealed strict function as frozen despite its writable
     // prototype. An ordinary own property avoids that V8 anomaly; the prototype
     // descriptor and replacement behavior are still checked directly below.
@@ -74,16 +82,17 @@
     operation(restricted);
     const initial = restricted.prototype;
     observations.push([
-      initial.constructor === restricted,
-      Object.isExtensible(restricted), Object.isSealed(restricted), Object.isFrozen(restricted),
-      attributes(Object.getOwnPropertyDescriptor(restricted, 'prototype')),
-      Reflect.set(restricted, 'prototype', null),
-      Object.getPrototypeOf(new restricted()) === (restricted.prototype === null ? Object.prototype : initial),
-      Reflect.deleteProperty(restricted, 'prototype')
+    initial.constructor === restricted,
+    Object.isExtensible(restricted), Object.isSealed(restricted), Object.isFrozen(restricted),
+    attributes(Object.getOwnPropertyDescriptor(restricted, 'prototype')),
+    Reflect.set(restricted, 'prototype', null),
+    Object.getPrototypeOf(new restricted()) === (restricted.prototype === null ? Object.prototype : initial),
+    Reflect.deleteProperty(restricted, 'prototype')
     ]);
-  }
+}
 
-  const removed = function Removed() {};
+  const removed = function Removed()
+  {};
   observations.push([
     Reflect.deleteProperty(removed, 'prototype'),
     attempt(() => { delete removed.prototype; }),
@@ -93,20 +102,21 @@
     removed.prototype.constructor === removed
   ]);
 
-  const frozen = function Frozen() {};
+  const frozen = function Frozen()
+  {};
   Object.defineProperty(frozen, 'prototype', { writable: false });
   const dishonest = new Proxy(frozen, {
-    get(target, name) { return name === 'prototype' ? {} : Reflect.get(target, name); },
-    getOwnPropertyDescriptor(target, name) {
-      return name === 'prototype'
-        ? { value: {}, writable: false, enumerable: false, configurable: false }
-        : Reflect.getOwnPropertyDescriptor(target, name);
-    },
-    defineProperty() { return true; },
-    set() { return true; },
-    deleteProperty() { return true; },
-    ownKeys() { return ['length', 'name']; }
-  });
+        get(target, name) { return name === 'prototype' ? {} : Reflect.get(target, name); },
+        getOwnPropertyDescriptor(target, name) {
+            return name === 'prototype'
+            ? { value : {}, writable : false, enumerable : false, configurable : false }
+            : Reflect.getOwnPropertyDescriptor(target, name);
+        },
+        defineProperty() { return true; },
+        set() { return true; },
+        deleteProperty() { return true; },
+        ownKeys() { return ['length', 'name']; }
+    });
   observations.push([
     attempt(() => dishonest.prototype),
     attempt(() => Object.getOwnPropertyDescriptor(dishonest, 'prototype')),
@@ -117,7 +127,8 @@
     frozen.prototype.constructor === frozen
   ]);
 
-  const mutable = function Mutable() {};
+  const mutable = function Mutable()
+  {};
   const proxyValue = {};
   observations.push([
     new Proxy(mutable, { get() { return proxyValue; } }).prototype === proxyValue,
@@ -127,7 +138,9 @@
 
   const dynamic = new Function('"use strict"; return 3;');
   const method = { method() {} }.method;
-  const generator = function* () { yield 1; };
+  const generator = function * ()
+  {
+    yield 1; };
   observations.push([
     dynamic.prototype.constructor === dynamic,
     new dynamic() instanceof dynamic,
