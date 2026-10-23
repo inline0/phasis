@@ -85,6 +85,7 @@ class Parser
     private int $pos = 0;
     private bool $noIn = false;
     private bool $directEvalContext = false;
+    private bool $fragmentMode = false;
     private bool $inGenerator = false;
     private bool $inAsync = false;
     private bool $inStaticBlock = false;
@@ -365,6 +366,12 @@ class Parser
         $this->directEvalContext = $directEval;
     }
 
+    /** Allow tooling snippets with top-level returns or undeclared local exports. */
+    public function setFragmentMode(bool $fragment): void
+    {
+        $this->fragmentMode = $fragment;
+    }
+
     public function setStrictMode(bool $strict): void
     {
         $this->strictMode = $strict;
@@ -442,7 +449,7 @@ class Parser
         // validator descends into nested function and arrow bodies and
         // re-applies the scope rules independently for each.
         self::validateBreakContinueProgram($program);
-        ProgramEarlyErrors::validate($program, $this->moduleMode, $this->directEvalContext);
+        ProgramEarlyErrors::validate($program, $this->moduleMode, $this->directEvalContext, $this->fragmentMode);
         return $program;
     }
 

@@ -167,6 +167,15 @@ final class Test262VariantTest extends TestCase
         self::assertSame(TestStatus::Fail, $result->status);
     }
 
+    public function testThePerTestTimeLimitDoesNotLeakIntoTheHostProcess(): void
+    {
+        $before = ini_get('max_execution_time');
+        $result = $this->runFixture('var value = 1;');
+
+        self::assertSame(TestStatus::Pass, $result->status, $result->message);
+        self::assertSame($before, ini_get('max_execution_time'));
+    }
+
     private function runFixture(string $source): TestResult
     {
         $path = tempnam(sys_get_temp_dir(), 'phasis-variants-');

@@ -38,6 +38,8 @@ Any other value throws `\InvalidArgumentException`.
 
 For finer control (pre-seeding strict mode for a direct-eval context, reading the `//# sourceURL` pragma), construct the parser directly: `new Parser($source)` plus `setModuleMode()`, `setStrictMode()`, and `parse()`.
 
+Tooling that inspects incomplete source excerpts can opt into `setFragmentMode(true)`. This allows top-level `return` statements and exports of undeclared local names, as the formatter requires. All other checks remain enabled. The default parser and execution APIs require complete programs; fragment mode does not change execution semantics.
+
 ## Nodes
 
 Every AST class extends `Phasis\Ast\Node` and lives under `Phasis\Ast\{Declaration, Expression, Pattern, Statement}`. Nodes are plain readonly value objects:

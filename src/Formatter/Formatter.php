@@ -36,6 +36,9 @@ final class Formatter
 
         $parser = new Parser($source);
         $parser->setModuleMode($sourceType === 'module');
+        // Formatting accepts excerpts whose enclosing function or exported
+        // declarations may be supplied by the surrounding source.
+        $parser->setFragmentMode(true);
         $parser->setCollectComments(true);
         $program = $parser->parse();
         $comments = $parser->comments();

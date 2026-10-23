@@ -33,17 +33,17 @@ use Phasis\Exceptions\SyntaxError;
 final class ProgramEarlyErrors
 {
     /** Validate declarations and references before executing or linking a program. */
-    public static function validate(Program $program, bool $module = false, bool $directEval = false): void
+    public static function validate(Program $program, bool $module = false, bool $directEval = false, bool $fragment = false): void
     {
-        self::validateBindings($program, $module);
+        self::validateBindings($program, $module, $fragment);
         // Direct eval inherits private names, super, and new.target from its
         // caller. PerformEval validates those references with that environment.
         if (!$directEval) {
-            self::validateReferences($program, [], true, false);
+            self::validateReferences($program, [], true, $fragment);
         }
     }
 
-    private static function validateBindings(Program $program, bool $module): void
+    private static function validateBindings(Program $program, bool $module, bool $fragment): void
     {
         $lexical = [];
         $vars = [];
@@ -90,7 +90,7 @@ final class ProgramEarlyErrors
             }
         }
         foreach ($exportedBindings as $name => $_) {
-            if (!isset($lexical[$name]) && !isset($vars[$name])) {
+            if (!$fragment && !isset($lexical[$name]) && !isset($vars[$name])) {
                 throw new SyntaxError("Export of unknown binding '{$name}'");
             }
         }

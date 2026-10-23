@@ -84,4 +84,47 @@ var Constructed = Function('this.same = new.target === arguments.callee; return;
 new Constructed().same;
 JS));
     }
+
+    #[DataProvider('sourceFragments')]
+    public function testFragmentModeAcceptsToolingExcerpts(string $source, string $goal): void
+    {
+        $parser = new Parser($source);
+        $parser->setModuleMode($goal === 'module');
+        $parser->setFragmentMode(true);
+        self::assertInstanceOf(Program::class, $parser->parse());
+    }
+
+    #[DataProvider('sourceFragments')]
+    public function testDefaultParsingStillRequiresCompletePrograms(string $source, string $goal): void
+    {
+        $this->expectException(SyntaxError::class);
+        Parser::parseSource($source, $goal);
+    }
+
+    #[DataProvider('sourceFragments')]
+    public function testEngineDoesNotExecuteIncompleteFragments(string $source, string $goal): void
+    {
+        $engine = new Engine();
+        $this->expectException(SyntaxError::class);
+        if ($goal === 'module') {
+            $engine->evalAsModule($source);
+        } else {
+            $engine->eval($source);
+        }
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function sourceFragments(): iterable
+    {
+        yield 'return from enclosing function' => ['if (ready) { return value; }', 'script'];
+        yield 'declaration elsewhere in module' => ['export { missing };', 'module'];
+    }
+
+    public function testFragmentModeStillRejectsDuplicateBindings(): void
+    {
+        $parser = new Parser('let value; let value;');
+        $parser->setFragmentMode(true);
+        $this->expectException(SyntaxError::class);
+        $parser->parse();
+    }
 }

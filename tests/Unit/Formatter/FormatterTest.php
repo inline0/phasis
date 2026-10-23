@@ -157,6 +157,8 @@ final class FormatterTest extends TestCase
     {
         $parser = new Parser($source);
         $parser->setModuleMode($type === 'module');
+        // Compare the same source fragments accepted by the formatter.
+        $parser->setFragmentMode(true);
         $parser->setCollectComments(true);
         $parser->parse();
         return count($parser->comments());
@@ -167,7 +169,11 @@ final class FormatterTest extends TestCase
      */
     private static function normalizedTree(string $source, string $type): array
     {
-        $tree = EstreeSerializer::toArray(Parser::parseSource($source, $type));
+        $parser = new Parser($source);
+        $parser->setModuleMode($type === 'module');
+        // These fixtures include excerpts, so both trees use the formatter's goal.
+        $parser->setFragmentMode(true);
+        $tree = EstreeSerializer::toArray($parser->parse());
         self::stripVolatileKeys($tree);
         return $tree;
     }

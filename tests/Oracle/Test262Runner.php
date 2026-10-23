@@ -355,6 +355,7 @@ class Test262Runner
         if ($canBlock) {
             \Phasis\BuiltIn\AtomicsObject::setAgentCanSuspend(true);
         }
+        $previousTimeLimit = (int) ini_get('max_execution_time');
         try {
             foreach ($modes as $mode) {
                 $result = $this->executeTest($testPath, $source, $meta, $mode, $includes, $negative, $isRaw, $isAsync);
@@ -363,6 +364,7 @@ class Test262Runner
                 }
             }
         } finally {
+            set_time_limit($previousTimeLimit);
             if ($canBlock) {
                 \Phasis\BuiltIn\AtomicsObject::setAgentCanSuspend(false);
             }
