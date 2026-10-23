@@ -36,6 +36,8 @@ final class JsArrayIterator extends JsObject
             $done = true;
             return JsUndefined::instance();
         }
+        // Generic length getters may reenter next before this step advances.
+        $index = $this->nextIndex;
         if ($array instanceof JsTypedArray) {
             if ($array->getBuffer()->isDetached()) {
                 throw new TypeError('Cannot perform Array Iterator.prototype.next on a detached ArrayBuffer');
@@ -49,7 +51,6 @@ final class JsArrayIterator extends JsObject
                 ? $array->getLength()
                 : TypeConversion::toLength($array->get('length'));
         }
-        $index = $this->nextIndex;
         if ($index >= $length) {
             $this->array = null;
             $done = true;

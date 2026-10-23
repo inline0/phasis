@@ -31,6 +31,28 @@ final class ArrayIteratorStorageTest extends TestCase
 JS));
     }
 
+    public function testLengthGetterReentryKeepsTheOuterStepIndex(): void
+    {
+        $engine = new Engine();
+        self::assertSame('["a","a","b"]', $engine->eval(<<<'JS'
+(() => {
+    let nested = false;
+    let inner;
+    let iterator;
+    const object = { 0: 'a', 1: 'b', 2: 'c', get length() {
+        if (!nested) {
+            nested = true;
+            inner = iterator.next().value;
+        }
+        return 3;
+    }};
+    iterator = Array.prototype.values.call(object);
+    const outer = iterator.next().value;
+    return JSON.stringify([inner, outer, iterator.next().value]);
+})()
+JS));
+    }
+
     public function testKeysDoNotReadElementsAndNextAdvancesBeforeGetters(): void
     {
         $engine = new Engine();
