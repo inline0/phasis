@@ -1534,7 +1534,8 @@ trait ExpressionEvaluation
 
             // String method calls: look up on __StringPrototype__
             if ($rawObj instanceof JsString && !$isSymbolCallKey) {
-                $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+                $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+                $proto = $realmInterpreter->cachedStringPrototype ??= $realmInterpreter->resolveCachedPrototype('__StringPrototype__');
                 if ($proto instanceof JsObject) {
                     $method = $proto->get($key);
                     if ($method instanceof JsFunction) {
@@ -5861,7 +5862,8 @@ trait ExpressionEvaluation
                 }
                 return JsUndefined::instance();
             }
-            $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+            $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+            $proto = $realmInterpreter->cachedStringPrototype ??= $realmInterpreter->resolveCachedPrototype('__StringPrototype__');
             if ($proto instanceof JsObject) {
                 $val = $proto->getWithValueReceiver($name, $obj);
                 if (!$val instanceof JsUndefined) {
@@ -7009,7 +7011,8 @@ trait ExpressionEvaluation
             // primitive string as their `this` (per spec OrdinaryGet for a
             // primitive receiver). Method-call this-binding is handled by
             // the CallExpression evaluator, not here.
-            $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+            $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+            $proto = $realmInterpreter->cachedStringPrototype ??= $realmInterpreter->resolveCachedPrototype('__StringPrototype__');
             if ($proto instanceof JsObject) {
                 $val = $proto->getWithValueReceiver($key, $obj);
                 if (!$val instanceof JsUndefined) {

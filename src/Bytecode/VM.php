@@ -719,6 +719,7 @@ final class VM
         ?JsValue $resumeValue = null,
         bool $resumeThrow = false,
     ): JsValue|YieldResult {
+        $executionRealm = (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm();
         $loopCounts = $resumeFrom->loopCounts ?? [];
         $code = $cf->code;
         $consts = $cf->consts;
@@ -1625,6 +1626,13 @@ final class VM
                                     (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
                                 );
                             }
+                            // Cross-realm calls need the ordinary realm switch;
+                            // cached eligibility describes only function shape.
+                            if ($callee->realm !== null && $callee->realm !== $executionRealm) {
+                                $stack[$sp++] = $this->interp->callFunction($callee, $undef, $args);
+                                $pc += 2;
+                                break;
+                            }
                             // Fast path for the global URI built-ins (encodeURI,
                             // decodeURI, encodeURIComponent, decodeURIComponent).
                             // These are single-realm, never callable as
@@ -2136,6 +2144,11 @@ final class VM
                                     $display = TypeConversion::toString($method) ?: 'value';
                                 }
                                 throw new TypeError($display . ' is not a function');
+                            }
+                            if ($method->realm !== null && $method->realm !== $executionRealm) {
+                                $stack[$sp++] = $this->interp->callFunction($method, $receiver, $args);
+                                $pc += 2;
+                                break;
                             }
                             // Inline path for tagged hot built-ins: when the
                             // receiver shape matches what the built-in's spec
