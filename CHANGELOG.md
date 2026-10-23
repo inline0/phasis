@@ -1,10 +1,5 @@
 # Changelog
 
-## [Unreleased]
-
-### Added
-- An unbundled Remix 3.0.0 compatibility fixture with all 99 runtime entry points, 13 Node-oracle behavior probes, explicit gap reporting and a CI regression gate
-
 ## [0.8.0] - 2026-10-16
 
 - Route ordinary Unicode `/v` property patterns through bundled tables on older hosts; keep set and string operations on their existing lowering path.
