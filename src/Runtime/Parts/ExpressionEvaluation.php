@@ -1245,7 +1245,8 @@ trait ExpressionEvaluation
             : $this->evaluate($node->alternate, $env);
     }
 
-    private function evalCallExpression(CallExpression $node, Environment $env): JsValue
+    /** @return ($tail is true ? JsValue|TailCallThunk : JsValue) */
+    private function evalCallExpression(CallExpression $node, Environment $env, bool $tail = false): JsValue|TailCallThunk
     {
         // Super call: super(args) inside a class constructor.
         // Calls the super class constructor with the current this and args.
@@ -1465,7 +1466,7 @@ trait ExpressionEvaluation
             $shortCircuits = $rawObj instanceof JsOptionalUndefined
                 || ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined));
             if ($shortCircuits) {
-                if ($node->callee->parenthesized) {
+                if ($node->callee->parenthesized && !$node->optional) {
                     // `(a?.b)()`: the parentheses end the chain, so the callee
                     // is undefined and the call itself fails, after its
                     // arguments are evaluated.
@@ -1646,6 +1647,9 @@ trait ExpressionEvaluation
         // We do NOT set thisValue = globalObject here so that explicit apply(globalObject)
         // calls pass the global object through without being cleared by executeFunction.
 
+        if ($tail && !$callee->isNative() && !$callee->isGenerator() && !$callee->isAsync()) {
+            return new TailCallThunk($callee, $thisValue, $args);
+        }
         return $this->callFunction($callee, $thisValue, $args);
     }
 

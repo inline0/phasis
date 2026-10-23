@@ -179,6 +179,10 @@ trait CompilerStatement
     /** Compile a return value, preserving strict tail positions recursively. */
     private function compileReturnExpression(Node $expression): void
     {
+        if ($this->tailCallsEnabled && $expression instanceof CallExpression && $this->chainHasOptionalLink($expression)) {
+            $this->compileOptionalChain($expression, tail: true);
+            return;
+        }
         if ($this->tailCallsEnabled && $expression instanceof ConditionalExpression) {
             $this->compileExpression($expression->test);
             $alternate = $this->emitJump(Op::JUMP_IF_FALSE);

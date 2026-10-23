@@ -618,9 +618,9 @@ trait CompilerExpression
 
     private function compileCall(CallExpression $node): void
     {
-        // Optional chains and direct eval retain the interpreter path.
-        if ($node->optional) {
-            throw new CompilerBailout('optional call');
+        if ($this->chainHasOptionalLink($node)) {
+            $this->compileOptionalChain($node);
+            return;
         }
         if ($node->callee instanceof Identifier && $node->callee->name === 'eval') {
             throw new CompilerBailout('direct eval');
@@ -707,8 +707,9 @@ trait CompilerExpression
 
     private function compileMember(MemberExpression $node): void
     {
-        if ($node->optional) {
-            throw new CompilerBailout('optional member');
+        if ($this->chainHasOptionalLink($node)) {
+            $this->compileOptionalChain($node);
+            return;
         }
         if ($node->object instanceof Identifier && $node->object->name === 'super') {
             throw new CompilerBailout('super member access');
@@ -727,6 +728,120 @@ trait CompilerExpression
         }
         $this->compileExpression($node->object);
         $this->emit(Op::LOAD_MEMBER, $this->internName($node->property->name));
+    }
+
+    /** Parentheses affect propagation, but still require reference-preserving lowering. */
+    private function chainHasOptionalLink(MemberExpression|CallExpression $node): bool
+    {
+        while ($node instanceof MemberExpression || $node instanceof CallExpression) {
+            if ($node->optional) {
+                return true;
+            }
+            $node = $node instanceof MemberExpression ? $node->object : $node->callee;
+        }
+        return false;
+    }
+
+    /**
+     * Nullish branches leave the whole chain at once. No sentinel can escape
+     * into bindings or comparisons, and a grouped method retains its receiver.
+     */
+    private function compileOptionalChain(
+        MemberExpression|CallExpression $node,
+        bool $reference = false,
+        bool $tail = false,
+    ): void {
+        $shortCircuits = [];
+        $this->compileChainLink($node, $shortCircuits, $reference, $tail);
+        if ($shortCircuits === []) {
+            return;
+        }
+        $ends = [$this->emitJump(Op::JUMP)];
+        foreach ($shortCircuits as $branch) {
+            $this->patchJumpToHere($branch['jump']);
+            for ($discard = 0; $discard < $branch['discard']; $discard++) {
+                $this->emit(Op::POP);
+            }
+            if ($reference) {
+                $this->emit(Op::LOAD_UNDEF);
+            }
+            $this->emit(Op::LOAD_UNDEF);
+            $ends[] = $this->emitJump(Op::JUMP);
+        }
+        foreach ($ends as $end) {
+            $this->patchJumpToHere($end);
+        }
+    }
+
+    /** @param list<array{jump: int, discard: int}> $shortCircuits */
+    private function compileChainOperand(Node $node, array &$shortCircuits, bool $reference = false): void
+    {
+        if ($node instanceof MemberExpression || $node instanceof CallExpression) {
+            if ($node->parenthesized) {
+                // `(a?.b).c` must read `.c` from the completed undefined value.
+                // `(a?.b)()` additionally keeps the successful method receiver.
+                $this->compileOptionalChain($node, $reference);
+            } else {
+                $this->compileChainLink($node, $shortCircuits, $reference);
+            }
+            return;
+        }
+        $this->compileExpression($node);
+    }
+
+    /** @param list<array{jump: int, discard: int}> $shortCircuits */
+    private function compileChainLink(
+        MemberExpression|CallExpression $node,
+        array &$shortCircuits,
+        bool $reference = false,
+        bool $tail = false,
+    ): void {
+        if ($node instanceof MemberExpression) {
+            if (
+                $node->property instanceof PrivateIdentifier
+                || ($node->object instanceof Identifier && $node->object->name === 'super')
+            ) {
+                throw new CompilerBailout('private/super optional chain');
+            }
+            $this->compileChainOperand($node->object, $shortCircuits);
+            if ($node->optional) {
+                $shortCircuits[] = ['jump' => $this->emitJump(Op::JUMP_IF_NULLISH), 'discard' => 0];
+            }
+            if ($reference) {
+                $this->emit(Op::DUP);
+            }
+            if ($node->computed) {
+                $this->compileExpression($node->property);
+                $this->emit(Op::LOAD_COMPUTED);
+            } elseif ($node->property instanceof Identifier) {
+                $this->emit(Op::LOAD_MEMBER, $this->internName($node->property->name));
+            } else {
+                throw new CompilerBailout('non-identifier optional member');
+            }
+            return;
+        }
+        if ($node->callee instanceof Identifier && ($node->callee->name === 'eval' || $node->callee->name === 'super')) {
+            throw new CompilerBailout('eval/super chain call');
+        }
+        $method = $node->callee instanceof MemberExpression;
+        $this->compileChainOperand($node->callee, $shortCircuits, $method);
+        if ($node->optional) {
+            $shortCircuits[] = ['jump' => $this->emitJump(Op::JUMP_IF_NULLISH), 'discard' => $method ? 1 : 0];
+        }
+        $argc = $this->compileArguments($node->arguments);
+        $pc = count($this->code);
+        $this->emit($tail
+            ? ($method ? Op::TAIL_CALL_METHOD : Op::TAIL_CALL)
+            : ($method ? Op::CALL_METHOD : Op::CALL), $argc);
+        if ($tail) {
+            $this->hasTailCalls = true;
+        }
+        if ($node->callee instanceof MemberExpression) {
+            $display = $this->renderMethodCallDisplay($node->callee);
+            if ($display !== null) {
+                $this->callMethodDisplays[$pc] = $display;
+            }
+        }
     }
 
     private function compileAssignment(AssignmentExpression $node): void
