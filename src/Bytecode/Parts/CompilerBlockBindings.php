@@ -15,6 +15,7 @@ use Phasis\Ast\Expression\MemberExpression;
 use Phasis\Ast\Expression\Property;
 use Phasis\Ast\Node;
 use Phasis\Ast\Statement\BlockStatement;
+use Phasis\Bytecode\CompilerBailout;
 
 trait CompilerBlockBindings
 {
@@ -31,6 +32,12 @@ trait CompilerBlockBindings
         $disallowed = array_fill_keys(array_keys($this->localSlots), true);
         $this->collectBlockBindingDeclarations($body, null, $body, $declarations, $declarationKinds, $disallowed);
         foreach ($declarations as $name => $blocks) {
+            if (count($blocks) === 1) {
+                $initialized = false;
+                if (!$this->blockBindingLifetimeIsIndependent($body, $name, array_fill_keys($blocks, true), null, $initialized)) {
+                    throw new CompilerBailout('block binding needs a lexical environment');
+                }
+            }
             if (isset($disallowed[$name]) || count($blocks) < 2 || count(array_unique($blocks)) !== count($blocks)) {
                 continue;
             }

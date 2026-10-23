@@ -76,7 +76,36 @@ trait JsToPhpEligibility
         if (!$body instanceof BlockStatement) {
             return false;
         }
-        return self::blockHasUnsafeLexical($body->body);
+        return self::blockHasUnsafeLexical($body->body) || self::blockBindingEscapes($body, $body);
+    }
+
+    private static function blockBindingEscapes(Node $node, BlockStatement $body): bool
+    {
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        if ($node instanceof BlockStatement && $node !== $body) {
+            foreach ($node->body as $statement) {
+                if (
+                    $statement instanceof VariableDeclaration && $statement->kind !== 'var'
+                    && self::readsAnyName($body, self::collectDeclNames($statement), $node)
+                ) {
+                    return true;
+                }
+            }
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node && self::blockBindingEscapes($child, $body)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -178,8 +207,11 @@ trait JsToPhpEligibility
      *
      * @param list<string> $names
      */
-    private static function readsAnyName(Node $node, array $names): bool
+    private static function readsAnyName(Node $node, array $names, ?Node $excludedScope = null): bool
     {
+        if ($node === $excludedScope) {
+            return false;
+        }
         if ($node instanceof Identifier) {
             return in_array($node->name, $names, true);
         }
@@ -191,30 +223,30 @@ trait JsToPhpEligibility
             return false;
         }
         if ($node instanceof \Phasis\Ast\Expression\MemberExpression) {
-            if (self::readsAnyName($node->object, $names)) {
+            if (self::readsAnyName($node->object, $names, $excludedScope)) {
                 return true;
             }
-            if ($node->computed && self::readsAnyName($node->property, $names)) {
+            if ($node->computed && self::readsAnyName($node->property, $names, $excludedScope)) {
                 return true;
             }
             return false;
         }
         if ($node instanceof \Phasis\Ast\Expression\Property) {
-            if ($node->computed && self::readsAnyName($node->key, $names)) {
+            if ($node->computed && self::readsAnyName($node->key, $names, $excludedScope)) {
                 return true;
             }
-            return self::readsAnyName($node->value, $names);
+            return self::readsAnyName($node->value, $names, $excludedScope);
         }
         foreach ((array) $node as $value) {
             if ($value instanceof Node) {
-                if (self::readsAnyName($value, $names)) {
+                if (self::readsAnyName($value, $names, $excludedScope)) {
                     return true;
                 }
                 continue;
             }
             if (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof Node && self::readsAnyName($item, $names)) {
+                    if ($item instanceof Node && self::readsAnyName($item, $names, $excludedScope)) {
                         return true;
                     }
                 }
