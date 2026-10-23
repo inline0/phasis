@@ -183,6 +183,8 @@ final class Op
     public const DELETE_PROPERTY = 114; // pop key and base, delete the property, push the Boolean result.
     public const UPDATE_NAME = 115; // N I I: resolve a binding once, update by +/-1, push prefix/postfix result.
     public const EVAL_EXPRESSION = 116; // I: evaluate an environment-only expression through the interpreter.
+    public const UPDATE_MEMBER = 117; // N I I: update a literal property, preserving its resolved base.
+    public const UPDATE_COMPUTED = 118; // I I: update a computed property, coercing its key once.
 
     public const LOOP_INIT = 120;
     public const LOOP_TICK = 121;
@@ -281,9 +283,11 @@ final class Op
                 return 1;
             // 2-operand opcodes
             case self::NEW_REGEXP:
+            case self::UPDATE_COMPUTED:
                 return 2;
             // 3-operand opcodes
             case self::UPDATE_NAME:
+            case self::UPDATE_MEMBER:
             case self::JUMP_IF_LOCAL_GE_CONST:
             case self::JUMP_IF_LOCAL_GE_LOCAL:
             case self::JUMP_IF_LOCAL_GT_LOCAL:

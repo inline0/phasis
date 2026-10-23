@@ -400,7 +400,22 @@ trait CompilerExpression
             $this->emit(Op::UPDATE_NAME, $this->internName($name), (int) $isInc, (int) $node->prefix);
             return;
         }
-        // Member targets (`o.x++`, `o[k]++`) come in a later phase.
+        if (
+            $arg instanceof MemberExpression && !$arg->optional
+            && !$arg->property instanceof PrivateIdentifier
+            && !($arg->object instanceof Identifier && $arg->object->name === 'super')
+        ) {
+            $this->compileExpression($arg->object);
+            if ($arg->computed) {
+                $this->compileExpression($arg->property);
+                $this->emit(Op::UPDATE_COMPUTED, (int) $isInc, (int) $node->prefix);
+            } elseif ($arg->property instanceof Identifier) {
+                $this->emit(Op::UPDATE_MEMBER, $this->internName($arg->property->name), (int) $isInc, (int) $node->prefix);
+            } else {
+                throw new CompilerBailout('unsupported update property');
+            }
+            return;
+        }
         throw new CompilerBailout('update non-identifier');
     }
 

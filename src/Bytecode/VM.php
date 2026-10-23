@@ -949,6 +949,37 @@ final class VM
                             );
                             $pc += 4;
                             break;
+                        case Op::UPDATE_MEMBER:
+                            $obj = $stack[--$sp];
+                            $name = $names[$code[$pc + 1]];
+                            $increment = (bool) $code[$pc + 2];
+                            $prefix = (bool) $code[$pc + 3];
+                            if (
+                                $obj instanceof JsObject && get_class($obj) === JsObject::class
+                                && ($old = $obj->properties->dataSlots[$name] ?? null) instanceof JsNumber
+                            ) {
+                                // Plain own data slots have no getter, setter, or
+                                // coercion hooks. Preserve the same mutation barriers
+                                // as an ordinary writable-property assignment.
+                                $updated = JsNumber::of($old->value + ($increment ? 1.0 : -1.0));
+                                $obj->properties->setDataSlot($name, $updated);
+                                $stack[$sp++] = $prefix ? $updated : $old;
+                            } else {
+                                $stack[$sp++] = $this->interp->vmUpdateMember($obj, $name, $increment, $prefix);
+                            }
+                            $pc += 4;
+                            break;
+                        case Op::UPDATE_COMPUTED:
+                            $key = $stack[--$sp];
+                            $obj = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->vmUpdateMember(
+                                $obj,
+                                $key,
+                                (bool) $code[$pc + 1],
+                                (bool) $code[$pc + 2],
+                            );
+                            $pc += 3;
+                            break;
                         case Op::DEFINE_NAME:
                             $env->defineVar($names[$code[$pc + 1]], $stack[--$sp]);
                             $pc += 2;

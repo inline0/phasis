@@ -923,7 +923,7 @@ trait ExpressionEvaluation
             );
         }
 
-        return $this->updateReferenceValue($ref, $node->operator === '++', $node->prefix);
+        return $this->updateReferenceValue($ref, $node->operator === '++', $node->prefix, false);
     }
 
     /** Update an identifier through its original reference, shared by the VM and interpreter. */
@@ -932,11 +932,31 @@ trait ExpressionEvaluation
         return $this->updateReferenceValue($this->resolveIdentifierReference($env, $name), $increment, $prefix);
     }
 
-    private function updateReferenceValue(Reference $ref, bool $increment, bool $prefix): JsValue
+    /** Update a property through one Reference, including computed-key and numeric coercion. */
+    public function vmUpdateMember(JsValue $base, string|JsValue $key, bool $increment, bool $prefix): JsValue
+    {
+        $name = is_string($key) ? $key
+            : ($key instanceof JsObject || $key instanceof JsSymbol ? '' : TypeConversion::toString($key));
+        // RequireObjectCoercible precedes object-key coercion for updates.
+        if ($base instanceof JsNull || $base instanceof JsUndefined) {
+            $type = $base instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError("Cannot read properties of {$type} (reading '{$name}')");
+        }
+        $ref = new Reference(
+            $base,
+            $name,
+            $this->strictMode,
+            symbolKey: $key instanceof JsSymbol ? $key : null,
+            rawKey: $key instanceof JsObject ? $key : null,
+        );
+        return $this->updateReferenceValue($ref, $increment, $prefix, false);
+    }
+
+    private function updateReferenceValue(Reference $ref, bool $increment, bool $prefix, bool $bindingReference = true): JsValue
     {
         // GetValue must run exactly once, before any user-defined numeric
         // conversion, while PutValue retains the originally resolved base.
-        $current = $this->withGetBindingValue($ref);
+        $current = $bindingReference ? $this->withGetBindingValue($ref) : $ref->getValue();
         $oldNumeric = $current instanceof JsNumber ? $current : TypeConversion::toNumeric($current);
 
         if ($oldNumeric instanceof JsBigInt) {
@@ -948,7 +968,11 @@ trait ExpressionEvaluation
                 $raw = '0';
             }
             $newValue = new JsBigInt($raw);
-            $this->withSetMutableBindingCheck($ref, $newValue);
+            if ($bindingReference) {
+                $this->withSetMutableBindingCheck($ref, $newValue);
+            } else {
+                $ref->setValue($newValue);
+            }
             return $prefix ? $newValue : $oldNumeric;
         }
 
@@ -957,7 +981,11 @@ trait ExpressionEvaluation
             : JsNumber::of(TypeConversion::toNumber($oldNumeric));
         $delta = $increment ? 1.0 : -1.0;
         $newValue = JsNumber::of($oldValue->value + $delta);
-        $this->withSetMutableBindingCheck($ref, $newValue);
+        if ($bindingReference) {
+            $this->withSetMutableBindingCheck($ref, $newValue);
+        } else {
+            $ref->setValue($newValue);
+        }
 
         return $prefix ? $newValue : $oldValue;
     }
