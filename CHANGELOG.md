@@ -9,12 +9,14 @@
 ### Fixed
 - Temporal calendar fields, arithmetic, rounding, parsing, timezone boundaries, and Intl formatting use consistent calendar data and option validation.
 - Module evaluation, source and typed imports, resource disposal, cross-realm intrinsics, numeric serialization, and compiled global bindings follow current language semantics.
+- Array callbacks observe mutations and holes, and global declarations create own properties without invoking inherited accessors.
+- Parser early errors and module linking preserve the required error phase; formatter fragments retain their supported syntax.
 - Unicode 17 case mappings and complete emoji string properties are generated reproducibly from pinned upstream data.
 - Intl option precedence, legacy constructors, plural notation, numbering systems, and plain date/time formatting.
 
 ### Changed
 - The test262 runner executes both variants of unflagged scripts, preserves raw sources and module parse goals, requires async completion, and checks negative-test error types and phases.
-- Compatibility shards retain full file manifests; merging rejects overlapping or stale results and keeps missing coverage visible.
+- Compatibility shards retain full file manifests; merging rejects overlapping or stale results and keeps missing coverage visible. Incomplete or failing coverage cannot round up to 100%.
 
 ## [0.8.0] - 2026-10-16
 

@@ -185,7 +185,7 @@ phasis/
 │   │   │   ├── VariableDeclaration.php  # let, const, var
 │   │   │   ├── FunctionDeclaration.php  # function foo() { ... }
 │   │   │   ├── ClassDeclaration.php     # class Foo { ... }
-│   │   │   └── ImportDeclaration.php    # import (future)
+│   │   │   └── ImportDeclaration.php    # ES module imports
 │   │   └── Pattern/
 │   │       ├── ArrayPattern.php         # [a, b] = arr (destructuring)
 │   │       ├── ObjectPattern.php        # {a, b} = obj (destructuring)
@@ -513,7 +513,7 @@ $engine->eval('post.title = "New Title"');                       // Mutates the 
 
 1. Pure PHP. Required extensions are `mbstring` (UTF-16 string handling) and `bcmath` (BigInt arithmetic + integer-precision number handling) — both ship in every mainstream PHP build. `intl` is optional, used for Intl.* and non-ISO Temporal calendars (gated behind `extension_loaded('intl')`). No FFI. No `exec()`. No Node.js at runtime. The point is to run JavaScript inside PHP without external dependencies.
 2. Node.js (V8) is the oracle, test262 is the test suite. When behavior is ambiguous, run it in Node.js. When compliance is questioned, run test262. Never invent semantics.
-3. The interpreter is a tree-walker. Parse to AST, walk the AST, evaluate each node. No bytecode compilation, no JIT. Simplicity and correctness over performance.
+3. The AST interpreter defines execution semantics. The bytecode VM and PHP code generation accelerate supported paths and must preserve the same behavior. Correctness takes priority over performance.
 4. JavaScript values are PHP objects. `JsNumber`, `JsString`, `JsObject`, etc. Each has its own type conversion methods (`toNumber()`, `toString()`, `toBoolean()`). Never use raw PHP types internally.
 5. IEEE 754 double precision for all numbers. Use PHP's `pack('d', ...)` / `unpack('d', ...)` for bit-level operations. Handle NaN, Infinity, -0 correctly. `NaN !== NaN` must be true. `-0 === 0` must be true. This is the single largest source of bugs.
 6. Strings are conceptually UTF-16. JavaScript strings are sequences of UTF-16 code units. PHP strings are bytes. Bridge carefully: `String.length` counts UTF-16 code units, not bytes or codepoints. Surrogate pairs must work correctly.

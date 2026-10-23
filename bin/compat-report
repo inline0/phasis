@@ -1375,7 +1375,7 @@ function buildCompatSnapshot(
     $areas = [];
     foreach ($groups as &$group) {
         $group['status'] = compatAggregateStatus($group);
-        $group['passRate'] = compatPassRate($group['pass'], $group['fail']);
+        $group['passRate'] = compatPassRate($group['pass'], $group['fail'], $group['total'], $group['known'] === $group['total']);
 
         if (!isset($areas[$group['area']])) {
             $areas[$group['area']] = [
@@ -1408,7 +1408,7 @@ function buildCompatSnapshot(
 
     foreach ($areas as &$area) {
         $area['status'] = compatAggregateStatus($area);
-        $area['passRate'] = compatPassRate($area['pass'], $area['fail']);
+        $area['passRate'] = compatPassRate($area['pass'], $area['fail'], $area['total'], $area['known'] === $area['total']);
     }
     unset($area);
 
@@ -1421,7 +1421,7 @@ function buildCompatSnapshot(
     );
     $slowChunks = array_slice($slowChunks, 0, 20);
 
-    $overall = compatOverallSummary($state);
+    $overall = compatOverallSummary($state, $final);
     ksort($failures);
 
     return [
@@ -1468,7 +1468,7 @@ function buildCompatSnapshot(
  * @param array<string, mixed> $state
  * @return array<string, mixed>
  */
-function compatOverallSummary(array $state): array
+function compatOverallSummary(array $state, bool $final = true): array
 {
     $summary = [
         'pass' => 0,
@@ -1506,7 +1506,12 @@ function compatOverallSummary(array $state): array
         }
     }
 
-    $summary['passRate'] = compatPassRate($summary['pass'], $summary['fail']);
+    $summary['passRate'] = compatPassRate(
+        $summary['pass'],
+        $summary['fail'],
+        $summary['total'],
+        ($state['completed'] ?? false) && $final && $summary['known'] === $summary['total'],
+    );
 
     return $summary;
 }
@@ -1550,14 +1555,17 @@ function compatAggregateStatus(array $row): string
     return 'partial';
 }
 
-function compatPassRate(int $pass, int $fail): float
+function compatPassRate(int $pass, int $fail, int $total, bool $complete = true): float
 {
     $attempted = $pass + $fail;
     if ($attempted === 0) {
         return 0.0;
     }
 
-    return round(($pass / $attempted) * 100, 1);
+    $rate = round(($pass / $attempted) * 100, 1);
+    // Reserve a displayed 100% for complete all-pass coverage, even when
+    // rounding or unattempted files would otherwise hide the remaining work.
+    return $complete && $fail === 0 && $pass === $total ? $rate : min(99.9, $rate);
 }
 
 /**

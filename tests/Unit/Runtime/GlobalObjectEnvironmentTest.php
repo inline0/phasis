@@ -9,6 +9,89 @@ use PHPUnit\Framework\TestCase;
 
 class GlobalObjectEnvironmentTest extends TestCase
 {
+    public function testGlobalVarCreatesAnOwnPropertyWithoutInvokingInheritedAccessors(): void
+    {
+        foreach (['', '"use strict";'] as $directive) {
+            $engine = new Engine();
+            $engine->eval(<<<'JS'
+var calls = 0;
+Object.defineProperty(Object.prototype, 'inheritedDeclaration', {
+    get() { calls++; return 100; },
+    set(value) { calls++; },
+    configurable: true
+});
+JS);
+            self::assertSame('2|0|true|true|false', $engine->eval($directive . <<<'JS'
+
+var inheritedDeclaration = 2;
+var object = { inheritedDeclaration };
+var descriptor = Object.getOwnPropertyDescriptor(globalThis, 'inheritedDeclaration');
+[object.inheritedDeclaration, calls, descriptor.writable, descriptor.enumerable, descriptor.configurable].join('|');
+JS));
+        }
+    }
+
+    public function testGlobalEvalVarCreatesAConfigurableOwnProperty(): void
+    {
+        foreach (['eval', '(0, eval)'] as $evaluate) {
+            $engine = new Engine();
+            $engine->eval(<<<'JS'
+var calls = 0;
+Object.defineProperty(Object.prototype, 'inheritedEvalDeclaration', {
+    get() { calls++; return 100; },
+    set(value) { calls++; },
+    configurable: true
+});
+JS);
+            $engine->eval($evaluate . '("var inheritedEvalDeclaration = 3;");');
+            self::assertSame('3|0|true|true|true', $engine->eval(<<<'JS'
+var descriptor = Object.getOwnPropertyDescriptor(globalThis, 'inheritedEvalDeclaration');
+[inheritedEvalDeclaration, calls, descriptor.writable, descriptor.enumerable, descriptor.configurable].join('|');
+JS));
+        }
+    }
+
+    public function testGlobalVarWithoutAnInitializerPreservesAnExistingOwnAccessor(): void
+    {
+        $engine = new Engine();
+        $engine->eval(<<<'JS'
+Object.defineProperty(globalThis, 'existingDeclaration', {
+    get() { return 7; },
+    configurable: true
+});
+JS);
+        self::assertSame('7|function|false|true', $engine->eval(<<<'JS'
+var existingDeclaration;
+var descriptor = Object.getOwnPropertyDescriptor(globalThis, 'existingDeclaration');
+[existingDeclaration, typeof descriptor.get, descriptor.enumerable, descriptor.configurable].join('|');
+JS));
+    }
+
+    public function testGlobalAndEvalVarsShadowInheritedNonWritableProperties(): void
+    {
+        $sources = [
+            'script' => 'var inheritedReadOnly = 5;',
+            'strict-script' => '"use strict"; var inheritedReadOnly = 5;',
+            'direct-eval' => 'eval("var inheritedReadOnly = 5;");',
+            'indirect-eval' => '(0, eval)("var inheritedReadOnly = 5;");',
+        ];
+        foreach ($sources as $mode => $source) {
+            $engine = new Engine();
+            $engine->eval(<<<'JS'
+Object.defineProperty(Object.prototype, 'inheritedReadOnly', {
+    value: 100,
+    writable: false,
+    configurable: false
+});
+JS);
+            $engine->eval($source);
+            self::assertSame([5, true, true, str_ends_with($mode, 'eval')], $engine->eval(<<<'JS'
+var descriptor = Object.getOwnPropertyDescriptor(globalThis, 'inheritedReadOnly');
+[inheritedReadOnly, descriptor.writable, descriptor.enumerable, descriptor.configurable];
+JS));
+        }
+    }
+
     public function testInheritedProxyBindingsUseTheGlobalReceiverAndStayLive(): void
     {
         foreach (['', '"use strict";'] as $directive) {

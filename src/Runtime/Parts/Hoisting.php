@@ -717,7 +717,11 @@ trait Hoisting
     private function hoistEvalGlobalVarNames(Node $pattern, Environment $env): void
     {
         if ($pattern instanceof Identifier) {
-            if (!$env->has($pattern->name)) {
+            $globalObject = $env->getLinkedObject();
+            $alreadyDeclared = $globalObject !== null
+                ? $globalObject->hasOwnProperty($pattern->name)
+                : $env->has($pattern->name);
+            if (!$alreadyDeclared) {
                 $env->defineGlobalVar($pattern->name, JsUndefined::instance(), true);
             }
         } elseif ($pattern instanceof ArrayPattern) {
@@ -1621,12 +1625,17 @@ trait Hoisting
             }
         }
         if ($pattern instanceof Identifier) {
-            // For function/module/static-block scopes, only check if the binding
-            // already exists in THIS scope (not up the chain) to allow var
-            // declarations to shadow outer bindings.
-            $alreadyDeclared = $hoistEnv->getFunctionKind() !== null || $hoistEnv->isModuleEnvironment()
-                ? $hoistEnv->hasOwnBinding($pattern->name)
-                : $hoistEnv->has($pattern->name);
+            $globalObject = $hoistEnv->getLinkedObject();
+            if ($globalObject !== null) {
+                // CreateGlobalVarBinding checks own properties, so inherited
+                // accessors cannot intercept a declared global initializer.
+                $alreadyDeclared = $globalObject->hasOwnProperty($pattern->name);
+            } else {
+                // Function/module/static-block vars shadow outer bindings.
+                $alreadyDeclared = $hoistEnv->getFunctionKind() !== null || $hoistEnv->isModuleEnvironment()
+                    ? $hoistEnv->hasOwnBinding($pattern->name)
+                    : $hoistEnv->has($pattern->name);
+            }
             if (!$alreadyDeclared) {
                 // At global scope use the correct user-var descriptor; in nested
                 // scopes use defineVar (no linked object).
