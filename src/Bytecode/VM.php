@@ -817,6 +817,9 @@ final class VM
                             $pc += 2;
                             break;
                         case Op::LOOP_TICK:
+                            if ($this->interp->hasExecutionBudget()) {
+                                $this->interp->checkBudget();
+                            }
                             if (++$loopCounts[$code[$pc + 1]] > $this->interp->getMaxLoopIterations()) {
                                 throw new InternalError('Maximum loop iterations exceeded');
                             }
@@ -2918,6 +2921,19 @@ final class VM
                             throw new InternalError('VM: unknown opcode ' . $op);
                     }
                 } // end inner while (dispatch loop)
+            } catch (\Phasis\Exceptions\BudgetExceeded $e) {
+                // A host deadline bypasses JS handlers, but still owns the
+                // same inline activations that an ordinary throw unwinds.
+                while ($savedFramesDepth > 0) {
+                    $sf = $savedFrames[--$savedFramesDepth];
+                    if ($sf->isConstruct && $sf->newObject !== null) {
+                        $sf->newObject->forceDelete('[[NewTarget]]');
+                    }
+                    $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
+                    $this->interp->releaseInlineVmFrame();
+                    $sf->release();
+                }
+                throw $e;
             } catch (\Phasis\Exceptions\RuntimeError | \Phasis\Exceptions\SyntaxError $e) {
                 // Handler search — first in the current frame, then
                 // unwinding through `$savedFrames` if necessary (the

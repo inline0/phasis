@@ -103,6 +103,7 @@ trait JsToPhpEmitStatement
 
     private function emitLoopTick(string $counter): void
     {
+        $this->emitLine('if ($interp->hasExecutionBudget()) { $interp->checkBudget(); }');
         $this->emitLine('if (++' . $counter . ' > $interp->getMaxLoopIterations()) {');
         $this->indentLevel++;
         $this->emitLine('throw new \\Phasis\\Exceptions\\InternalError("Maximum loop iterations exceeded");');
@@ -355,28 +356,18 @@ trait JsToPhpEmitStatement
             $test = $this->emitExpression($node->test);
             $testPending = $this->pendingStatements;
             $this->pendingStatements = $savedPending;
-            if ($testPending === []) {
-                $this->emitLine('while (' . $test . ') {');
-                $this->indentLevel++;
-                $this->emitLoopTick($loopCounter);
-                $this->emitStatement($node->body);
-                $this->indentLevel--;
-                $this->emitLine('}');
-            } else {
-                // Hoist test-pending statements into the loop body so
-                // free-var lookups and lifted calls inside the test
-                // condition no longer kick the function out of the JIT.
-                $this->emitLine('while (true) {');
-                $this->indentLevel++;
-                foreach ($testPending as $line) {
-                    $this->emitLine($line);
-                }
-                $this->emitLine('if (!(' . $test . ')) { break; }');
-                $this->emitLoopTick($loopCounter);
-                $this->emitStatement($node->body);
-                $this->indentLevel--;
-                $this->emitLine('}');
+            // The interpreter checks the checkpoint before every condition,
+            // including its lifted calls and its final false evaluation.
+            $this->emitLine('while (true) {');
+            $this->indentLevel++;
+            $this->emitLoopTick($loopCounter);
+            foreach ($testPending as $line) {
+                $this->emitLine($line);
             }
+            $this->emitLine('if (!(' . $test . ')) { break; }');
+            $this->emitStatement($node->body);
+            $this->indentLevel--;
+            $this->emitLine('}');
             return;
         }
         if ($node instanceof DoWhileStatement) {
