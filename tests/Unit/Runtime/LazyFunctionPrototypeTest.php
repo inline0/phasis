@@ -79,11 +79,20 @@ final class LazyFunctionPrototypeTest extends TestCase
         unset($function);
         gc_collect_cycles();
 
-        self::assertTrue($reference->get() !== null, 'The constructor property must retain its function strongly.');
-        self::assertSame($reference->get(), $prototype->get('constructor'));
+        self::assertTrue(self::readFunctionReference($reference) !== null, 'The constructor must retain its function.');
+        self::assertSame(self::readFunctionReference($reference), $prototype->get('constructor'));
         unset($prototype);
         gc_collect_cycles();
-        self::assertTrue($reference->get() === null, 'The materialized cycle must remain collectable.');
+        self::assertTrue(self::readFunctionReference($reference) === null, 'The cycle must remain collectable.');
+    }
+
+    /**
+     * @param \WeakReference<JsFunction> $reference
+     * @phpstan-impure
+     */
+    private static function readFunctionReference(\WeakReference $reference): ?JsFunction
+    {
+        return $reference->get();
     }
 
     public function testRawDescriptorCopyContainsTheRealPrototype(): void
