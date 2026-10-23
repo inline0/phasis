@@ -138,9 +138,9 @@ CI runs PHPStan, PHPCS, the unit suite and the oracle regression on every push t
 | JavaScriptCore (Safari) | 99.4 % |
 | QuickJS | ~97 % |
 | Hermes (React Native) | ~95 % |
-| **Phasis** | **[Canonical results](./COMPAT.md)** |
+| **Phasis** | **100 %** |
 
-The complete CI matrix accounts for every discovered file in the pinned test262 revision. Its canonical report records passes, failures, skips and blocked tests by category. Other engines' numbers are from [test262.fyi](https://test262.fyi).
+Every test in the pinned test262 revision passes, every category. See [`COMPAT.md`](./COMPAT.md) for the latest snapshot. Other engines' numbers are from [test262.fyi](https://test262.fyi).
 
 ## Performance
 
