@@ -48,7 +48,8 @@ require('./helpers.cjs').run(async () => {
     fs.writeFileSync(path.join(child, 'a'), 'A');
     fs.symlinkSync('bytes', path.join(directory, 'link'));
     fs.linkSync(file, path.join(directory, 'hard'));
-    output.push(['links', fs.lstatSync(path.join(directory, 'link')).isSymbolicLink(), fs.readlinkSync(path.join(directory, 'link')), fs.realpathSync(path.join(directory, 'link')) === file, fs.statSync(path.join(directory, 'hard')).ino === fs.statSync(file).ino]);
+    // The temporary directory itself can be reached through a host symlink.
+    output.push(['links', fs.lstatSync(path.join(directory, 'link')).isSymbolicLink(), fs.readlinkSync(path.join(directory, 'link')), fs.realpathSync(path.join(directory, 'link')) === fs.realpathSync(file), fs.statSync(path.join(directory, 'hard')).ino === fs.statSync(file).ino]);
     output.push(['directory', fs.readdirSync(directory, { withFileTypes: true }).map(entry => [entry.name, entry.isDirectory(), entry.isSymbolicLink(), entry.parentPath === directory])]);
     fs.copyFileSync(file, path.join(directory, 'copy'));
     fs.renameSync(path.join(directory, 'copy'), path.join(directory, 'renamed'));
