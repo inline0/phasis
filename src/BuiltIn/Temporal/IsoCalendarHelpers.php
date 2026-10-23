@@ -86,6 +86,7 @@ trait IsoCalendarHelpers
             case 'islamic':
             case 'islamic-civil':
             case 'islamic-tbla':
+                return $month === 12 || $month % 2 === 1 ? 30 : 29;
             case 'islamic-umalqura':
             case 'islamic-rgsa':
                 return 30; // umalqura M12 can be 30.
@@ -149,17 +150,7 @@ trait IsoCalendarHelpers
 
     private static function isoDayOfWeek(int $year, int $month, int $day): int
     {
-        // Zeller-like formula. PHP's mktime can handle years < 100 badly, so use formula.
-        // Tomohiko Sakamoto's algorithm: returns 0 = Sunday, 1 = Monday, ... 6 = Saturday.
-        // ISO weekday: 1 = Monday, 7 = Sunday.
-        $t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
-        $y = $year;
-        if ($month < 3) {
-            $y--;
-        }
-        $dow = ($y + intdiv($y, 4) - intdiv($y, 100) + intdiv($y, 400) + $t[$month - 1] + $day) % 7;
-        // Convert from 0=Sun to ISO 1=Mon..7=Sun.
-        return $dow === 0 ? 7 : $dow;
+        return ((self::isoDateToDays($year, $month, $day) + 3) % 7 + 7) % 7 + 1;
     }
 
     /**
@@ -190,20 +181,6 @@ trait IsoCalendarHelpers
     {
         if ($calendar === 'iso8601') {
             return self::isoWeekOfYear($year, $month, $day);
-        }
-        if ($calendar === 'gregory') {
-            if (!class_exists('IntlCalendar', false)) {
-                return self::isoWeekOfYear($year, $month, $day);
-            }
-            try {
-                $cal = \IntlCalendar::createInstance('UTC', 'en@calendar=gregorian');
-                $cal->setDateTime($year, $month - 1, $day, 0, 0, 0);
-                $weekNum = $cal->get(\IntlCalendar::FIELD_WEEK_OF_YEAR);
-                $yearWoY = $cal->get(\IntlCalendar::FIELD_YEAR_WOY);
-                return [(int) $weekNum, (int) $yearWoY];
-            } catch (\Throwable) {
-                return self::isoWeekOfYear($year, $month, $day);
-            }
         }
         return [null, null];
     }

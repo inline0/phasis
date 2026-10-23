@@ -211,6 +211,9 @@ class JsonObject
             if ($value->value === 0.0) {
                 return 0;
             }
+            if (json_encode($value->value) !== $value->toJsString()) {
+                return self::trivialBailout();
+            }
             return $value->value;
         }
         if ($value instanceof \Phasis\Value\JsBigInt) {

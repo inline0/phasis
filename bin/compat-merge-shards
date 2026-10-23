@@ -41,22 +41,19 @@ ensureDirectory($stateDir . '/results');
 ensureDirectory($stateDir . '/logs');
 ensureDirectory($stateDir . '/manifests');
 
-// Build a fresh base state as if starting from scratch, then overlay each
-// shard's chunk results onto it.
+// Build discovery metadata, then merge verified shard manifests.
 $options = [
     'jobs' => 4,
     'match' => null,
     'exclude' => [],
-    // Match the shard's chunk size so chunk IDs (sha1(group + files)) line
-    // up with the shards' state — otherwise the merge's placeholder chunks
-    // and the shards' completed chunks coexist with different IDs and the
-    // resulting compat.json double-counts test files.
+    // Only missing files use this chunk size; existing shard sizes may differ.
     'chunkSize' => 25,
     'timeoutSec' => 300,
     'stateDir' => '.compat-state',
     'reset' => false,
 ];
-$fingerprint = buildCompatFingerprint($rootDir, $options, $supportConfig, $discovery);
+$runIdentity = buildCompatRunIdentity($rootDir);
+$fingerprint = buildCompatFingerprint($rootDir, $options, $supportConfig, $discovery, $runIdentity);
 $state = loadOrCreateCompatState(
     $stateDir,
     '.compat-state',
@@ -65,12 +62,14 @@ $state = loadOrCreateCompatState(
     $discovery,
     $options,
     $supportConfig,
+    $runIdentity,
 );
 
 $shardEntries = glob($shardsDir . '/compat-shard-*', GLOB_ONLYDIR) ?: [];
 fwrite(STDERR, "Merging " . count($shardEntries) . " shards...\n");
 
 $mergedChunks = 0;
+$state['chunks'] = [];
 foreach ($shardEntries as $shardPath) {
     $shardState = $shardPath . '/state.json';
     if (!is_file($shardState)) {
@@ -78,66 +77,23 @@ foreach ($shardEntries as $shardPath) {
         continue;
     }
     $data = json_decode((string) file_get_contents($shardState), true);
-    if (!is_array($data) || !isset($data['chunks'])) {
-        continue;
+    if (!is_array($data)) {
+        throw new RuntimeException('Invalid shard state: ' . $shardState);
     }
-    foreach ($data['chunks'] as $chunkId => $chunk) {
-        if (!isset($state['chunks'][$chunkId])) {
-            $state['chunks'][$chunkId] = $chunk;
-            $mergedChunks++;
-            continue;
-        }
-        // Prefer the shard's complete record over a pending one.
-        $existing = $state['chunks'][$chunkId];
-        if ($existing['status'] !== 'complete' && ($chunk['status'] ?? null) === 'complete') {
-            $state['chunks'][$chunkId] = $chunk;
-            $mergedChunks++;
-        }
-    }
+    $mergedChunks += mergeCompatShardChunks($state, $data, $rootDir);
 }
 fwrite(STDERR, "Merged {$mergedChunks} chunk records.\n");
 
-// When a shard runs with a different chunkSize than the orchestrator's
-// default (property-escapes shards use CHUNK=5 to fit the per-chunk
-// timeout, while the default is 25), the resulting chunkIds —
-// sha1(group + files + chunkSize) — don't match. The merge then has
-// BOTH the orchestrator's pending placeholders AND the shard's
-// complete chunks for the same files. That double-counts.
-//
-// Shard state doesn't preserve the full `files` list for completed
-// chunks (only `sampleFiles`), so we can't dedupe file-by-file. Instead,
-// dedupe at the group level: if a group has ANY complete chunk
-// (the shard ran it), prune ALL pending placeholders for that group.
-$completeGroups = [];
-foreach ($state['chunks'] as $chunk) {
-    if (($chunk['status'] ?? null) === 'complete') {
-        $completeGroups[$chunk['group']] = true;
-    }
-}
-$prunedPending = 0;
-$prunedFiles = 0;
-foreach ($state['chunks'] as $chunkId => $chunk) {
-    if (
-        ($chunk['status'] ?? null) === 'pending'
-        && isset($completeGroups[$chunk['group']])
-    ) {
-        $prunedFiles += (int) ($chunk['filesCount'] ?? 0);
-        $prunedPending++;
-        unset($state['chunks'][$chunkId]);
-    }
-}
-fwrite(STDERR, "Pruned {$prunedPending} pending chunks in already-covered groups ({$prunedFiles} test files).\n");
+$coverage = reconcileCompatCoverage($state, $discovery['groups']);
+fwrite(STDERR, "Verified {$coverage['covered']} manifest entries; {$coverage['missing']} files missing.\n");
 
 $state['updatedAt'] = date('c');
-$state['completed'] = true;
-foreach ($state['chunks'] as $chunk) {
-    if (($chunk['status'] ?? 'pending') !== 'complete') {
-        $state['completed'] = false;
-        break;
-    }
-}
 
 writeCompatState($stateDir, $state);
 writeCompatArtifacts($rootDir, $state, $supportConfig, $state['completed']);
 
 fwrite(STDERR, "Done. compat.json + COMPAT.md written.\n");
+if (!$state['completed']) {
+    fwrite(STDERR, "Compatibility matrix is incomplete; pending coverage remains.\n");
+    exit(1);
+}

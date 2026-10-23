@@ -31,6 +31,7 @@ class IntlObject
     use Intl\CollatorSection;
     use Intl\NumberFormatSection;
     use Intl\DateTimeFormatSection;
+    use Intl\TemporalCalendarFormattingHelpers;
     use Intl\PluralRulesSection;
     use Intl\LocaleSection;
     use Intl\DisplayNamesSection;
@@ -72,9 +73,10 @@ class IntlObject
         );
 
         // Install constructors on the Intl object.
+        $fallbackSymbol = new \Phasis\Value\JsSymbol('IntlLegacyConstructedSymbol');
         self::installCollator($intl);
-        self::installNumberFormat($intl);
-        self::installDateTimeFormat($intl);
+        self::installNumberFormat($intl, $fallbackSymbol);
+        self::installDateTimeFormat($intl, $fallbackSymbol);
         self::installPluralRules($intl);
         self::installLocale($intl);
         self::installDisplayNames($intl);
@@ -96,7 +98,7 @@ class IntlObject
      *
      * @return list<string>
      */
-    private static function canonicalizeLocaleList(JsValue $locales): array
+    public static function canonicalizeLocaleList(JsValue $locales): array
     {
         if ($locales instanceof JsUndefined) {
             return [];
@@ -332,6 +334,42 @@ class IntlObject
     }
 
     /**
+     * Resolve a Unicode keyword against locale data and an already-read option.
+     * An unsupported option leaves a supported extension intact; a supported
+     * option removes the extension only when it changes the resolved value.
+     *
+     * @param list<string> $supported
+     */
+    private static function resolveUnicodeKeyword(
+        string &$locale,
+        string $key,
+        ?string $option,
+        array $supported,
+        string $default,
+    ): string {
+        $parsed = self::parseLocaleTag($locale);
+        $keywords = $parsed['unicodeKeywords'] ?? [];
+        $extension = isset($keywords[$key]) ? implode('-', $keywords[$key]) : null;
+        if ($extension === '') {
+            $extension = 'true';
+        }
+        $supportedExtension = $extension !== null && in_array($extension, $supported, true);
+        $value = $supportedExtension ? $extension : $default;
+        $removeExtension = $extension !== null && !$supportedExtension;
+        if ($option !== null) {
+            $option = strtolower($option);
+            if (in_array($option, $supported, true)) {
+                $removeExtension = $removeExtension || $option !== $value;
+                $value = $option;
+            }
+        }
+        if ($removeExtension) {
+            $locale = self::filterUnicodeExtensions($locale, array_values(array_diff(array_keys($keywords), [$key])));
+        }
+        return $value;
+    }
+
+    /**
      * Convert a JS locales argument (string or array) to a PHP array of locale strings.
      *
      * @return list<string>
@@ -343,6 +381,67 @@ class IntlObject
         // step 4) and the resulting wrapper's length/index properties
         // are walked via the prototype chain.
         return self::canonicalizeLocaleList($arg);
+    }
+
+    private static function hasIntlPrototype(JsObject $object, JsObject $prototype): bool
+    {
+        for ($current = $object->getPrototype(); $current !== null; $current = $current->getPrototype()) {
+            if ($current === $prototype) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function chainLegacyIntlConstructor(
+        JsValue $receiver,
+        JsObject $instance,
+        JsObject $prototype,
+        \Phasis\Value\JsSymbol $fallbackSymbol,
+    ): JsObject {
+        if (
+            $receiver instanceof JsObject
+            && $receiver->get('[[NewTarget]]') instanceof JsUndefined
+            && self::hasIntlPrototype($receiver, $prototype)
+        ) {
+            if (
+                !$receiver->definePropertyBySymbol(
+                    $fallbackSymbol,
+                    PropertyDescriptor::data($instance, false, false, false),
+                )
+            ) {
+                throw new TypeError('Cannot define Intl legacy constructor instance');
+            }
+            return $receiver;
+        }
+        return $instance;
+    }
+
+    private static function unwrapLegacyIntl(
+        JsValue $receiver,
+        JsObject $prototype,
+        \Phasis\Value\JsSymbol $fallbackSymbol,
+        string $brand,
+    ): JsObject {
+        $slot = '[[Initialized' . $brand . ']]';
+        if (
+            $receiver instanceof JsObject
+            && !$receiver instanceof \Phasis\Value\JsProxy
+            && $receiver->hasOwnProperty($slot)
+        ) {
+            return $receiver;
+        }
+        if ($receiver instanceof JsObject && self::hasIntlPrototype($receiver, $prototype)) {
+            $instance = $receiver->getBySymbol($fallbackSymbol);
+            if (
+                $instance instanceof JsObject
+                && !$instance instanceof \Phasis\Value\JsProxy
+                && $instance->hasOwnProperty($slot)
+            ) {
+                return $instance;
+            }
+        }
+        throw new TypeError('Intl.' . $brand . ' method called on incompatible receiver');
     }
 
     /**

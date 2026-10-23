@@ -48,6 +48,7 @@ trait PrototypeMethods
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.set called on incompatible receiver");
                 }
+                $this_->getBuffer()->validateMutable();
 
                 $source = $args[0] ?? JsUndefined::instance();
                 // Per spec step 7: ToIntegerOrInfinity(offset), may detach buffer via valueOf.
@@ -258,7 +259,7 @@ trait PrototypeMethods
                 $count = max(0, $end - $begin);
 
                 // TypedArraySpeciesCreate via SpeciesConstructor.
-                $result = self::typedArraySpeciesCreate($this_, $count);
+                $result = self::typedArraySpeciesCreate($this_, $count, write: true);
 
                 if ($count > 0) {
                     // Per spec: re-validate after species ctor, recapture len.
@@ -325,7 +326,7 @@ trait PrototypeMethods
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.copyWithin called on incompatible receiver");
                 }
-                self::validateTypedArray($this_);
+                self::validateTypedArray($this_, true);
                 // Per spec, capture length BEFORE argument coercion.
                 $capturedLen = $this_->getLength();
                 $target = isset($args[0]) ? self::toInteger($args[0]) : 0;
@@ -353,7 +354,7 @@ trait PrototypeMethods
                 //   4. Coerce value (ToBigInt / ToNumber) — may resize buffer.
                 //   6-13. Start/end resolved against captured len.
                 //   14-17. IntegerIndexedElementSet silently no-ops on invalid indices.
-                $this_->validateNotDetached();
+                $this_->validateNotDetached(true);
                 $initialLen = $this_->getLength();
                 $value = $args[0] ?? JsUndefined::instance();
 
@@ -473,7 +474,7 @@ trait PrototypeMethods
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 $len = $this_->getLength();
-                $result = self::typedArraySpeciesCreate($this_, $len);
+                $result = self::typedArraySpeciesCreate($this_, $len, write: true);
                 for ($i = 0; $i < $len; $i++) {
                     $mapped = $callback->call(
                         $thisArg,
@@ -513,7 +514,7 @@ trait PrototypeMethods
                         $kept[] = $el;
                     }
                 }
-                $filtered = self::typedArraySpeciesCreate($this_, count($kept));
+                $filtered = self::typedArraySpeciesCreate($this_, count($kept), write: true);
                 foreach ($kept as $i => $el) {
                     $filtered->setIndex($i, $el);
                 }
@@ -808,7 +809,7 @@ trait PrototypeMethods
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.reverse called on incompatible receiver");
                 }
-                $this_->validateNotDetached();
+                $this_->validateNotDetached(true);
                 return $this_->reverseTyped();
             },
             0
@@ -822,7 +823,7 @@ trait PrototypeMethods
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.sort called on incompatible receiver");
                 }
-                $this_->validateNotDetached();
+                $this_->validateNotDetached(true);
                 $arg0 = $args[0] ?? JsUndefined::instance();
                 $isCallable = $arg0 instanceof JsFunction
                     || ($arg0 instanceof \Phasis\Value\JsProxy && $arg0->isCallable());
@@ -1179,11 +1180,9 @@ trait PrototypeMethods
                 for ($i = 0; $i < $len; $i++) {
                     if ($i === $actualIndex) {
                         $result->setIndex($i, $coerced);
-                    } elseif ($i < $currentLen) {
+                    } else {
                         $result->setIndex($i, $this_->getIndex($i));
                     }
-                    // else: out-of-bounds read from resized buffer → leave
-                    // new element at its default (zero) value.
                 }
                 return $result;
             },

@@ -59,15 +59,36 @@ trait IcuCalendarHelpers
         // For Japanese the "year" stays Gregorian-equal because the era
         // disambiguates Heisei/Reiwa/etc., and the spec exposes the
         // Gregorian-like proleptic year via the .year getter.
-        if (in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
+        if (in_array($calendar, ['gregory', 'roc', 'japanese', 'buddhist'], true)) {
             $monthCode = 'M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT);
-            $calYear = $calendar === 'roc' ? ($y - 1911) : $y;
+            $calYear = match ($calendar) {
+                'roc' => $y - 1911, 'buddhist' => $y + 543, default => $y
+            };
             return [
                 'year' => $calYear,
                 'month' => $m,
                 'monthCode' => $monthCode,
                 'day' => $d,
                 'isLeapMonth' => false,
+            ];
+        }
+        if ($calendar === 'indian') {
+            $days = self::isoDateToDays($y, $m, $d);
+            $year = $y - 78;
+            $start = self::isoDateToDays($y, 1, 1) + 80;
+            if ($days < $start) {
+                $year--;
+                $start = self::isoDateToDays($y - 1, 1, 1) + 80;
+            }
+            $day = $days - $start + 1;
+            $month = 1;
+            while ($day > self::indianDaysInMonth($year, $month)) {
+                $day -= self::indianDaysInMonth($year, $month++);
+            }
+            return [
+                'year' => $year, 'month' => $month,
+                'monthCode' => 'M' . str_pad((string) $month, 2, '0', STR_PAD_LEFT),
+                'day' => $day, 'isLeapMonth' => false,
             ];
         }
         // Hebrew: use the pure-PHP implementation. ICU's IntlCalendar gives
@@ -216,110 +237,88 @@ trait IcuCalendarHelpers
         int $lrgD,
         string $largestUnit,
     ): ?array {
-        // Ethiopic / ethioaa: deterministic 13-month walk, no ICU needed.
-        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
-            return self::ethiopicYearsMonthsDaysBetween(
-                $smlY,
-                $smlM,
-                $smlD,
-                $lrgY,
-                $lrgM,
-                $lrgD,
-                $largestUnit,
+        $start = self::calendarFieldsForIso($calendar, $smlY, $smlM, $smlD);
+        $end = self::calendarFieldsForIso($calendar, $lrgY, $lrgM, $lrgD);
+        $startDays = self::isoDateToDays($smlY, $smlM, $smlD);
+        $endDays = self::isoDateToDays($lrgY, $lrgM, $lrgD);
+        $sign = $endDays <=> $startDays;
+        if ($sign === 0) {
+            return [0, 0, 0];
+        }
+        $surpasses = static function (
+            int $years,
+            int $months
+        ) use (
+            $calendar,
+            $start,
+            $end,
+            $sign,
+        ): bool {
+            $year = (int) $start['year'] + $years;
+            $cmp = ($year <=> $end['year'])
+                ?: strcmp((string) $start['monthCode'], (string) $end['monthCode'])
+                ?: ($start['day'] <=> $end['day']);
+            if ($cmp * $sign > 0) {
+                return true;
+            }
+            $first = self::calendarDateFromFields($calendar, [
+                'year' => $start['year'], 'monthCode' => $start['monthCode'], 'day' => 1,
+            ], 'constrain');
+            $candidate = self::calendarAddYearsMonthsIso(
+                $calendar,
+                $first['year'],
+                $first['month'],
+                $first['day'],
+                $years,
+                $months,
+                'constrain',
             );
-        }
-        // Chinese / dangi: deterministic via pure-PHP table.
-        if ($calendar === 'chinese' || $calendar === 'dangi') {
-            self::$chineseDispatchCalendar = $calendar;
-            $r = self::chineseYearsMonthsDaysBetween(
-                $smlY,
-                $smlM,
-                $smlD,
-                $lrgY,
-                $lrgM,
-                $lrgD,
-                $largestUnit,
-            );
-            if ($r !== null) {
-                return $r;
+            if ($candidate === null) {
+                return true;
             }
-            // Out of table range: fall through to ICU.
-        }
-        if (!class_exists('IntlCalendar', false)) {
-            return null;
-        }
-        static $aliasMap = [
-            'gregory' => 'gregorian',
-            'islamicc' => 'islamic-civil',
-            'ethioaa' => 'ethiopic-amete-alem',
-        ];
-        $icuCal = $aliasMap[$calendar] ?? $calendar;
-        try {
-            $startMs = self::isoDateToEpochMs($smlY, $smlM, $smlD);
-            $endMs = self::isoDateToEpochMs($lrgY, $lrgM, $lrgD);
-            $startCal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            $startCal->setTime($startMs);
-            $endCal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            $endCal->setTime($endMs);
-            $yearField = in_array($calendar, ['chinese', 'dangi'], true)
-                ? \IntlCalendar::FIELD_EXTENDED_YEAR
-                : \IntlCalendar::FIELD_YEAR;
-
-            $years = 0;
-            if ($largestUnit === 'year') {
-                $bound = max(0, $endCal->get($yearField) - $startCal->get($yearField) + 1);
-                $lo = 0;
-                $hi = $bound;
-                while ($lo < $hi) {
-                    $mid = intdiv($lo + $hi + 1, 2);
-                    $probe = clone $startCal;
-                    $probe->add(\IntlCalendar::FIELD_YEAR, $mid);
-                    if ($probe->getTime() <= $endMs) {
-                        $lo = $mid;
-                    } else {
-                        $hi = $mid - 1;
-                    }
-                }
-                $years = $lo;
+            $parts = self::isoToCalendarParts($calendar, ...$candidate);
+            $endDate = self::calendarDateFromFields($calendar, $end, 'constrain');
+            $endParts = self::isoToCalendarParts($calendar, $endDate['year'], $endDate['month'], $endDate['day']);
+            if ($parts === null || $endParts === null) {
+                return true;
             }
-
-            $anchorCal = clone $startCal;
-            if ($years > 0) {
-                $anchorCal->add(\IntlCalendar::FIELD_YEAR, $years);
-            }
-
-            $months = 0;
-            $bound = max(0, ($endCal->get($yearField) - $anchorCal->get($yearField) + 1) * 13);
-            if ($bound === 0 && $anchorCal->getTime() < $endMs) {
-                $bound = 13;
-            }
+            $cmp = ($parts['year'] <=> $endParts['year'])
+                ?: ($parts['month'] <=> $endParts['month'])
+                ?: ($start['day'] <=> $endParts['day']);
+            return $cmp * $sign > 0;
+        };
+        $yearSpan = abs((int) $end['year'] - (int) $start['year']);
+        $years = 0;
+        if ($largestUnit === 'year') {
             $lo = 0;
-            $hi = $bound;
+            $hi = $yearSpan + 1;
             while ($lo < $hi) {
                 $mid = intdiv($lo + $hi + 1, 2);
-                $probe = clone $anchorCal;
-                $probe->add(\IntlCalendar::FIELD_MONTH, $mid);
-                if ($probe->getTime() <= $endMs) {
-                    $lo = $mid;
-                } else {
+                if ($surpasses($sign * $mid, 0)) {
                     $hi = $mid - 1;
+                } else {
+                    $lo = $mid;
                 }
             }
-            $months = $lo;
-
-            $finalCal = clone $anchorCal;
-            if ($months > 0) {
-                $finalCal->add(\IntlCalendar::FIELD_MONTH, $months);
+            $years = $sign * $lo;
+        }
+        $lo = 0;
+        $hi = ($yearSpan - abs($years) + 2) * 13;
+        while ($lo < $hi) {
+            $mid = intdiv($lo + $hi + 1, 2);
+            if ($surpasses($years, $sign * $mid)) {
+                $hi = $mid - 1;
+            } else {
+                $lo = $mid;
             }
-            $finalMs = $finalCal->getTime();
-            $days = (int) round(($endMs - $finalMs) / 86400000);
-            if ($days < 0) {
-                return null;
-            }
-            return [$years, $months, $days];
-        } catch (\Throwable) {
+        }
+        $months = $sign * $lo;
+        $anchor = self::calendarAddYearsMonthsIso($calendar, $smlY, $smlM, $smlD, $years, $months, 'constrain');
+        if ($anchor === null) {
             return null;
         }
+        $days = $endDays - self::isoDateToDays(...$anchor);
+        return [$years, $months, $days];
     }
 
     /**
@@ -349,6 +348,10 @@ trait IcuCalendarHelpers
      */
     private static function calendarDayOfYearForIso(string $calendar, int $isoY, int $isoM, int $isoD): ?int
     {
+        if ($calendar === 'indian') {
+            $parts = self::isoToCalendarParts($calendar, $isoY, $isoM, $isoD);
+            return self::isoDateToDays($isoY, $isoM, $isoD) - self::isoDateToDays((int) $parts['year'] + 78, 1, 1) - 79;
+        }
         if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return self::isoDayOfYear($isoY, $isoM, $isoD);
         }
@@ -399,6 +402,10 @@ trait IcuCalendarHelpers
      */
     private static function calendarDaysInMonthForIso(string $calendar, int $isoY, int $isoM, int $isoD): ?int
     {
+        if ($calendar === 'indian') {
+            $parts = self::isoToCalendarParts($calendar, $isoY, $isoM, $isoD);
+            return self::indianDaysInMonth((int) $parts['year'], (int) $parts['month']);
+        }
         if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return self::isoDaysInMonth($isoY, $isoM);
         }
@@ -444,6 +451,10 @@ trait IcuCalendarHelpers
      */
     private static function calendarDaysInYearForIso(string $calendar, int $isoY, int $isoM, int $isoD): ?int
     {
+        if ($calendar === 'indian') {
+            $parts = self::isoToCalendarParts($calendar, $isoY, $isoM, $isoD);
+            return self::isoIsLeapYear((int) $parts['year'] + 78) ? 366 : 365;
+        }
         if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return self::isoDaysInYear($isoY);
         }
@@ -527,7 +538,11 @@ trait IcuCalendarHelpers
 
     private static function calendarInLeapYear(string $calendar, int $isoY, int $isoM, int $isoD): ?bool
     {
-        if ($calendar === 'iso8601' || in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
+        if ($calendar === 'indian') {
+            $parts = self::isoToCalendarParts($calendar, $isoY, $isoM, $isoD);
+            return self::isoIsLeapYear((int) $parts['year'] + 78);
+        }
+        if ($calendar === 'iso8601' || in_array($calendar, ['gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return self::isoIsLeapYear($isoY);
         }
         if ($calendar === 'hebrew') {
@@ -647,122 +662,36 @@ trait IcuCalendarHelpers
      */
     private static function pmdReferenceIsoFor(string $cal, ?string $monthCode, ?int $monthNum, int $day): ?array
     {
-        if ($cal === 'iso8601' || in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
-            $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
-            return ['year' => 1972, 'month' => $m, 'day' => $day];
+        if ($cal === 'iso8601' || in_array($cal, ['gregory', 'roc', 'japanese', 'buddhist'], true)) {
+            $month = $monthNum ?? (int) substr((string) $monthCode, 1, 2);
+            return $day <= self::isoDaysInMonth(1972, $month)
+                ? ['year' => 1972, 'month' => $month, 'day' => $day] : null;
         }
-        // Ethiopic / ethioaa: pure-PHP. Find the ethiopic year whose
-        // M-d for ISO 1972-12-31 yields the largest ISO <= 1972-12-31.
-        if ($cal === 'ethiopic' || $cal === 'ethioaa' || $cal === 'ethiopic-amete-alem') {
-            $refE = self::isoToEthiopicDate(1972, 12, 31);
-            $approxYear = self::ethiopicUserYear($cal, $refE['year']);
-            for ($tryDay = $day; $tryDay >= 1; $tryDay--) {
-                for ($delta = 1; $delta >= -8; $delta--) {
-                    $tryYear = $approxYear + $delta;
-                    $iso = self::calendarPartsToIso($cal, $tryYear, $monthCode, $monthNum, $tryDay);
-                    if ($iso === null) {
-                        continue;
-                    }
-                    if ($iso['year'] <= 1972) {
-                        return $iso;
-                    }
-                }
-            }
+        $reference = self::isoToCalendarParts($cal, 1972, 12, 31);
+        if ($reference === null) {
             return null;
         }
-        // Chinese / dangi: pure-PHP approximate via the table.
-        if (in_array($cal, ['chinese', 'dangi'], true)) {
-            self::$chineseDispatchCalendar = $cal;
-            $refC = self::isoToChineseDate(1972, 12, 31);
-            if ($refC !== null) {
-                $approxYear = $refC['year'];
-            } elseif (class_exists('IntlCalendar', false)) {
-                try {
-                    $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$cal}");
-                    $probe->setTime(strtotime('1972-12-31 UTC') * 1000);
-                    $approxYear = $probe->get(\IntlCalendar::FIELD_EXTENDED_YEAR);
-                } catch (\Throwable) {
-                    return null;
-                }
-            } else {
-                return null;
+        $referenceYear = (int) $reference['year'];
+        $future = null;
+        for ($year = $referenceYear + 65; $year >= $referenceYear - 74; $year--) {
+            $date = self::calendarPartsToIso($cal, $year, $monthCode, $monthNum, $day);
+            if ($date === null || $date['year'] < 1900 || $date['year'] > 2035) {
+                continue;
             }
-        } else {
-            if (!class_exists('IntlCalendar', false)) {
-                return null;
+            $parts = self::isoToCalendarParts($cal, $date['year'], $date['month'], $date['day']);
+            if (
+                $parts === null || $parts['day'] !== $day
+                || ($monthCode !== null && $parts['monthCode'] !== $monthCode)
+                || ($monthNum !== null && $parts['month'] !== $monthNum)
+            ) {
+                continue;
             }
-            try {
-                $icuCal = $cal;
-                static $aliasMapPmd = [
-                    'islamicc' => 'islamic-civil',
-                    'ethioaa' => 'ethiopic-amete-alem',
-                ];
-                if (isset($aliasMapPmd[$cal])) {
-                    $icuCal = $aliasMapPmd[$cal];
-                }
-                $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-                $probe->setTime(strtotime('1972-12-31 UTC') * 1000);
-                $approxYear = $probe->get(\IntlCalendar::FIELD_YEAR);
-            } catch (\Throwable) {
-                return null;
+            if ($date['year'] <= 1972) {
+                return $date;
             }
+            $future = $date;
         }
-        // Try a window of calendar years from approxYear and pick the largest
-        // one whose ISO mapping for M-d lands in 1972 or earlier AND whose ICU
-        // roundtrip (ISO->calendar) produces back the requested fields.
-        // Lunisolar calendars can require longer search windows (M-d may exist
-        // only every few years).
-        $bestIso = null;
-        // Chinese / Dangi need a wide window because some "uncommon"
-        // leap months (M01L, M09L, M10L, M11L, M12L with 30 days)
-        // recur only every several thousand years; SM's
-        // `from-chinese-leap-month-uncommon` test asserts these exist
-        // at ISO -6482 etc., which means our search must reach the
-        // deep-past entries baked into the chinese / dangi tables
-        // (start = -7500). Hebrew/etc. stay small.
-        $maxLookback = in_array($cal, ['chinese', 'dangi'], true)
-            ? 10000
-            : (in_array($cal, ['hebrew'], true) ? 30 : 8);
-        // When the requested day is more than the calendar month allows
-        // (e.g. day 31 in islamic-civil M02 which has 29), step the day
-        // down one at a time until the roundtrip lines up — that mirrors
-        // the spec's "constrain" semantics for PlainMonthDay.from.
-        for ($tryDay = $day; $tryDay >= 1; $tryDay--) {
-            for ($delta = 1; $delta >= -$maxLookback; $delta--) {
-                $tryYear = $approxYear + $delta;
-                $iso = self::calendarPartsToIso($cal, $tryYear, $monthCode, $monthNum, $tryDay);
-                if ($iso === null) {
-                    continue;
-                }
-                // Roundtrip: ISO -> calendar should yield matching M-d.
-                $back = self::isoToCalendarParts($cal, $iso['year'], $iso['month'], $iso['day']);
-                if ($back === null) {
-                    continue;
-                }
-                if ($monthCode !== null && $back['monthCode'] !== $monthCode) {
-                    continue;
-                }
-                if ($monthNum !== null && $back['month'] !== $monthNum) {
-                    continue;
-                }
-                if ($back['day'] !== $tryDay) {
-                    continue;
-                }
-                if ($iso['year'] <= 1972) {
-                    if (
-                        $bestIso === null
-                        || $iso['year'] > $bestIso['year']
-                        || ($iso['year'] === $bestIso['year'] && $iso['month'] > $bestIso['month'])
-                    ) {
-                        $bestIso = $iso;
-                    }
-                }
-            }
-            if ($bestIso !== null) {
-                return $bestIso;
-            }
-        }
-        return $bestIso;
+        return $future;
     }
 
     /**
@@ -779,10 +708,26 @@ trait IcuCalendarHelpers
             $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
             return ['year' => $year, 'month' => $m, 'day' => $day];
         }
-        if (in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
+        if (in_array($calendar, ['gregory', 'roc', 'japanese', 'buddhist'], true)) {
             $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
-            $isoYear = $calendar === 'roc' ? ($year + 1911) : $year;
+            $isoYear = match ($calendar) {
+                'roc' => $year + 1911, 'buddhist' => $year - 543, default => $year
+            };
             return ['year' => $isoYear, 'month' => $m, 'day' => $day];
+        }
+        if ($calendar === 'indian') {
+            $month = $monthNum ?? (int) substr($monthCode ?? '', 1, 2);
+            if ($month < 1 || $month > 12 || str_ends_with($monthCode ?? '', 'L')) {
+                return null;
+            }
+            if ($day < 1 || $day > self::indianDaysInMonth($year, $month)) {
+                return null;
+            }
+            $days = self::isoDateToDays($year + 78, 1, 1) + 80 + $day - 1;
+            for ($m = 1; $m < $month; $m++) {
+                $days += self::indianDaysInMonth($year, $m);
+            }
+            return self::isoDateFromDays($days);
         }
         // Ethiopic / hebrew / chinese / dangi do not require IntlCalendar.
         // Other calendars (islamic*, persian, indian, coptic, ...) still need
@@ -794,13 +739,6 @@ trait IcuCalendarHelpers
             true,
         );
         if (!$purePhp && !class_exists('IntlCalendar', false)) {
-            return null;
-        }
-        // islamic-umalqura's astronomical lookup tables only span ~1300-1600 AH.
-        // Outside a generous bound around that range ICU silently extrapolates
-        // and produces results that diverge from the spec. SpiderMonkey's
-        // tests reject such inputs explicitly (see icu4x #4914).
-        if ($calendar === 'islamic-umalqura' && ($year < 1 || $year > 9999)) {
             return null;
         }
         // Resolve ICU 0-indexed month from monthCode (preferred) or month number.
@@ -919,26 +857,28 @@ trait IcuCalendarHelpers
         // Chinese / dangi: pure-PHP table lookup (CI-independent).
         if ($calendar === 'chinese' || $calendar === 'dangi') {
             self::$chineseDispatchCalendar = $calendar;
-            if ($icuMonth < 0 || $icuMonth > 11) {
-                return null;
-            }
-            if ($isLeapMonth) {
-                $leapIcu = self::chineseLeapMonthIcuFromTable($year);
-                if ($leapIcu !== $icuMonth) {
-                    return null; // caller decides constrain vs reject.
+            if (self::chineseYearInfo($year) !== null) {
+                if ($icuMonth < 0 || $icuMonth > 11) {
+                    return null;
                 }
-            }
-            $chronoIdx = self::chineseChronoIdxFromIcu($year, $icuMonth, $isLeapMonth);
-            if ($chronoIdx === null) {
-                return null;
-            }
-            $dim = self::chineseDaysInMonthByChrono($year, $chronoIdx);
-            if ($day < 1 || $day > $dim) {
-                return null;
-            }
-            $iso = self::chineseToIsoDate($year, $icuMonth, $isLeapMonth, $day);
-            if ($iso !== null) {
-                return $iso;
+                if ($isLeapMonth) {
+                    $leapIcu = self::chineseLeapMonthIcuFromTable($year);
+                    if ($leapIcu !== $icuMonth) {
+                        return null; // caller decides constrain vs reject.
+                    }
+                }
+                $chronoIdx = self::chineseChronoIdxFromIcu($year, $icuMonth, $isLeapMonth);
+                if ($chronoIdx === null) {
+                    return null;
+                }
+                $dim = self::chineseDaysInMonthByChrono($year, $chronoIdx);
+                if ($day < 1 || $day > $dim) {
+                    return null;
+                }
+                $iso = self::chineseToIsoDate($year, $icuMonth, $isLeapMonth, $day);
+                if ($iso !== null) {
+                    return $iso;
+                }
             }
             // Out of table range: fall through to ICU fallback.
         }
@@ -973,7 +913,10 @@ trait IcuCalendarHelpers
                 $cal->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, $isLeapMonth ? 1 : 0);
                 $cal->set(\IntlCalendar::FIELD_DAY_OF_MONTH, $day);
             } else {
-                $cal->setDate($year, $icuMonth, $day);
+                $cal->clear();
+                $cal->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $year);
+                $cal->set(\IntlCalendar::FIELD_MONTH, $icuMonth);
+                $cal->set(\IntlCalendar::FIELD_DAY_OF_MONTH, $day);
             }
             $epochMs = $cal->getTime();
             $epochSec = (int) ($epochMs / 1000);
@@ -992,6 +935,11 @@ trait IcuCalendarHelpers
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private static function indianDaysInMonth(int $year, int $month): int
+    {
+        return 30 + (int) ($month <= 6) - (int) ($month === 1 && !self::isoIsLeapYear($year + 78));
     }
 
     /** True if the Hebrew year has 13 months (leap). */
@@ -1015,11 +963,11 @@ trait IcuCalendarHelpers
      */
     private static function hebrewCalendarElapsedDays(int $year): int
     {
-        $monthsElapsed = intdiv(235 * $year - 234, 19);
+        $monthsElapsed = (int) floor((235 * $year - 234) / 19);
         // Parts of the lunation: 24 hours/day * 1080 parts/hour = 25920 parts/day.
         // Each lunation: 29d 12h 793p.
         $partsElapsed = 12084 + 13753 * $monthsElapsed;
-        $day = 29 * $monthsElapsed + intdiv($partsElapsed, 25920);
+        $day = 29 * $monthsElapsed + (int) floor($partsElapsed / 25920);
         // Lo ADU rosh: postpone by 1 if the molad would fall on Sun/Wed/Fri.
         // Reingold's compact form: if (3*(day+1)) mod 7 < 3, postpone.
         $r = (3 * ($day + 1)) % 7;
@@ -1178,6 +1126,9 @@ trait IcuCalendarHelpers
         while (self::hebrewElapsedDaysToFirstTishrei($year) > $days) {
             $year--;
         }
+        while (self::hebrewElapsedDaysToFirstTishrei($year + 1) <= $days) {
+            $year++;
+        }
         // Year now is the Hebrew year containing the date.
         $offset = $days - self::hebrewElapsedDaysToFirstTishrei($year);
         $isLeap = self::isHebrewLeapYear($year);
@@ -1321,19 +1272,7 @@ trait IcuCalendarHelpers
      */
     private static function ethiopicNewYearDay(int $year): int
     {
-        $y1 = $year - 1;
-        if ($y1 >= 0) {
-            // Number of leap years in [1..y1] is floor((y1 - 3) / 4) + 1
-            // if y1 >= 3, else 0.
-            $leaps = $y1 >= 3 ? intdiv($y1 - 3, 4) + 1 : 0;
-            return self::ETHIOPIC_EPOCH_DAYS + 365 * $y1 + $leaps;
-        }
-        // year <= 0: walk forward summing year lengths.
-        $days = self::ETHIOPIC_EPOCH_DAYS;
-        for ($yy = $year; $yy < 1; $yy++) {
-            $days -= self::ethiopicYearLength($yy);
-        }
-        return $days;
+        return self::ETHIOPIC_EPOCH_DAYS + 365 * ($year - 1) + (int) floor($year / 4);
     }
 
     /**

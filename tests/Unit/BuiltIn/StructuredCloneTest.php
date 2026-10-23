@@ -24,6 +24,29 @@ use PHPUnit\Framework\TestCase;
  */
 class StructuredCloneTest extends TestCase
 {
+    public function testImmutableBufferClonesPreserveViewAliasesAndRejectMutation(): void
+    {
+        self::assertSame(
+            '[true,true,true,true,[7,8],true,true]',
+            $this->eval(<<<'JS'
+                const buffer = new Uint8Array([7, 8]).buffer.transferToImmutable();
+                const source = {buffer, bytes: new Uint8Array(buffer), view: new DataView(buffer)};
+                const clone = structuredClone(source);
+                let mutationRejected = false;
+                let transferRejected = false;
+                try { clone.view.setUint8(0, 9); }
+                catch (error) { mutationRejected = error instanceof TypeError; }
+                try { structuredClone(buffer, {transfer: [buffer]}); }
+                catch (error) { transferRejected = error.name === 'DataCloneError'; }
+                JSON.stringify([
+                    clone.buffer !== buffer, clone.buffer.immutable,
+                    clone.bytes.buffer === clone.buffer, clone.view.buffer === clone.buffer,
+                    Array.from(clone.bytes), mutationRejected, transferRejected,
+                ]);
+                JS),
+        );
+    }
+
     private function eval(string $source): mixed
     {
         $engine = new Engine();

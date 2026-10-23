@@ -59,14 +59,7 @@ use Phasis\Bytecode\CompilerBailout;
  */
 trait CompilerScope
 {
-    /**
-     * Walk a top-level statement and reserve frame slots for every var
-     * binding it introduces. Differs from collectStatementLocals in that
-     * FunctionDeclaration is intentionally NOT assigned a frame slot:
-     * function-decl bindings live on globalEnv (installed by
-     * Interpreter::hoistDeclarations before the VM runs), so closures
-     * inside the function body can resolve them via the env chain.
-     */
+    /** Record program var bindings while reserving only lexical temporary slots. */
     private function collectProgramVarLocals(Node $stmt): void
     {
         if ($stmt instanceof VariableDeclaration) {
@@ -80,19 +73,7 @@ trait CompilerScope
                 }
                 $name = $decl->id->name;
                 $this->varDeclaredNames[$name] = true;
-                // §B.3.2: A FunctionDeclaration with the same name as a
-                // var shadows the var binding (the FD writes globalEnv,
-                // the var binding is a no-op except for any initializer).
-                // If we assign a frame slot here, LOAD_NAME(name) inside
-                // bytecode would read the slot (undefined) and miss the
-                // hoisted function on globalEnv. Leave it to globalEnv
-                // entirely; the VariableDeclarator's optional initializer
-                // is handled at statement-compile time via a normal
-                // STORE_NAME path.
-                if (isset($this->fnDeclShadowedVarNames[$name])) {
-                    continue;
-                }
-                $this->declareLocal($name);
+                $this->environmentVarNames[$name] = true;
             }
             return;
         }
@@ -124,10 +105,7 @@ trait CompilerScope
                     }
                     $name = $decl->id->name;
                     $this->varDeclaredNames[$name] = true;
-                    if (isset($this->fnDeclShadowedVarNames[$name])) {
-                        continue;
-                    }
-                    $this->declareLocal($name);
+                    $this->environmentVarNames[$name] = true;
                 }
             }
             $this->collectProgramVarLocals($stmt->body);
@@ -148,7 +126,7 @@ trait CompilerScope
             if ($stmt->handler !== null) {
                 if ($stmt->handler->param instanceof Identifier) {
                     $catchName = $stmt->handler->param->name;
-                    if (isset($this->localSlots[$catchName])) {
+                    if (isset($this->localSlots[$catchName]) || isset($this->environmentVarNames[$catchName])) {
                         throw new CompilerBailout('catch param shadows top-level var');
                     }
                     $this->declareLocal($catchName);

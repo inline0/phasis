@@ -101,6 +101,9 @@ class ReflectObject
                             && (new \Phasis\Value\JsNumber((float) $indexStr))->toJsString() === $indexStr
                         );
                     if ($isCanonical) {
+                        if ($target->getBuffer()->isImmutable()) {
+                            return new JsBoolean(false);
+                        }
                         if ($receiver === $target) {
                             // Always route through the typed array's [[Set]],
                             // which performs the spec-mandated coercion before

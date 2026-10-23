@@ -32,13 +32,13 @@ trait DateTimeFormatSection
     // Intl.DateTimeFormat
     // ---------------------------------------------------------------
 
-    private static function installDateTimeFormat(JsObject $intl): void
+    private static function installDateTimeFormat(JsObject $intl, \Phasis\Value\JsSymbol $fallbackSymbol): void
     {
         $proto = new JsObject();
 
         $constructor = JsFunction::fromCallable(
             'DateTimeFormat',
-            function (JsValue $this_, array $args) use ($proto): JsValue {
+            function (JsValue $this_, array $args) use ($proto, $fallbackSymbol): JsValue {
                 $localesArg = $args[0] ?? JsUndefined::instance();
                 $optionsArg = $args[1] ?? JsUndefined::instance();
 
@@ -98,6 +98,13 @@ trait DateTimeFormatSection
                         $calendar = $calAliasesExt[$calendar];
                     }
                 }
+                $calendar = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'ca',
+                    $userCalendar ? $calendar : null,
+                    self::getSupportedCalendars(),
+                    'gregory',
+                );
                 $obj->defineOwnProperty('[[Calendar]]', PropertyDescriptor::data(
                     new JsString($calendar),
                     false,
@@ -108,6 +115,7 @@ trait DateTimeFormatSection
                 // numberingSystem: only keep ICU-supported numeric
                 // systems (drop algorithmic ones like armn / hebr).
                 $numberingSystem = 'latn';
+                $nsRaw = null;
                 $userNumberingSystem = false;
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
@@ -128,6 +136,13 @@ trait DateTimeFormatSection
                         $numberingSystem = $nsExt;
                     }
                 }
+                $numberingSystem = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'nu',
+                    $nsRaw,
+                    self::getSupportedNumberingSystems(),
+                    'latn',
+                );
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
                     false,
@@ -155,22 +170,16 @@ trait DateTimeFormatSection
                     }
                     $hourCycle = $hc;
                 }
-                // If a constructor option overrode any of the
-                // relevant -u- keywords, strip them from the
-                // resolved locale before storing [[Locale]].
-                $overrideKeys = [];
-                if ($userCalendar) {
-                    $overrideKeys[] = 'ca';
-                }
-                if ($userNumberingSystem) {
-                    $overrideKeys[] = 'nu';
-                }
-                if ($userHour12 || $userHourCycle) {
-                    $overrideKeys[] = 'hc';
-                }
-                if (!empty($overrideKeys)) {
-                    $remaining = array_values(array_diff(['ca', 'nu', 'hc'], $overrideKeys));
-                    $resolvedLocale = self::filterUnicodeExtensions($resolvedLocale, $remaining);
+                if ($userHour12) {
+                    $resolvedLocale = self::filterUnicodeExtensions($resolvedLocale, ['ca', 'nu']);
+                } elseif ($hourCycle !== null) {
+                    $hourCycle = self::resolveUnicodeKeyword(
+                        $resolvedLocale,
+                        'hc',
+                        $hourCycle,
+                        ['h11', 'h12', 'h23', 'h24'],
+                        $hourCycle,
+                    );
                 }
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -242,6 +251,14 @@ trait DateTimeFormatSection
                         $hourCycle = 'h23';
                     }
                 }
+                if ($hourCycle !== null) {
+                    $obj->defineOwnProperty('[[RequestedHourCycle]]', PropertyDescriptor::data(
+                        new JsString($hourCycle),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
                 // Defer writing [[HourCycle]] / [[Hour12]] until we
                 // know whether a hour component is actually present
                 // -- the slots only matter when the formatted output
@@ -263,10 +280,14 @@ trait DateTimeFormatSection
                     'timeZoneName' => ['short', 'long', 'shortOffset', 'longOffset', 'shortGeneric', 'longGeneric'],
                 ];
                 $hasExplicitFormatComponents = false;
+                $needsDefaultComponents = true;
                 $hasHour = false;
                 foreach ($components as $prop => $validValues) {
                     $val = $options->get($prop);
                     if (!$val instanceof JsUndefined) {
+                        if ($prop !== 'era' && $prop !== 'timeZoneName') {
+                            $needsDefaultComponents = false;
+                        }
                         // fractionalSecondDigits accepts integers in
                         // [1, 3]; ToNumber + range check happens
                         // before stringifying for the [[…]] slot.
@@ -365,7 +386,7 @@ trait DateTimeFormatSection
                 // the implied components and the formatter still
                 // emits a date.
                 if (
-                    !$hasExplicitFormatComponents
+                    $needsDefaultComponents
                     && $dateStyle === null
                     && $timeStyle === null
                 ) {
@@ -424,7 +445,7 @@ trait DateTimeFormatSection
                     ));
                 }
 
-                return $obj;
+                return self::chainLegacyIntlConstructor($this_, $obj, $proto, $fallbackSymbol);
             },
             0,
         );
@@ -495,13 +516,12 @@ trait DateTimeFormatSection
         }, 1);
         $formatGetter = JsFunction::fromCallable('get format', function (
             JsValue $this_,
-        ) use ($formatFn): JsValue {
-            if (
-                !$this_ instanceof JsObject
-                || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
-            ) {
-                throw new TypeError('Intl.DateTimeFormat.prototype.format called on non-DateTimeFormat');
-            }
+        ) use (
+            $formatFn,
+            $proto,
+            $fallbackSymbol
+): JsValue {
+            $this_ = self::unwrapLegacyIntl($this_, $proto, $fallbackSymbol, 'DateTimeFormat');
             $boundFormat = JsFunction::fromCallable('', function (
                 JsValue $unused,
                 array $innerArgs,
@@ -568,7 +588,7 @@ trait DateTimeFormatSection
                 : date('n/j/Y, g:i:s A', $timestamp);
             // Decompose the formatted output into spec-shaped parts
             // by walking the underlying ICU pattern in lockstep.
-            return self::dateTimeFormatToParts($this_, $formatted, $timestamp);
+            return self::dateTimeFormatToParts($this_, $formatted, $timestamp, null, (float) $timestampMs);
         }, 1);
         $proto->defineOwnProperty(
             'formatToParts',
@@ -973,19 +993,11 @@ trait DateTimeFormatSection
         // DateTimeFormat.prototype.resolvedOptions()
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
             JsValue $this_,
-        ): JsValue {
-            // Spec brand check: proxies don't have internal slots, so
-            // a proxy wrapping a DateTimeFormat must NOT be accepted
-            // unless we implemented the normative-optional fallback
-            // symbol unwrap. Throw TypeError to match the
-            // "non-implementor" branch the test allows.
-            if (
-                !$this_ instanceof JsObject
-                || $this_ instanceof \Phasis\Value\JsProxy
-                || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
-            ) {
-                throw new TypeError('Intl.DateTimeFormat.prototype.resolvedOptions called on non-DateTimeFormat');
-            }
+        ) use (
+            $proto,
+            $fallbackSymbol
+): JsValue {
+            $this_ = self::unwrapLegacyIntl($this_, $proto, $fallbackSymbol, 'DateTimeFormat');
             $result = new JsObject();
             self::defineDataProp($result, 'locale', new JsString(
                 self::extractInternalString($this_, '[[Locale]]', 'en'),
@@ -1406,6 +1418,7 @@ trait DateTimeFormatSection
         string $formatted,
         int $timestamp,
         ?JsObject $temporal = null,
+        ?float $timestampMs = null,
     ): JsArray {
         $parts = new JsArray();
         $idx = 0;
@@ -1435,6 +1448,19 @@ trait DateTimeFormatSection
         $formatter = $temporal !== null
             ? self::temporalFormatterFor($dtf, $temporal)
             : self::dateTimeFormatterFor($dtf);
+        $canonical = self::canonicalCalendarParts(
+            $formatter,
+            self::calendarFormattingDateTime($temporal, $timestampMs ?? $timestamp * 1000.0),
+            $calendar,
+            self::extractInternalString($dtf, '[[NumberingSystem]]', 'latn'),
+        );
+        if ($canonical !== null) {
+            foreach ($canonical as $part) {
+                $emit($part['type'], $part['value']);
+            }
+            $parts->set('length', JsNumber::of((float) $idx));
+            return $parts;
+        }
         $pattern = $formatter->getPattern();
         if ($pattern === false || $pattern === '') {
             $emit('literal', $formatted);
@@ -1774,7 +1800,13 @@ trait DateTimeFormatSection
     {
         $formatter = self::dateTimeFormatterFor($dtf);
         $dt = self::dateTimeFromTimestampMs($timestampMs);
-        $result = $formatter->format($dt);
+        $calendar = self::extractInternalString($dtf, '[[Calendar]]', 'gregory');
+        $result = self::formatCanonicalCalendarDate(
+            $formatter,
+            $dt,
+            $calendar,
+            self::extractInternalString($dtf, '[[NumberingSystem]]', 'latn'),
+        );
         $secFallback = (int) floor($timestampMs / 1000);
         if ($result === false) {
             return date('Y-m-d H:i:s', $secFallback);
@@ -2083,7 +2115,12 @@ trait DateTimeFormatSection
             $tsMs = self::epochNsToMs($epochNsStr);
             $formatter = self::temporalFormatterFor($dtf, $obj);
             $dt = self::dateTimeFromTimestampMs($tsMs);
-            $result = $formatter->format($dt);
+            $result = self::formatCanonicalCalendarDate(
+                $formatter,
+                $dt,
+                self::extractInternalString($dtf, '[[Calendar]]', 'gregory'),
+                self::extractInternalString($dtf, '[[NumberingSystem]]', 'latn'),
+            );
             return $result === false ? '' : self::normalizeDateTimeSpaces($result);
         }
         // Plain types: assemble a UTC timestamp from the date/time
@@ -2092,75 +2129,19 @@ trait DateTimeFormatSection
         // fields (e.g. PlainDate strips time tokens; PlainTime
         // strips date tokens).
         [$y, $m, $d, $h, $min, $s, $ms] = self::temporalPlainComponents($obj);
-        // Per spec, PlainDateTime.toLocaleString with a formatter that
-        // declares an explicit timeZone runs the wall time through
-        // "compatible" disambiguation in that zone. For a date that
-        // falls in a DST gap (e.g. 2020-03-08 02:30 in LA), this
-        // shifts the rendered time forward into the post-gap offset.
-        if ($obj->has('[[IsPlainDateTime]]')) {
-            $tzVal = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
-            if ($tzVal !== 'UTC' && extension_loaded('intl')) {
-                $shifted = self::compatibleAdjustForTimeZone($y, $m, $d, $h, $min, $s, $ms, $tzVal);
-                if ($shifted !== null) {
-                    [$y, $m, $d, $h, $min, $s, $ms] = $shifted;
-                }
-            }
-        }
+        $year = $y > 9999 ? '+' . $y : sprintf('%04d', $y);
         $dt = new \DateTimeImmutable(
-            sprintf('%04d-%02d-%02dT%02d:%02d:%02d.%06dZ', $y, $m, $d, $h, $min, $s, $ms * 1000),
+            sprintf('%s-%02d-%02dT%02d:%02d:%02d.%06dZ', $year, $m, $d, $h, $min, $s, $ms * 1000),
             new \DateTimeZone('UTC'),
         );
         $formatter = self::temporalFormatterFor($dtf, $obj);
-        $result = $formatter->format($dt);
+        $result = self::formatCanonicalCalendarDate(
+            $formatter,
+            $dt,
+            self::extractInternalString($dtf, '[[Calendar]]', 'gregory'),
+            self::extractInternalString($dtf, '[[NumberingSystem]]', 'latn'),
+        );
         return $result === false ? '' : self::normalizeDateTimeSpaces($result);
-    }
-
-    /**
-     * Apply "compatible" disambiguation: if the wall time is skipped
-     * by a forward DST transition in the named time zone, shift to
-     * the later side; if it's repeated by a back transition, keep the
-     * earlier side. Returns adjusted components or null if intl can't
-     * resolve the zone. This mirrors Temporal's GetEpochNanosecondsFor
-     * with disambiguation: "compatible".
-     *
-     * @return array{0:int,1:int,2:int,3:int,4:int,5:int,6:int}|null
-     */
-    private static function compatibleAdjustForTimeZone(
-        int $y,
-        int $mo,
-        int $d,
-        int $h,
-        int $min,
-        int $s,
-        int $ms,
-        string $tz,
-    ): ?array {
-        try {
-            $zone = new \DateTimeZone($tz);
-        } catch (\Throwable) {
-            return null;
-        }
-        // Build a wall-time DateTime in the named zone to detect a gap.
-        // PHP normalises a non-existent local time forward (the same as
-        // "compatible"), so format() round-trips to the post-gap clock.
-        try {
-            $dt = new \DateTimeImmutable(
-                sprintf('%04d-%02d-%02dT%02d:%02d:%02d', $y, $mo, $d, $h, $min, $s),
-                $zone,
-            );
-        } catch (\Throwable) {
-            return null;
-        }
-        $rh = (int) $dt->format('H');
-        $rmin = (int) $dt->format('i');
-        $rs = (int) $dt->format('s');
-        $ry = (int) $dt->format('Y');
-        $rmo = (int) $dt->format('n');
-        $rd = (int) $dt->format('j');
-        if ($rh === $h && $rmin === $min && $rs === $s) {
-            return null;
-        }
-        return [$ry, $rmo, $rd, $rh, $rmin, $rs, $ms];
     }
 
     /**
@@ -2196,7 +2177,6 @@ trait DateTimeFormatSection
         $tzLetters = ['z', 'Z', 'O', 'v', 'V', 'X', 'x'];
         $weekdayLetters = ['E', 'e', 'c'];
         $stripLetters = [];
-        $augmentSkeleton = '';
         $forceSkeleton = '';
         $userExplicit = self::dtfHasExplicitOptions($dtf);
         if ($isPlainDate) {
@@ -2263,25 +2243,33 @@ trait DateTimeFormatSection
                 }
                 return $base;
             }
-            $hasDate = self::patternHasAnyOf($pattern, $dateLetters);
-            $hasTime = self::patternHasAnyOf($pattern, $timeLetters);
-            if ($hasDate && !$hasTime) {
-                // "j" picks the locale's preferred hour cycle so de-AT
-                // gets HH:mm:ss while en-US gets h:mm:ss a.
-                $augmentSkeleton = 'jms';
-            } elseif ($hasTime && !$hasDate) {
-                $augmentSkeleton = 'yMd';
-            } else {
-                return $base;
-            }
+            $forceSkeleton = 'yMdjms';
         } else {
             return $base;
+        }
+        if ($forceSkeleton === '' && !self::patternHasAnyOf($pattern, $stripLetters)) {
+            return $base;
+        }
+        if ($forceSkeleton !== '' && !$isPlainTime && !$isPlainMonthDay) {
+            $era = self::extractInternalString($dtf, '[[era]]', '');
+            $forceSkeleton .= match ($era) {
+                'long' => 'GGGG',
+                'narrow' => 'GGGGG',
+                'short' => 'GGG',
+                default => '',
+            };
         }
         $skeleton = $forceSkeleton !== ''
             ? $forceSkeleton
             : self::extractPatternSkeleton($pattern, $stripLetters);
-        if ($augmentSkeleton !== '') {
-            $skeleton .= $augmentSkeleton;
+        $requestedCycle = self::extractInternalString($dtf, '[[RequestedHourCycle]]', '');
+        if ($requestedCycle !== '') {
+            $skeleton = str_replace('j', match ($requestedCycle) {
+                'h11' => 'K',
+                'h23' => 'H',
+                'h24' => 'k',
+                default => 'h',
+            }, $skeleton);
         }
         $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
         if ($skeleton !== '' && class_exists('IntlDatePatternGenerator')) {
@@ -2289,6 +2277,10 @@ trait DateTimeFormatSection
                 $gen = new \IntlDatePatternGenerator($locale);
                 $newPattern = $gen->getBestPattern($skeleton);
                 if (is_string($newPattern) && $newPattern !== '') {
+                    $hourCycle = self::extractInternalString($dtf, '[[RequestedHourCycle]]', '');
+                    if ($hourCycle !== '') {
+                        $newPattern = self::rewriteHourCycleInPattern($newPattern, $hourCycle);
+                    }
                     $base->setPattern($newPattern);
                     return $base;
                 }
@@ -2319,9 +2311,8 @@ trait DateTimeFormatSection
         }
         $slots = [
             '[[DateStyle]]', '[[TimeStyle]]', '[[year]]', '[[month]]',
-            '[[day]]', '[[weekday]]', '[[era]]', '[[hour]]', '[[minute]]',
+            '[[day]]', '[[weekday]]', '[[hour]]', '[[minute]]',
             '[[second]]', '[[fractionalSecondDigits]]', '[[dayPeriod]]',
-            '[[timeZoneName]]',
         ];
         foreach ($slots as $slot) {
             if (!$dtf->get($slot) instanceof JsUndefined) {
@@ -2537,6 +2528,9 @@ trait DateTimeFormatSection
      */
     private static function checkTemporalOptionsCompat(JsObject $dtf, JsObject $obj): void
     {
+        if (!self::dtfHasExplicitOptions($dtf)) {
+            return;
+        }
         // When the formatter's components were defaulted (no user
         // options), it adapts to the Temporal type so any plain
         // type renders without throwing.
@@ -2680,7 +2674,11 @@ trait DateTimeFormatSection
                 while ($j < $len && $pattern[$j] === $c) {
                     $j++;
                 }
-                $out .= str_repeat($targetLetter, $j - $i);
+                $width = $j - $i;
+                if ($hourCycle === 'h23' || $hourCycle === 'h24') {
+                    $width = max(2, $width);
+                }
+                $out .= str_repeat($targetLetter, $width);
                 $i = $j;
                 continue;
             }
@@ -2861,6 +2859,10 @@ trait DateTimeFormatSection
         // day/month against ICU's locale-preferred pattern, which may
         // collapse "hh" → "h" for en-US etc.
         $pattern = self::enforceExplicitDigitWidths($pattern, $dtf);
+        $hourCycle = self::extractInternalString($dtf, '[[HourCycle]]', '');
+        if ($hourCycle !== '') {
+            $pattern = self::rewriteHourCycleInPattern($pattern, $hourCycle);
+        }
         // For non-Gregorian calendars that emit cyclic year names
         // (Chinese / Dangi), expand the year letter "y" run to "rU"
         // so the formatted output includes both the related Gregorian

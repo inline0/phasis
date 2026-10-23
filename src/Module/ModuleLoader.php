@@ -35,6 +35,9 @@ class ModuleLoader
     /** @var array<string, ModuleRecord> Evaluated module cache keyed by absolute path. */
     private array $modules = [];
 
+    /** @var array<string, JsObject> Host-provided modules supporting the source import phase. */
+    private array $sourceModules = [];
+
     /** @var array<string, true> Set of modules currently being evaluated (cycle detection). */
     private array $evaluating = [];
 
@@ -48,6 +51,11 @@ class ModuleLoader
 
     /** @var list<string> Module paths whose bodies are awaiting execution, in link order. */
     private array $bodyQueue = [];
+
+    /** @var array<string, ModuleRecord> Modules awaiting asynchronous dependencies, in evaluation order. */
+    private array $waitingBodies = [];
+
+    private bool $resumingBodies = false;
 
     /** True while a linking pass is in progress. Nested loadModule calls
      *  issued during linking (static imports or re-exports) add to the
@@ -183,9 +191,22 @@ class ModuleLoader
      * @param string|null $referrer The absolute path of the importing module (for resolving relative paths).
      * @return JsObject The module namespace object.
      */
-    public function loadModule(string $specifier, ?string $referrer = null): JsObject
+    public function loadModule(string $specifier, ?string $referrer = null, ?string $type = null): JsObject
     {
-        $resolved = $this->resolve($specifier, $referrer);
+        $resolved = $this->resolveRequest($specifier, $referrer, $type);
+        if (isset($this->sourceModules[$specifier])) {
+            if (!isset($this->modules[$resolved])) {
+                $record = new ModuleRecord($resolved, JsObject::createNullPrototype());
+                $record->moduleSource = $this->sourceModules[$specifier];
+                $record->bodyEvaluated = true;
+                $this->modules[$resolved] = $record;
+                $this->finishSyntheticModule($record, [], false);
+            }
+            return $this->modules[$resolved]->namespace;
+        }
+        if (in_array($type, ['text', 'bytes'], true)) {
+            return $this->loadTypedModule($specifier, $referrer, $type, $resolved);
+        }
 
         // Return cached module namespace if already evaluated.
         if (isset($this->modules[$resolved])) {
@@ -193,8 +214,9 @@ class ModuleLoader
             // If a previous evaluation rejected, re-throw the same
             // value so subsequent callers observe the rejection per
             // EvaluateSync semantics.
-            if ($cached->evaluationError !== null) {
-                throw new \Phasis\Exceptions\JsThrowable($cached->evaluationError);
+            $error = $cached->evaluationError ?? $this->firstRejectedDep($cached);
+            if ($error !== null) {
+                throw new \Phasis\Exceptions\JsThrowable($error);
             }
             // A previously deferred-only module may have been linked
             // but its body never ran — its only importer was the
@@ -406,34 +428,47 @@ class ModuleLoader
     }
 
     /**
-     * Evaluate module source text and return its namespace object.
-     * Kept as a thin wrapper around linkModule + drainBodyQueue for callers
-     * that bypass loadModule (e.g. the test runner that already holds source).
+     * Parse and link a module graph without evaluating its JavaScript bodies.
+     * Returns the linked namespace; exported lexical bindings remain uninitialized
+     * until evaluateModule is called for the same absolute path.
      */
-    public function evaluateModule(string $absolutePath, string $source): JsObject
+    public function linkModuleGraph(string $absolutePath, string $source): JsObject
     {
-        if (isset($this->modules[$absolutePath])) {
-            return $this->modules[$absolutePath]->namespace;
-        }
-
-        if ($this->linking) {
-            return $this->linkModule($absolutePath, $source);
-        }
-
+        $wasLinking = $this->linking;
         $this->linking = true;
         try {
             $namespace = $this->linkModule($absolutePath, $source);
-            $this->finalizeStarReExports();
-            $this->lockDownNamespaces();
-            $this->validateIndirectExports();
-            $this->finalizeDeferredNamespaces();
-            $this->markEagerlyReachable($absolutePath);
-            $this->linking = false;
-            $this->drainBodyQueue();
+            if (!$wasLinking) {
+                $this->finalizeStarReExports();
+                $this->lockDownNamespaces();
+                $this->validateIndirectExports();
+                $this->finalizeDeferredNamespaces();
+            }
             return $namespace;
         } finally {
-            $this->linking = false;
+            $this->linking = $wasLinking;
         }
+    }
+
+    /** Evaluate module source, including a graph previously linked with linkModuleGraph. */
+    public function evaluateModule(string $absolutePath, string $source): JsObject
+    {
+        $namespace = $this->linkModuleGraph($absolutePath, $source);
+        if ($this->linking) {
+            return $namespace;
+        }
+        $record = $this->modules[$absolutePath];
+        $error = $record->evaluationError ?? $this->firstRejectedDep($record);
+        if ($error !== null) {
+            throw new \Phasis\Exceptions\JsThrowable($error);
+        }
+        $this->markEagerlyReachable($absolutePath);
+        $this->drainBodyQueue();
+        $error = $record->evaluationError ?? $this->firstRejectedDep($record);
+        if ($error !== null) {
+            throw new \Phasis\Exceptions\JsThrowable($error);
+        }
+        return $namespace;
     }
 
     /**
@@ -494,6 +529,7 @@ class ModuleLoader
 
             // Create a fresh module environment linked to the global environment.
             $moduleEnv = new Environment($this->globalEnv);
+            $record->environment = $moduleEnv;
             $this->interpreter->setCurrentModulePath($absolutePath);
 
             // Pre-hoist function/var declarations and TDZ bindings into
@@ -574,118 +610,102 @@ class ModuleLoader
     private function drainBodyQueue(): void
     {
         $asyncRecords = [];
-        // Modules whose body is awaiting one or more pending async deps.
-        // Each entry holds the record plus the closure that runs the body.
-        // Tracked separately from the synchronous run-list so deferred
-        // bodies fire only after their dep promises settle.
-        $deferredBodies = [];
-        // Per spec InnerModuleEvaluation: a module's [[Status]] becomes
-        // ~evaluating~ the moment it is pushed onto the evaluation
-        // stack, BEFORE its dependencies' bodies execute. Mark every
-        // eagerly-reachable module as evaluating up front so a
-        // deferred-namespace observed during a sibling body sees the
-        // expected ~evaluating~ status and throws TypeError per
-        // EnsureDeferredNamespaceEvaluation. The flag is cleared in
-        // runDeferredBody's finally block when the body completes (or,
-        // for TLA modules, when the body suspends — the namespace then
-        // checks the pending evaluation promise instead).
-        foreach ($this->bodyQueue as $queuedPath) {
-            $rec = $this->modules[$queuedPath] ?? null;
-            if ($rec !== null && $rec->eagerlyReachable && $rec->pendingBody !== null) {
-                $rec->bodyEvaluating = true;
+        foreach ($this->bodyQueue as $path) {
+            $record = $this->modules[$path] ?? null;
+            if ($record !== null && $record->eagerlyReachable && $record->pendingBody !== null) {
+                $record->bodyEvaluating = true;
+                $record->completionPromise ??= new \Phasis\Value\JsPromise();
             }
         }
         while ($this->bodyQueue !== []) {
             $path = array_shift($this->bodyQueue);
             $record = $this->modules[$path] ?? null;
-            if ($record === null || $record->pendingBody === null) {
+            if ($record === null || $record->pendingBody === null || !$record->eagerlyReachable) {
                 continue;
             }
-            if (!$record->eagerlyReachable) {
-                continue;
-            }
-            $pendingDeps = $this->collectPendingAsyncDeps($record);
-            if ($pendingDeps === []) {
+            $error = $this->firstRejectedDep($record);
+            if ($error !== null) {
+                $this->rejectModule($record, $error);
+            } elseif ($this->collectPendingAsyncDeps($record) === []) {
                 $this->runModuleBody($record, $asyncRecords);
-                continue;
-            }
-            // Module has at least one async dep that hasn't settled.
-            // Capture body + env for later; register a continuation on
-            // the dep promises so the body runs as soon as the last
-            // pending dep settles. Mark pendingBody as "claimed" by
-            // nulling it but preserving the captured snapshot.
-            $pending = $record->pendingBody;
-            $record->pendingBody = null;
-            $record->bodyEvaluated = true;
-            $deferredBodies[] = [
-                'record' => $record,
-                'pending' => $pending,
-            ];
-        }
-        // Run deferred bodies in source order, draining microtasks
-        // between attempts so each TLA dep can settle and unblock its
-        // dependents. Modules whose deps reject re-throw the same
-        // value, mirroring spec AsyncModuleExecutionRejected.
-        if ($deferredBodies !== []) {
-            $iter = 0;
-            while ($deferredBodies !== [] && $iter++ < 100000) {
-                \Phasis\Value\JsPromise::drainMicrotasks();
-                $progress = false;
-                $remaining = [];
-                foreach ($deferredBodies as $entry) {
-                    $rec = $entry['record'];
-                    $pendingDeps = $this->collectPendingAsyncDeps($rec);
-                    // If any dep rejected, propagate that rejection
-                    // immediately to this module's evaluationError.
-                    $rejectedDep = $this->firstRejectedDep($rec);
-                    if ($rejectedDep !== null) {
-                        $rec->evaluationError = $rejectedDep;
-                        $progress = true;
-                        continue;
-                    }
-                    if ($pendingDeps === []) {
-                        $this->runDeferredBody($rec, $entry['pending'], $asyncRecords);
-                        $progress = true;
-                        continue;
-                    }
-                    $remaining[] = $entry;
-                }
-                $deferredBodies = $remaining;
-                if (!$progress && $deferredBodies !== []) {
-                    // No deferred body became runnable this iteration.
-                    // Either all pending TLA deps are still pending or
-                    // the loop is genuinely deadlocked — either way the
-                    // microtask drain is the only way forward.
-                    \Phasis\Value\JsPromise::drainMicrotasks();
-                }
+            } else {
+                $this->waitingBodies[$path] = $record;
             }
         }
-        // Drain remaining async-module promises (any module without an
-        // importer still pending). Bound the loop so a never-resolving
-        // promise can't hang the engine.
-        if ($asyncRecords !== []) {
-            $iter = 0;
-            $allSettled = false;
-            while (!$allSettled && $iter++ < 100000) {
-                \Phasis\Value\JsPromise::drainMicrotasks();
-                $allSettled = true;
-                foreach ($asyncRecords as $r) {
-                    $p = $r->evaluationPromise;
-                    if ($p !== null && $p->getState() === \Phasis\Value\JsPromise::STATE_PENDING) {
-                        $allSettled = false;
-                        break;
+        $this->resumeWaitingBodies();
+        \Phasis\Value\JsPromise::drainMicrotasks();
+    }
+
+    /** Resume newly available ancestors in their original evaluation order. */
+    private function resumeWaitingBodies(): void
+    {
+        if ($this->resumingBodies) {
+            return;
+        }
+        $this->resumingBodies = true;
+        try {
+            $asyncRecords = [];
+            foreach ($this->waitingBodies as $path => $record) {
+                $error = $this->firstRejectedDep($record);
+                if ($error !== null) {
+                    unset($this->waitingBodies[$path]);
+                    $this->rejectModule($record, $error);
+                } elseif ($this->collectPendingAsyncDeps($record) === []) {
+                    unset($this->waitingBodies[$path]);
+                    try {
+                        $this->runModuleBody($record, $asyncRecords);
+                    } catch (\Phasis\Exceptions\JsThrowable $exception) {
+                        $this->rejectModule($record, $exception->jsValue);
+                    } catch (\Phasis\Exceptions\RuntimeError $exception) {
+                        $this->rejectModule($record, $this->interpreter->phpExceptionToJsValue($exception));
                     }
                 }
             }
-            // Surface the first rejection as a thrown JS error so the
-            // caller of loadModule sees the failure.
-            foreach ($asyncRecords as $r) {
-                $p = $r->evaluationPromise;
-                if ($p !== null && $p->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
-                    $this->interpreter->throwJsValue($p->getResolvedValue());
-                }
-            }
+        } finally {
+            $this->resumingBodies = false;
         }
+    }
+
+    private function rejectModule(ModuleRecord $record, JsValue $error): void
+    {
+        $record->evaluationError = $error;
+        $record->bodyEvaluated = true;
+        $record->bodyEvaluating = false;
+        $record->pendingBody = null;
+        $record->completionPromise ??= new \Phasis\Value\JsPromise();
+        $record->completionPromise->reject($error);
+    }
+
+    /** A dynamic import settles only after the requested module and its async ancestors complete. */
+    public function importModule(string $specifier, ?string $referrer = null, ?string $type = null): \Phasis\Value\JsPromise
+    {
+        $promise = new \Phasis\Value\JsPromise();
+        try {
+            $namespace = $this->loadModule($specifier, $referrer, $type);
+            $record = $this->modules[$this->resolveRequest($specifier, $referrer, $type)];
+            $error = $record->evaluationError ?? $this->firstRejectedDep($record);
+            if ($error !== null) {
+                $promise->reject($error);
+                return $promise;
+            }
+            if ($record->completionPromise === null) {
+                $promise->resolve($namespace);
+                return $promise;
+            }
+            $record->completionPromise->then([
+                JsFunction::fromCallable('', static function () use ($promise, $namespace): JsValue {
+                    $promise->resolve($namespace);
+                    return JsUndefined::instance();
+                }),
+                JsFunction::fromCallable('', static function (JsValue $this_, array $args) use ($promise): JsValue {
+                    $promise->reject($args[0] ?? JsUndefined::instance());
+                    return JsUndefined::instance();
+                }),
+            ]);
+        } catch (\Throwable $error) {
+            $promise->reject($this->interpreter->phpExceptionToJsValue($error));
+        }
+        return $promise;
     }
 
     /**
@@ -740,7 +760,7 @@ class ModuleLoader
         $stack = [$record];
         while ($stack !== []) {
             $current = array_pop($stack);
-            foreach (array_keys($current->importedPaths) as $depPath) {
+            foreach (array_keys($current->eagerEdges) as $depPath) {
                 if (isset($visited[$depPath])) {
                     continue;
                 }
@@ -791,6 +811,7 @@ class ModuleLoader
     private function runDeferredBody(ModuleRecord $record, array $pending, array &$asyncRecords): void
     {
         $record->bodyEvaluating = true;
+        $record->completionPromise ??= new \Phasis\Value\JsPromise();
         $prevModulePath = $this->interpreter->getCurrentModulePath();
         $this->interpreter->setCurrentModulePath($record->path);
         try {
@@ -805,10 +826,25 @@ class ModuleLoader
                 onAsyncStart: function (\Phasis\Value\JsPromise $p) use ($record, &$asyncRecords): void {
                     $record->evaluationPromise = $p;
                     $asyncRecords[] = $record;
+                    $p->then([
+                        JsFunction::fromCallable('', function () use ($record): JsValue {
+                            $record->completionPromise->resolve(JsUndefined::instance());
+                            $this->resumeWaitingBodies();
+                            return JsUndefined::instance();
+                        }),
+                        JsFunction::fromCallable('', function (JsValue $this_, array $args) use ($record): JsValue {
+                            $this->rejectModule($record, $args[0] ?? JsUndefined::instance());
+                            $this->resumeWaitingBodies();
+                            return JsUndefined::instance();
+                        }),
+                    ]);
                 },
             );
+            if ($record->evaluationPromise === null) {
+                $record->completionPromise->resolve(JsUndefined::instance());
+            }
         } catch (\Phasis\Exceptions\JsThrowable $e) {
-            $record->evaluationError = $e->jsValue;
+            $this->rejectModule($record, $e->jsValue);
             throw $e;
         } finally {
             $this->interpreter->setCurrentModulePath($prevModulePath);
@@ -1214,44 +1250,33 @@ class ModuleLoader
     private function finalizeStarReExports(): void
     {
         foreach ($this->modules as $path => $record) {
-            if ($record->starExportRequests === []) {
+            // Linking another graph cannot change an already-created module
+            // namespace. Its live bindings must survive subsequent lazy loads.
+            if ($record->starExportRequests === [] || $record->namespace->isModuleNamespace()) {
                 continue;
             }
-            foreach ($record->starExportRequests as $sourcePath) {
-                $names = $this->getExportedNames($sourcePath, [$path => true]);
-                foreach ($names as $name) {
-                    if ($name === 'default') {
-                        continue;
-                    }
-                    // Direct exports and explicit indirect re-exports of
-                    // this module win over star re-exports.
-                    if (
-                        $record->namespace->hasOwnProperty($name)
-                        && !isset($record->starExportSources[$name])
-                    ) {
-                        continue;
-                    }
-                    if (isset($record->ambiguousNames[$name])) {
-                        continue;
-                    }
-                    if (isset($record->starExportSources[$name])) {
-                        if ($record->starExportSources[$name] !== $sourcePath) {
-                            $record->ambiguousNames[$name] = true;
-                            $record->namespace->forceDelete($name);
-                        }
-                        continue;
-                    }
-                    $sourceRecord = $this->modules[$sourcePath] ?? null;
-                    if ($sourceRecord === null) {
-                        continue;
-                    }
-                    $record->starExportSources[$name] = $sourcePath;
-                    $this->installIndirectBinding(
-                        $record->namespace,
-                        $name,
-                        $sourceRecord->namespace,
-                        $name,
-                    );
+            foreach ($this->getExportedNames($path, []) as $name) {
+                if (isset($record->localExports[$name]) || isset($record->indirectExports[$name])) {
+                    continue;
+                }
+                $resolution = $this->resolveExport($path, $name, []);
+                if ($resolution === null || $resolution === 'ambiguous') {
+                    $record->ambiguousNames[$name] = true;
+                    $record->namespace->forceDelete($name);
+                    continue;
+                }
+                $origin = $this->modules[$resolution['module']];
+                $bindingName = $resolution['bindingName'];
+                $record->starExportSources[$name] = $resolution['module'];
+                $record->namespace->forceDelete($name);
+                if ($bindingName === '*namespace*' || $bindingName === '*source*') {
+                    $value = $bindingName === '*namespace*' ? $origin->namespace : $origin->moduleSource;
+                    $record->namespace->defineOwnProperty($name, PropertyDescriptor::data($value, true, true, false));
+                } elseif ($origin->environment !== null) {
+                    $this->installLiveBinding($record->namespace, $name, $origin->environment, $bindingName);
+                    unset($record->localExports[$name]);
+                } else {
+                    $this->installIndirectBinding($record->namespace, $name, $origin->namespace, $bindingName);
                 }
             }
         }
@@ -1357,6 +1382,18 @@ class ModuleLoader
             return ['module' => $modulePath, 'bindingName' => $exportName];
         }
 
+        if (in_array($exportName, ['*namespace*', '*source*'], true)) {
+            return ['module' => $modulePath, 'bindingName' => $exportName];
+        }
+        if (isset($record->localExports[$exportName])) {
+            $localName = $record->localExports[$exportName];
+            if (isset($record->importBindings[$localName])) {
+                $import = $record->importBindings[$localName];
+                return $this->resolveExport($import['source'], $import['name'], $resolveSet);
+            }
+            return ['module' => $modulePath, 'bindingName' => $localName];
+        }
+
         // Indirect re-export: recurse through the source module.
         if (isset($record->indirectExports[$exportName])) {
             $entry = $record->indirectExports[$exportName];
@@ -1408,6 +1445,9 @@ class ModuleLoader
      */
     public function resolve(string $specifier, ?string $referrer = null, string $kind = 'import'): string
     {
+        if (isset($this->sourceModules[$specifier])) {
+            return 'source:' . $specifier;
+        }
         return $this->resolver->resolve($specifier, $referrer, $kind);
     }
 
@@ -1494,7 +1534,7 @@ class ModuleLoader
                 return null;
             }
         }
-        $resolved = $this->resolve($node->source, $modulePath);
+        $resolved = $this->resolveRequest($node->source, $modulePath, $this->attributeType($node->attributes));
         if (
             isset($this->modules[$resolved])
             || !str_contains($resolved, '/node_modules/')
@@ -1605,9 +1645,9 @@ class ModuleLoader
             if ($isDefer) {
                 $this->loadModuleForDeferred($source, $modulePath);
             } else {
-                $this->loadModule($source, $modulePath);
+                $this->loadModule($source, $modulePath, $this->attributeType($node->attributes));
             }
-            $resolved = $this->resolve($source, $modulePath);
+            $resolved = $this->resolveRequest($source, $modulePath, $this->attributeType($node->attributes));
             if ($currentRecord !== null) {
                 $currentRecord->importedPaths[$resolved] = true;
             }
@@ -1675,10 +1715,20 @@ class ModuleLoader
         // evaluation error at link time.
         $importedNs = $isDefer
             ? $this->loadModuleForDeferred($node->source, $modulePath)
-            : $this->loadModule($node->source, $modulePath);
-        $resolved = $this->resolve($node->source, $modulePath);
+            : $this->loadModule($node->source, $modulePath, $this->attributeType($node->attributes));
+        $resolved = $this->resolveRequest($node->source, $modulePath, $this->attributeType($node->attributes));
         $currentRecord = $this->modules[$modulePath] ?? null;
 
+        if ($node->phase === 'source') {
+            $sourceObject = $this->loadModuleSource($node->source, $modulePath);
+            foreach ($node->specifiers as $spec) {
+                $moduleEnv->defineConst($spec->local, $sourceObject);
+                if ($currentRecord !== null) {
+                    $currentRecord->importBindings[$spec->local] = ['source' => $resolved, 'name' => '*source*'];
+                }
+            }
+            return;
+        }
         foreach ($node->specifiers as $spec) {
             if ($spec->specType === 'namespace') {
                 // Namespace imports snapshot the namespace object itself,
@@ -1687,6 +1737,9 @@ class ModuleLoader
                 $bindingNs = $isDefer
                     ? $this->getDeferredNamespace($resolved, $importedNs)
                     : $importedNs;
+                if ($currentRecord !== null) {
+                    $currentRecord->importBindings[$spec->local] = ['source' => $resolved, 'name' => '*namespace*'];
+                }
                 $moduleEnv->defineConst($spec->local, $bindingNs);
                 continue;
             }
@@ -1701,6 +1754,7 @@ class ModuleLoader
             // contributed by finalizeStarReExports). A hasOwnProperty check
             // here would race with star-re-export installation.
             if ($currentRecord !== null) {
+                $currentRecord->importBindings[$spec->local] = ['source' => $resolved, 'name' => $exportName];
                 $currentRecord->importEntries[] = [
                     'source' => $resolved,
                     'exportName' => $exportName,
@@ -1778,10 +1832,13 @@ class ModuleLoader
 
         // export * from 'source' or export * as ns from 'source'
         if ($node->isAll && $node->source !== null) {
-            $reExportNs = $this->loadModule($node->source, $modulePath);
-            $sourceResolved = $this->resolve($node->source, $modulePath);
+            $reExportNs = $this->loadModule($node->source, $modulePath, $this->attributeType($node->attributes));
+            $sourceResolved = $this->resolveRequest($node->source, $modulePath, $this->attributeType($node->attributes));
             $currentRecord = $this->modules[$modulePath] ?? null;
             if ($node->allAs !== null) {
+                if ($currentRecord !== null) {
+                    $currentRecord->indirectExports[$node->allAs] = ['source' => $sourceResolved, 'localName' => '*namespace*'];
+                }
                 $namespace->defineOwnProperty(
                     $node->allAs,
                     PropertyDescriptor::data($reExportNs, true, true, false),
@@ -1803,14 +1860,14 @@ class ModuleLoader
         // contributes to [[RequestedModules]], so the source module must
         // be loaded (triggering its parse/resolution errors).
         if ($node->source !== null && $node->specifiers === []) {
-            $this->loadModule($node->source, $modulePath);
+            $this->loadModule($node->source, $modulePath, $this->attributeType($node->attributes));
             return;
         }
 
         // export { a, b as c } from 'source'
         if ($node->source !== null && $node->specifiers !== []) {
-            $reExportNs = $this->loadModule($node->source, $modulePath);
-            $resolved = $this->resolve($node->source, $modulePath);
+            $reExportNs = $this->loadModule($node->source, $modulePath, $this->attributeType($node->attributes));
+            $resolved = $this->resolveRequest($node->source, $modulePath, $this->attributeType($node->attributes));
             $currentRecord = $this->modules[$modulePath] ?? null;
             foreach ($node->specifiers as $spec) {
                 // Record the indirect export entry so ResolveExport can
@@ -1856,6 +1913,12 @@ class ModuleLoader
         Environment $env,
         string $bindingName,
     ): void {
+        foreach ($this->modules as $record) {
+            if ($record->namespace === $namespace) {
+                $record->localExports[$exportName] = $bindingName;
+                break;
+            }
+        }
         $getter = JsFunction::fromCallable(
             'get ' . $exportName,
             static function (JsValue $this_, array $args) use ($env, $bindingName): JsValue {
@@ -2278,12 +2341,83 @@ class ModuleLoader
         return $namespace;
     }
 
+    /** Register a host-defined module kind which exposes a Module Source object. */
+    public function registerSourceModule(string $specifier, JsObject $moduleSource): void
+    {
+        $this->sourceModules[$specifier] = $moduleSource;
+    }
+
+    /** GetModuleSource rejects module kinds which have no source-phase representation. */
+    public function loadModuleSource(string $specifier, ?string $referrer = null): JsObject
+    {
+        if (isset($this->sourceModules[$specifier])) {
+            return $this->sourceModules[$specifier];
+        }
+        $this->resolve($specifier, $referrer);
+        throw new \Phasis\Exceptions\SyntaxError('The requested module does not provide a Module Source');
+    }
+
+    private function resolveRequest(string $specifier, ?string $referrer, ?string $type): string
+    {
+        $resolved = $this->resolve($specifier, $referrer);
+        return in_array($type, ['text', 'bytes'], true) ? $resolved . "\0" . $type : $resolved;
+    }
+
+    private function attributeType(?Node $attributes): ?string
+    {
+        if (!$attributes instanceof \Phasis\Ast\Expression\ObjectExpression) {
+            return null;
+        }
+        foreach ($attributes->properties as $property) {
+            if (!$property instanceof \Phasis\Ast\Expression\Property) {
+                continue;
+            }
+            $key = $property->key instanceof \Phasis\Ast\Expression\Identifier
+                ? $property->key->name
+                : ($property->key instanceof \Phasis\Ast\Expression\Literal ? $property->key->value : null);
+            if ($key === 'type' && $property->value instanceof \Phasis\Ast\Expression\Literal) {
+                return is_string($property->value->value) ? $property->value->value : null;
+            }
+        }
+        return null;
+    }
+
+    private function loadTypedModule(string $specifier, ?string $referrer, string $type, string $key): JsObject
+    {
+        if (isset($this->modules[$key])) {
+            return $this->modules[$key]->namespace;
+        }
+        $source = $this->readSource($this->resolve($specifier, $referrer), $specifier);
+        if ($type === 'text') {
+            $value = new JsString(mb_convert_encoding($source, 'UTF-8', 'UTF-8'));
+        } else {
+            $buffer = new \Phasis\Value\JsArrayBuffer(strlen($source));
+            $buffer->setData($source);
+            $buffer->makeImmutable();
+            $constructor = $this->interpreter->getGlobalEnv()->get('Uint8Array');
+            $prototype = $constructor instanceof JsObject ? $constructor->get('prototype') : null;
+            $value = new \Phasis\Value\JsTypedArray(
+                'Uint8Array',
+                $buffer,
+                0,
+                strlen($source),
+                $prototype instanceof JsObject ? $prototype : null,
+            );
+        }
+        $record = new ModuleRecord($key, JsObject::createNullPrototype());
+        $record->bodyEvaluated = true;
+        $this->modules[$key] = $record;
+        return $this->finishSyntheticModule($record, ['default' => $value], false);
+    }
+
     public function reset(): void
     {
         $this->modules = [];
         $this->evaluating = [];
         $this->onDemandStack = [];
         $this->bodyQueue = [];
+        $this->waitingBodies = [];
+        $this->resumingBodies = false;
         $this->linking = false;
         $this->deferredLoads = [];
     }

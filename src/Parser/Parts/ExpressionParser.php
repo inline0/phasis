@@ -162,7 +162,7 @@ trait ExpressionParser
             // expression, unary expression, etc.) is a parse-time
             // SyntaxError. Only = allows ObjectLiteral/ArrayLiteral as
             // destructuring patterns; compound assignments don't.
-            if (!self::isValidAssignmentTarget($left, $op->value === '=')) {
+            if (!$this->isValidAssignmentTarget($left, $op->value === '=')) {
                 throw new ParseError(
                     "Invalid left-hand side in assignment",
                     $op,
@@ -495,7 +495,7 @@ trait ExpressionParser
             && !$this->current()->lineTerminatorBefore
         ) {
             $op = $this->advance();
-            if (!self::isSimpleAssignmentTarget($left)) {
+            if (!$this->isSimpleAssignmentTarget($left)) {
                 throw new ParseError(
                     "Invalid left-hand side expression in postfix operation",
                     $op,
@@ -547,7 +547,7 @@ trait ExpressionParser
         if ($token->type === TokenType::PlusPlus || $token->type === TokenType::MinusMinus) {
             $this->advance();
             $argument = $this->parseUnaryExpression();
-            if (!self::isSimpleAssignmentTarget($argument)) {
+            if (!$this->isSimpleAssignmentTarget($argument)) {
                 throw new ParseError(
                     "Invalid left-hand side expression in prefix operation",
                     $token,
@@ -784,7 +784,7 @@ trait ExpressionParser
             && !$this->current()->lineTerminatorBefore
         ) {
             $op = $this->advance();
-            if (!self::isSimpleAssignmentTarget($expr)) {
+            if (!$this->isSimpleAssignmentTarget($expr)) {
                 throw new ParseError(
                     'Invalid left-hand side expression in postfix operation',
                     $op,
@@ -1982,7 +1982,19 @@ trait ExpressionParser
                 if ($isVFlag && $next === 'q') {
                     if ($i + 2 < $len && $pattern[$i + 2] === '{') {
                         $j = $i + 3;
-                        while ($j < $len && $pattern[$j] !== '}') {
+                        while ($j < $len) {
+                            if ($pattern[$j] === '\\' && $j + 1 < $len) {
+                                if ($pattern[$j + 1] === 'u' && ($pattern[$j + 2] ?? '') === '{') {
+                                    $end = strpos($pattern, '}', $j + 3);
+                                    $j = $end === false ? $len : $end + 1;
+                                } else {
+                                    $j += 2;
+                                }
+                                continue;
+                            }
+                            if ($pattern[$j] === '}') {
+                                break;
+                            }
                             $j++;
                         }
                         if ($j >= $len) {
@@ -2828,6 +2840,7 @@ trait ExpressionParser
     {
         $location = $this->expect(TokenType::LeftBrace)->location;
         $properties = [];
+        $trailingCommaAfterRest = false;
 
         // Inside an object literal, `in` is always allowed even if noIn is
         // set by a surrounding for-header context.
@@ -2842,12 +2855,18 @@ trait ExpressionParser
 
             if (!$this->check(TokenType::RightBrace)) {
                 $this->expect(TokenType::Comma);
+                if (end($properties) instanceof SpreadElement && $this->check(TokenType::RightBrace)) {
+                    $trailingCommaAfterRest = true;
+                }
             }
         }
         $this->noIn = $savedNoIn;
 
         $this->expect(TokenType::RightBrace);
         $obj = new ObjectExpression($location, $properties);
+        if ($trailingCommaAfterRest) {
+            $this->arrayExpressionsWithTrailingCommaAfterRest->offsetSet($obj, null);
+        }
         // Per §13.2.5.1 Early Errors: an ObjectLiteral with two
         // PropertyDefinitions of the form `__proto__: AssignmentExpression`
         // is a SyntaxError. This restriction does not apply when the

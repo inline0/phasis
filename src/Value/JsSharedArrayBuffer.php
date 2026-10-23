@@ -39,13 +39,13 @@ class JsSharedArrayBuffer extends JsArrayBuffer
     }
 
     /** SharedArrayBuffer does not support transfer per spec. */
-    public function transfer(?int $newLength = null): JsArrayBuffer
+    public function transfer(?int $newLength = null, ?JsObject $prototype = null): JsArrayBuffer
     {
         throw new \Phasis\Exceptions\TypeError('Cannot transfer a SharedArrayBuffer');
     }
 
     /** SharedArrayBuffer does not support transferToFixedLength per spec. */
-    public function transferToFixedLength(?int $newLength = null): JsArrayBuffer
+    public function transferToFixedLength(?int $newLength = null, ?JsObject $prototype = null): JsArrayBuffer
     {
         throw new \Phasis\Exceptions\TypeError('Cannot transfer a SharedArrayBuffer');
     }

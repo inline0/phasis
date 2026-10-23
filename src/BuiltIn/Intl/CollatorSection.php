@@ -56,12 +56,6 @@ trait CollatorSection
 
                 // Resolve locale.
                 $resolvedLocale = self::resolveLocale($locales, ["co", "kf", "kn"]);
-                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
-                    new JsString($resolvedLocale),
-                    false,
-                    false,
-                    false,
-                ));
 
                 // Pre-parse the requested locale so the `-u-kn-…` /
                 // `-u-kf-…` / `-u-co-…` extension keywords are
@@ -141,6 +135,13 @@ trait CollatorSection
                 if (!$numVal instanceof JsUndefined) {
                     $numeric = TypeConversion::toBoolean($numVal);
                 }
+                $numeric = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'kn',
+                    $numVal instanceof JsUndefined ? null : ($numeric ? 'true' : 'false'),
+                    ['true', 'false'],
+                    'false',
+                ) === 'true';
                 $obj->defineOwnProperty('[[Numeric]]', PropertyDescriptor::data(
                     new JsBoolean((bool) $numeric),
                     false,
@@ -162,6 +163,13 @@ trait CollatorSection
                     }
                     $caseFirst = $cf;
                 }
+                $caseFirst = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'kf',
+                    $cfVal instanceof JsUndefined ? null : $caseFirst,
+                    ['upper', 'lower', 'false'],
+                    'false',
+                );
                 $obj->defineOwnProperty('[[CaseFirst]]', PropertyDescriptor::data(
                     new JsString($caseFirst),
                     false,
@@ -175,6 +183,7 @@ trait CollatorSection
                 // throwing). User-driven search collation is selected
                 // via usage:"search".
                 $collation = 'default';
+                $collRaw = null;
                 $collVal = $options->get('collation');
                 if (!$collVal instanceof JsUndefined) {
                     $collRaw = TypeConversion::toString($collVal);
@@ -185,8 +194,22 @@ trait CollatorSection
                         $collation = $collRaw;
                     }
                 }
+                $collation = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'co',
+                    $collRaw,
+                    $usage === 'search' ? [] : self::getLocaleCollations($resolvedLocale),
+                    'default',
+                );
                 $obj->defineOwnProperty('[[Collation]]', PropertyDescriptor::data(
                     new JsString($collation),
+                    false,
+                    false,
+                    false,
+                ));
+
+                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
+                    new JsString($resolvedLocale),
                     false,
                     false,
                     false,

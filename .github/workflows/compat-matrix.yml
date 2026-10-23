@@ -27,10 +27,10 @@ permissions:
 jobs:
   shard:
     runs-on: ubuntu-latest
-    # 45 minutes is enough for every shard we have today; the longest
-    # single shard under the cap is ~30 min. If a shard hits the wall,
+    # Mixed-mode tests execute both sloppy and strict variants. Allow room
+    # for both passes of the largest shards. If a shard hits the wall,
     # GH kills it and the merge job still runs.
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
@@ -46,7 +46,7 @@ jobs:
           # plus lowercase: d e g i p u (which start lowercase top-levels like
           # "decodeURIComponent", "encodeURI", "eval", "globalThis",
           # "isFinite", "isNaN", "parseFloat", "parseInt", "undefined").
-          - { id: 'builtins-A', prefix: 'built-ins/A', exclude: '' }
+          - { id: 'builtins-A', prefix: 'built-ins/A', exclude: 'built-ins/Array' }
           - { id: 'builtins-Array', prefix: 'built-ins/Array', exclude: '' }
           - { id: 'builtins-B', prefix: 'built-ins/B', exclude: '' }
           - { id: 'builtins-D', prefix: 'built-ins/D', exclude: '' }
@@ -383,6 +383,18 @@ jobs:
             echo "Rebase conflict; snapshot is in the compat-report artifact."
             exit 0
           fi
+          php <<'PHP'
+          <?php
+          define('COMPAT_REPORT_LIB_ONLY', true);
+          require 'bin/compat-report';
+          $snapshot = json_decode(file_get_contents('compat.json'), true, 512, JSON_THROW_ON_ERROR);
+          $expected = $snapshot['state']['runIdentity'] ?? null;
+          if (!is_string($expected) || $expected !== buildCompatRunIdentity(getcwd())) {
+              fwrite(STDERR, "Rebased source does not match the compatibility snapshot; refusing to publish stale results.\n");
+              fwrite(STDERR, "The completed snapshot remains available in the compat-report artifact.\n");
+              exit(1);
+          }
+          PHP
           if ! git push origin "HEAD:$COMPAT_TARGET_BRANCH"; then
             echo "Push failed; snapshot is in the compat-report artifact."
             exit 0

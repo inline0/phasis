@@ -111,7 +111,7 @@ trait StatementParser
         }
 
         // `using` as a declaration keyword: `using x = expr`
-        if ($token->type === TokenType::Identifier && $token->value === 'using') {
+        if ($token->type === TokenType::Identifier && $token->value === 'using' && !$this->peek()->lineTerminatorBefore) {
             $next = $this->peek();
             if (
                 $next->type === TokenType::Identifier
@@ -129,13 +129,14 @@ trait StatementParser
         // `await using x = expr` (top-level or inside async)
         if ($token->type === TokenType::Await) {
             $next = $this->peek();
-            if ($next->type === TokenType::Identifier && $next->value === 'using') {
+            if ($next->type === TokenType::Identifier && $next->value === 'using' && !$next->lineTerminatorBefore) {
                 $savedPos = $this->pos;
                 $this->advance(); // consume 'await'
                 $this->advance(); // consume 'using'
                 $afterUsing = $this->current();
                 $this->pos = $savedPos;
                 if (
+                    !$afterUsing->lineTerminatorBefore && (
                     $afterUsing->type === TokenType::Identifier
                     || $afterUsing->type === TokenType::Await
                     || $afterUsing->type === TokenType::Yield
@@ -143,6 +144,7 @@ trait StatementParser
                     || $afterUsing->type === TokenType::Async
                     || $afterUsing->type === TokenType::Static_
                     || $afterUsing->type === TokenType::Of
+                    )
                 ) {
                     $this->advance(); // consume 'await'
                     return $this->parseUsingDeclaration(true);
@@ -601,8 +603,21 @@ trait StatementParser
         $kind = $isAwait ? 'await using' : 'using';
         $declarations = [];
 
+        if ($this->moduleTopLevel && !$this->moduleMode) {
+            throw new ParseError('Using declarations are not allowed at script top level', $token);
+        }
+        if ($isAwait && !$this->inAsync && !($this->topLevel && $this->moduleMode)) {
+            throw new ParseError('Await using requires an async context', $token);
+        }
         do {
-            $declarations[] = $this->parseVariableDeclarator();
+            $declaration = $this->parseVariableDeclarator();
+            if (!$declaration->id instanceof Identifier || $declaration->id->name === 'let') {
+                throw new ParseError('Using declarations require a binding identifier', $token);
+            }
+            if ($declaration->init === null) {
+                throw new ParseError('Missing initializer in using declaration', $token);
+            }
+            $declarations[] = $declaration;
         } while ($this->eat(TokenType::Comma));
 
         $this->consumeSemicolon();
@@ -1493,9 +1508,9 @@ trait StatementParser
      * assignments (`+=`, `*=`, etc.), only a simple target (Identifier or
      * MemberExpression) is allowed — destructuring is forbidden.
      */
-    private static function isValidAssignmentTarget(Node $node, bool $allowPattern): bool
+    private function isValidAssignmentTarget(Node $node, bool $allowPattern): bool
     {
-        if (self::isSimpleAssignmentTarget($node)) {
+        if ($this->isSimpleAssignmentTarget($node)) {
             return true;
         }
         if ($allowPattern) {
@@ -1523,7 +1538,7 @@ trait StatementParser
      * Covers Identifier and MemberExpression (including computed member,
      * optional chain non-terminal, and super references).
      */
-    private static function isSimpleAssignmentTarget(Node $node): bool
+    private function isSimpleAssignmentTarget(Node $node): bool
     {
         if ($node instanceof Identifier) {
             // `eval` and `arguments` would be restricted in strict mode but
@@ -1537,7 +1552,9 @@ trait StatementParser
             // optional.
             return !self::memberExpressionIsOptional($node);
         }
-        // ParenthesizedExpression is transparent — look inside.
+        if (!$this->strictMode && $node instanceof CallExpression) {
+            return !self::endsInOptionalChain($node);
+        }
         return false;
     }
 
@@ -1850,6 +1867,9 @@ trait StatementParser
             );
         }
         if ($node instanceof ObjectExpression) {
+            if ($this->arrayExpressionsWithTrailingCommaAfterRest->offsetExists($node)) {
+                throw new \Phasis\Exceptions\SyntaxError('Object rest element may not have a trailing comma');
+            }
             $count = count($node->properties);
             for ($i = 0; $i < $count; $i++) {
                 $prop = $node->properties[$i];
@@ -1966,6 +1986,7 @@ trait StatementParser
         if (
             !($node instanceof Identifier)
             && !($node instanceof MemberExpression)
+            && !(!$this->strictMode && $node instanceof CallExpression && !self::endsInOptionalChain($node))
             && !($node instanceof \Phasis\Ast\Pattern\ArrayPattern)
             && !($node instanceof \Phasis\Ast\Pattern\ObjectPattern)
             && !($node instanceof \Phasis\Ast\Pattern\AssignmentPattern)
@@ -3237,10 +3258,31 @@ trait StatementParser
                 || $this->peekIs(TokenType::Of)
                 || $this->peekIs(TokenType::Async));
 
-        // for (var/let/const ...
-        if ($this->check(TokenType::Var) || $isLetDecl || $this->check(TokenType::Const_)) {
+        $usingAwait = $this->check(TokenType::Await)
+            && $this->peek()->value === 'using'
+            && !$this->peek()->lineTerminatorBefore;
+        $usingOffset = $usingAwait ? 1 : 0;
+        $usingToken = $this->tokens[$this->pos + $usingOffset] ?? null;
+        $usingBinding = $this->tokens[$this->pos + $usingOffset + 1] ?? null;
+        $isUsingDecl = $usingToken?->type === TokenType::Identifier
+            && $usingToken->value === 'using'
+            && $usingBinding !== null
+            && !$usingBinding->lineTerminatorBefore
+            && in_array($usingBinding->type, [TokenType::Identifier, TokenType::Await, TokenType::Yield,
+                TokenType::Let, TokenType::Async, TokenType::Static_, TokenType::Of], true);
+        // A bare `using of` remains an identifier in a for-of expression head.
+        if ($isUsingDecl && !$usingAwait && $usingBinding->type === TokenType::Of) {
+            $isUsingDecl = ($this->tokens[$this->pos + 2]->type ?? null) === TokenType::Equal;
+        }
+        if ($this->check(TokenType::Var) || $isLetDecl || $this->check(TokenType::Const_) || $isUsingDecl) {
+            if ($isUsingDecl && $usingAwait) {
+                if (!$this->inAsync && !($this->topLevel && $this->moduleMode)) {
+                    throw new ParseError('Await using requires an async context', $this->current());
+                }
+                $this->advance();
+            }
             $kindToken = $this->advance();
-            $kind = $kindToken->value;
+            $kind = $isUsingDecl ? ($usingAwait ? 'await using' : 'using') : $kindToken->value;
             $id = $this->parseBindingPattern();
             // Per §13.3.1.1 early errors: let-bindings can't bind `let`,
             // and the pattern must not repeat a name.
@@ -3274,6 +3316,10 @@ trait StatementParser
                 }
             }
             $init = null;
+
+            if ($isUsingDecl && (!$id instanceof Identifier || $id->name === 'let' || $this->check(TokenType::In))) {
+                throw new ParseError('Invalid using declaration in for head', $kindToken);
+            }
 
             // for (var x in ...) -- not valid with await
             if ($this->check(TokenType::In) && !$isAwait) {
@@ -3386,8 +3432,11 @@ trait StatementParser
             // must have initializers. The for-of/for-in branches bypass
             // this requirement (the iteration value initializes the
             // binding); we already returned for those above.
-            if ($kind === 'const') {
+            if ($kind === 'const' || $isUsingDecl) {
                 foreach ($declarations as $d) {
+                    if ($isUsingDecl && (!$d->id instanceof Identifier || $d->id->name === 'let')) {
+                        throw new ParseError('Invalid using binding identifier', $kindToken);
+                    }
                     if ($d->init === null) {
                         throw new ParseError(
                             "Missing initializer in const declaration",
@@ -3461,7 +3510,7 @@ trait StatementParser
         if ($this->check(TokenType::In) && !$isAwait) {
             // Per §14.7.5.1: for-in LHS must be a valid AssignmentTarget
             // (or destructuring pattern).
-            if (!self::isValidAssignmentTarget($init, true)) {
+            if (!$this->isValidAssignmentTarget($init, true)) {
                 throw new ParseError(
                     'Invalid left-hand side in for-in',
                     $this->current(),
@@ -3483,7 +3532,7 @@ trait StatementParser
 
         if ($this->check(TokenType::Of)) {
             // Per §14.7.5.1: for-of LHS must be a valid AssignmentTarget.
-            if (!self::isValidAssignmentTarget($init, true)) {
+            if (!$this->isValidAssignmentTarget($init, true)) {
                 throw new ParseError(
                     'Invalid left-hand side in for-of',
                     $this->current(),
@@ -3598,7 +3647,11 @@ trait StatementParser
                 && !$this->check(TokenType::RightBrace)
                 && !$this->isAtEnd()
             ) {
-                $consequent[] = $this->parseStatementOrDeclaration();
+                $statement = $this->parseStatementOrDeclaration();
+                if ($statement instanceof VariableDeclaration && in_array($statement->kind, ['using', 'await using'], true)) {
+                    throw new ParseError('Using declarations require a block within a switch case', $this->current());
+                }
+                $consequent[] = $statement;
             }
         } finally {
             $this->moduleTopLevel = $prevModuleTopLevel;

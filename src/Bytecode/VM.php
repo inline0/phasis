@@ -870,8 +870,19 @@ final class VM
                             if ($ic !== null && $ic[1] === \Phasis\Runtime\Environment::$globalBindingsVersion) {
                                 $stack[$sp++] = $ic[0];
                             } else {
-                                $resolved = $env->get($names[$code[$pc + 1]], $strict);
-                                $cf->loadNameIc[$pc] = [$resolved, \Phasis\Runtime\Environment::$globalBindingsVersion];
+                                $name = $names[$code[$pc + 1]];
+                                $resolved = $env->get($name, $strict);
+                                // Object-backed globals and accessors can change
+                                // without an Environment mutation. Only cache
+                                // declarative bindings covered by its version.
+                                if ($env->findBindingDepth($name) !== null) {
+                                    $cf->loadNameIc[$pc] = [
+                                        $resolved,
+                                        \Phasis\Runtime\Environment::$globalBindingsVersion,
+                                    ];
+                                } else {
+                                    unset($cf->loadNameIc[$pc]);
+                                }
                                 $stack[$sp++] = $resolved;
                             }
                             $pc += 2;

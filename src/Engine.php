@@ -627,10 +627,11 @@ class Engine
                 }
                 $radix = 10;
                 if (isset($args[0]) && !($args[0] instanceof \Phasis\Value\JsUndefined)) {
-                    $radix = (int) $args[0]->toNumber();
-                    if ($radix < 2 || $radix > 36) {
+                    $radixValue = TypeConversion::toIntegerOrInfinity($args[0]);
+                    if ($radixValue < 2 || $radixValue > 36) {
                         throw new \Phasis\Exceptions\RangeError('toString() radix must be between 2 and 36');
                     }
+                    $radix = (int) $radixValue;
                 }
                 if ($radix === 10) {
                     return new \Phasis\Value\JsString($bigint->value);
@@ -1690,6 +1691,15 @@ class Engine
 
     public function eval(string $source): mixed
     {
+        return $this->evalScript($source);
+    }
+
+    /**
+     * Execute a global script in this realm, optionally draining queued work.
+     * Separate scripts share global bindings and determine their own strictness.
+     */
+    public function evalScript(string $source, bool $drainEventLoop = true): mixed
+    {
         $parser = new Parser($source);
         $program = $parser->parse();
         // Capture any `//# sourceURL=URL` directive so stack traces emitted
@@ -1704,8 +1714,12 @@ class Engine
         // realm's globals rather than a sibling Engine that wrote the
         // static last (e.g. a ShadowRealm constructed earlier).
         $previousInterpreter = self::$currentInterpreter;
+        $previousStrictMode = $this->interpreter->isStrictMode();
+        $previousEvalContext = $this->interpreter->isEvalContext();
         self::$currentInterpreter = $this->interpreter;
         try {
+            $this->interpreter->setStrictMode(false);
+            $this->interpreter->setEvalContext(false);
             $result = $this->interpreter->execute($program);
             // Drain the full event loop: microtasks first, then any
             // due timers, then advance the virtual clock to fire
@@ -1714,9 +1728,13 @@ class Engine
             // `setTimeout(cb, 100)` get the callback to fire before
             // eval returns; programs with leaked setIntervals trip
             // the runUntilEmpty iteration cap.
-            $this->eventLoop->runUntilEmpty();
+            if ($drainEventLoop) {
+                $this->eventLoop->runUntilEmpty();
+            }
             return $this->toPhp($result);
         } finally {
+            $this->interpreter->setStrictMode($previousStrictMode);
+            $this->interpreter->setEvalContext($previousEvalContext);
             self::$currentInterpreter = $previousInterpreter;
             if ($sourceUrl !== null) {
                 self::popSourceURL();

@@ -60,17 +60,26 @@ trait InstantSection
                 if (!($su instanceof JsUndefined)) {
                     $smallestUnit = TypeConversion::toString($su);
                     $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
-                    $validUnits = ['minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-                    if (!in_array($smallestUnit, $validUnits, true)) {
-                        throw new RangeError("Invalid smallestUnit for toString: {$smallestUnit}");
-                    }
-                    // smallestUnit overrides fractionalSecondDigits.
-                    $unitToDigits = [
-                        'minute' => 0, 'second' => 0,
-                        'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
-                    ];
-                    $fractionalSecondDigits = $unitToDigits[$smallestUnit];
                 }
+            }
+            $timeZone = null;
+            if ($options instanceof JsObject) {
+                $tz = $options->get('timeZone');
+                if (!($tz instanceof JsUndefined)) {
+                    $timeZone = self::toTemporalTimeZoneIdentifier($tz);
+                }
+            }
+            if ($smallestUnit !== null) {
+                $validUnits = ['minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                if (!in_array($smallestUnit, $validUnits, true)) {
+                    throw new RangeError("Invalid smallestUnit for toString: {$smallestUnit}");
+                }
+                // smallestUnit overrides fractionalSecondDigits.
+                $unitToDigits = [
+                    'minute' => 0, 'second' => 0,
+                    'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
+                ];
+                $fractionalSecondDigits = $unitToDigits[$smallestUnit];
             }
             // Round the ns if needed.
             if ($smallestUnit !== null && $smallestUnit !== 'nanosecond') {
@@ -91,13 +100,6 @@ trait InstantSection
                 ];
                 if (isset($digitsToNs[$fractionalSecondDigits])) {
                     $ns = self::roundInstantNs($ns, $digitsToNs[$fractionalSecondDigits], $roundingMode);
-                }
-            }
-            $timeZone = null;
-            if ($options instanceof JsObject) {
-                $tz = $options->get('timeZone');
-                if (!($tz instanceof JsUndefined)) {
-                    $timeZone = self::toTemporalTimeZoneIdentifier($tz);
                 }
             }
             $omitSec = $smallestUnit === 'minute';
@@ -157,7 +159,7 @@ trait InstantSection
                 throw new TypeError('options parameter is required');
             }
             if ($roundTo instanceof JsString) {
-                $opt = new JsObject();
+                $opt = JsObject::createNullPrototype();
                 $opt->set('smallestUnit', $roundTo);
                 $roundTo = $opt;
             }
@@ -168,9 +170,9 @@ trait InstantSection
                 'hour', 'minute', 'second',
                 'millisecond', 'microsecond', 'nanosecond',
             ];
-            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', $validUnits, true);
-            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
+            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
+            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', $validUnits, true);
             if ($increment > 1) {
                 // Instant uses solar day (86400s) as the max for all units.
                 $maxForSolarDay = [
@@ -213,7 +215,7 @@ trait InstantSection
             }
             self::applyNewTargetPrototype($this_, $proto);
             $arg = $args[0] ?? JsUndefined::instance();
-            $ns = self::toBigIntNsFromArg($arg);
+            $ns = TypeConversion::toBigInt($arg)->value;
             self::validateInstantRange($ns);
             $this_->defineOwnProperty('[[EpochNanoseconds]]', PropertyDescriptor::data(
                 new JsString($ns),

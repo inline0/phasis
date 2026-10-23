@@ -21,6 +21,9 @@ use Phasis\Value\JsValue;
 
 class IteratorConstructor
 {
+    use Iterator_\AdditionalMethods;
+    use Iterator_\JointIteration;
+
     private static ?JsObject $iteratorHelperPrototype = null;
     private static ?JsObject $wrapForValidIteratorPrototype = null;
 
@@ -149,6 +152,10 @@ class IteratorConstructor
         self::installMethod($iteratorPrototype, 'some', self::someMethod(), 1);
         self::installMethod($iteratorPrototype, 'every', self::everyMethod(), 1);
         self::installMethod($iteratorPrototype, 'find', self::findMethod(), 1);
+        self::installMethod($iteratorPrototype, 'includes', self::includesMethod(), 1);
+        self::installMethod($iteratorPrototype, 'join', self::joinMethod(), 1);
+        self::installMethod($iteratorPrototype, 'chunks', self::chunksMethod(), 1);
+        self::installMethod($iteratorPrototype, 'windows', self::windowsMethod(), 1);
 
         $fromFn = JsFunction::fromCallable('from', self::fromMethod($iteratorPrototype), 1);
         $fromFn->setNonConstructable();
@@ -157,6 +164,8 @@ class IteratorConstructor
         $concatFn = JsFunction::fromCallable('concat', self::concatMethod(), 0);
         $concatFn->setNonConstructable();
         $iteratorCtor->defineOwnProperty('concat', PropertyDescriptor::data($concatFn, true, false, true));
+        self::installMethod($iteratorCtor, 'zip', self::zipMethod(false), 1);
+        self::installMethod($iteratorCtor, 'zipKeyed', self::zipMethod(true), 1);
 
         // %IteratorPrototype% [@@dispose] per spec sec-%iteratorprototype%-@@dispose.
         $disposeFn = JsFunction::fromCallable('[Symbol.dispose]', function (JsValue $this_, array $args): JsValue {
@@ -220,7 +229,7 @@ class IteratorConstructor
      *     to the currently-active inner iterator.
      */
     private static function createIteratorHelper(
-        JsObject $ui,
+        ?JsObject $ui,
         JsValue $un,
         \Closure $step,
         ?\Closure $onReturn = null,
@@ -235,6 +244,7 @@ class IteratorConstructor
             public bool $done = false;
             public bool $alive = true;
             public bool $running = false;
+            public bool $started = false;
         };
 
         $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($state, $step): JsValue {
@@ -245,6 +255,7 @@ class IteratorConstructor
                 return self::iterResult(JsUndefined::instance(), true);
             }
             $state->running = true;
+            $state->started = true;
             try {
                 $result = $step($state->done, $state->alive);
             } catch (\Throwable $e) {
@@ -266,13 +277,25 @@ class IteratorConstructor
                 $state->alive = false;
                 if (!$state->done) {
                     $state->done = true;
-                    // Forward return() to any active inner iterator (e.g. flatMap).
-                    if ($onReturn !== null) {
-                        $onReturn();
-                    }
-                    $returnMethod = $ui->get('return');
-                    if ($returnMethod instanceof JsFunction) {
-                        return $returnMethod->call($ui, []);
+                    // Closing before the first next completes immediately;
+                    // closing a suspended yield executes the helper body.
+                    $state->running = $state->started;
+                    try {
+                        if ($onReturn !== null) {
+                            try {
+                                $onReturn();
+                            } catch (\Throwable $e) {
+                                if ($ui !== null) {
+                                    self::closeIterator($ui, true);
+                                }
+                                throw $e;
+                            }
+                        }
+                        if ($ui !== null) {
+                            self::closeIterator($ui);
+                        }
+                    } finally {
+                        $state->running = false;
                     }
                 }
                 return self::iterResult(JsUndefined::instance(), true);
@@ -328,15 +351,21 @@ class IteratorConstructor
 
     private static function closeIterator(JsObject $it, bool $suppress = false): void
     {
-        $rm = $it->get('return');
-        if ($rm instanceof JsFunction) {
-            if ($suppress) {
-                try {
-                    $rm->call($it, []);
-                } catch (\Throwable) {
-                }
-            } else {
-                $rm->call($it, []);
+        try {
+            $rm = $it->get('return');
+            if ($rm instanceof JsUndefined || $rm instanceof JsNull) {
+                return;
+            }
+            if (!$rm instanceof JsFunction) {
+                throw new TypeError('Iterator return is not a function');
+            }
+            $result = $rm->call($it, []);
+            if (!$result instanceof JsObject) {
+                throw new TypeError('Iterator return result is not an object');
+            }
+        } catch (\Throwable $e) {
+            if (!$suppress) {
+                throw $e;
             }
         }
     }
@@ -349,6 +378,9 @@ class IteratorConstructor
         }
         if ($n === INF) {
             return INF;
+        }
+        if ($n > 9007199254740991.0) {
+            throw new \Phasis\Exceptions\RangeError('Invalid limit');
         }
         $i = $n >= 0 ? floor($n) : ceil($n);
         if ($i < 0) {
@@ -627,7 +659,7 @@ class IteratorConstructor
                         $ii = $inner->iter;
                         $inner->iter = null;
                         $inner->done = true;
-                        self::closeIterator($ii, true);
+                        self::closeIterator($ii);
                     }
                 },
             );
@@ -895,130 +927,47 @@ class IteratorConstructor
                 $iterables[] = ['openMethod' => $method, 'iterable' => $item];
             }
 
-            // Step 3-6: Create an IteratorHelper that lazily iterates through each iterable.
-            $helper = new JsObject(self::$iteratorHelperPrototype);
-            $done = false;
-            $started = false;
-            $running = false;
-            $iterableIndex = 0;
-            $innerIt = null;
-
-            $nextFn = JsFunction::fromCallable(
-                'next',
-                function (
-                    JsValue $thisVal,
-                    array $nextArgs
-                ) use (
-                    &$done,
-                    &$started,
-                    &$running,
-                    &$iterables,
-                    &$iterableIndex,
-                    &$innerIt,
-                ): JsValue {
-                    if ($running) {
-                        throw new TypeError('Cannot call next on a running iterator helper');
-                    }
-                    if ($done) {
-                        return self::iterResult(JsUndefined::instance(), true);
-                    }
-                    $running = true;
-                    $started = true;
-                    try {
-                        while (true) {
-                            // If we have an active inner iterator, try to get next value from it.
-                            if ($innerIt !== null) {
-                                $nextMethod = $innerIt->get('next');
-                                if (!$nextMethod instanceof JsFunction) {
-                                    $done = true;
-                                    throw new TypeError('Iterator next is not a function');
-                                }
-                                $result = $nextMethod->call($innerIt, []);
-                                if (!$result instanceof JsObject) {
-                                    $done = true;
-                                    throw new TypeError('Iterator result is not an object');
-                                }
-                                // Check done. If the done getter throws, that propagates.
-                                if (!TypeConversion::toBoolean($result->get('done'))) {
-                                    // Not done: yield the raw result object from the inner iterator.
-                                    // Per spec, GeneratorYield passes the iterator result directly.
-                                    $running = false;
-                                    return $result;
-                                }
-                                // Inner iterator exhausted. Move to next iterable.
-                                $innerIt = null;
+            $state = new class {
+                public int $index = 0;
+                public ?JsObject $iterator = null;
+                public ?JsValue $next = null;
+            };
+            return self::createIteratorHelper(
+                null,
+                JsUndefined::instance(),
+                function (bool &$done, bool &$alive) use ($iterables, $state): JsObject {
+                    while (true) {
+                        if ($state->iterator !== null) {
+                            $innerDone = false;
+                            [$value, $finished] = self::iteratorStep(
+                                $state->iterator,
+                                $state->next ?? JsUndefined::instance(),
+                                $innerDone,
+                            );
+                            if (!$finished) {
+                                return self::iterResult($value, false);
                             }
-
-                            // Move to next iterable in the list.
-                            if ($iterableIndex >= count($iterables)) {
-                                $done = true;
-                                $running = false;
-                                return self::iterResult(JsUndefined::instance(), true);
-                            }
-
-                            $record = $iterables[$iterableIndex];
-                            $iterableIndex++;
-
-                            // Call the open method to get an iterator.
-                            $iter = $record['openMethod']->call($record['iterable'], []);
-                            if (!$iter instanceof JsObject) {
-                                $done = true;
-                                throw new TypeError('Symbol.iterator result is not an object');
-                            }
-                            $innerIt = $iter;
+                            $state->iterator = null;
                         }
-                    } catch (\Throwable $e) {
-                        $done = true;
-                        $innerIt = null;
-                        $running = false;
-                        throw $e;
+                        if ($state->index >= count($iterables)) {
+                            $done = true;
+                            $alive = false;
+                            return self::iterResult(JsUndefined::instance(), true);
+                        }
+                        $record = $iterables[$state->index++];
+                        $iterator = $record['openMethod']->call($record['iterable'], []);
+                        if (!$iterator instanceof JsObject) {
+                            throw new TypeError('Symbol.iterator result is not an object');
+                        }
+                        [$state->iterator, $state->next] = self::getIteratorDirect($iterator);
                     }
                 },
-                0,
-            );
-
-            $returnFn = JsFunction::fromCallable(
-                'return',
-                function (
-                    JsValue $thisVal,
-                    array $returnArgs
-                ) use (
-                    &$done,
-                    &$started,
-                    &$running,
-                    &$innerIt,
-                ): JsValue {
-                    if ($running) {
-                        throw new TypeError('Cannot call return on a running iterator helper');
+                function () use ($state): void {
+                    if ($state->iterator !== null) {
+                        self::closeIterator($state->iterator);
                     }
-                    if (!$started || $done) {
-                        $done = true;
-                        return self::iterResult(JsUndefined::instance(), true);
-                    }
-                    $done = true;
-                    if ($innerIt !== null) {
-                        $currentInner = $innerIt;
-                        $innerIt = null;
-                        $returnMethod = $currentInner->get('return');
-                        if ($returnMethod instanceof JsFunction) {
-                            $running = true;
-                            try {
-                                $returnMethod->call($currentInner, []);
-                            } catch (\Throwable $e) {
-                                $running = false;
-                                throw $e;
-                            }
-                            $running = false;
-                        }
-                    }
-                    return self::iterResult(JsUndefined::instance(), true);
                 },
-                0,
             );
-
-            $helper->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
-            $helper->defineOwnProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
-            return $helper;
         };
     }
 

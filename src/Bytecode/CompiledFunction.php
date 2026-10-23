@@ -25,9 +25,9 @@ final class CompiledFunction
      * JsValue at first dispatch; subsequent LOAD_NAMEs at the same PC
      * skip the Environment walk entirely.
      *
-     * Soundness: invalidated by Environment::set, which bumps a global
-     * counter. Each cache entry carries the counter value at capture
-     * time; on read, mismatch forces a re-resolve.
+     * Only declarative bindings are cached. Object-backed globals,
+     * getters, imports and with bindings are resolved on every read.
+     * Environment::set invalidates cached values through a global counter.
      *
      * @var array<int, array{0: JsValue, 1: int}>
      */

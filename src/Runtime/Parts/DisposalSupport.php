@@ -108,100 +108,55 @@ trait DisposalSupport
     /** Register a disposable resource on the given environment. */
     private function registerDisposable(JsValue $value, bool $isAsync, Environment $env): void
     {
-        // Per spec AddDisposableResource: when sync-dispose, null/undefined
-        // are accepted and the binding is non-disposable. When async-dispose,
-        // null/undefined are also accepted (covered below).
-        if ($value instanceof JsNull || $value instanceof JsUndefined) {
-            if ($isAsync) {
-                // For async-dispose with null/undefined, also accept and skip.
-                return;
-            }
-            return;
+        $resource = \Phasis\Runtime\DisposableResource::create($value, $isAsync);
+        if ($resource !== null) {
+            $env->addDisposable($resource);
         }
-        if (!$value instanceof JsObject) {
-            throw new TypeError('Using declaration initializer is not an Object');
-        }
-        if ($isAsync) {
-            $asyncMethod = $value->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::asyncDispose());
-            $syncMethod = $value->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
-            if (
-                ($asyncMethod instanceof JsUndefined || $asyncMethod instanceof JsNull)
-                && ($syncMethod instanceof JsUndefined || $syncMethod instanceof JsNull)
-            ) {
-                throw new TypeError('The value does not have a dispose method.');
-            }
-        } else {
-            $method = $value->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
-            if ($method instanceof JsUndefined || $method instanceof JsNull) {
-                throw new TypeError('The value does not have a Symbol.dispose method.');
-            }
-            if (!$method instanceof JsFunction) {
-                throw new TypeError('Property [Symbol.dispose] is not a function.');
-            }
-        }
-        $env->addDisposable($value, $isAsync);
     }
 
-    /** Run disposals for the given environment in reverse order. */
+    /** Run captured disposal methods in reverse order, preserving abrupt completions. */
     private function runDisposals(Environment $env, ?JsValue $pendingError = null): Completion
     {
-        $disposables = $env->getDisposables();
-        if (empty($disposables) && $pendingError === null) {
-            return Completion::normal(JsUndefined::instance());
-        }
+        $disposables = $env->takeDisposables();
         $error = $pendingError;
-        for ($i = count($disposables) - 1; $i >= 0; $i--) {
-            [$resource, $isAsync] = $disposables[$i];
+        $needsAwait = false;
+        $hasAwaited = false;
+        $await = static function (JsValue $result): void {
+            if (\Fiber::getCurrent() !== null) {
+                \Fiber::suspend(new \Phasis\Value\AwaitSuspension($result));
+                return;
+            }
+            $promise = $result instanceof \Phasis\Value\JsPromise
+                ? $result : \Phasis\Value\JsPromise::resolved($result);
+            \Phasis\Value\JsPromise::drainMicrotasks();
+            if ($promise->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
+                throw new \Phasis\Exceptions\JsThrowable($promise->getResolvedValue());
+            }
+        };
+        foreach (array_reverse($disposables) as $resource) {
+            if (!$resource->async && $needsAwait && !$hasAwaited) {
+                $await(JsUndefined::instance());
+                $needsAwait = false;
+            }
+            if ($resource->method === null) {
+                $needsAwait = true;
+                continue;
+            }
             try {
-                if ($isAsync) {
-                    $method = $resource->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::asyncDispose());
-                    if ($method instanceof JsUndefined || $method instanceof JsNull) {
-                        $method = $resource->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
-                    }
-                } else {
-                    $method = $resource->getBySymbol(\Phasis\BuiltIn\SymbolConstructor::dispose());
+                $result = $resource->method->call($resource->value, []);
+                if ($resource->async) {
+                    $hasAwaited = true;
+                    $await($result);
                 }
-                if ($method instanceof JsFunction) {
-                    $result = $method->call($resource, []);
-                    if ($isAsync) {
-                        // Per spec, an async dispose always Awaits the result,
-                        // even when it is a non-promise. If we are running
-                        // inside an async function Fiber, suspend per dispose
-                        // so each Await yields a microtask tick to the caller.
-                        $fiber = \Fiber::getCurrent();
-                        if ($fiber !== null && $env->getEnclosingFunctionKind() === 'async') {
-                            try {
-                                \Fiber::suspend(new \Phasis\Value\AwaitSuspension($result));
-                            } catch (\Phasis\Exceptions\JsThrowable $e) {
-                                throw $e;
-                            }
-                        } elseif ($result instanceof \Phasis\Value\JsPromise) {
-                            \Phasis\Value\JsPromise::drainMicrotasks();
-                            // Propagate a rejected dispose promise as a thrown
-                            // value so it gets chained into a SuppressedError
-                            // if an outer error is already pending, or surfaces
-                            // as the error otherwise.
-                            if ($result->getState() === \Phasis\Value\JsPromise::STATE_REJECTED) {
-                                throw new \Phasis\Exceptions\JsThrowable($result->getResolvedValue());
-                            }
-                        }
-                    }
-                } else {
-                    throw new TypeError('Property [Symbol.dispose] is not a function.');
-                }
-            } catch (\Throwable $e) {
-                $newError = $this->phpExceptionToJsValue($e);
-                if ($error !== null) {
-                    $error = $this->createSuppressedError($newError, $error);
-                } else {
-                    $error = $newError;
-                }
+            } catch (\Throwable $exception) {
+                $newError = $this->phpExceptionToJsValue($exception);
+                $error = $error === null ? $newError : $this->createSuppressedError($newError, $error);
             }
         }
-        if ($error !== null) {
-            return Completion::throw($error);
+        if ($needsAwait && !$hasAwaited) {
+            $await(JsUndefined::instance());
         }
-        return Completion::normal(JsUndefined::instance());
+        return $error !== null ? Completion::throw($error) : Completion::normal(JsUndefined::instance());
     }
 
     /** Convert a PHP exception into a JS value for SuppressedError chaining. */
@@ -270,6 +225,20 @@ trait DisposalSupport
         $obj->set('name', new JsString('SuppressedError'));
         $obj->set('message', new JsString(''));
         return $obj;
+    }
+
+    /**
+     * Evaluate a scope body and dispose its resources on both returned and thrown completions.
+     * @param list<Node> $body
+     */
+    private function executeDisposableBody(array $body, Environment $env): Completion
+    {
+        try {
+            $completion = $this->executeBody($body, $env);
+        } catch (\Phasis\Exceptions\JsThrowable | \Phasis\Exceptions\RuntimeError $error) {
+            $completion = Completion::throw($this->phpExceptionToJsValue($error));
+        }
+        return $this->applyDisposals($env, $completion);
     }
 
     /** Apply disposals for an environment and return the merged completion. */

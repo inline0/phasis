@@ -147,6 +147,14 @@ class JsDeferredModuleNamespace extends JsObject
         return parent::get($name);
     }
 
+    public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
+    {
+        if (!$this->bypassTrigger && !$this->shouldSkipTrigger($name)) {
+            $this->ensureEvaluated();
+        }
+        return parent::getWithValueReceiver($name, $receiver);
+    }
+
     public function has(string $name): bool
     {
         if (!$this->bypassTrigger && !$this->shouldSkipTrigger($name)) {

@@ -218,7 +218,7 @@ class TypedArrayConstructor
                         'Uint8Array.prototype.setFromBase64 called on incompatible receiver'
                     );
                 }
-                $this_->validateNotDetached();
+                $this_->validateNotDetached(true);
 
                 $strVal = $args[0] ?? JsUndefined::instance();
                 if (!$strVal instanceof JsString) {
@@ -240,6 +240,12 @@ class TypedArrayConstructor
                 $lookup = array_flip(str_split($chars));
 
                 $targetLen = $this_->getLength();
+                if ($targetLen === 0) {
+                    $result = new JsObject();
+                    $result->set('read', JsNumber::of(0.0));
+                    $result->set('written', JsNumber::of(0.0));
+                    return $result;
+                }
                 $written = 0;
                 $readCount = 0;
                 $inputLen = strlen($str);
@@ -289,6 +295,12 @@ class TypedArrayConstructor
                         $written += 3;
                         $chunk = [];
                         $readCount = $i;
+                        if ($written === $targetLen) {
+                            $result = new JsObject();
+                            $result->set('read', JsNumber::of((float) $readCount));
+                            $result->set('written', JsNumber::of((float) $written));
+                            return $result;
+                        }
                     }
                 }
 
@@ -316,6 +328,10 @@ class TypedArrayConstructor
                 }
 
                 $chunkLen = count($chunk);
+
+                if ($padCount > 0 && $chunkLen < 2) {
+                    throw new SyntaxError('Invalid base64 padding');
+                }
 
                 if ($chunkLen === 0) {
                     $readCount = $inputLen;
@@ -472,7 +488,7 @@ class TypedArrayConstructor
                         'Uint8Array.prototype.setFromHex called on incompatible receiver'
                     );
                 }
-                $this_->validateNotDetached();
+                $this_->validateNotDetached(true);
 
                 $strVal = $args[0] ?? JsUndefined::instance();
                 if (!$strVal instanceof JsString) {
@@ -681,6 +697,10 @@ class TypedArrayConstructor
         }
 
         $chunkLen = count($chunk);
+
+        if ($padCount > 0 && $chunkLen < 2) {
+            throw new SyntaxError('Invalid base64 padding');
+        }
 
         if ($chunkLen === 0) {
             $readCount = $inputLen;

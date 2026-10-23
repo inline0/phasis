@@ -164,8 +164,9 @@ class JsNumber implements JsValue
         $negative = $value < 0;
         $abs = abs($value);
 
-        // Integer values in range < 1e21: no decimal point needed.
-        if (floor($abs) === $abs && $abs < 1e21) {
+        // Beyond the safe integer range, the shortest decimal can differ
+        // from the exact binary integer, so use the decimal conversion below.
+        if (floor($abs) === $abs && $abs <= 9007199254740991.0) {
             return number_format($value, 0, '', '');
         }
 

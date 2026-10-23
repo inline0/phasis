@@ -207,6 +207,9 @@ trait ReferenceResolution
             return new Reference($base, $key, $this->strictMode);
         }
 
+        if ($node instanceof CallExpression) {
+            $this->evaluate($node, $env);
+        }
         throw new ReferenceError('Invalid assignment target');
     }
 

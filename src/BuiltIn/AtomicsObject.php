@@ -174,8 +174,11 @@ class AtomicsObject
      * Validate that the argument is an integer TypedArray backed by a SharedArrayBuffer.
      * Per spec, Atomics methods require integer typed arrays on shared buffers.
      */
-    private static function validateIntegerTypedArray(JsValue $ta, bool $waitable = false): JsTypedArray
-    {
+    private static function validateIntegerTypedArray(
+        JsValue $ta,
+        bool $waitable = false,
+        bool $write = false,
+    ): JsTypedArray {
         if (!$ta instanceof JsTypedArray) {
             throw new TypeError('Atomics operation requires a typed array');
         }
@@ -194,7 +197,7 @@ class AtomicsObject
             );
         }
 
-        $ta->validateNotDetached();
+        $ta->validateNotDetached($write);
 
         return $ta;
     }
@@ -202,24 +205,27 @@ class AtomicsObject
     /**
      * Validate and convert an index for Atomics operations.
      *
-     * Per spec ValidateAtomicAccess, ToIndex(requestIndex) is called before
-     * the bounds check. ToIndex may invoke a `valueOf` that detaches the
-     * underlying buffer, so we must re-validate the buffer (TypeError on
-     * detached) before falling through to the RangeError bounds check.
+     * ValidateAtomicAccess uses the length witnessed before index coercion.
+     * Operations that access storage revalidate after all argument coercions.
      */
     private static function validateAtomicAccess(JsTypedArray $ta, JsValue $requestIndex): int
     {
-        $index = TypeConversion::toIndex($requestIndex);
-        // Detached-buffer check after coercion: a `valueOf`-driven detach
-        // surfaces as a TypeError per sm/Atomics/detached-buffers.js.
-        $ta->validateNotDetached();
         $length = $ta->getLength();
+        $index = TypeConversion::toIndex($requestIndex);
 
         if ($index < 0 || $index >= $length) {
             throw new RangeError('Invalid atomic access index');
         }
 
         return $index;
+    }
+
+    private static function revalidateAtomicAccess(JsTypedArray $ta, int $index): void
+    {
+        $ta->validateNotDetached();
+        if ($index >= $ta->getLength()) {
+            throw new RangeError('Invalid atomic access index');
+        }
     }
 
     /**
@@ -231,6 +237,8 @@ class AtomicsObject
     {
         $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance());
         $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
+
+        self::revalidateAtomicAccess($ta, $index);
 
         $value = $ta->getIndex($index);
         if (self::$loadSpinHook !== null) {
@@ -250,7 +258,7 @@ class AtomicsObject
      */
     private static function storeFn(JsValue $this_, array $args): JsValue
     {
-        $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance());
+        $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance(), write: true);
         $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
         $value = $args[2] ?? JsUndefined::instance();
 
@@ -262,7 +270,9 @@ class AtomicsObject
             $coerced = JsNumber::of(TypeConversion::toIntegerOrInfinity($value));
         }
 
-        $ta->setIndex($index, $value);
+        self::revalidateAtomicAccess($ta, $index);
+        $stored = $isBigInt ? $coerced : JsNumber::of(TypeConversion::toInt32($coerced));
+        $ta->setIndex($index, $stored);
 
         if (self::$storeNotifyHook !== null) {
             (self::$storeNotifyHook)($ta, $index);
@@ -278,18 +288,17 @@ class AtomicsObject
     private static function rmwFn(string $op): \Closure
     {
         return static function (JsValue $this_, array $args) use ($op): JsValue {
-            $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance());
+            $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance(), write: true);
             $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
             $value = $args[2] ?? JsUndefined::instance();
 
             $typeName = $ta->getTypeName();
             $isBigInt = in_array($typeName, ['BigInt64Array', 'BigUint64Array'], true);
 
-            // Read old value.
-            $oldValue = $ta->getIndex($index);
-
             if ($isBigInt) {
                 $operand = TypeConversion::toBigInt($value);
+                self::revalidateAtomicAccess($ta, $index);
+                $oldValue = $ta->getIndex($index);
                 $oldBig = ($oldValue instanceof \Phasis\Value\JsBigInt)
                     ? $oldValue
                     : TypeConversion::toBigInt($oldValue);
@@ -297,8 +306,13 @@ class AtomicsObject
                 $ta->setIndex($index, new \Phasis\Value\JsBigInt($result));
             } else {
                 $operandNum = TypeConversion::toIntegerOrInfinity($value);
+                self::revalidateAtomicAccess($ta, $index);
+                $oldValue = $ta->getIndex($index);
                 $oldNum = (int) TypeConversion::toNumber($oldValue);
-                $resultNum = self::intOp($op, $oldNum, (int) $operandNum);
+                // Reduce before host arithmetic: valid Number operands can
+                // exceed PHP's integer range or be infinite.
+                $operandInt = TypeConversion::toInt32(JsNumber::of($operandNum));
+                $resultNum = self::intOp($op, $oldNum, $operandInt);
                 $ta->setIndex($index, JsNumber::of((float) $resultNum));
             }
 
@@ -317,23 +331,21 @@ class AtomicsObject
      */
     private static function exchangeFn(JsValue $this_, array $args): JsValue
     {
-        $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance());
+        $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance(), write: true);
         $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
         $value = $args[2] ?? JsUndefined::instance();
 
-        // Read old value, write new value.
-        $oldValue = $ta->getIndex($index);
-
         $isBigInt = in_array($ta->getTypeName(), ['BigInt64Array', 'BigUint64Array'], true);
         if ($isBigInt) {
-            // Coerce to BigInt before storing (validates type).
-            TypeConversion::toBigInt($value);
+            $coerced = TypeConversion::toBigInt($value);
         } else {
-            // Coerce to number to validate before storing.
-            TypeConversion::toIntegerOrInfinity($value);
+            $coerced = JsNumber::of(TypeConversion::toIntegerOrInfinity($value));
         }
 
-        $ta->setIndex($index, $value);
+        self::revalidateAtomicAccess($ta, $index);
+        $oldValue = $ta->getIndex($index);
+        $stored = $isBigInt ? $coerced : JsNumber::of(TypeConversion::toInt32($coerced));
+        $ta->setIndex($index, $stored);
 
         if (self::$storeNotifyHook !== null) {
             (self::$storeNotifyHook)($ta, $index);
@@ -355,7 +367,7 @@ class AtomicsObject
      */
     private static function compareExchangeFn(JsValue $this_, array $args): JsValue
     {
-        $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance());
+        $ta = self::validateIntegerTypedArray($args[0] ?? JsUndefined::instance(), write: true);
         $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
         $expected = $args[2] ?? JsUndefined::instance();
         $replacement = $args[3] ?? JsUndefined::instance();
@@ -363,13 +375,13 @@ class AtomicsObject
         $typeName = $ta->getTypeName();
         $isBigInt = in_array($typeName, ['BigInt64Array', 'BigUint64Array'], true);
 
-        // Read current value.
-        $current = $ta->getIndex($index);
         $didWrite = false;
 
         if ($isBigInt) {
             $expectedBig = TypeConversion::toBigInt($expected);
             $replacementBig = TypeConversion::toBigInt($replacement);
+            self::revalidateAtomicAccess($ta, $index);
+            $current = $ta->getIndex($index);
             $currentBig = ($current instanceof \Phasis\Value\JsBigInt)
                 ? $current
                 : TypeConversion::toBigInt($current);
@@ -382,8 +394,10 @@ class AtomicsObject
                 $didWrite = true;
             }
         } else {
-            $expectedNum = (int) TypeConversion::toIntegerOrInfinity($expected);
+            $expectedNum = TypeConversion::toIntegerOrInfinity($expected);
             $replacementNum = TypeConversion::toIntegerOrInfinity($replacement);
+            self::revalidateAtomicAccess($ta, $index);
+            $current = $ta->getIndex($index);
             $currentNum = (int) TypeConversion::toNumber($current);
 
             // Per spec, the comparison happens after both expected and
@@ -391,9 +405,12 @@ class AtomicsObject
             // expected to the same range the storage layer would use so
             // values like 12345 in an Int8Array (stored as 57) still pass
             // the equality check when expectedValue passes 12345.
-            $expectedTruncated = self::truncateForElementType($typeName, $expectedNum);
+            $expectedTruncated = self::truncateForElementType(
+                $typeName,
+                TypeConversion::toInt32(JsNumber::of($expectedNum)),
+            );
             if ($currentNum === $expectedTruncated) {
-                $ta->setIndex($index, JsNumber::of($replacementNum));
+                $ta->setIndex($index, JsNumber::of(TypeConversion::toInt32(JsNumber::of($replacementNum))));
                 $didWrite = true;
             }
         }
@@ -755,9 +772,7 @@ class AtomicsObject
     {
         $sizeArg = $args[0] ?? JsUndefined::instance();
         $n = TypeConversion::toIntegerOrInfinity($sizeArg);
-        $size = (int) $n;
-
-        return new JsBoolean($size === 1 || $size === 2 || $size === 4 || $size === 8);
+        return new JsBoolean(in_array($n, [1.0, 2.0, 4.0, 8.0], true));
     }
 
     /**

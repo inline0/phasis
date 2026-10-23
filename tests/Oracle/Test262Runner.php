@@ -12,7 +12,7 @@ class Test262Runner
     private string $harnessDir;
     /** @var list<string> Features to skip */
     private array $skipFeatures = [];
-    /** @var array<string, string> Cached harness source (stripped frontmatter) */
+    /** @var array<string, string> Cached harness source */
     private array $harnessCache = [];
 
     /**
@@ -326,7 +326,7 @@ class Test262Runner
         // scoped via try/finally so it never leaks into the next test.
         $canBlock = in_array('CanBlockIsTrue', $flags, true);
 
-        // Skip raw tests (no harness)
+        // Raw tests run without harness injection or source transformations.
         $isRaw = in_array('raw', $flags, true);
         $isAsync = in_array('async', $flags, true);
         $isModule = in_array('module', $flags, true);
@@ -341,13 +341,15 @@ class Test262Runner
         $modes = [];
         if ($isModule) {
             $modes[] = 'module';
+        } elseif ($isRaw) {
+            $modes[] = 'sloppy';
         } elseif ($onlyStrict) {
             $modes[] = 'strict';
         } elseif ($noStrict) {
             $modes[] = 'sloppy';
         } else {
             $modes[] = 'sloppy';
-            // We'll start with sloppy only for now
+            $modes[] = 'strict';
         }
 
         if ($canBlock) {
@@ -379,6 +381,20 @@ class Test262Runner
         bool $isRaw,
         bool $isAsync = false,
     ): TestResult {
+        // Negative tests must fail in the declared phase. Parsing separately
+        // prevents a runtime SyntaxError from satisfying an early-error test.
+        if ($negative !== null) {
+            $parseSource = $mode === 'strict' ? '"use strict";' . "\n" . $source : $source;
+            try {
+                \Phasis\Parser\Parser::parseSource($parseSource, $mode === 'module' ? 'module' : 'script');
+            } catch (\Throwable $error) {
+                return $this->thrownResult($testPath, $error, $negative, 'parse');
+            }
+            if (($negative['phase'] ?? 'runtime') === 'parse') {
+                return new TestResult($testPath, TestStatus::Fail, 'Expected a parse error, but parsing succeeded');
+            }
+        }
+
         // Run in-process for speed (~100x faster than subprocess per test)
         $engine = new Engine(eager: true);
         // test262 tests may iterate over large Unicode ranges. Raise the loop limit
@@ -426,20 +442,23 @@ class Test262Runner
         // tests like sort_large_countingsort.js call it ~400k times.
         $this->registerFastAssertInstaller($engine);
 
-        // For async tests, install $DONE and track completion.
-        $asyncResult = null;
-        $asyncError = null;
+        // The official doneprintHandle harness reports completion through print.
+        // Keep its state in PHP so test globals cannot accidentally erase it.
+        $asyncState = ['done' => false, 'error' => null];
         if ($isAsync) {
-            $engine->setGlobal('__asyncDone', false);
-            $engine->setGlobal('__asyncError', null);
-            $engine->eval(<<<'JS'
-            function $DONE(error) {
-                __asyncDone = true;
-                if (error) {
-                    __asyncError = error;
-                }
-            }
-            JS);
+            $engine->getGlobalEnv()->set('print', \Phasis\Value\JsFunction::fromCallable(
+                'print',
+                static function (\Phasis\Value\JsValue $this_, array $args) use (&$asyncState): \Phasis\Value\JsValue {
+                    $message = \Phasis\Spec\TypeConversion::toString($args[0] ?? \Phasis\Value\JsUndefined::instance());
+                    if ($message === 'Test262:AsyncTestComplete') {
+                        $asyncState['done'] = true;
+                    } elseif (str_starts_with($message, 'Test262:AsyncTestFailure:')) {
+                        $asyncState['error'] = substr($message, strlen('Test262:AsyncTestFailure:'));
+                    }
+                    return \Phasis\Value\JsUndefined::instance();
+                },
+                1,
+            ));
         }
 
         try {
@@ -453,12 +472,14 @@ class Test262Runner
                 $isRaw,
                 $isAsync,
                 $realTestPath,
+                $asyncState,
             );
         } finally {
             $agentCleanup();
         }
     }
 
+    /** @param array{done: bool, error: ?string} $asyncState */
     private function runTestBody(
         Engine $engine,
         string $testPath,
@@ -469,73 +490,51 @@ class Test262Runner
         bool $isRaw,
         bool $isAsync,
         string|false $realTestPath,
+        array &$asyncState,
     ): TestResult {
+        $phase = 'harness';
         try {
-            $testSource = preg_replace('/\/\*---.*?---\*\//s', '', $source);
-
-            if ($mode === 'module') {
-                if (!$isRaw) {
-                    $this->loadHarness($engine, 'sta.js');
-                    $this->loadHarness($engine, 'assert.js');
-                    foreach ($includes as $include) {
-                        $this->loadHarness($engine, $include);
-                    }
-                    // Now that the harness has executed in its own scripts,
-                    // swap assert.* with native fast paths.
-                    try {
-                        $engine->eval('__test262_install_fast_asserts__();');
-                    } catch (\Throwable) {
-                        // Installer is best-effort.
-                    }
+            // Harness scripts keep their own sloppy parse goal and share the
+            // realm's lexical bindings. Only the test receives a strict prefix.
+            if (!$isRaw) {
+                $this->loadHarness($engine, 'sta.js', false);
+                $this->loadHarness($engine, 'assert.js', false);
+                if ($isAsync) {
+                    $this->loadHarness($engine, 'doneprintHandle.js', false);
                 }
-                $modulePath = ($realTestPath !== false) ? $realTestPath : $testPath;
-                $engine->evalAsModule($testSource, $modulePath);
-            } elseif (!$isRaw) {
-                // Concatenate harness + test source so lexical (let/const)
-                // bindings in the harness remain visible to the test body.
-                // Each eval call creates its own lexical environment that
-                // is discarded on return, so running harness separately
-                // would drop const declarations like
-                // `const assertToStringOrNativeFunction = ...`.
-                //
-                // For strict mode, the directive must appear at the very
-                // start of the source so it takes effect for the whole
-                // program (including the harness prologue).
-                $harnessSrc = '';
-                $harnessSrc .= $this->getHarnessSource('sta.js');
-                $harnessSrc .= $this->getHarnessSource('assert.js');
                 foreach ($includes as $include) {
-                    $harnessSrc .= $this->getHarnessSource($include);
+                    $this->loadHarness($engine, $include, false);
                 }
-                // After the harness has defined assert.* but before the
-                // test body runs, swap assert.sameValue / _isSameValue /
-                // notSameValue with native PHP equivalents. See
-                // registerFastAssertInstaller().
-                $combined = $harnessSrc . "\n__test262_install_fast_asserts__();\n" . $testSource;
-                if ($mode === 'strict') {
-                    $combined = '"use strict";' . "\n" . $combined;
+                $engine->evalScript('__test262_install_fast_asserts__();', false);
+            }
+
+            $testSource = $source;
+            if ($mode === 'module') {
+                $modulePath = ($realTestPath !== false) ? $realTestPath : $testPath;
+                $phase = 'resolution';
+                if ($negative !== null) {
+                    $engine->getInterpreter()->getModuleLoader()->linkModuleGraph($modulePath, $testSource);
+                    if (($negative['phase'] ?? 'runtime') === 'resolution') {
+                        return new TestResult($testPath, TestStatus::Fail, 'Expected a resolution error, but linking succeeded');
+                    }
                 }
-                $engine->eval($combined);
+                $phase = 'runtime';
+                $engine->evalAsModule($testSource, $modulePath);
             } else {
+                $phase = 'runtime';
                 if ($mode === 'strict') {
                     $testSource = '"use strict";' . "\n" . $testSource;
                 }
                 $engine->eval($testSource);
             }
 
-            // For async tests, check if $DONE was called with an error.
+            // eval drains the event loop; an idle loop without completion cannot pass.
             if ($isAsync) {
-                $asyncErrorVal = $engine->eval('__asyncError');
-                if ($asyncErrorVal !== null) {
-                    $errMsg = is_string($asyncErrorVal)
-                        ? $asyncErrorVal
-                        : (is_array($asyncErrorVal)
-                            ? ($asyncErrorVal['message'] ?? 'Async test failed')
-                            : 'Async test failed');
-                    if ($negative !== null) {
-                        return new TestResult($testPath, TestStatus::Pass);
-                    }
-                    return new TestResult($testPath, TestStatus::Fail, 'Async: ' . $errMsg);
+                if ($asyncState['error'] !== null) {
+                    return new TestResult($testPath, TestStatus::Fail, 'Async: ' . $asyncState['error']);
+                }
+                if (!$asyncState['done']) {
+                    return new TestResult($testPath, TestStatus::Fail, 'Async test did not signal completion before the event loop became idle');
                 }
             }
 
@@ -548,64 +547,49 @@ class Test262Runner
             }
 
             return new TestResult($testPath, TestStatus::Pass);
-        } catch (\Phasis\Exceptions\SyntaxError $e) {
-            if ($negative !== null) {
-                $type = $negative['type'] ?? 'Error';
-                // Whether the test declares parse/early or runtime phase, a
-                // SyntaxError from the PHP parser still satisfies the
-                // expectation. Indirect eval of invalid source, for example,
-                // surfaces as a runtime SyntaxError but originates from
-                // our parser when the eval() call evaluates its argument.
-                if ($type === 'SyntaxError') {
-                    return new TestResult($testPath, TestStatus::Pass);
-                }
+        } catch (\Throwable $e) {
+            if ($isAsync && $asyncState['error'] !== null) {
+                return new TestResult($testPath, TestStatus::Fail, 'Async: ' . $asyncState['error']);
             }
-            return new TestResult($testPath, TestStatus::Fail, 'SyntaxError: ' . $e->getMessage());
-        } catch (\Phasis\Exceptions\RuntimeError $e) {
-            if ($negative !== null) {
-                $type = $negative['type'] ?? 'Error';
-                $jsName = null;
-                if ($e instanceof \Phasis\Exceptions\JsThrowable) {
-                    $jv = $e->jsValue;
-                    if ($jv instanceof \Phasis\Value\JsObject) {
-                        $n = $jv->get('name');
-                        if ($n instanceof \Phasis\Value\JsString) {
-                            $jsName = $n->value;
-                        }
-                        // Fall back to constructor.name (e.g. Test262Error
-                        // defined in harness as constructor function without
-                        // an own `name` property on prototype).
-                        if ($jsName === null) {
-                            $ctor = $jv->get('constructor');
-                            if ($ctor instanceof \Phasis\Value\JsFunction) {
-                                $cn = $ctor->get('name');
-                                if ($cn instanceof \Phasis\Value\JsString && $cn->value !== '') {
-                                    $jsName = $cn->value;
-                                }
-                            }
-                        }
+            return $this->thrownResult($testPath, $e, $negative, $phase);
+        }
+    }
+
+    /** @param array<string, string>|null $negative */
+    private function thrownResult(string $testPath, \Throwable $error, ?array $negative, string $phase): TestResult
+    {
+        $type = $this->javascriptErrorType($error);
+        if ($negative !== null && ($negative['phase'] ?? 'runtime') === $phase && ($negative['type'] ?? 'Error') === $type) {
+            return new TestResult($testPath, TestStatus::Pass);
+        }
+        return new TestResult($testPath, TestStatus::Fail, $phase . ': ' . $error::class . ': ' . $error->getMessage());
+    }
+
+    private function javascriptErrorType(\Throwable $error): ?string
+    {
+        if ($error instanceof \Phasis\Exceptions\JsThrowable) {
+            try {
+                $value = $error->jsValue;
+                if ($value instanceof \Phasis\Value\JsObject) {
+                    $constructor = $value->get('constructor');
+                    if ($constructor instanceof \Phasis\Value\JsObject) {
+                        $name = $constructor->get('name');
+                        return $name instanceof \Phasis\Value\JsString ? $name->value : null;
                     }
                 }
-                $match = match ($type) {
-                    'TypeError' => $e instanceof \Phasis\Exceptions\TypeError || $jsName === 'TypeError',
-                    'RangeError' => $e instanceof \Phasis\Exceptions\RangeError || $jsName === 'RangeError',
-                    'ReferenceError' => $e instanceof \Phasis\Exceptions\ReferenceError || $jsName === 'ReferenceError',
-                    'SyntaxError' => $jsName === 'SyntaxError',
-                    'URIError' => $jsName === 'URIError',
-                    'Error' => true,
-                    default => $jsName === $type,
-                };
-                if ($match) {
-                    return new TestResult($testPath, TestStatus::Pass);
-                }
+            } catch (\Throwable) {
+                return null;
             }
-            return new TestResult($testPath, TestStatus::Fail, $e::class . ': ' . $e->getMessage());
-        } catch (\Throwable $e) {
-            if ($negative !== null) {
-                return new TestResult($testPath, TestStatus::Pass);
-            }
-            return new TestResult($testPath, TestStatus::Fail, $e::class . ': ' . $e->getMessage());
+            return null;
         }
+        return match (true) {
+            $error instanceof \Phasis\Exceptions\SyntaxError => 'SyntaxError',
+            $error instanceof \Phasis\Exceptions\TypeError => 'TypeError',
+            $error instanceof \Phasis\Exceptions\RangeError => 'RangeError',
+            $error instanceof \Phasis\Exceptions\ReferenceError => 'ReferenceError',
+            $error::class === \Phasis\Exceptions\RuntimeError::class => 'Error',
+            default => null,
+        };
     }
 
     private function buildTestScript(
@@ -931,6 +915,16 @@ PHP;
             $262.AbstractModuleSource = AbstractModuleSource;
         })();
         JS);
+        // INTERPRETING.md requires this host-defined source-capable module specifier.
+        $host = $engine->getGlobalEnv()->get('$262');
+        $abstractSource = $host instanceof \Phasis\Value\JsObject ? $host->get('AbstractModuleSource') : null;
+        $abstractPrototype = $abstractSource instanceof \Phasis\Value\JsObject
+            ? $abstractSource->get('prototype') : null;
+        if ($abstractPrototype instanceof \Phasis\Value\JsObject) {
+            $sourcePrototype = new \Phasis\Value\JsObject($abstractPrototype);
+            $source = new \Phasis\Value\JsObject($sourcePrototype);
+            $engine->getInterpreter()->getModuleLoader()->registerSourceModule('<module source>', $source);
+        }
     }
 
     /**
@@ -1090,17 +1084,13 @@ PHP;
         return $wrapper;
     }
 
-    private function loadHarness(Engine $engine, string $filename): void
+    private function loadHarness(Engine $engine, string $filename, bool $drainEventLoop = true): void
     {
         $src = $this->getHarnessSource($filename);
         if ($src === '') {
             return;
         }
-        try {
-            $engine->eval($src);
-        } catch (\Throwable) {
-            // Silently skip harness files that fail to load
-        }
+        $engine->evalScript($src, $drainEventLoop);
     }
 
     /** Load and cache harness source text without executing it. */
@@ -1109,11 +1099,13 @@ PHP;
         if (!isset($this->harnessCache[$filename])) {
             $path = $this->harnessDir . '/' . $filename;
             if (!file_exists($path)) {
-                $this->harnessCache[$filename] = '';
-                return '';
+                throw new \RuntimeException('Missing test262 harness file: ' . $filename);
             }
             $src = file_get_contents($path);
-            $this->harnessCache[$filename] = preg_replace('/\/\*---.*?---\*\//s', '', $src) ?? '';
+            if ($src === false) {
+                throw new \RuntimeException('Cannot read test262 harness file: ' . $filename);
+            }
+            $this->harnessCache[$filename] = $src;
         }
         return $this->harnessCache[$filename];
     }

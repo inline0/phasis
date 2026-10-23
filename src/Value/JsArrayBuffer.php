@@ -31,6 +31,7 @@ class JsArrayBuffer extends JsObject
     private string $data;
     private int $byteLength;
     private bool $detached = false;
+    private bool $immutable = false;
 
     /** Maximum byte length for resizable buffers. null means fixed-length. */
     private ?int $maxByteLength = null;
@@ -79,7 +80,28 @@ class JsArrayBuffer extends JsObject
     /** True when the buffer has no detach key, so transfers may detach it. */
     public function isDetachable(): bool
     {
-        return $this->detachKey === null;
+        return $this->detachKey === null && !$this->immutable;
+    }
+
+    public function isImmutable(): bool
+    {
+        return $this->immutable;
+    }
+
+    /** Seal an initialized, fixed-length backing store. */
+    public function makeImmutable(): void
+    {
+        if ($this->detached || $this->maxByteLength !== null || $this instanceof JsSharedArrayBuffer) {
+            throw new \Phasis\Exceptions\TypeError('Only a fixed-length ArrayBuffer can be immutable');
+        }
+        $this->immutable = true;
+    }
+
+    public function validateMutable(): void
+    {
+        if ($this->immutable) {
+            throw new \Phasis\Exceptions\TypeError('Cannot modify an immutable ArrayBuffer');
+        }
     }
 
     /**
@@ -115,6 +137,7 @@ class JsArrayBuffer extends JsObject
 
     public function setData(string $data): void
     {
+        $this->validateMutable();
         $this->data = $data;
     }
 
@@ -129,6 +152,7 @@ class JsArrayBuffer extends JsObject
      */
     public function writeBytes(int $offset, string $bytes): void
     {
+        $this->validateMutable();
         $len = strlen($bytes);
         if ($len === 0) {
             return;
@@ -229,11 +253,11 @@ class JsArrayBuffer extends JsObject
      *
      * Creates a new ArrayBuffer with the data from this buffer, detaches this buffer.
      * If no newLength, uses the current byteLength.
-     * The new buffer is always resizable if this buffer was resizable (with same maxByteLength),
-     * unless newLength > maxByteLength, in which case the new buffer is fixed.
+     * A resizable source preserves its maximum byte length in the result.
      */
-    public function transfer(?int $newLength = null): self
+    public function transfer(?int $newLength = null, ?JsObject $prototype = null): self
     {
+        $this->validateMutable();
         if ($this->detached) {
             throw new \Phasis\Exceptions\TypeError(
                 'Cannot transfer a detached ArrayBuffer'
@@ -248,16 +272,7 @@ class JsArrayBuffer extends JsObject
             throw new \Phasis\Exceptions\RangeError('Invalid array buffer length');
         }
 
-        // Determine if the new buffer should be resizable.
-        $newMax = null;
-        if ($this->maxByteLength !== null) {
-            if ($newLen <= $this->maxByteLength) {
-                $newMax = $this->maxByteLength;
-            }
-            // If newLen > maxByteLength, the new buffer is fixed-length.
-        }
-
-        $newBuffer = new self($newLen, $this->getPrototype(), $newMax);
+        $newBuffer = new self($newLen, $prototype ?? self::$defaultPrototype, $this->maxByteLength);
 
         // Copy data.
         $copyLen = min($newLen, $this->byteLength);
@@ -279,8 +294,9 @@ class JsArrayBuffer extends JsObject
      *
      * Like transfer, but the new buffer is always fixed-length.
      */
-    public function transferToFixedLength(?int $newLength = null): self
+    public function transferToFixedLength(?int $newLength = null, ?JsObject $prototype = null): self
     {
+        $this->validateMutable();
         if ($this->detached) {
             throw new \Phasis\Exceptions\TypeError(
                 'Cannot transfer a detached ArrayBuffer'
@@ -296,7 +312,7 @@ class JsArrayBuffer extends JsObject
         }
 
         // Always fixed-length (no maxByteLength).
-        $newBuffer = new self($newLen, $this->getPrototype(), null);
+        $newBuffer = new self($newLen, $prototype ?? self::$defaultPrototype, null);
 
         // Copy data.
         $copyLen = min($newLen, $this->byteLength);
@@ -316,6 +332,7 @@ class JsArrayBuffer extends JsObject
     /** DetachArrayBuffer: $key must match the buffer's detach key. */
     public function detach(?string $key = null): void
     {
+        $this->validateMutable();
         if ($key !== $this->detachKey) {
             throw new \Phasis\Exceptions\TypeError('ArrayBuffer is not detachable and could not be cloned.');
         }
@@ -337,6 +354,7 @@ class JsArrayBuffer extends JsObject
     /** Write a single byte at the given offset. */
     public function setByte(int $offset, int $value): void
     {
+        $this->validateMutable();
         if ($offset < 0 || $offset >= $this->byteLength) {
             return;
         }

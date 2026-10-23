@@ -1742,6 +1742,7 @@ trait ExpressionEvaluation
                 throw new \Phasis\Exceptions\SyntaxError('Source too large for eval');
             }
             $parser = new \Phasis\Parser\Parser($arg->value);
+            $parser->setDirectEvalContext(true);
             // Direct eval inherits strict mode from its surrounding context.
             if ($this->strictMode) {
                 $parser->setStrictMode(true);
@@ -4520,7 +4521,7 @@ trait ExpressionEvaluation
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $savedTailPos = $this->inTailPosition;
                 $this->inTailPosition = $this->strictMode;
-                $completion = $this->executeBody($body->body, $bodyEnv);
+                $completion = $this->executeDisposableBody($body->body, $bodyEnv);
                 $this->inTailPosition = $savedTailPos;
                 $completion = $this->applyDisposals($bodyEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
@@ -4573,7 +4574,7 @@ trait ExpressionEvaluation
                     return $this->derivedConstructorReturn($fn, $fnEnv, $vmReturn);
                 }
 
-                $completion = $this->executeBody($body->body, $fnEnv);
+                $completion = $this->executeDisposableBody($body->body, $fnEnv);
                 $this->inTailPosition = $savedTailPos;
                 $completion = $this->applyDisposals($fnEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
@@ -5380,7 +5381,7 @@ trait ExpressionEvaluation
                 $this->forceHoistVarNames($body->body, $bodyEnv);
                 $this->hoistDeclarations($body->body, $bodyEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
-                $completion = $this->executeBody($body->body, $bodyEnv);
+                $completion = $this->executeDisposableBody($body->body, $bodyEnv);
                 $completion = $this->applyDisposals($bodyEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
                     return $completion->value;
@@ -5395,7 +5396,7 @@ trait ExpressionEvaluation
                 $this->forceHoistVarNames($body->body, $fnEnv);
                 $this->hoistDeclarations($body->body, $fnEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
-                $completion = $this->executeBody($body->body, $fnEnv);
+                $completion = $this->executeDisposableBody($body->body, $fnEnv);
                 $completion = $this->applyDisposals($fnEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
                     return $completion->value;
@@ -5427,7 +5428,9 @@ trait ExpressionEvaluation
      */
     private function makeArgumentsObject(array $args, ?JsFunction $fn, bool $strictMode): JsObject
     {
-        $argsObj = $strictMode ? new JsObject() : new JsArgumentsObject();
+        $realmEnv = $fn?->realm?->getGlobalEnv() ?? $this->globalEnv;
+        $objectPrototype = \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype($realmEnv, 'Object');
+        $argsObj = $strictMode ? new JsObject($objectPrototype) : new JsArgumentsObject($objectPrototype);
         $argsObj->defineOwnProperty('[[IsArguments]]', PropertyDescriptor::data(
             new JsBoolean(true),
             writable: false,
@@ -5459,8 +5462,8 @@ trait ExpressionEvaluation
             // Reuse the shared %ThrowTypeError% intrinsic if available,
             // so that the function identity matches across the engine per spec.
             $poisonPill = null;
-            if ($this->globalEnv->has('__ThrowTypeError__')) {
-                $tte = $this->globalEnv->get('__ThrowTypeError__');
+            if ($realmEnv->has('__ThrowTypeError__')) {
+                $tte = $realmEnv->get('__ThrowTypeError__');
                 if ($tte instanceof JsFunction) {
                     $poisonPill = $tte;
                 }
@@ -5494,8 +5497,8 @@ trait ExpressionEvaluation
         $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
         $arrayIterFn = null;
         $arrayProto = null;
-        if ($this->globalEnv->has('Array')) {
-            $arrayCtor = $this->globalEnv->get('Array');
+        if ($realmEnv->has('Array')) {
+            $arrayCtor = $realmEnv->get('Array');
             if ($arrayCtor instanceof JsObject) {
                 $protoCandidate = $arrayCtor->get('prototype');
                 if ($protoCandidate instanceof JsObject) {
@@ -7862,6 +7865,7 @@ trait ExpressionEvaluation
         // either propagates out of import() directly (not via rejection).
         $sourceValue = $this->evaluate($node->source, $env);
         $optionsValue = null;
+        $moduleType = null;
         if ($node->options !== null) {
             $optionsValue = $this->evaluate($node->options, $env);
         }
@@ -7900,6 +7904,9 @@ trait ExpressionEvaluation
                     }
                     foreach ($keys as $k) {
                         $v = $withVal->get($k);
+                        if ($k === 'type' && $v instanceof JsString) {
+                            $moduleType = $v->value;
+                        }
                         if (!($v instanceof JsString)) {
                             $err = $this->phpExceptionToJsValue(
                                 new TypeError('import() attribute value must be a string')
@@ -7926,12 +7933,7 @@ trait ExpressionEvaluation
             // always returns an abrupt SyntaxError (16.2.1.7.2). Reject
             // the returned promise to match.
             if ($node->phase === 'source') {
-                $err = $this->phpExceptionToJsValue(
-                    new \Phasis\Exceptions\SyntaxError(
-                        "import.source() is not supported on this module type"
-                    )
-                );
-                $promise->reject($err);
+                $promise->resolve($loader->loadModuleSource($specifier, $this->currentModulePath));
                 return $promise;
             }
             // Deferred phase: load the module eagerly (we don't yet
@@ -7943,8 +7945,7 @@ trait ExpressionEvaluation
                 $promise->resolve($deferred);
                 return $promise;
             }
-            $namespace = $loader->loadModule($specifier, $this->currentModulePath);
-            $promise->resolve($namespace);
+            return $loader->importModule($specifier, $this->currentModulePath, $moduleType);
         } catch (\Phasis\Exceptions\JsThrowable $e) {
             $promise->reject($e->jsValue);
         } catch (\Throwable $e) {
@@ -8195,27 +8196,10 @@ trait ExpressionEvaluation
             $this->hoistEvalLexicalDeclarations($body, $moduleEnv);
         }
 
-        // Module top-level early errors — return/break/continue not in a
-        // function/loop, super/new.target outside a method/constructor,
-        // unbound private identifiers, and duplicate lexical names.
-        $this->validateEvalBody($body);
-        $this->validateModuleTopLevelDuplicateBindings($body);
-        if ($this->astContainsNewTargetTransparent($body)) {
-            throw new \Phasis\Exceptions\SyntaxError(
-                'new.target expression is not allowed here'
-            );
-        }
-        if ($this->astContainsSuperTransparent($body)) {
-            throw new \Phasis\Exceptions\SyntaxError(
-                "'super' keyword unexpected here"
-            );
-        }
-        \Phasis\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic(
-            new \Phasis\Ast\Program(
-                $body[0]->location ?? new \Phasis\Lexer\SourceLocation(0, 0, 0),
-                $body,
-            ),
-        );
+        \Phasis\Parser\ProgramEarlyErrors::validate(new \Phasis\Ast\Program(
+            $body[0]->location ?? new \Phasis\Lexer\SourceLocation(0, 0, 0),
+            $body,
+        ), true);
 
         // Top-level await: when the module body contains an `await` outside
         // any nested function/arrow/class, run the body inside an async
@@ -8230,40 +8214,28 @@ trait ExpressionEvaluation
             return $this->executeModuleBodyAsync($body, $moduleEnv, $onAsyncStart);
         }
 
-        $result = JsUndefined::instance();
-        foreach ($body as $stmt) {
-            // Import declarations are already processed by the module loader.
-            if ($stmt instanceof ImportDeclaration) {
-                continue;
+        try {
+            $completion = $this->executeDisposableBody($this->moduleEvaluationStatements($body), $moduleEnv);
+            if ($completion->type === CompletionType::Throw) {
+                $this->throwJsValue($completion->value);
             }
-            // Skip re-executing function declarations at top-level — they
-            // were already instantiated during hoisting. Running their
-            // statement form would replace the hoisted binding with a new
-            // function instance and invalidate already-snapshotted imports.
-            if ($stmt instanceof \Phasis\Ast\Declaration\FunctionDeclaration) {
-                continue;
-            }
-            if (
-                $stmt instanceof ExportDeclaration
-                && $stmt->declaration instanceof \Phasis\Ast\Declaration\FunctionDeclaration
-            ) {
-                continue;
-            }
-            $completion = $this->executeStatement($stmt, $moduleEnv);
-            if ($completion->type !== CompletionType::Normal) {
-                $this->strictMode = $prevStrict;
-                if ($completion->type === CompletionType::Throw) {
-                    $this->throwJsValue($completion->value);
-                }
-                return $completion->value;
-            }
-            if (!$completion->empty) {
-                $result = $completion->value;
-            }
+            return $completion->value;
+        } finally {
+            $this->strictMode = $prevStrict;
         }
+    }
 
-        $this->strictMode = $prevStrict;
-        return $result;
+    /**
+     * @param list<Node> $body
+     * @return list<Node>
+     */
+    private function moduleEvaluationStatements(array $body): array
+    {
+        return array_values(array_filter($body, static fn(Node $statement): bool =>
+            !$statement instanceof ImportDeclaration
+            && !$statement instanceof \Phasis\Ast\Declaration\FunctionDeclaration
+            && !($statement instanceof ExportDeclaration
+                && $statement->declaration instanceof \Phasis\Ast\Declaration\FunctionDeclaration)));
     }
 
     /**
@@ -8296,32 +8268,11 @@ trait ExpressionEvaluation
             // for import.meta and source-phase resolution.
             $self->setCurrentModulePath($modulePath);
             try {
-                $last = JsUndefined::instance();
-                foreach ($body as $stmt) {
-                    if ($stmt instanceof ImportDeclaration) {
-                        continue;
-                    }
-                    if ($stmt instanceof \Phasis\Ast\Declaration\FunctionDeclaration) {
-                        continue;
-                    }
-                    if (
-                        $stmt instanceof ExportDeclaration
-                        && $stmt->declaration instanceof \Phasis\Ast\Declaration\FunctionDeclaration
-                    ) {
-                        continue;
-                    }
-                    $completion = $self->executeStatement($stmt, $moduleEnv);
-                    if ($completion->type !== CompletionType::Normal) {
-                        if ($completion->type === CompletionType::Throw) {
-                            $self->throwJsValue($completion->value);
-                        }
-                        return $completion->value;
-                    }
-                    if (!$completion->empty) {
-                        $last = $completion->value;
-                    }
+                $completion = $self->executeDisposableBody($self->moduleEvaluationStatements($body), $moduleEnv);
+                if ($completion->type === CompletionType::Throw) {
+                    $self->throwJsValue($completion->value);
                 }
-                return $last;
+                return $completion->value;
             } finally {
                 $self->strictMode = $prevStrict;
                 $self->setCurrentModulePath($prevPath);

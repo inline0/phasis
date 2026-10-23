@@ -150,6 +150,37 @@ trait PluralRulesSection
                     false,
                 ));
 
+                $notation = 'standard';
+                $notationValue = $options->get('notation');
+                if (!$notationValue instanceof JsUndefined) {
+                    $notation = TypeConversion::toString($notationValue);
+                    if (!in_array($notation, ['standard', 'compact', 'scientific', 'engineering'], true)) {
+                        throw new RangeError('Invalid notation: ' . $notation);
+                    }
+                }
+                $compactDisplay = 'short';
+                $compactValue = $options->get('compactDisplay');
+                if (!$compactValue instanceof JsUndefined) {
+                    $compactDisplay = TypeConversion::toString($compactValue);
+                    if (!in_array($compactDisplay, ['short', 'long'], true)) {
+                        throw new RangeError('Invalid compactDisplay: ' . $compactDisplay);
+                    }
+                }
+                $obj->defineOwnProperty('[[Notation]]', PropertyDescriptor::data(
+                    new JsString($notation),
+                    false,
+                    false,
+                    false,
+                ));
+                if ($notation === 'compact') {
+                    $obj->defineOwnProperty('[[CompactDisplay]]', PropertyDescriptor::data(
+                        new JsString($compactDisplay),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
+
                 // Digit options.
                 $minInt = 1;
                 $midVal = $options->get('minimumIntegerDigits');
@@ -321,7 +352,12 @@ trait PluralRulesSection
                 // Actually, PHP doesn't have a direct PluralRules API.
                 // We can approximate using CLDR rules for the locale.
                 // Common English rules as fallback.
-                return new JsString(self::selectPlural($locale, $n, $type));
+                return new JsString(self::selectPlural(
+                    $locale,
+                    $n,
+                    $type,
+                    self::extractInternalString($this_, '[[Notation]]', 'standard'),
+                ));
             }
 
             // Basic English plural rules.
@@ -376,6 +412,13 @@ trait PluralRulesSection
             self::defineDataProp($result, 'type', new JsString(
                 self::extractInternalString($this_, '[[Type]]', 'cardinal'),
             ));
+            self::defineDataProp($result, 'notation', new JsString(
+                self::extractInternalString($this_, '[[Notation]]', 'standard'),
+            ));
+            $compactDisplay = $this_->get('[[CompactDisplay]]');
+            if ($compactDisplay instanceof JsString) {
+                self::defineDataProp($result, 'compactDisplay', $compactDisplay);
+            }
             self::defineDataProp($result, 'minimumIntegerDigits', JsNumber::of(
                 self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
             ));
@@ -437,8 +480,12 @@ trait PluralRulesSection
     /**
      * Select the CLDR plural category for a number in a given locale.
      */
-    private static function selectPlural(string $locale, float $n, string $type): string
-    {
+    private static function selectPlural(
+        string $locale,
+        float $n,
+        string $type,
+        string $notation = 'standard',
+    ): string {
         $abs = abs($n);
         $intPart = (int) $abs;
         $lang = explode('-', $locale)[0];
@@ -466,6 +513,18 @@ trait PluralRulesSection
         // See CLDR plural rules: https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html
         $isInteger = floor($abs) === $abs;
 
+        // CLDR's e operand is the suppressed compact exponent. These locales
+        // share the many rule: integer multiples of a million at e=0, or e>5.
+        $compactExponent = $notation === 'compact' && $abs >= 1000
+            ? (int) floor(log10($abs) / 3) * 3 : 0;
+        if (
+            in_array($lang, ['fr', 'pt', 'ca', 'gl', 'it', 'lld', 'scn', 'vec', 'es'], true)
+            && (($compactExponent === 0 && $abs !== 0.0 && $isInteger && fmod($abs, 1000000) === 0.0)
+                || $compactExponent > 5)
+        ) {
+            return 'many';
+        }
+
         switch ($lang) {
             case 'en':
             case 'de':
@@ -486,7 +545,7 @@ trait PluralRulesSection
 
             case 'fr':
                 // one: i = 0,1
-                if ($isInteger && ($intPart === 0 || $intPart === 1)) {
+                if ($intPart === 0 || $intPart === 1) {
                     return 'one';
                 }
                 return 'other';

@@ -82,11 +82,13 @@ function compatReportMain(array $argv): void
         exit(1);
     }
 
+    $runIdentity = buildCompatRunIdentity($rootDir);
     $fingerprint = buildCompatFingerprint(
         $rootDir,
         $options,
         $supportConfig,
         $discovery,
+        $runIdentity,
     );
 
     $state = loadOrCreateCompatState(
@@ -97,6 +99,7 @@ function compatReportMain(array $argv): void
         $discovery,
         $options,
         $supportConfig,
+        $runIdentity,
     );
 
     resetRunningChunksToPending($state);
@@ -310,6 +313,7 @@ function buildCompatFingerprint(
     array $options,
     array $supportConfig,
     array $discovery,
+    ?string $runIdentity = null,
 ): string {
     $groupHashes = [];
     foreach ($discovery['groups'] as $group => $files) {
@@ -321,7 +325,8 @@ function buildCompatFingerprint(
     }
 
     return sha1(json_encode([
-        'version' => 7,
+        'version' => 8,
+        'runIdentity' => $runIdentity ?? buildCompatRunIdentity($rootDir),
         'match' => $options['match'],
         'exclude' => $options['exclude'] ?? [],
         'filesPrefix' => $options['filesPrefix'] ?? [],
@@ -331,42 +336,70 @@ function buildCompatFingerprint(
         // supportConfig — when that list changes, the chunk fingerprints
         // must reset so the rebalanced single-file chunks land in state.
         'supportConfig' => sha1(json_encode($supportConfig)),
-        'compatReportHash' => hashFileOrEmpty($rootDir . '/bin/compat-report'),
-        'test262ScriptHash' => hashFileOrEmpty($rootDir . '/bin/test262'),
-        'runnerHash' => hashFileOrEmpty($rootDir . '/tests/Oracle/Test262Runner.php'),
-        // Hash the engine implementation so changes to src/ invalidate
-        // cached compat results. Without this, fixes that improve the
-        // pass rate are masked by stale cached "fail" entries.
-        'srcHash' => hashDirectoryRecursive($rootDir . '/src'),
         'groupHashes' => $groupHashes,
     ], JSON_UNESCAPED_SLASHES));
 }
 
-/**
- * Hash a directory's PHP source files recursively so changes to engine
- * code invalidate cached compat results.
- */
-function hashDirectoryRecursive(string $dir): string
+/** Identify the implementation and suite independently of shard scheduling. */
+function buildCompatRunIdentity(string $rootDir): string
+{
+    return hash('sha256', json_encode([
+        'version' => 1,
+        'compatReport' => hashFileOrEmpty($rootDir . '/bin/compat-report'),
+        'compatMerge' => hashFileOrEmpty($rootDir . '/bin/compat-merge-shards'),
+        'test262Script' => hashFileOrEmpty($rootDir . '/bin/test262'),
+        'runner' => hashCompatDataDirectory($rootDir . '/tests/Oracle'),
+        'src' => hashCompatDataDirectory($rootDir . '/src'),
+        'config' => hashCompatDataDirectory($rootDir . '/config'),
+        'harness' => hashCompatDataDirectory($rootDir . '/test262/harness'),
+        'suite' => buildCompatSuiteIdentity($rootDir . '/test262'),
+    ], JSON_UNESCAPED_SLASHES));
+}
+
+/** Include the pinned upstream revision and any local test or fixture changes. */
+function buildCompatSuiteIdentity(string $suiteDir): string
+{
+    if (!file_exists($suiteDir . '/.git')) {
+        return hashCompatDataDirectory($suiteDir . '/test');
+    }
+    $revision = runShellCommand('git rev-parse HEAD', $suiteDir);
+    $changes = runShellCommand('git diff --binary --no-ext-diff --no-textconv --no-renames HEAD --', $suiteDir);
+    $untracked = runShellCommand('git ls-files --others -z -- test harness', $suiteDir);
+    if ($revision['exitCode'] !== 0 || $changes['exitCode'] !== 0 || $untracked['exitCode'] !== 0) {
+        throw new RuntimeException('Could not verify the test262 checkout identity');
+    }
+    $extraFiles = [];
+    foreach (explode("\0", $untracked['output']) as $file) {
+        if ($file !== '') {
+            $extraFiles[$file] = hashFileOrEmpty($suiteDir . '/' . $file);
+        }
+    }
+    ksort($extraFiles);
+    return hash('sha256', json_encode([
+        'revision' => trim($revision['output']),
+        'changes' => hash('sha256', $changes['output']),
+        'untracked' => $extraFiles,
+    ], JSON_UNESCAPED_SLASHES));
+}
+
+/** Hash all runtime or fixture data, including non-PHP files. */
+function hashCompatDataDirectory(string $dir): string
 {
     if (!is_dir($dir)) {
         return '';
     }
     $hashes = [];
-    $iter = new \RecursiveIteratorIterator(
-        new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
     );
-    foreach ($iter as $file) {
-        if (!$file instanceof \SplFileInfo || !$file->isFile()) {
-            continue;
+    foreach ($iterator as $file) {
+        if ($file instanceof SplFileInfo && $file->isFile()) {
+            $relative = substr($file->getPathname(), strlen($dir) + 1);
+            $hashes[$relative] = hash_file('sha256', $file->getPathname());
         }
-        if ($file->getExtension() !== 'php') {
-            continue;
-        }
-        $relPath = substr($file->getPathname(), strlen($dir) + 1);
-        $hashes[$relPath] = sha1_file($file->getPathname());
     }
     ksort($hashes);
-    return sha1(json_encode($hashes));
+    return hash('sha256', json_encode($hashes, JSON_UNESCAPED_SLASHES));
 }
 
 /**
@@ -383,6 +416,7 @@ function loadOrCreateCompatState(
     array $discovery,
     array $options,
     array $supportConfig = [],
+    ?string $runIdentity = null,
 ): array {
     $stateFile = $stateDir . '/state.json';
 
@@ -436,8 +470,9 @@ function loadOrCreateCompatState(
     }
 
     return [
-        'version' => 2,
+        'version' => 3,
         'fingerprint' => $fingerprint,
+        'runIdentity' => $runIdentity ?? buildCompatRunIdentity($rootDir),
         'createdAt' => date('c'),
         'updatedAt' => date('c'),
         'completed' => false,
@@ -886,16 +921,14 @@ function finalizeCompatChunk(
         'sampleFiles' => shouldKeepFiles($summary['kind'], $chunk['filesCount'])
             ? ($chunk['files'] ?? sampleChunkFiles($chunk['sampleFiles'] ?? []))
             : sampleChunkFiles($chunk['files'] ?? []),
+        'files' => $chunk['files'],
         'summary' => $summary,
         'completedAt' => date('c'),
     ];
 
     $resultPath = $stateDir . '/results/' . $chunkId . '.json';
-    // Persist the FULL file list (not just sampleFiles) for fail-bearing
-    // chunks so CI artifacts let downstream tooling identify every
-    // candidate path without re-deriving chunk membership from the
-    // discovery + chunking algorithm. Passing chunks keep the smaller
-    // sampleFiles representation to bound artifact size.
+    // Keep full manifests for every outcome so the merge can prove exact
+    // coverage, including passing chunks and shards with different sizes.
     $resultPayload = [
         'chunkId' => $chunkId,
         'group' => $chunk['group'],
@@ -903,7 +936,7 @@ function finalizeCompatChunk(
         'sampleFiles' => $state['chunks'][$chunkId]['sampleFiles'],
         'summary' => $summary,
     ];
-    if ($summary['fail'] > 0 && isset($chunk['files']) && is_array($chunk['files'])) {
+    if (isset($chunk['files']) && is_array($chunk['files'])) {
         $resultPayload['files'] = $chunk['files'];
     }
     // Surface per-test failure paths + messages in the chunk artifact so the
@@ -973,6 +1006,100 @@ function createCompatChunk(string $group, array $files, int $depth): array
         'attempt' => 0,
         'startedAt' => null,
     ];
+}
+
+/**
+ * Merge one artifact only when it describes this run and has no duplicate chunks.
+ *
+ * @param array<string, mixed> $state
+ * @param array<string, mixed> $shard
+ */
+function mergeCompatShardChunks(array &$state, array $shard, string $rootDir): int
+{
+    $identity = $state['runIdentity'] ?? null;
+    if (!is_string($identity) || ($shard['runIdentity'] ?? null) !== $identity) {
+        throw new RuntimeException('Shard run identity does not match the current implementation and test262 suite');
+    }
+    if (!is_array($shard['chunks'] ?? null)) {
+        throw new RuntimeException('Shard has no valid chunk records');
+    }
+    $chunks = [];
+    $shardRoot = rtrim((string) ($shard['rootDir'] ?? $rootDir), '/') . '/';
+    foreach ($shard['chunks'] as $chunkId => $chunk) {
+        if (!is_array($chunk) || ($chunk['id'] ?? null) !== $chunkId) {
+            throw new RuntimeException('Invalid chunk ID in shard artifact: ' . $chunkId);
+        }
+        if (isset($state['chunks'][$chunkId])) {
+            throw new RuntimeException('Duplicate chunk ID across shard artifacts: ' . $chunkId);
+        }
+        if (isset($chunk['files'])) {
+            $chunk['files'] = array_map(
+                static fn(string $file): string => $rootDir . '/' . relativePath($file, $shardRoot),
+                $chunk['files'],
+            );
+        }
+        $chunks[$chunkId] = $chunk;
+    }
+    $state['chunks'] += $chunks;
+    return count($chunks);
+}
+
+/**
+ * Verify leaf manifests against discovery and retain every missing test as
+ * pending. Split parents describe scheduling history, not additional tests.
+ *
+ * @param array<string, mixed> $state
+ * @param array<string, list<string>> $expectedGroups
+ * @return array{covered: int, missing: int}
+ */
+function reconcileCompatCoverage(array &$state, array $expectedGroups): array
+{
+    $expected = [];
+    foreach ($expectedGroups as $group => $files) {
+        foreach ($files as $file) {
+            $expected[$file] = $group;
+        }
+    }
+    $covered = [];
+    foreach (compatLeafChunks($state) as $chunk) {
+        $files = $chunk['files'] ?? null;
+        if (!is_array($files) || count($files) !== $chunk['filesCount']) {
+            throw new RuntimeException('Missing or invalid full manifest for chunk ' . $chunk['id']);
+        }
+        if (($chunk['status'] ?? null) === 'complete') {
+            $summary = $chunk['summary'];
+            $accounted = $summary['pass'] + $summary['fail'] + $summary['skip'] + $summary['blocked'];
+            if ($summary['total'] !== count($files) || $accounted !== count($files)) {
+                throw new RuntimeException('Result count does not match manifest for chunk ' . $chunk['id']);
+            }
+        }
+        foreach ($files as $file) {
+            if (($expected[$file] ?? null) !== $chunk['group']) {
+                throw new RuntimeException('Unexpected test in shard manifest: ' . $file);
+            }
+            if (isset($covered[$file])) {
+                throw new RuntimeException('Overlapping shard coverage for test: ' . $file);
+            }
+            $covered[$file] = true;
+        }
+    }
+    $missing = 0;
+    foreach ($expectedGroups as $group => $files) {
+        $uncovered = array_values(array_filter($files, static fn(string $file): bool => !isset($covered[$file])));
+        $missing += count($uncovered);
+        foreach (array_chunk($uncovered, $state['options']['chunkSize']) as $chunkFiles) {
+            $chunk = createCompatChunk($group, $chunkFiles, 0);
+            $state['chunks'][$chunk['id']] = $chunk;
+        }
+    }
+    $state['completed'] = true;
+    foreach (compatLeafChunks($state) as $chunk) {
+        if ($chunk['status'] !== 'complete') {
+            $state['completed'] = false;
+            break;
+        }
+    }
+    return ['covered' => count($covered), 'missing' => $missing];
 }
 
 /**
@@ -1315,13 +1442,14 @@ function buildCompatSnapshot(
         'state' => [
             'directory' => $state['stateDir'],
             'fingerprint' => $state['fingerprint'],
+            'runIdentity' => $state['runIdentity'],
         ],
         'discovery' => $state['discovery'],
         'runnerCaveats' => [
             'Feature families listed in config/support.php are skipped before execution.',
             'Tests flagged as module are executed as ES modules (always strict, import/export processed).',
-            'Tests flagged as async are skipped by the current runner.',
-            'Mixed-mode tests currently run only in sloppy mode unless onlyStrict or noStrict is set.',
+            'Async tests execute with the $DONE host completion hook.',
+            'Unflagged scripts run in both sloppy and strict modes; raw scripts run unchanged once.',
             'Chunks that timeout, OOM, or crash are split automatically until a single-file blocker is isolated.',
         ],
         'test262' => [

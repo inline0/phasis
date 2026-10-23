@@ -64,181 +64,14 @@ trait TypeConversionHelpers
                     self::getSlotString($item, '[[Calendar]]'),
                 );
             }
-            // Property bag: read and convert fields in ALPHABETICAL order per spec.
-            // Each field is get + valueOf/toString immediately.
-            $calVal = $item->get('calendar');
-            $cal = 'iso8601';
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
-            }
-            $dayVal = $item->get('day');
-            if ($dayVal instanceof JsUndefined) {
-                throw new TypeError('missing required property: day');
-            }
-            $dNum = TypeConversion::toNumber($dayVal);
-            // era/eraYear (non-ISO calendars only).
-            $eraStr = null;
-            $eraYearNum = null;
-            $eraSet = false;
-            $eraYearSet = false;
-            if ($cal !== 'iso8601') {
-                $eraVal = $item->get('era');
-                if (!($eraVal instanceof JsUndefined)) {
-                    $eraSet = true;
-                    $eraStr = TypeConversion::toString($eraVal);
-                }
-                $eraYearVal = $item->get('eraYear');
-                if (!($eraYearVal instanceof JsUndefined)) {
-                    $eraYearSet = true;
-                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
-                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
-                        throw new RangeError('eraYear must be finite');
-                    }
-                    if (floor($eraYearNum) !== $eraYearNum) {
-                        throw new RangeError('eraYear must be an integer');
-                    }
-                }
-                // For calendars that use eras (gregory, japanese,
-                // roc, etc.), the two fields must be both present
-                // or both absent.
-                if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
-                    throw new TypeError(
-                        'era and eraYear must be provided together',
-                    );
-                }
-            }
-            $monthVal = $item->get('month');
-            $hasMonth = !($monthVal instanceof JsUndefined);
-            $mNum = $hasMonth ? TypeConversion::toNumber($monthVal) : null;
-            $monthCodeVal = $item->get('monthCode');
-            $hasMonthCode = !($monthCodeVal instanceof JsUndefined);
-            $mcStr = $hasMonthCode ? TypeConversion::toString($monthCodeVal) : null;
-            if ($hasMonthCode) {
-                self::parseMonthCodeSyntax($mcStr);
-            }
-            $yearVal = $item->get('year');
-            $yNum = self::calendarYearFromFields(
-                $cal,
-                $eraStr,
-                $eraYearNum,
-                $yearVal instanceof JsUndefined ? null : TypeConversion::toNumber($yearVal),
-            );
-            // Now validate and resolve fields.
-            if (!$hasMonth && !$hasMonthCode) {
-                throw new TypeError('missing required property: month');
-            }
-            if (!is_finite($yNum)) {
-                throw new RangeError('year must be finite');
-            }
-            if ($yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
-                throw new RangeError('reject minus zero as extended year');
-            }
-            $y = (int) $yNum;
-            if ($hasMonthCode) {
-                $mcMonth = self::parseMonthCode($mcStr, $cal);
-                if ($hasMonth) {
-                    if (!is_finite($mNum)) {
-                        throw new RangeError('month must be finite');
-                    }
-                    // For lunisolar calendars, the digit in the monthCode
-                    // and the chronological month diverge once a leap
-                    // month sits earlier in the year. Resolve the
-                    // monthCode against the year and compare against the
-                    // user's chronological month.
-                    if (in_array($cal, ['hebrew', 'chinese', 'dangi'], true)) {
-                        $resolved = self::calendarPartsToIso($cal, $y, $mcStr, null, 1);
-                        if ($resolved !== null) {
-                            $back = self::isoToCalendarParts(
-                                $cal,
-                                $resolved['year'],
-                                $resolved['month'],
-                                $resolved['day'],
-                            );
-                            if (
-                                $back !== null
-                                && $back['monthCode'] === $mcStr
-                                && (int) $mNum !== $back['month']
-                            ) {
-                                throw new RangeError('month and monthCode must agree');
-                            }
-                        }
-                    } elseif ((int) $mNum !== $mcMonth) {
-                        throw new RangeError('month and monthCode must agree');
-                    }
-                }
-                $m = $mcMonth;
-            } else {
-                if (!is_finite($mNum)) {
-                    throw new RangeError('month must be finite');
-                }
-                $m = (int) $mNum;
-            }
-            if (!is_finite($dNum)) {
-                throw new RangeError('day must be finite');
-            }
-            $d = (int) $dNum;
+            $calValue = $item->get('calendar');
+            $cal = $calValue instanceof JsUndefined ? 'iso8601' : self::toCalendarSlotValue($calValue);
+            $fields = self::prepareCalendarFields($item, $cal, ['day', 'month', 'monthCode', 'year'], ['day']);
             if ($rawOptions !== null) {
-                $options = self::getOptionsObject($rawOptions);
-                $overflow = self::getOverflow($options);
+                $overflow = self::getOverflow(self::getOptionsObject($rawOptions));
             }
-            // For non-ISO calendars, convert calendar-native (year, month, day)
-            // to ISO via ICU before storing.
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
-                // Constrain day to the calendar month's max so ICU doesn't
-                // silently roll over (e.g. hebrew Cheshvan 30 in a 29-day
-                // year would otherwise become Kislev 1).
-                if ($overflow === 'constrain') {
-                    $maxD = self::calendarDaysInMonth(
-                        $cal,
-                        $y,
-                        $hasMonthCode ? $mcStr : null,
-                        $hasMonthCode ? null : $m,
-                    );
-                    if ($maxD !== null && $d > $maxD) {
-                        $d = $maxD;
-                    }
-                } else {
-                    $maxD = self::calendarDaysInMonth(
-                        $cal,
-                        $y,
-                        $hasMonthCode ? $mcStr : null,
-                        $hasMonthCode ? null : $m,
-                    );
-                    if ($maxD !== null && $d > $maxD) {
-                        throw new RangeError(
-                            "Invalid day {$d} for calendar '{$cal}' month",
-                        );
-                    }
-                }
-                $isoParts = self::calendarPartsToIso($cal, $y, $hasMonthCode ? $mcStr : null, $hasMonthCode ? null : $m, $d);
-                if ($isoParts !== null) {
-                    return self::createPlainDateObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
-                }
-                // calendarPartsToIso couldn't form a valid date in this
-                // calendar (e.g. invalid leap monthCode like M01L for
-                // hebrew). Reject under "reject", and also reject for
-                // "constrain" since silently falling back to ISO would
-                // produce a date that doesn't even exist in the requested
-                // calendar.
-                if ($overflow === 'reject' || $hasMonthCode) {
-                    throw new RangeError(
-                        "Invalid date components for calendar '{$cal}'",
-                    );
-                }
-            }
-            // Translate roc calendar-year to ISO year. The calendarPartsToIso
-            // path handles non-iso/non-gregory calendars; gregory and
-            // japanese map year directly to ISO. ROC is the exception:
-            // year fields are 1-based from 1912 ("民國" year 1).
-            if ($cal === 'roc') {
-                $y += 1911;
-            }
-            if ($overflow === 'constrain') {
-                [$y, $m, $d] = self::constrainISODate($y, $m, $d);
-            } else {
-                self::validateISODate($y, $m, $d);
-            }
-            return self::createPlainDateObject($y, $m, $d, $cal);
+            $date = self::calendarDateFromFields($cal, $fields, $overflow);
+            return self::createPlainDateObject($date['year'], $date['month'], $date['day'], $cal);
         }
         // Per spec: reject non-string, non-object types directly.
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
@@ -260,6 +93,7 @@ trait TypeConversionHelpers
     private static function parsePlainDateString(string $str): JsObject
     {
         [$str, $cal] = self::normalizeTemporalString($str);
+        self::validateTemporalDatePrefix($str);
         // Reject UTC designator (Z) for PlainDate.
         $noAnnot = preg_replace('/\[.*?\]/', '', $str);
         if (preg_match('/[Zz]/', $noAnnot)) {
@@ -474,9 +308,7 @@ trait TypeConversionHelpers
                 self::toTemporalTimeZoneIdentifier($tzVal);
                 // Validate offset format (already converted above).
                 if ($offStr !== null) {
-                    if (!preg_match('/^[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:\.\d{1,9})?)?)?$/', $offStr)) {
-                        throw new RangeError("{$offStr} is not a valid offset string");
-                    }
+                    self::validateTemporalOffsetString($offStr);
                 }
             }
             // Required: year (or era+eraYear), day (and month or monthCode).
@@ -838,195 +670,29 @@ trait TypeConversionHelpers
             );
         }
         if ($item instanceof JsObject) {
-            // Property bag: read ALL fields in ALPHABETICAL order per spec.
-            // Each field is immediately coerced via valueOf/toString.
-            $calVal = $item->get('calendar');
-            $cal = 'iso8601';
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
-            }
-            $dayVal = $item->get('day');
-            if ($dayVal instanceof JsUndefined) {
-                throw new TypeError('missing required property: day');
-            }
-            $dNum = TypeConversion::toNumber($dayVal);
-            if (!is_finite($dNum)) {
-                throw new RangeError('day must be finite');
-            }
-            $d = (int) $dNum;
-            // Read era and eraYear (per spec alphabetical ordering)
-            // only for non-ISO calendars; ISO doesn't have eras and
-            // reading these properties on an ISO property bag would
-            // disturb the canonical observable read order.
-            $eraStr = null;
-            $eraYearNum = null;
-            $eraSet = false;
-            $eraYearSet = false;
-            if ($cal !== 'iso8601') {
-                $eraVal = $item->get('era');
-                if (!($eraVal instanceof JsUndefined)) {
-                    $eraSet = true;
-                    $eraStr = TypeConversion::toString($eraVal);
-                }
-                $eraYearVal = $item->get('eraYear');
-                if (!($eraYearVal instanceof JsUndefined)) {
-                    $eraYearSet = true;
-                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
-                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
-                        throw new RangeError('eraYear must be finite');
-                    }
-                    if (floor($eraYearNum) !== $eraYearNum) {
-                        throw new RangeError('eraYear must be an integer');
-                    }
-                }
-                if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
-                    throw new TypeError(
-                        'era and eraYear must be provided together',
-                    );
-                }
-            }
-            // Read time fields (for PlainDateTime path).
-            $h = 0;
-            $min = 0;
-            $s = 0;
-            $ms = 0;
-            $us = 0;
-            $ns = 0;
-            $hVal = $item->get('hour');
-            if (!($hVal instanceof JsUndefined)) {
-                $hNum = TypeConversion::toNumber($hVal);
-                if (!is_finite($hNum)) {
-                    throw new RangeError('hour must be finite');
-                }
-                $h = (int) $hNum;
-            }
-            $usVal = $item->get('microsecond');
-            if (!($usVal instanceof JsUndefined)) {
-                $usNum = TypeConversion::toNumber($usVal);
-                if (!is_finite($usNum)) {
-                    throw new RangeError('microsecond must be finite');
-                }
-                $us = (int) $usNum;
-            }
-            $msVal = $item->get('millisecond');
-            if (!($msVal instanceof JsUndefined)) {
-                $msNum = TypeConversion::toNumber($msVal);
-                if (!is_finite($msNum)) {
-                    throw new RangeError('millisecond must be finite');
-                }
-                $ms = (int) $msNum;
-            }
-            $minVal = $item->get('minute');
-            if (!($minVal instanceof JsUndefined)) {
-                $minNum = TypeConversion::toNumber($minVal);
-                if (!is_finite($minNum)) {
-                    throw new RangeError('minute must be finite');
-                }
-                $min = (int) $minNum;
-            }
-            $monthVal = $item->get('month');
-            $monthExplicit = !($monthVal instanceof JsUndefined);
-            $m = 0;
-            if ($monthExplicit) {
-                $mNum = TypeConversion::toNumber($monthVal);
-                if (!is_finite($mNum)) {
-                    throw new RangeError('month must be finite');
-                }
-                $m = (int) $mNum;
-            }
-            $monthCodeVal = $item->get('monthCode');
-            $mcStr = null;
-            if (!($monthCodeVal instanceof JsUndefined)) {
-                $mcStr = TypeConversion::toString($monthCodeVal);
-                self::parseMonthCodeSyntax($mcStr);
-            }
-            $nsVal = $item->get('nanosecond');
-            if (!($nsVal instanceof JsUndefined)) {
-                $nsNum = TypeConversion::toNumber($nsVal);
-                if (!is_finite($nsNum)) {
-                    throw new RangeError('nanosecond must be finite');
-                }
-                $ns = (int) $nsNum;
-            }
-            $sVal = $item->get('second');
-            if (!($sVal instanceof JsUndefined)) {
-                $sNum = TypeConversion::toNumber($sVal);
-                if (!is_finite($sNum)) {
-                    throw new RangeError('second must be finite');
-                }
-                $s = (int) $sNum;
-            }
-            $yearVal = $item->get('year');
-            $yNum = self::calendarYearFromFields(
-                $cal,
-                $eraStr,
-                $eraYearNum,
-                $yearVal instanceof JsUndefined ? null : TypeConversion::toNumber($yearVal),
-            );
-            if (!is_finite($yNum)) {
-                throw new RangeError('year must be finite');
-            }
-            $y = (int) $yNum;
-            if ($cal === 'roc') {
-                $y += 1911;
-            }
-            // Now validate monthCode suitability (after year type check).
-            if ($mcStr !== null) {
-                $validatedMonth = self::parseMonthCode($mcStr);
-                if ($monthExplicit && $m !== $validatedMonth) {
-                    throw new RangeError('month and monthCode must agree');
-                }
-                $m = $validatedMonth;
-            } elseif (!$monthExplicit) {
-                throw new TypeError('missing required property: month');
-            }
+            $calValue = $item->get('calendar');
+            $cal = $calValue instanceof JsUndefined ? 'iso8601' : self::toCalendarSlotValue($calValue);
+            $fields = self::prepareCalendarFields($item, $cal, [
+                'day', 'hour', 'microsecond', 'millisecond', 'minute', 'month',
+                'monthCode', 'nanosecond', 'second', 'year',
+            ], ['day']);
             if ($rawOptions !== null) {
-                $options = self::getOptionsObject($rawOptions);
-                $overflow = self::getOverflow($options);
+                $overflow = self::getOverflow(self::getOptionsObject($rawOptions));
             }
-            // For non-ISO calendars (excluding gregory/roc which use ISO
-            // year/month/day directly), convert calendar-native fields to ISO
-            // via ICU before storing.
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
-                $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $monthExplicit ? $m : null, $d);
-                if ($isoParts !== null) {
-                    if ($overflow === 'constrain') {
-                        $h = max(0, min(23, $h));
-                        $min = max(0, min(59, $min));
-                        $s = max(0, min(59, $s));
-                        $ms = max(0, min(999, $ms));
-                        $us = max(0, min(999, $us));
-                        $ns = max(0, min(999, $ns));
-                    } else {
-                        self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-                    }
-                    return self::createPlainDateTimeObject(
-                        $isoParts['year'],
-                        $isoParts['month'],
-                        $isoParts['day'],
-                        $h,
-                        $min,
-                        $s,
-                        $ms,
-                        $us,
-                        $ns,
-                        $cal,
-                    );
-                }
-            }
-            if ($overflow === 'constrain') {
-                [$y, $m, $d] = self::constrainISODate($y, $m, $d);
-                $h = max(0, min(23, $h));
-                $min = max(0, min(59, $min));
-                $s = max(0, min(59, $s));
-                $ms = max(0, min(999, $ms));
-                $us = max(0, min(999, $us));
-                $ns = max(0, min(999, $ns));
-            } else {
-                self::validateISODate($y, $m, $d);
-                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-            }
-            return self::createPlainDateTimeObject($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $cal);
+            $date = self::calendarDateFromFields($cal, $fields, $overflow);
+            [$h, $min, $s, $ms, $us, $ns] = self::timeFromFields($fields, $overflow);
+            return self::createPlainDateTimeObject(
+                $date['year'],
+                $date['month'],
+                $date['day'],
+                $h,
+                $min,
+                $s,
+                $ms,
+                $us,
+                $ns,
+                $cal,
+            );
         }
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to PlainDateTime');
@@ -1047,6 +713,7 @@ trait TypeConversionHelpers
     private static function parsePlainDateTimeString(string $str): JsObject
     {
         [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
+        self::validateTemporalDatePrefix($str);
         // Reject extended year without sign (5+ digits followed by dash).
         if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
@@ -1134,139 +801,12 @@ trait TypeConversionHelpers
             $overflow = self::getOverflow($options);
             return self::toPlainYearMonth($item, $overflow);
         }
-        $cal = 'iso8601';
-        $calVal = $item->get('calendar');
-        if (!($calVal instanceof JsUndefined)) {
-            $cal = self::toCalendarSlotValue($calVal);
-        }
-        $eraStr = null;
-        $eraYearNum = null;
-        $eraSet = false;
-        $eraYearSet = false;
-        if ($cal !== 'iso8601') {
-            $eraVal = $item->get('era');
-            if (!($eraVal instanceof JsUndefined)) {
-                $eraSet = true;
-                $eraStr = TypeConversion::toString($eraVal);
-            }
-            $eraYearVal = $item->get('eraYear');
-            if (!($eraYearVal instanceof JsUndefined)) {
-                $eraYearSet = true;
-                $eraYearNum = TypeConversion::toNumber($eraYearVal);
-                if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
-                    throw new RangeError('eraYear must be finite');
-                }
-                if (floor($eraYearNum) !== $eraYearNum) {
-                    throw new RangeError('eraYear must be an integer');
-                }
-            }
-            if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
-                throw new TypeError('era and eraYear must be provided together');
-            }
-        }
-        $month = $item->get('month');
-        $mVal = null;
-        if (!($month instanceof JsUndefined)) {
-            $mNum = TypeConversion::toNumber($month);
-            if (!is_finite($mNum)) {
-                throw new RangeError('month must be finite');
-            }
-            $mVal = (int) $mNum;
-        }
-        $monthCode = $item->get('monthCode');
-        $mcStr = null;
-        $mcParsed = null;
-        if (!($monthCode instanceof JsUndefined)) {
-            $mcStr = TypeConversion::toString($monthCode);
-            $mcParsed = self::parseMonthCodeSyntax($mcStr);
-        }
-        $year = $item->get('year');
-        $yNum = self::calendarYearFromFields(
-            $cal,
-            $eraStr,
-            $eraYearNum,
-            $year instanceof JsUndefined ? null : TypeConversion::toNumber($year),
-        );
-        if (!is_finite($yNum)) {
-            throw new RangeError('year must be finite');
-        }
-        $y = (int) $yNum;
-        if ($cal === 'roc') {
-            $y += 1911;
-        }
-        if ($mVal === null && $mcStr === null) {
-            throw new TypeError('missing required property: month or monthCode');
-        }
-        // NOW read overflow from options (after all field reads).
-        $options = self::getOptionsObject($rawOptions);
-        $overflow = self::getOverflow($options);
-        if ($mcParsed !== null) {
-            [$mcMonth, $mcLeap] = $mcParsed;
-            static $pymLazyLunisolar = ['hebrew', 'chinese', 'dangi'];
-            if ($mcMonth < 1 || $mcMonth > 12) {
-                throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
-            }
-            if ($mcLeap && !in_array($cal, $pymLazyLunisolar, true)) {
-                throw new RangeError("monthCode '{$mcStr}' leap-month suffix is not valid for calendar '{$cal}'");
-            }
-            // Hebrew M05L only exists in leap years.
-            if ($mcLeap && $cal === 'hebrew' && !self::isHebrewLeapYear($y)) {
-                if ($overflow === 'reject') {
-                    throw new RangeError("monthCode '{$mcStr}' is not valid in Hebrew non-leap year {$y}");
-                }
-                // Constrain leaks down to Adar (M06).
-                $mcMonth = 6;
-                $mcLeap = false;
-                $mcStr = 'M06';
-            }
-            $m = $mcMonth;
-            if ($mVal !== null && $mVal !== $m) {
-                throw new RangeError('month and monthCode disagree');
-            }
-        } else {
-            $m = $mVal;
-        }
-        if ($m < 1) {
-            throw new RangeError("month {$m} out of range");
-        }
-        // Hebrew leap years allow month=13.
-        $maxMonth = ($cal === 'hebrew' && self::isHebrewLeapYear($y)) ? 13 : 12;
-        if ($overflow === 'constrain') {
-            $m = min($maxMonth, $m);
-        } elseif ($m > $maxMonth) {
-            throw new RangeError("month {$m} out of range");
-        }
-        // Non-ISO non-gregory calendars: convert calendar-native (year, month, day=1)
-        // to ISO via ICU and store the resulting ISO date.
-        if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
-            $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
-            // Chinese leap-month requested in a year that doesn't have it:
-            // calendarPartsToIso returns null. Constrain to the next month
-            // (M01L → M02, M04L → M05, etc.); reject throws RangeError.
-            if ($isoParts === null && $mcStr !== null && in_array($cal, ['chinese', 'dangi'], true) && preg_match('/^M(\d{2})L$/', $mcStr, $mm)) {
-                if ($overflow === 'reject') {
-                    throw new RangeError("Chinese leap month {$mcStr} does not exist in year {$y}");
-                }
-                $base = (int) $mm[1];
-                // Prefer the next non-leap month (M(NN+1)); if NN is 12, fall
-                // back to the same-numbered non-leap month (M12).
-                foreach ([$base + 1, $base] as $altNum) {
-                    if ($altNum < 1 || $altNum > 12) {
-                        continue;
-                    }
-                    $altMc = 'M' . str_pad((string) $altNum, 2, '0', STR_PAD_LEFT);
-                    $candidate = self::calendarPartsToIso($cal, $y, $altMc, null, 1);
-                    if ($candidate !== null) {
-                        $isoParts = $candidate;
-                        break;
-                    }
-                }
-            }
-            if ($isoParts !== null) {
-                return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
-            }
-        }
-        return self::createPlainYearMonthObject($y, $m, 1, $cal);
+        $calValue = $item->get('calendar');
+        $cal = $calValue instanceof JsUndefined ? 'iso8601' : self::toCalendarSlotValue($calValue);
+        $fields = self::prepareCalendarFields($item, $cal, ['month', 'monthCode', 'year']);
+        $overflow = self::getOverflow(self::getOptionsObject($rawOptions));
+        $date = self::calendarDateFromFields($cal, $fields, $overflow);
+        return self::createPlainYearMonthObject($date['year'], $date['month'], $date['day'], $cal);
     }
 
     private static function toPlainYearMonth(JsValue $item, string $overflow = 'constrain'): JsObject
@@ -1283,119 +823,11 @@ trait TypeConversionHelpers
             );
         }
         if ($item instanceof JsObject) {
-            $cal = 'iso8601';
-            $calVal = $item->get('calendar');
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
-            }
-            // era/eraYear (non-ISO calendars only) per alphabetical
-            // spec ordering. Validation happens immediately.
-            $eraStr = null;
-            $eraYearNum = null;
-            $eraSet = false;
-            $eraYearSet = false;
-            if ($cal !== 'iso8601') {
-                $eraVal = $item->get('era');
-                if (!($eraVal instanceof JsUndefined)) {
-                    $eraSet = true;
-                    $eraStr = TypeConversion::toString($eraVal);
-                }
-                $eraYearVal = $item->get('eraYear');
-                if (!($eraYearVal instanceof JsUndefined)) {
-                    $eraYearSet = true;
-                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
-                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
-                        throw new RangeError('eraYear must be finite');
-                    }
-                    if (floor($eraYearNum) !== $eraYearNum) {
-                        throw new RangeError('eraYear must be an integer');
-                    }
-                }
-                if (self::calendarHasEras($cal) && $eraSet !== $eraYearSet) {
-                    throw new TypeError('era and eraYear must be provided together');
-                }
-            }
-            $month = $item->get('month');
-            $mVal = null;
-            if (!($month instanceof JsUndefined)) {
-                $mNum = TypeConversion::toNumber($month);
-                if (!is_finite($mNum)) {
-                    throw new RangeError('month must be finite');
-                }
-                $mVal = (int) $mNum;
-            }
-            $monthCode = $item->get('monthCode');
-            $mcStr = null;
-            $mcParsed = null;
-            if (!($monthCode instanceof JsUndefined)) {
-                $mcStr = TypeConversion::toString($monthCode);
-                $mcParsed = self::parseMonthCodeSyntax($mcStr);
-            }
-            $year = $item->get('year');
-            $yNum = self::calendarYearFromFields(
-                $cal,
-                $eraStr,
-                $eraYearNum,
-                $year instanceof JsUndefined ? null : TypeConversion::toNumber($year),
-            );
-            if (!is_finite($yNum)) {
-                throw new RangeError('year must be finite');
-            }
-            $y = (int) $yNum;
-            if ($cal === 'roc') {
-                $y += 1911;
-            }
-            if ($mVal === null && $mcStr === null) {
-                throw new TypeError('missing required property: month or monthCode');
-            }
-            if ($mcParsed !== null) {
-                [$mcMonth, $mcLeap] = $mcParsed;
-                // Leap-month suffix 'L' is only allowed on lunisolar
-                // calendars (Hebrew, Chinese, Dangi). Other calendars
-                // reject monthCodes ending in L.
-                static $pymLunisolar = ['hebrew', 'chinese', 'dangi'];
-                if ($mcMonth < 1 || $mcMonth > 12) {
-                    throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
-                }
-                if ($mcLeap && !in_array($cal, $pymLunisolar, true)) {
-                    throw new RangeError("monthCode '{$mcStr}' leap-month suffix is not valid for calendar '{$cal}'");
-                }
-                $m = $mcMonth;
-                if ($mVal !== null && $mVal !== $m) {
-                    throw new RangeError("month and monthCode disagree");
-                }
-            } elseif ($mVal !== null) {
-                $m = $mVal;
-            } else {
-                throw new TypeError('missing required property: month or monthCode');
-            }
-            // Per spec: months < 1 always throw, even with constrain.
-            if ($m < 1) {
-                throw new RangeError("month {$m} out of range");
-            }
-            if ($overflow === 'constrain') {
-                $m = min(12, $m);
-            } elseif ($m > 12) {
-                throw new RangeError("month {$m} out of range");
-            }
-            // Non-ISO non-gregory: convert calendar fields to ISO via ICU.
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
-                $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
-                if ($isoParts === null && $mcStr !== null && in_array($cal, ['chinese', 'dangi'], true) && preg_match('/^M(\d{2})L$/', $mcStr, $mm)) {
-                    if ($overflow === 'reject') {
-                        throw new RangeError("Chinese leap month {$mcStr} does not exist in year {$y}");
-                    }
-                    $nextNum = ((int) $mm[1]) + 1;
-                    if ($nextNum >= 1 && $nextNum <= 12) {
-                        $altMc = 'M' . str_pad((string) $nextNum, 2, '0', STR_PAD_LEFT);
-                        $isoParts = self::calendarPartsToIso($cal, $y, $altMc, null, 1);
-                    }
-                }
-                if ($isoParts !== null) {
-                    return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
-                }
-            }
-            return self::createPlainYearMonthObject($y, $m, 1, $cal);
+            $calValue = $item->get('calendar');
+            $cal = $calValue instanceof JsUndefined ? 'iso8601' : self::toCalendarSlotValue($calValue);
+            $fields = self::prepareCalendarFields($item, $cal, ['month', 'monthCode', 'year']);
+            $date = self::calendarDateFromFields($cal, $fields, $overflow);
+            return self::createPlainYearMonthObject($date['year'], $date['month'], $date['day'], $cal);
         }
         // Reject primitives per spec.
         if ($item instanceof JsNumber || $item instanceof \Phasis\Value\JsBigInt) {
@@ -1489,16 +921,18 @@ trait TypeConversionHelpers
         if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
             throw new RangeError("Invalid calendar: {$cal}");
         }
-        // For non-ISO calendars, preserve the parsed day component as the
-        // reference ISO day so getters land on the correct calendar M/d.
+        // A year-month refers to the first day of its native calendar month.
         $refDay = 1;
         if ($cal !== 'iso8601' && isset($m[3]) && $m[3] !== '') {
-            $refDay = (int) $m[3];
+            $fields = self::calendarFieldsForIso($cal, $y, $mo, (int) $m[3]);
+            $fields['day'] = 1;
+            $first = self::calendarDateFromFields($cal, $fields, 'constrain');
+            [$y, $mo, $refDay] = [$first['year'], $first['month'], $first['day']];
         }
         return self::createPlainYearMonthObject($y, $mo, $refDay, $cal);
     }
 
-    private static function toPlainMonthDay(JsValue $item, string $overflow = 'constrain'): JsObject
+    private static function toPlainMonthDay(JsValue $item, string $overflow = 'constrain', ?JsValue $rawOptions = null): JsObject
     {
         // Type validation: reject null, boolean, number, BigInt, symbol.
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
@@ -1518,187 +952,14 @@ trait TypeConversionHelpers
             );
         }
         if ($item instanceof JsObject) {
-            // Validate calendar property if present (read first per spec).
-            $calVal = $item->get('calendar');
-            $cal = 'iso8601';
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
+            $calValue = $item->get('calendar');
+            $cal = $calValue instanceof JsUndefined ? 'iso8601' : self::toCalendarSlotValue($calValue);
+            $fields = self::prepareCalendarFields($item, $cal, ['day', 'month', 'monthCode', 'year'], ['day']);
+            if ($rawOptions !== null) {
+                $overflow = self::getOverflow(self::getOptionsObject($rawOptions));
             }
-            // PrepareTemporalFields: alphabetical with immediate
-            // valueOf/toString.
-            $day = $item->get('day');
-            $hasDay = !($day instanceof JsUndefined);
-            $dNum = null;
-            if ($hasDay) {
-                $dNum = TypeConversion::toNumber($day);
-            }
-            // era/eraYear (non-ISO calendars only).
-            $eraStr = null;
-            $eraYearNum = null;
-            if ($cal !== 'iso8601') {
-                $eraVal = $item->get('era');
-                if (!($eraVal instanceof JsUndefined)) {
-                    $eraStr = TypeConversion::toString($eraVal);
-                }
-                $eraYearVal = $item->get('eraYear');
-                if (!($eraYearVal instanceof JsUndefined)) {
-                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
-                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
-                        throw new RangeError('eraYear must be finite');
-                    }
-                    if (floor($eraYearNum) !== $eraYearNum) {
-                        throw new RangeError('eraYear must be an integer');
-                    }
-                }
-            }
-            $month = $item->get('month');
-            $hasMonth = !($month instanceof JsUndefined);
-            $mNumRaw = null;
-            if ($hasMonth) {
-                $mNumRaw = TypeConversion::toNumber($month);
-            }
-            $monthCode = $item->get('monthCode');
-            $hasMonthCode = !($monthCode instanceof JsUndefined);
-            $mcStrRaw = null;
-            if ($hasMonthCode) {
-                $mcStrRaw = TypeConversion::toString($monthCode);
-            }
-            $year = $item->get('year');
-            $hasYear = !($year instanceof JsUndefined);
-            $yValRaw = null;
-            if ($hasYear) {
-                $yValRaw = TypeConversion::toNumber($year);
-            }
-            // Validate required properties now that all reads are done.
-            if (!$hasDay) {
-                throw new TypeError('Required property day missing');
-            }
-            if (!$hasMonth && !$hasMonthCode) {
-                throw new TypeError('Required property month or monthCode missing');
-            }
-            if (!is_finite($dNum)) {
-                throw new RangeError('day must be finite');
-            }
-            $d = (int) $dNum;
-            if ($hasMonthCode) {
-                if (!preg_match('/^M(\d{2})(L?)$/', $mcStrRaw, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mcStrRaw}");
-                }
-                $m = (int) $mcm[1];
-                $hasLeap = $mcm[2] === 'L';
-                $mStr = $mcStrRaw;
-            } else {
-                if (!is_finite($mNumRaw)) {
-                    throw new RangeError('month must be finite');
-                }
-                $m = (int) $mNumRaw;
-                $hasLeap = false;
-                $mStr = '';
-            }
-            $refYear = 1972;
-            if ($hasYear) {
-                if (!is_finite($yValRaw)) {
-                    throw new RangeError('year must be finite');
-                }
-                $refYear = (int) $yValRaw;
-                // When era+eraYear is also provided, validate consistency.
-                if ($eraYearNum !== null) {
-                    static $pmdEraDerivCals2 = ['gregory', 'japanese', 'roc'];
-                    if (in_array($cal, $pmdEraDerivCals2, true)) {
-                        $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                        $derivedYear = null;
-                        if ($cal === 'gregory') {
-                            $derivedYear = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
-                                ? (1 - (int) $eraYearNum)
-                                : (int) $eraYearNum;
-                        } elseif ($cal === 'roc') {
-                            $derivedYear = ($eraLower === 'roc-inverse' || $eraLower === 'before-roc')
-                                ? (int) (1912 - $eraYearNum)
-                                : (int) (1911 + $eraYearNum);
-                        } elseif ($cal === 'japanese') {
-                            $isoY = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
-                            if ($isoY !== null) {
-                                $derivedYear = $isoY;
-                            }
-                        }
-                        if ($derivedYear !== null && $derivedYear !== $refYear) {
-                            throw new RangeError(
-                                "era/eraYear and year disagree: derived {$derivedYear} vs explicit {$refYear}",
-                            );
-                        }
-                    }
-                }
-            } else {
-                static $pmdEraDerivCals = ['gregory', 'japanese', 'roc'];
-                if (
-                    $eraYearNum !== null
-                    && in_array($cal, $pmdEraDerivCals, true)
-                ) {
-                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    $refYear = in_array($eraLower, ['bc', 'bce'], true)
-                        ? (1 - (int) $eraYearNum)
-                        : (int) $eraYearNum;
-                } elseif ($cal !== 'iso8601' && !$hasMonthCode) {
-                    // Non-ISO calendars require year info when month is given numerically.
-                    throw new TypeError('non-ISO calendar requires year (or era+eraYear)');
-                }
-            }
-
-            // Now validate month code suitability (semantic check).
-            if ($hasMonthCode) {
-                if ($m < 1 || $m > 12) {
-                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
-                }
-                static $pmdLunisolar = ['hebrew', 'chinese', 'dangi'];
-                if ($hasLeap && !in_array($cal, $pmdLunisolar, true)) {
-                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
-                }
-                // Check for monthCode/month conflict.
-                if ($hasMonth) {
-                    $monthNum = (int) TypeConversion::toNumber($month);
-                    if ($monthNum !== $m) {
-                        throw new RangeError("monthCode {$mStr} and month {$monthNum} conflict");
-                    }
-                }
-            }
-
-            if ($overflow === 'constrain') {
-                // Months <= 0 are always invalid even with constrain.
-                if ($m < 1) {
-                    throw new RangeError("Invalid month: {$m}");
-                }
-                $m = min(12, $m);
-                // Days <= 0 are always invalid even with constrain.
-                if ($d < 1) {
-                    throw new RangeError("Invalid day: {$d}");
-                }
-                $dim = self::isoDaysInMonth($refYear, $m);
-                $d = min($dim, $d);
-            } else {
-                // reject: validate strictly.
-                if ($m < 1 || $m > 12) {
-                    throw new RangeError("Invalid month: {$m}");
-                }
-                $dim = self::isoDaysInMonth($refYear, $m);
-                if ($d < 1 || $d > $dim) {
-                    throw new RangeError("Invalid day: {$d} for month {$m} in year {$refYear}");
-                }
-            }
-            // Non-ISO non-gregory: pick the reference ISO date for this calendar
-            // M-d combo (latest ISO ≤ 1972).
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
-                $iso = self::pmdReferenceIsoFor($cal, $hasMonthCode ? $mStr : null, $hasMonthCode ? null : $m, $d);
-                if ($iso !== null) {
-                    return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
-                }
-                // No valid reference ISO landed in calendar — invalid M-d
-                // for this calendar (e.g. hebrew M01L, which is not a real
-                // leap month).
-                throw new RangeError(
-                    "Invalid PlainMonthDay for calendar '{$cal}'",
-                );
-            }
-            return self::createPlainMonthDayObject($m, $d, 1972, $cal);
+            $date = self::calendarMonthDayFromFields($cal, $fields, $overflow);
+            return self::createPlainMonthDayObject($date['month'], $date['day'], $date['year'], $cal);
         }
         $str = TypeConversion::toString($item);
         return self::parsePlainMonthDayString($str);
@@ -1710,298 +971,15 @@ trait TypeConversionHelpers
      */
     private static function toPlainMonthDayWithLazyOptions(JsValue $item, JsValue $options): JsObject
     {
-        if ($item instanceof JsUndefined || $item instanceof JsNull) {
-            throw new TypeError('Cannot convert undefined or null to a Temporal.PlainMonthDay');
-        }
-        if ($item instanceof JsBoolean || $item instanceof JsNumber || $item instanceof JsBigInt) {
-            throw new TypeError('Cannot convert primitive to a Temporal.PlainMonthDay');
-        }
-        if ($item instanceof JsObject && $item->has('[[IsPlainMonthDay]]')) {
-            $result = self::createPlainMonthDayObject(
-                self::getSlotInt($item, '[[ISOMonth]]'),
-                self::getSlotInt($item, '[[ISODay]]'),
-                self::getSlotInt($item, '[[ISOYear]]'),
-                self::getSlotString($item, '[[Calendar]]'),
-            );
-            self::getOverflow($options);
-            return $result;
-        }
-        if ($item instanceof JsObject) {
-            // Read fields in alphabetical order per spec, coercing immediately.
-            // 1. calendar
-            $calVal = $item->get('calendar');
-            $cal = 'iso8601';
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
-            }
-
-            // 2. day (read and coerce immediately)
-            $dayVal = $item->get('day');
-            $hasDay = !($dayVal instanceof JsUndefined);
-            $d = 0;
-            if ($hasDay) {
-                $dNum = TypeConversion::toNumber($dayVal);
-                if (!is_finite($dNum)) {
-                    throw new RangeError('day must be finite');
-                }
-                $d = (int) $dNum;
-            }
-
-            // 3. era / eraYear (non-ISO calendars only).
-            $eraStr = null;
-            $eraYearNum = null;
-            $eraSet = false;
-            $eraYearSet = false;
-            if ($cal !== 'iso8601') {
-                $eraVal = $item->get('era');
-                if (!($eraVal instanceof JsUndefined)) {
-                    $eraSet = true;
-                    $eraStr = TypeConversion::toString($eraVal);
-                }
-                $eraYearVal = $item->get('eraYear');
-                if (!($eraYearVal instanceof JsUndefined)) {
-                    $eraYearSet = true;
-                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
-                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
-                        throw new RangeError('eraYear must be finite');
-                    }
-                    if (floor($eraYearNum) !== $eraYearNum) {
-                        throw new RangeError('eraYear must be an integer');
-                    }
-                }
-                static $pmdLazyEraCals = ['gregory', 'japanese', 'roc'];
-                if (in_array($cal, $pmdLazyEraCals, true) && $eraSet !== $eraYearSet) {
-                    throw new TypeError('era and eraYear must be provided together');
-                }
-            }
-
-            // 4. month (read and coerce immediately)
-            $monthVal = $item->get('month');
-            $hasMonth = !($monthVal instanceof JsUndefined);
-            $monthNum = 0;
-            if ($hasMonth) {
-                $mVal = TypeConversion::toNumber($monthVal);
-                if (!is_finite($mVal)) {
-                    throw new RangeError('month must be finite');
-                }
-                $monthNum = (int) $mVal;
-            }
-
-            // 5. monthCode (read and coerce immediately)
-            $monthCodeVal = $item->get('monthCode');
-            $hasMonthCode = !($monthCodeVal instanceof JsUndefined);
-            $m = 0;
-            $hasLeap = false;
-            $mStr = '';
-            if ($hasMonthCode) {
-                $mStr = TypeConversion::toString($monthCodeVal);
-                if (!preg_match('/^M(\d{2})(L?)$/', $mStr, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mStr}");
-                }
-                $m = (int) $mcm[1];
-                $hasLeap = $mcm[2] === 'L';
-            }
-
-            // 6. year (read and coerce immediately)
-            $yearVal = $item->get('year');
-            $hasYear = !($yearVal instanceof JsUndefined);
-            $refYear = 1972;
-            if ($hasYear) {
-                $yVal = TypeConversion::toNumber($yearVal);
-                if (!is_finite($yVal)) {
-                    throw new RangeError('year must be finite');
-                }
-                // ROC field-bag year is 1-based from 1912 ("民國" 1 =
-                // 1912 AD). All downstream day/month math wants the ISO
-                // year, so translate up front.
-                $refYear = $cal === 'roc' ? ((int) $yVal + 1911) : (int) $yVal;
-                if ($eraYearNum !== null) {
-                    static $pmdEraDerivCals3 = ['gregory', 'japanese', 'roc'];
-                    if (in_array($cal, $pmdEraDerivCals3, true)) {
-                        $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                        $derivedYear = null;
-                        if ($cal === 'gregory') {
-                            $derivedYear = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
-                                ? (1 - (int) $eraYearNum)
-                                : (int) $eraYearNum;
-                        } elseif ($cal === 'roc') {
-                            $derivedYear = ($eraLower === 'roc-inverse' || $eraLower === 'before-roc')
-                                ? (int) (1912 - $eraYearNum)
-                                : (int) (1911 + $eraYearNum);
-                        } elseif ($cal === 'japanese') {
-                            $isoY = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
-                            if ($isoY !== null) {
-                                $derivedYear = $isoY;
-                            }
-                        }
-                        if ($derivedYear !== null && $derivedYear !== $refYear) {
-                            throw new RangeError(
-                                "era/eraYear and year disagree: derived {$derivedYear} vs explicit {$refYear}",
-                            );
-                        }
-                    }
-                }
-            } else {
-                static $pmdEraDerivCals2 = ['gregory', 'japanese', 'roc'];
-                if (
-                    $eraYearNum !== null
-                    && in_array($cal, $pmdEraDerivCals2, true)
-                ) {
-                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    $refYear = in_array($eraLower, ['bc', 'bce'], true)
-                        ? (1 - (int) $eraYearNum)
-                        : (int) $eraYearNum;
-                    $hasYear = true;
-                }
-            }
-
-            // Validate required fields.
-            if (!$hasDay) {
-                throw new TypeError('Required property day missing');
-            }
-            if (!$hasMonthCode && !$hasMonth) {
-                throw new TypeError('Required property month or monthCode missing');
-            }
-            // Non-ISO calendars require year info when month is given numerically.
-            if ($cal !== 'iso8601' && !$hasYear && !$hasMonthCode) {
-                throw new TypeError('non-ISO calendar requires year (or era+eraYear) when month is given numerically');
-            }
-
-            // Resolve month from monthCode or month.
-            if (!$hasMonthCode) {
-                $m = $monthNum;
-            }
-
-            // Validate month code suitability after year type validation.
-            if ($hasMonthCode) {
-                static $pmdHas13Month = ['coptic', 'ethioaa', 'ethiopic'];
-                $maxMonthCode = in_array($cal, $pmdHas13Month, true) ? 13 : 12;
-                if ($m < 1 || $m > $maxMonthCode) {
-                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
-                }
-                static $pmdLunisolar2 = ['hebrew', 'chinese', 'dangi'];
-                if ($hasLeap && !in_array($cal, $pmdLunisolar2, true)) {
-                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
-                }
-                if ($hasMonth && $monthNum !== $m) {
-                    throw new RangeError("monthCode {$mStr} and month {$monthNum} conflict");
-                }
-            }
-
-            // NOW read overflow from options (after all field reads).
-            $overflow = self::getOverflow($options);
-
-            static $pmdHas13MonthsConstrain = ['coptic', 'ethioaa', 'ethiopic'];
-            $maxMonth = in_array($cal, $pmdHas13MonthsConstrain, true) ? 13 : 12;
-            // For lunisolar calendars (hebrew/chinese/dangi), the month
-            // count varies year-to-year. With an explicit year, cap by
-            // that year's actual monthsInYear so month:15 in a leap
-            // hebrew year clamps to 13 (Elul) rather than 12 (Av).
-            if (
-                $hasYear
-                && in_array($cal, ['hebrew', 'chinese', 'dangi'], true)
-            ) {
-                $isoForCount = self::calendarPartsToIso($cal, $refYear, null, 1, 1);
-                if ($isoForCount !== null) {
-                    $miyForRefYear = self::calendarMonthsInYear(
-                        $cal,
-                        $isoForCount['year'],
-                        $isoForCount['month'],
-                        $isoForCount['day'],
-                    );
-                    if ($miyForRefYear !== null) {
-                        $maxMonth = $miyForRefYear;
-                    }
-                }
-            }
-            // When the user provided a year, the day limit is that year's
-            // actual days-in-month (not the calendar-wide max).
-            $useYearDim = $hasYear && in_array($cal, ['iso8601', 'gregory', 'roc', 'japanese'], true);
-            if ($overflow === 'constrain') {
-                if ($m < 1) {
-                    throw new RangeError("Invalid month: {$m}");
-                }
-                $m = min($maxMonth, $m);
-                if ($d < 1) {
-                    throw new RangeError("Invalid day: {$d}");
-                }
-                if ($useYearDim) {
-                    $dim = self::isoDaysInMonth($refYear, $m);
-                } elseif ($cal === 'iso8601') {
-                    $dim = self::isoDaysInMonth($refYear, $m);
-                } else {
-                    $dim = self::maxDaysInCalendarMonth($cal, $m, $hasLeap);
-                }
-                $d = min($dim, $d);
-            } else {
-                if ($m < 1 || $m > $maxMonth) {
-                    throw new RangeError("Invalid month: {$m}");
-                }
-                if ($useYearDim) {
-                    $dim = self::isoDaysInMonth($refYear, $m);
-                } elseif ($cal === 'iso8601') {
-                    $dim = self::isoDaysInMonth($refYear, $m);
-                } else {
-                    $dim = self::maxDaysInCalendarMonth($cal, $m, $hasLeap);
-                }
-                if ($d < 1 || $d > $dim) {
-                    throw new RangeError("Invalid day: {$d}");
-                }
-            }
-            // Non-ISO non-gregory: pick the reference ISO date for this calendar
-            // M-d combo. For Hebrew with explicit year, also constrain day by
-            // the actual days-in-month for that calendar year.
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
-                if ($hasYear) {
-                    $maxD = self::calendarDaysInMonth($cal, $refYear, $hasMonthCode ? $mStr : null, $hasMonthCode ? null : $m);
-                    if ($maxD !== null) {
-                        if ($overflow === 'reject' && $d > $maxD) {
-                            throw new RangeError("Invalid day: {$d} for {$mStr} in calendar year {$refYear}");
-                        }
-                        $d = min($d, $maxD);
-                    }
-                }
-                // When the user supplied year+month (no monthCode) for a
-                // lunisolar calendar, resolve the monthCode in that year's
-                // space so a PMD constructed in a leap year carries the
-                // correct ML / non-L suffix. Otherwise PMD throws away the
-                // year and the search around 1972 may pick a non-leap year.
-                $resolvedMonthCode = $hasMonthCode ? $mStr : null;
-                if (
-                    !$hasMonthCode
-                    && $hasYear
-                    && in_array($cal, ['hebrew', 'chinese', 'dangi'], true)
-                ) {
-                    $resolved = self::calendarPartsToIso($cal, $refYear, null, $m, $d);
-                    if ($resolved !== null) {
-                        $back = self::isoToCalendarParts($cal, $resolved['year'], $resolved['month'], $resolved['day']);
-                        if ($back !== null) {
-                            $resolvedMonthCode = $back['monthCode'];
-                        }
-                    }
-                }
-                $iso = self::pmdReferenceIsoFor(
-                    $cal,
-                    $resolvedMonthCode,
-                    $resolvedMonthCode === null ? $m : null,
-                    $d,
-                );
-                if ($iso !== null) {
-                    return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
-                }
-                throw new RangeError(
-                    "Invalid PlainMonthDay for calendar '{$cal}'",
-                );
-            }
-            return self::createPlainMonthDayObject($m, $d, 1972, $cal);
-        }
-        $str = TypeConversion::toString($item);
-        return self::parsePlainMonthDayString($str);
+        return self::toPlainMonthDay($item, 'constrain', $options);
     }
 
     private static function parsePlainMonthDayString(string $str): JsObject
     {
         [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
+        if (!self::isValidCalendar($calFromAnnotation)) {
+            throw new RangeError("Invalid calendar: {$calFromAnnotation}");
+        }
 
         // Reject UTC designator (Z) for PlainMonthDay.
         // Check after date/time portion, not inside annotations.
@@ -2086,6 +1064,7 @@ trait TypeConversionHelpers
             throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
         }
 
+        self::validateTemporalDatePrefix($cleanStr);
         // Full ISO date with optional time and offset.
         // First check for date-only with offset (no time): reject.
         // Use greedy year match (\d{4,6}) to avoid backtracking into date.

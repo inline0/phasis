@@ -7,6 +7,8 @@ namespace Phasis\BuiltIn;
 use Phasis\Exceptions\TypeError;
 use Phasis\Object\PropertyDescriptor;
 use Phasis\Runtime\Environment;
+use Phasis\Runtime\DisposableResource;
+use Phasis\Value\JsPromise;
 use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsBoolean;
 use Phasis\Value\JsFunction;
@@ -117,19 +119,6 @@ class DisposableStackConstructor
             JsFunction::fromCallable('use', function (JsValue $this_, array $args): JsValue {
                 $this_ = self::assertNotDisposed($this_);
                 $value = $args[0] ?? JsUndefined::instance();
-                if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                    return $value;
-                }
-                if (!$value instanceof JsObject) {
-                    throw new TypeError('The value must be an object, null, or undefined.');
-                }
-                $method = $value->getBySymbol(SymbolConstructor::dispose());
-                if ($method instanceof JsUndefined || $method instanceof JsNull) {
-                    throw new TypeError('The value does not have a Symbol.dispose method.');
-                }
-                if (!$method instanceof JsFunction) {
-                    throw new TypeError('Property [Symbol.dispose] is not a function.');
-                }
                 self::pushToStack($this_, $value, false);
                 return $value;
             }, 1),
@@ -209,9 +198,9 @@ class DisposableStackConstructor
 
         // DisposableStack.prototype.move()
         $proto->defineOwnProperty('move', PropertyDescriptor::data(
-            JsFunction::fromCallable('move', function (JsValue $this_): JsValue {
+            JsFunction::fromCallable('move', function (JsValue $this_) use ($proto): JsValue {
                 $this_ = self::assertNotDisposed($this_);
-                $newStack = new JsObject($this_->getPrototype());
+                $newStack = new JsObject($proto);
                 $newStack->defineOwnProperty('[[DisposableState]]', PropertyDescriptor::data(
                     new JsString('pending'),
                     true,
@@ -311,26 +300,6 @@ class DisposableStackConstructor
             JsFunction::fromCallable('use', function (JsValue $this_, array $args): JsValue {
                 $this_ = self::assertNotDisposed($this_, async: true);
                 $value = $args[0] ?? JsUndefined::instance();
-                if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                    return $value;
-                }
-                if (!$value instanceof JsObject) {
-                    throw new TypeError('The value must be an object, null, or undefined.');
-                }
-                $asyncMethod = $value->getBySymbol(SymbolConstructor::asyncDispose());
-                $syncMethod = $value->getBySymbol(SymbolConstructor::dispose());
-                $hasAsync = $asyncMethod instanceof JsFunction;
-                $hasSync = $syncMethod instanceof JsFunction;
-                // Check for non-callable but present symbols.
-                if (!$hasAsync && !($asyncMethod instanceof JsUndefined || $asyncMethod instanceof JsNull)) {
-                    throw new TypeError('Property [Symbol.asyncDispose] is not a function.');
-                }
-                if (!$hasAsync && !$hasSync) {
-                    if (!($syncMethod instanceof JsUndefined || $syncMethod instanceof JsNull)) {
-                        throw new TypeError('Property [Symbol.dispose] is not a function.');
-                    }
-                    throw new TypeError('The value does not have a dispose method.');
-                }
                 self::pushToStack($this_, $value, true);
                 return $value;
             }, 1),
@@ -403,8 +372,7 @@ class DisposableStackConstructor
                         return \Phasis\Value\JsPromise::resolved(JsUndefined::instance());
                     }
                     $this_->set('[[DisposableState]]', new JsString('disposed'));
-                    self::disposeStack($this_, true);
-                    return \Phasis\Value\JsPromise::resolved(JsUndefined::instance());
+                    return self::disposeAsyncStack($this_);
                 } catch (\Throwable $e) {
                     $interp = \Phasis\Value\JsFunction::getInterpreterInstance();
                     $jsErr = $interp !== null
@@ -420,9 +388,9 @@ class DisposableStackConstructor
 
         // AsyncDisposableStack.prototype.move()
         $proto->defineOwnProperty('move', PropertyDescriptor::data(
-            JsFunction::fromCallable('move', function (JsValue $this_): JsValue {
+            JsFunction::fromCallable('move', function (JsValue $this_) use ($proto): JsValue {
                 $this_ = self::assertNotDisposed($this_, async: true);
-                $newStack = new JsObject($this_->getPrototype());
+                $newStack = new JsObject($proto);
                 $newStack->defineOwnProperty('[[DisposableState]]', PropertyDescriptor::data(
                     new JsString('pending'),
                     true,
@@ -518,6 +486,10 @@ class DisposableStackConstructor
      */
     private static function pushToStack(JsObject $this_, JsValue $resource, bool $isAsync): void
     {
+        $record = DisposableResource::create($resource, $isAsync);
+        if ($record === null) {
+            return;
+        }
         $stack = $this_->get('[[DisposableStack]]');
         if (!$stack instanceof JsObject) {
             $stack = new JsObject();
@@ -527,7 +499,8 @@ class DisposableStackConstructor
         $length = ($lengthVal instanceof \Phasis\Value\JsNumber) ? (int) $lengthVal->value : 0;
 
         $entry = new JsObject();
-        $entry->set('resource', $resource);
+        $entry->set('resource', $record->value);
+        $entry->set('method', $record->method ?? JsUndefined::instance());
         $entry->set('async', new JsBoolean($isAsync));
         $stack->set((string) $length, $entry);
         $stack->set('length', new \Phasis\Value\JsNumber($length + 1));
@@ -555,19 +528,8 @@ class DisposableStackConstructor
                 continue;
             }
             $resource = $entry->get('resource');
-            if (!$resource instanceof JsObject) {
-                continue;
-            }
-
             try {
-                if ($isAsync) {
-                    $method = $resource->getBySymbol(SymbolConstructor::asyncDispose());
-                    if ($method instanceof JsUndefined || $method instanceof JsNull) {
-                        $method = $resource->getBySymbol(SymbolConstructor::dispose());
-                    }
-                } else {
-                    $method = $resource->getBySymbol(SymbolConstructor::dispose());
-                }
+                $method = $entry->get('method');
                 if ($method instanceof JsFunction) {
                     $method->call($resource, []);
                 }
@@ -585,6 +547,89 @@ class DisposableStackConstructor
         if ($hasError && $error !== null) {
             throw new \Phasis\Exceptions\JsThrowable($error);
         }
+    }
+
+    /** Await each asynchronous disposal before advancing to the next resource. */
+    private static function disposeAsyncStack(JsObject $this_): JsPromise
+    {
+        $promise = new JsPromise();
+        $stack = $this_->get('[[DisposableStack]]');
+        $this_->set('[[DisposableStack]]', new JsObject());
+        if (!$stack instanceof JsObject) {
+            $promise->resolve(JsUndefined::instance());
+            return $promise;
+        }
+        $length = $stack->get('length');
+        $index = $length instanceof \Phasis\Value\JsNumber ? (int) $length->value - 1 : -1;
+        $error = null;
+        $needsAwait = false;
+        $hasAwaited = false;
+        $recordError = static function (JsValue $nextError) use (&$error): void {
+            $error = $error === null ? $nextError : self::buildSuppressedError($nextError, $error);
+        };
+        $advance = null;
+        $advance = static function () use (
+            &$advance,
+            $stack,
+            &$index,
+            &$error,
+            &$needsAwait,
+            &$hasAwaited,
+            $recordError,
+            $promise,
+        ): void {
+            while ($index >= 0) {
+                $entry = $stack->get((string) $index--);
+                if (!$entry instanceof JsObject) {
+                    continue;
+                }
+                $method = $entry->get('method');
+                if (!$method instanceof JsFunction) {
+                    $needsAwait = true;
+                    continue;
+                }
+                try {
+                    $result = $method->call($entry->get('resource'), []);
+                } catch (\Throwable $exception) {
+                    $recordError(self::exceptionToJsValue($exception));
+                    continue;
+                }
+                $awaited = $result instanceof JsPromise ? $result : JsPromise::resolved($result);
+                $hasAwaited = true;
+                $awaited->then([
+                    JsFunction::fromCallable('', static function () use (&$advance): JsValue {
+                        $advance();
+                        return JsUndefined::instance();
+                    }),
+                    JsFunction::fromCallable('', static function (
+                        JsValue $this_,
+                        array $args
+                    ) use (
+                        &$advance,
+                        $recordError,
+                    ): JsValue {
+                        $recordError($args[0] ?? JsUndefined::instance());
+                        $advance();
+                        return JsUndefined::instance();
+                    }),
+                ]);
+                return;
+            }
+            if ($needsAwait && !$hasAwaited) {
+                $hasAwaited = true;
+                JsPromise::scheduleCallback(static function () use (&$advance): void {
+                    $advance();
+                });
+                return;
+            }
+            if ($error !== null) {
+                $promise->reject($error);
+            } else {
+                $promise->resolve(JsUndefined::instance());
+            }
+        };
+        $advance();
+        return $promise;
     }
 
     private static function exceptionToJsValue(\Throwable $e): JsValue

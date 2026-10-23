@@ -50,6 +50,8 @@ class TemporalObject
     use Temporal\FormattingHelpers;
     use Temporal\TimezoneHelpers;
     use Temporal\IcuCalendarHelpers;
+    use Temporal\CalendarFieldHelpers;
+    use Temporal\CalendarRoundingHelpers;
     use Temporal\ArithmeticHelpers;
     use Temporal\RoundingHelpers;
     use Temporal\TemporalUnitsHelpers;
@@ -79,6 +81,23 @@ class TemporalObject
                 $ntProto instanceof JsObject ? $ntProto : $defaultProto,
             );
         }
+    }
+
+    /**
+     * Calendar fields shared with Intl formatting, including arithmetic years
+     * and era identifiers independent of the host ICU calendar version.
+     *
+     * @return array<string, bool|int|string|null>|null
+     */
+    public static function calendarFieldsForIntl(string $calendar, int $year, int $month, int $day): ?array
+    {
+        $parts = self::isoToCalendarParts($calendar, $year, $month, $day);
+        if ($parts === null) {
+            return null;
+        }
+        $parts['era'] = self::deriveEra($calendar, $year, $month, $day);
+        $parts['eraYear'] = self::deriveEraYear($calendar, $year, $month, $day);
+        return $parts;
     }
 
     public static function install(Environment $env): void

@@ -310,7 +310,7 @@ trait MethodRegistrationHelpers
             ['heisei', 1989, 1,  8, 1989],
             ['showa',  1926, 12, 25, 1926],
             ['taisho', 1912, 7,  30, 1912],
-            ['meiji',  1868, 9,  8,  1868],
+            ['meiji',  1873, 1,  1,  1868],
         ];
     }
 
@@ -674,6 +674,17 @@ trait MethodRegistrationHelpers
             $args[0] ?? JsUndefined::instance(),
             $optionsArg,
         ]);
+        if (
+            $this_ instanceof JsObject
+            && (
+                (($this_->has('[[IsPlainDate]]') || $this_->has('[[IsPlainYearMonth]]')
+                    || $this_->has('[[IsPlainMonthDay]]'))
+                    && !$obj->get('[[TimeStyle]]') instanceof JsUndefined)
+                || ($this_->has('[[IsPlainTime]]') && !$obj->get('[[DateStyle]]') instanceof JsUndefined)
+            )
+        ) {
+            throw new TypeError('Temporal type does not support the requested date or time style');
+        }
         $interp = \Phasis\Engine::getCurrentInterpreter();
         $formatGetter = $proto instanceof JsObject
             ? $proto->getOwnPropertyDescriptor('format')

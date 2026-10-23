@@ -32,13 +32,16 @@ trait DurationHelpers
     // Helpers: Duration
     // -----------------------------------------------------------------------
 
-    private static function getDurationField(JsValue $obj, string $field): int
+    private static function getDurationField(JsValue $obj, string $field): int|float
     {
         if (!$obj instanceof JsObject) {
             return 0;
         }
         $v = $obj->get("[[{$field}]]");
         if ($v instanceof JsNumber) {
+            if ($v->value >= PHP_INT_MAX || $v->value < PHP_INT_MIN) {
+                return $v->value;
+            }
             return (int) $v->value;
         }
         return 0;
@@ -825,51 +828,9 @@ trait DurationHelpers
             $totalNsExact = bcadd($jdDiffNs, $timeNs, 0);
             return (float) bcdiv($totalNsExact, '604800000000000', 25);
         }
-        if ($unit === 'month') {
-            // Whole months from date diff.
-            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
-            if ($d2 < $d1) {
-                $totalMonths--;
-            }
-            // Per spec: fractional part is (days beyond midpoint) /
-            // (days in the month spanning the midpoint through the next month
-            // boundary anchored at d1). Compute midStart (refDate +
-            // wholeMonths, constrained) and midEnd (refDate + wholeMonths + 1
-            // month, constrained); monthLength is midEnd - midStart.
-            $midTotalM = $y1 * 12 + ($m1 - 1) + $totalMonths;
-            $midMY = intdiv($midTotalM, 12);
-            $midMM = ($midTotalM % 12) + 1;
-            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
-            $midStartJd = self::isoToJulianDay($midMY, $midMM, $midD);
-            $nextTotalM = $midTotalM + 1;
-            $nextMY = intdiv($nextTotalM, 12);
-            $nextMM = ($nextTotalM % 12) + 1;
-            $nextD = min($d1, self::isoDaysInMonth($nextMY, $nextMM));
-            $midEndJd = self::isoToJulianDay($nextMY, $nextMM, $nextD);
-            $monthLength = $midEndJd - $midStartJd;
-            $remainDays = ($jd2 - $midStartJd) + $fractionalDays;
-            return $totalMonths + ($monthLength > 0 ? $remainDays / $monthLength : 0);
-        }
-        if ($unit === 'year') {
-            $years = $y2 - $y1;
-            if ($m2 < $m1 || ($m2 === $m1 && $d2 < $d1)) {
-                $years--;
-            }
-            // Per spec: compute remaining days / year-boundary days.
-            // yearStart = ref + wholeYears.
-            $ysD = min($d1, self::isoDaysInMonth($y1 + $years, $m1));
-            $ysJd = self::isoToJulianDay($y1 + $years, $m1, $ysD);
-            // yearEnd = ref + wholeYears + 1 year.
-            $yeYear = $y1 + $years + 1;
-            if ($yeYear > self::ISO_YEAR_MAX || $yeYear < self::ISO_YEAR_MIN) {
-                throw new RangeError('Date outside representable range during total calculation');
-            }
-            $yeD = min($d1, self::isoDaysInMonth($yeYear, $m1));
-            $yeJd = self::isoToJulianDay($yeYear, $m1, $yeD);
-            $yearLengthDays = $yeJd - $ysJd;
-            $remainDays = ($jd2 - $ysJd) + $fractionalDays;
-            $frac = $yearLengthDays > 0 ? $remainDays / (float) $yearLengthDays : 0;
-            return $years + $frac;
+        if ($unit === 'month' || $unit === 'year') {
+            $bounds = self::calendarUnitBounds($refDate, $endWithTimeNs, $unit, 1);
+            return self::totalCalendarUnitFromBounds($bounds, $endWithTimeNs);
         }
         // For time units with a calendar-unit duration, compute total ns as
         // (endDate - startDate in ns) + time component, then divide by the unit.

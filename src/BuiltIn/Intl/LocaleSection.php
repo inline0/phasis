@@ -71,6 +71,11 @@ trait LocaleSection
 
                 $options = self::getOptionsObject($optionsArg);
 
+                $parsed = self::parseLocaleTag($tag);
+                if ($parsed === null) {
+                    throw new RangeError("Invalid language tag: {$tag}");
+                }
+
                 // Apply options overrides. Each subtag must match its
                 // BCP47 production exactly; ICU's parser is permissive
                 // so we validate up-front.
@@ -106,10 +111,19 @@ trait LocaleSection
                     }
                 }
 
-                // Parse the tag.
-                $parsed = self::parseLocaleTag($tag);
-                if ($parsed === null) {
-                    throw new RangeError("Invalid language tag: {$tag}");
+                $variants = null;
+                $variantsVal = $options->get('variants');
+                if (!$variantsVal instanceof JsUndefined) {
+                    $variantsString = TypeConversion::toString($variantsVal);
+                    $variants = explode('-', strtolower($variantsString));
+                    foreach ($variants as $variant) {
+                        if (preg_match('/^(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3})$/D', $variant) !== 1) {
+                            throw new RangeError("Invalid variants: {$variantsString}");
+                        }
+                    }
+                    if (count(array_unique($variants)) !== count($variants)) {
+                        throw new RangeError("Duplicate variants: {$variantsString}");
+                    }
                 }
 
                 // Override with options.
@@ -125,6 +139,13 @@ trait LocaleSection
                     // numeric codes such as "554" canonicalise to
                     // their alpha-2 equivalent (NZ).
                     $parsed = self::applyRegionAlias($parsed);
+                }
+                if ($variants !== null) {
+                    $parsed['variants'] = $variants;
+                }
+                $parsed = self::parseLocaleTag(self::reconstructLocaleTag($parsed));
+                if ($parsed === null) {
+                    throw new RangeError('Invalid locale language options');
                 }
 
                 // Unicode extension keywords from options. Each value
@@ -169,8 +190,38 @@ trait LocaleSection
                     if (!$isValidUnicodeType($collation)) {
                         throw new RangeError("Invalid collation: {$collation}");
                     }
-                    $parsed['collation'] = $collation;
+                    $parsed['collation'] = strtolower($collation);
                 }
+                // firstDayOfWeek: numeric forms 0-7 are mapped to the
+                // canonical short weekday names (0 and 7 both alias to
+                // sun per UTS35); other strings just need to satisfy
+                // the BCP47 "type" production
+                // (alphanum{3,8}(-alphanum{3,8})*).
+                $firstDayOfWeek = null;
+                $fwVal = $options->get('firstDayOfWeek');
+                if (!$fwVal instanceof JsUndefined) {
+                    $fw = TypeConversion::toString($fwVal);
+                    static $weekdayMap = [
+                        '0' => 'sun', '1' => 'mon', '2' => 'tue', '3' => 'wed',
+                        '4' => 'thu', '5' => 'fri', '6' => 'sat', '7' => 'sun',
+                    ];
+                    if (isset($weekdayMap[$fw])) {
+                        $fw = $weekdayMap[$fw];
+                    }
+                    $fwLower = strtolower($fw);
+                    // The boolean primitive `true` canonicalises to the bare
+                    // key with no value subtag.
+                    if ($fwLower === 'true') {
+                        $firstDayOfWeek = '';
+                    } else {
+                        if (!$isValidUnicodeType($fwLower)) {
+                            throw new RangeError("Invalid firstDayOfWeek: {$fw}");
+                        }
+                        $firstDayOfWeek = $fwLower;
+                    }
+                    $parsed['firstDayOfWeek'] = $firstDayOfWeek;
+                }
+
                 $hourCycle = null;
                 $hcVal = $options->get('hourCycle');
                 if (!$hcVal instanceof JsUndefined) {
@@ -202,36 +253,12 @@ trait LocaleSection
                     if (!$isValidUnicodeType($numberingSystem)) {
                         throw new RangeError("Invalid numberingSystem: {$numberingSystem}");
                     }
-                    $parsed['numberingSystem'] = $numberingSystem;
+                    $parsed['numberingSystem'] = strtolower($numberingSystem);
                 }
-                // firstDayOfWeek: numeric forms 0-7 are mapped to the
-                // canonical short weekday names (0 and 7 both alias to
-                // sun per UTS35); other strings just need to satisfy
-                // the BCP47 "type" production
-                // (alphanum{3,8}(-alphanum{3,8})*).
-                $firstDayOfWeek = null;
-                $fwVal = $options->get('firstDayOfWeek');
-                if (!$fwVal instanceof JsUndefined) {
-                    $fw = TypeConversion::toString($fwVal);
-                    static $weekdayMap = [
-                        '0' => 'sun', '1' => 'mon', '2' => 'tue', '3' => 'wed',
-                        '4' => 'thu', '5' => 'fri', '6' => 'sat', '7' => 'sun',
-                    ];
-                    if (isset($weekdayMap[$fw])) {
-                        $fw = $weekdayMap[$fw];
-                    }
-                    $fwLower = strtolower($fw);
-                    // The boolean primitive `true` canonicalises to the bare
-                    // key with no value subtag.
-                    if ($fwLower === 'true') {
-                        $firstDayOfWeek = '';
-                    } else {
-                        if (!$isValidUnicodeType($fwLower)) {
-                            throw new RangeError("Invalid firstDayOfWeek: {$fw}");
-                        }
-                        $firstDayOfWeek = $fwLower;
-                    }
-                    $parsed['firstDayOfWeek'] = $firstDayOfWeek;
+
+                $parsed = self::parseLocaleTag(self::reconstructLocaleTag($parsed));
+                if ($parsed === null) {
+                    throw new RangeError('Invalid locale options');
                 }
 
                 $obj = self::instanceFromConstructor($this_, $proto, 'Locale');
@@ -331,6 +358,27 @@ trait LocaleSection
             ));
         }
 
+        $variantsGetter = JsFunction::fromCallable('get variants', function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
+                throw new TypeError('Intl.Locale.prototype.variants called on non-Locale');
+            }
+            $variants = $this_->get('[[variants]]');
+            if (!$variants instanceof JsArray || $variants->getLength() === 0) {
+                return JsUndefined::instance();
+            }
+            $parts = [];
+            for ($i = 0; $i < $variants->getLength(); $i++) {
+                $parts[] = TypeConversion::toString($variants->get((string) $i));
+            }
+            return new JsString(implode('-', $parts));
+        }, 0);
+        $proto->defineOwnProperty('variants', PropertyDescriptor::accessor(
+            get: $variantsGetter,
+            set: null,
+            enumerable: false,
+            configurable: true,
+        ));
+
         // numeric: boolean accessor
         $numericGetter = JsFunction::fromCallable('get numeric', function (JsValue $this_): JsValue {
             if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
@@ -419,25 +467,29 @@ trait LocaleSection
 
         // getCalendars(), getCollations(), getHourCycles(), getNumberingSystems(), getTimeZones()
         $infoMethods = [
-            'getCalendars' => function () {
-                return self::getSupportedCalendars();
-            },
-            'getCollations' => function () {
-                return self::getSupportedCollations();
-            },
-            'getHourCycles' => function () {
-                return ['h11', 'h12', 'h23', 'h24'];
-            },
-            'getNumberingSystems' => function () {
-                return ['latn'];
-            },
+            'getCalendars' => 'calendar',
+            'getCollations' => 'collation',
+            'getHourCycles' => 'hourCycle',
+            'getNumberingSystems' => 'numberingSystem',
         ];
-        foreach ($infoMethods as $name => $getter) {
-            $fn = JsFunction::fromCallable($name, function (JsValue $this_) use ($getter, $name): JsValue {
+        foreach ($infoMethods as $name => $slot) {
+            $fn = JsFunction::fromCallable($name, function (JsValue $this_) use ($slot, $name): JsValue {
                 if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                     throw new TypeError("Intl.Locale.prototype.{$name} called on non-Locale");
                 }
-                $values = $getter();
+                $preferred = $this_->get("[[{$slot}]]");
+                $locale = self::extractInternalString($this_, '[[LocaleTag]]', 'und');
+                $language = self::extractInternalString($this_, '[[language]]', 'und');
+                $values = $preferred instanceof JsString ? [$preferred->value] : match ($name) {
+                    'getCalendars' => LocaleInfoData::calendars(
+                        $language,
+                        self::localePreferredRegions($locale),
+                        self::getSupportedCalendars(),
+                    ),
+                    'getCollations' => self::getLocaleCollations($locale),
+                    'getHourCycles' => LocaleInfoData::hourCycles($language, self::localePreferredRegions($locale)),
+                    default => [LocaleInfoData::numberingSystem($locale)],
+                };
                 $result = new JsArray();
                 foreach ($values as $i => $v) {
                     $result->set((string) $i, new JsString($v));
@@ -453,8 +505,15 @@ trait LocaleSection
             if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.getTextInfo called on non-Locale');
             }
+            $locale = self::extractInternalString($this_, '[[LocaleTag]]', 'und');
+            $script = self::extractInternalStringOrNull($this_, '[[script]]');
+            if ($script === null) {
+                $maximal = self::parseLocaleTag(self::addLikelySubtags($locale));
+                $script = is_string($maximal['script'] ?? null) ? $maximal['script'] : '';
+            }
+            $direction = LocaleInfoData::direction($script);
             $result = new JsObject();
-            $result->set('direction', new JsString('ltr'));
+            $result->set('direction', $direction === null ? JsUndefined::instance() : new JsString($direction));
             return $result;
         }, 0);
         $proto->defineOwnProperty('getTextInfo', PropertyDescriptor::data($getTextInfo, true, false, true));
@@ -467,7 +526,9 @@ trait LocaleSection
             // The `fw` extension overrides the locale-derived first day.
             // Map the canonical short weekday name to its ISO 8601 index
             // (mon=1 .. sun=7).
-            $firstDay = 1;
+            $locale = self::extractInternalString($this_, '[[LocaleTag]]', 'und');
+            $week = LocaleInfoData::week(self::localePreferredRegions($locale));
+            $firstDay = $week['firstDay'];
             $fwSlot = $this_->get('[[firstDayOfWeek]]');
             if ($fwSlot instanceof JsString) {
                 static $weekdayIndex = [
@@ -482,11 +543,10 @@ trait LocaleSection
             $result = new JsObject();
             $result->set('firstDay', JsNumber::of((float) $firstDay));
             $weekend = new JsArray();
-            $weekend->set('0', JsNumber::of(6.0));
-            $weekend->set('1', JsNumber::of(7.0));
-            $weekend->set('length', JsNumber::of(2.0));
+            foreach ($week['weekend'] as $index => $day) {
+                $weekend->set((string) $index, JsNumber::of((float) $day));
+            }
             $result->set('weekend', $weekend);
-            $result->set('minimalDays', JsNumber::of(1.0));
             return $result;
         }, 0);
         $proto->defineOwnProperty('getWeekInfo', PropertyDescriptor::data($getWeekInfo, true, false, true));
@@ -497,16 +557,17 @@ trait LocaleSection
                 throw new TypeError('Intl.Locale.prototype.getTimeZones called on non-Locale');
             }
             // Spec: when the locale has no region subtag, return undefined.
-            if ($this_->get('[[region]]') instanceof JsUndefined) {
+            $region = self::extractInternalStringOrNull($this_, '[[region]]');
+            if ($region === null) {
                 return JsUndefined::instance();
             }
             $result = new JsArray();
-            $tzs = self::getSupportedTimeZones();
-            $limited = array_slice($tzs, 0, 50);
-            foreach ($limited as $i => $tz) {
+            $timeZones = strlen($region) === 2 ? \DateTimeZone::listIdentifiers(\DateTimeZone::PER_COUNTRY, $region) : [];
+            sort($timeZones, SORT_STRING);
+            foreach ($timeZones as $i => $tz) {
                 $result->set((string) $i, new JsString($tz));
             }
-            $result->set('length', JsNumber::of((float) count($limited)));
+            $result->set('length', JsNumber::of((float) count($timeZones)));
             return $result;
         }, 0);
         $proto->defineOwnProperty('getTimeZones', PropertyDescriptor::data($getTimeZones, true, false, true));
@@ -515,6 +576,39 @@ trait LocaleSection
             'Locale',
             PropertyDescriptor::data($constructor, true, false, true),
         );
+    }
+
+    /** @return list<string> */
+    private static function getLocaleCollations(string $locale): array
+    {
+        return LocaleInfoData::collations($locale);
+    }
+
+    /** @return list<string> */
+    private static function localePreferredRegions(string $locale): array
+    {
+        $parsed = self::parseLocaleTag($locale) ?? [];
+        $subdivisions = [];
+        foreach (['sd', 'rg'] as $key) {
+            $value = $parsed['unicodeKeywords'][$key] ?? [];
+            if (!is_array($value) || count($value) !== 1 || !is_string($value[0] ?? null)) {
+                continue;
+            }
+            if (preg_match('/^([a-z]{2}|[0-9]{3})[a-z0-9]{1,4}$/D', $value[0], $match) !== 1) {
+                continue;
+            }
+            $canonical = self::parseLocaleTag('und-' . $match[1]);
+            if (is_string($canonical['region'] ?? null)) {
+                $subdivisions[$key] = $canonical['region'];
+            }
+        }
+        $region = $parsed['region'] ?? $subdivisions['sd'] ?? null;
+        if (!is_string($region)) {
+            $maximal = self::parseLocaleTag(self::addLikelySubtags($locale));
+            $region = is_string($maximal['region'] ?? null) ? $maximal['region'] : '001';
+        }
+        $regions = isset($subdivisions['rg']) ? [$subdivisions['rg'], $region, '001'] : [$region, '001'];
+        return array_values(array_unique($regions));
     }
 
     /**
@@ -1357,6 +1451,11 @@ trait LocaleSection
                         $keywords[$yesKey] = [];
                     }
                 }
+                foreach ($keywords as $key => $values) {
+                    if ($values === ['true']) {
+                        $keywords[$key] = [];
+                    }
+                }
                 // CLDR <type alias=...> replacements for -u- extension
                 // values. Each table maps deprecated value -> canonical
                 // value for a specific key.
@@ -1776,7 +1875,7 @@ trait LocaleSection
                 $keywords[$key] = $val ? [] : ['false'];
             } else {
                 $valStr = (string) $val;
-                $keywords[$key] = $valStr === '' ? [] : explode('-', $valStr);
+                $keywords[$key] = $valStr === '' || $valStr === 'true' ? [] : explode('-', $valStr);
             }
         }
         ksort($keywords);

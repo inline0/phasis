@@ -44,9 +44,9 @@ trait StringCase
     }
 
     /**
-     * Apply Unicode 16.0.0 Default Case Conversion (per ECMA-262 toUpperCase
-     * and toLowerCase). Host mbstring / ICU 74 (Ubuntu CI) lags Unicode 16
-     * case mappings, so we bundle the authoritative BMP tables in
+     * Apply Unicode 17.0.0 Default Case Conversion (per ECMA-262 toUpperCase
+     * and toLowerCase). Host mbstring and ICU can lag Unicode releases,
+     * so we bundle the authoritative case tables in
      * UnicodeCaseTables and walk codepoints ourselves whenever the input
      * contains non-ASCII bytes. Pure-ASCII strings keep the existing
      * C-level fast path via strtoupper / strtolower.
@@ -69,7 +69,7 @@ trait StringCase
         }
 
         // ASCII fast path: if every byte is < 0x80, strtolower / strtoupper
-        // suffice and match the Unicode 16 mapping for U+0000..U+007F.
+        // suffice and match the Unicode mapping for U+0000..U+007F.
         $nonAscii = false;
         for ($i = 0; $i < $len; $i++) {
             if (ord($str[$i]) >= 0x80) {
@@ -133,23 +133,7 @@ trait StringCase
                 continue;
             }
 
-            // BMP codepoint with no entry in the bundled Unicode 16
-            // table: mapping is identity. Do NOT consult host
-            // mb_strtoupper / mb_strtolower because ICU may add spurious
-            // case pairs (e.g. U+A7CE <-> U+A7CF on ICU 78) that Unicode
-            // 16 does not recognise.
-            if ($cp < 0x10000) {
-                $result .= self::encodeUtf8($cp);
-                continue;
-            }
-
-            // Supplementary (non-BMP) codepoint outside the bundled BMP
-            // table. Fall back to host mb_* so SMP letters still
-            // case-map.
-            $ch = self::encodeUtf8($cp);
-            $result .= $upper
-                ? mb_strtoupper($ch, 'UTF-8')
-                : mb_strtolower($ch, 'UTF-8');
+            $result .= self::encodeUtf8($cp);
         }
 
         return $result;
@@ -195,14 +179,7 @@ trait StringCase
         return true;
     }
 
-    /**
-     * Cased = derived property Cased (Lu | Ll | Lt | Other_Lowercase |
-     * Other_Uppercase). ASCII A-Z / a-z take the fast path; for BMP we
-     * trust the bundled Unicode 16 UPPER/LOWER tables (any codepoint
-     * with a non-identity case mapping is cased, plus U+0345 which is
-     * Other_Lowercase); for supplementary codepoints we defer to
-     * IntlChar::hasBinaryProperty(PROPERTY_CASED) when available.
-     */
+    /** Check the Unicode Cased property used by the Final_Sigma context. */
     private static function isCased(int $cp): bool
     {
         if (($cp >= 0x41 && $cp <= 0x5A) || ($cp >= 0x61 && $cp <= 0x7A)) {
@@ -211,51 +188,30 @@ trait StringCase
         if ($cp < 0x80) {
             return false;
         }
-        // U+0345 COMBINING GREEK YPOGEGRAMMENI: Other_Lowercase, Cased.
-        // Has no case mapping itself, so the bundled tables miss it.
-        if ($cp === 0x0345) {
-            return true;
-        }
-        if (
-            $cp < 0x10000
-            && (isset(UnicodeCaseTables::UPPER[$cp])
-                || isset(UnicodeCaseTables::LOWER[$cp]))
-        ) {
-            return true;
-        }
-        if (class_exists(\IntlChar::class)) {
-            return \IntlChar::hasBinaryProperty($cp, \IntlChar::PROPERTY_CASED);
-        }
-        return false;
+        return self::inUnicodeCaseRanges($cp, UnicodeCaseTables::CASED_RANGES);
     }
 
-    /**
-     * Case_Ignorable = Mn | Me | Cf | Lm | Sk plus Word_Break
-     * {MidLetter, MidNumLet, Single_Quote}. The Final_Sigma rule only
-     * needs to skip combining marks (Mn/Me) and formatting (Cf) in
-     * practice for the SpiderMonkey-style fixtures; defer to IntlChar
-     * where available, with a small ASCII / common-codepoint shortcut.
-     */
+    /** Check the Unicode Case_Ignorable property used by the Final_Sigma context. */
     private static function isCaseIgnorable(int $cp): bool
     {
-        if ($cp === 0x0027 || $cp === 0x002E || $cp === 0x003A || $cp === 0x00B7) {
-            return true;
-        }
-        if (
-            $cp === 0x05F4 || $cp === 0x2018 || $cp === 0x2019
-            || $cp === 0x2024 || $cp === 0x2027 || $cp === 0xFE13
-            || $cp === 0xFE52 || $cp === 0xFE55 || $cp === 0xFF07
-            || $cp === 0xFF0E || $cp === 0xFF1A
-        ) {
-            return true;
-        }
-        if (class_exists(\IntlChar::class)) {
-            $gc = \IntlChar::charType($cp);
-            return $gc === \IntlChar::CHAR_CATEGORY_NON_SPACING_MARK
-                || $gc === \IntlChar::CHAR_CATEGORY_ENCLOSING_MARK
-                || $gc === \IntlChar::CHAR_CATEGORY_FORMAT_CHAR
-                || $gc === \IntlChar::CHAR_CATEGORY_MODIFIER_LETTER
-                || $gc === \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL;
+        return self::inUnicodeCaseRanges($cp, UnicodeCaseTables::CASE_IGNORABLE_RANGES);
+    }
+
+    /** @param list<array{int, int}> $ranges Sorted, disjoint inclusive ranges. */
+    private static function inUnicodeCaseRanges(int $cp, array $ranges): bool
+    {
+        $low = 0;
+        $high = count($ranges) - 1;
+        while ($low <= $high) {
+            $middle = intdiv($low + $high, 2);
+            [$first, $last] = $ranges[$middle];
+            if ($cp < $first) {
+                $high = $middle - 1;
+            } elseif ($cp > $last) {
+                $low = $middle + 1;
+            } else {
+                return true;
+            }
         }
         return false;
     }
@@ -403,23 +359,11 @@ trait StringCase
      */
     private static function pickToLocaleCaseLocale(mixed $arg): ?string
     {
-        if ($arg === null || $arg instanceof \Phasis\Value\JsUndefined) {
+        if ($arg === null) {
             return null;
         }
-        if ($arg instanceof JsString) {
-            return $arg->value;
-        }
-        if ($arg instanceof \Phasis\Value\JsObject) {
-            // Array of locales: pick the first.
-            $len = $arg->get('length');
-            if ($len instanceof \Phasis\Value\JsNumber && $len->value > 0) {
-                $first = $arg->get('0');
-                if ($first instanceof JsString) {
-                    return $first->value;
-                }
-            }
-        }
-        return null;
+        $locales = \Phasis\BuiltIn\IntlObject::canonicalizeLocaleList($arg);
+        return $locales[0] ?? null;
     }
 
     /**

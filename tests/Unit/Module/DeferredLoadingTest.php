@@ -161,6 +161,22 @@ final class DeferredLoadingTest extends TestCase
         $this->assertSame(2, $engine->eval('globalThis.read()'));
     }
 
+    public function testStarExportsStayLiveWhenAnotherDeferredModuleLinks(): void
+    {
+        $root = $this->package([
+            'main.mjs' => "import { count, bump } from 'kit';\n"
+                . "import { unrelated } from 'kit/other.mjs';\n"
+                . "const before = count;\nconst other = unrelated;\nbump();\n"
+                . "globalThis.out = [before, other, count].join();",
+            'node_modules/kit/index.mjs' => "export const label = 'counter';\nexport * from './counter.mjs';\n",
+            'node_modules/kit/counter.mjs' => "export let count = 0;\nexport function bump() { count++; }\n",
+            'node_modules/kit/other.mjs' => "export const unrelated = 'other';\n",
+        ]);
+        $engine = $this->engine();
+        $engine->execFile($root . '/main.mjs');
+        $this->assertSame('0,other,1', $engine->eval('globalThis.out'));
+    }
+
     public function testCyclesBackToAnEagerModuleWork(): void
     {
         $root = $this->package([

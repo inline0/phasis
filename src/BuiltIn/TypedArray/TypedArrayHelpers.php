@@ -458,6 +458,7 @@ trait TypedArrayHelpers
                             'TypedArray.from: constructor did not return a TypedArray'
                         );
                     }
+                    $targetObj->validateNotDetached(true);
                     if ($targetObj->getLength() < $len) {
                         throw new TypeError(
                             'TypedArray.from: constructor returned a smaller TypedArray'
@@ -498,6 +499,7 @@ trait TypedArrayHelpers
                         'TypedArray.from: constructor did not return a TypedArray'
                     );
                 }
+                $targetObj->validateNotDetached(true);
                 if ($targetObj->getLength() < $len) {
                     throw new TypeError(
                         'TypedArray.from: constructor returned a smaller TypedArray'
@@ -551,6 +553,7 @@ trait TypedArrayHelpers
                         'TypedArray.of: constructor did not return a TypedArray'
                     );
                 }
+                $newObj->validateNotDetached(true);
                 if ($newObj->getLength() < $len) {
                     throw new TypeError(
                         'TypedArray.of: constructor returned a smaller TypedArray'
@@ -776,9 +779,9 @@ trait TypedArrayHelpers
     /**
      * ValidateTypedArray per spec: throws TypeError if buffer is detached.
      */
-    private static function validateTypedArray(JsTypedArray $ta): void
+    private static function validateTypedArray(JsTypedArray $ta, bool $write = false): void
     {
-        $ta->validateNotDetached();
+        $ta->validateNotDetached($write);
     }
 
     /**
@@ -798,6 +801,7 @@ trait TypedArrayHelpers
         JsTypedArray $exemplar,
         int $length,
         ?array $speciesArgs = null,
+        bool $write = false,
     ): JsTypedArray {
         $defaultTypeName = $exemplar->getTypeName();
         $proto = $exemplar->getPrototype();
@@ -847,6 +851,7 @@ trait TypedArrayHelpers
             $constructArgs = $speciesArgs ?? [JsNumber::of((float) $length)];
             $result = $species->construct($constructArgs);
             if ($result instanceof JsTypedArray) {
+                $result->validateNotDetached($write);
                 // Per spec: TypedArrayCreate step 3: if argumentList is a single
                 // number and result.length < that number, throw TypeError.
                 if ($speciesArgs === null && $result->getLength() < $length) {

@@ -720,6 +720,9 @@ class JsObject implements JsValue
      */
     public function setPrivateField(string $name, JsValue $value): void
     {
+        if (!$this->extensible) {
+            throw new \Phasis\Exceptions\TypeError('Cannot add a private member to a non-extensible object');
+        }
         if (isset($this->privateFieldBrands[$name])) {
             // Strip the internal brand suffix (@N) from the name for the error.
             $displayName = preg_replace('/@\d+$/', '', $name);
@@ -815,6 +818,9 @@ class JsObject implements JsValue
      */
     public function setPrivateAccessor(string $name, array $accessor): void
     {
+        if (!$this->extensible) {
+            throw new \Phasis\Exceptions\TypeError('Cannot add a private member to a non-extensible object');
+        }
         $this->privateFields[$name] = $accessor;
         $this->privateFieldBrands[$name] = true;
     }
@@ -827,6 +833,9 @@ class JsObject implements JsValue
      */
     public function setPrivateMethod(string $name, JsFunction $method): void
     {
+        if (!$this->extensible) {
+            throw new \Phasis\Exceptions\TypeError('Cannot add a private member to a non-extensible object');
+        }
         if (isset($this->privateFieldBrands[$name])) {
             $displayName = preg_replace('/@\d+$/', '', $name);
             throw new \Phasis\Exceptions\TypeError(

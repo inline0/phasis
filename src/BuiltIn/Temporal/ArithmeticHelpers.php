@@ -54,71 +54,69 @@ trait ArithmeticHelpers
 
     private static function instantDifference(string $ns1, string $ns2, JsValue $options): JsObject
     {
-        $opts = self::getOptionsObject($options);
+        $opts = self::readDifferenceOptionsAlphabetical(self::getOptionsObject($options), false);
         $diffNs = bcsub($ns2, $ns1, 0);
         $largestUnit = 'second';
         $largestUnitExplicit = false;
         $smallestUnit = 'nanosecond';
-        if ($opts instanceof JsObject) {
-            $lu = $opts->get('largestUnit');
-            if (!($lu instanceof JsUndefined)) {
-                $largestUnitExplicit = true;
-                $largestUnit = TypeConversion::toString($lu);
-                $largestUnit = self::canonicalTemporalUnit($largestUnit);
-                $instantLU = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-                if (!in_array($largestUnit, $instantLU, true)) {
-                    throw new RangeError("Invalid largest unit for Instant: {$largestUnit}");
-                }
+        $lu = $opts->get('largestUnit');
+        if (!($lu instanceof JsUndefined)) {
+            $largestUnitExplicit = true;
+            $largestUnit = TypeConversion::toString($lu);
+            $largestUnit = self::canonicalTemporalUnit($largestUnit);
+            $instantLU = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+            if (!in_array($largestUnit, $instantLU, true)) {
+                throw new RangeError("Invalid largest unit for Instant: {$largestUnit}");
             }
-            // Read options in ALPHABETICAL order per spec.
-            $ri = $opts->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum)) {
-                    throw new RangeError("Invalid roundingIncrement");
-                }
-                $riNum = (int) $riNum;
-                if ($riNum < 1 || $riNum > 1_000_000_000) {
-                    throw new RangeError("Invalid roundingIncrement");
-                }
+        }
+        // Read options in ALPHABETICAL order per spec.
+        $ri = $opts->get('roundingIncrement');
+        if (!($ri instanceof JsUndefined)) {
+            $riNum = TypeConversion::toNumber($ri);
+            if (!is_finite($riNum)) {
+                throw new RangeError("Invalid roundingIncrement");
             }
-            $rm = $opts->get('roundingMode');
-            if (!($rm instanceof JsUndefined)) {
-                $rmStr = TypeConversion::toString($rm);
-                $validRM = [
-                    'ceil', 'floor', 'expand', 'trunc',
-                    'halfCeil', 'halfFloor', 'halfExpand',
-                    'halfTrunc', 'halfEven',
-                ];
-                if (!in_array($rmStr, $validRM, true)) {
-                    throw new RangeError("Invalid roundingMode: {$rmStr}");
-                }
+            $riNum = (int) $riNum;
+            if ($riNum < 1 || $riNum > 1_000_000_000) {
+                throw new RangeError("Invalid roundingIncrement");
             }
-            $smallestUnit = 'nanosecond';
-            $su = $opts->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $smallestUnit = TypeConversion::toString($su);
-                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
-                $instantUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-                if (!in_array($smallestUnit, $instantUnits, true)) {
-                    throw new RangeError("Invalid smallest unit for Instant: {$smallestUnit}");
-                }
+        }
+        $rm = $opts->get('roundingMode');
+        if (!($rm instanceof JsUndefined)) {
+            $rmStr = TypeConversion::toString($rm);
+            $validRM = [
+                'ceil', 'floor', 'expand', 'trunc',
+                'halfCeil', 'halfFloor', 'halfExpand',
+                'halfTrunc', 'halfEven',
+            ];
+            if (!in_array($rmStr, $validRM, true)) {
+                throw new RangeError("Invalid roundingMode: {$rmStr}");
             }
-            // Validate roundingIncrement divides evenly into next unit.
-            if (isset($riNum) && $riNum > 1) {
-                self::validateRoundingIncrement($smallestUnit, $riNum);
+        }
+        $smallestUnit = 'nanosecond';
+        $su = $opts->get('smallestUnit');
+        if (!($su instanceof JsUndefined)) {
+            $smallestUnit = TypeConversion::toString($su);
+            $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+            $instantUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+            if (!in_array($smallestUnit, $instantUnits, true)) {
+                throw new RangeError("Invalid smallest unit for Instant: {$smallestUnit}");
             }
-            // Default largestUnit to smallestUnit if smallestUnit is larger.
-            $unitOrder = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-            $liIdx = array_search($largestUnit, $unitOrder);
-            $siIdx = array_search($smallestUnit, $unitOrder);
-            if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
-                $largestUnit = $smallestUnit;
-                $liIdx = $siIdx;
-            }
-            if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
-                throw new RangeError("largestUnit must be >= smallestUnit");
-            }
+        }
+        // Validate roundingIncrement divides evenly into next unit.
+        if (isset($riNum) && $riNum > 1) {
+            self::validateRoundingIncrement($smallestUnit, $riNum);
+        }
+        // Default largestUnit to smallestUnit if smallestUnit is larger.
+        $unitOrder = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+        $liIdx = array_search($largestUnit, $unitOrder);
+        $siIdx = array_search($smallestUnit, $unitOrder);
+        if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
+            $largestUnit = $smallestUnit;
+            $liIdx = $siIdx;
+        }
+        if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+            throw new RangeError("largestUnit must be >= smallestUnit");
         }
         // Apply rounding if smallestUnit != nanosecond or increment != 1.
         $roundIncrement = isset($riNum) ? (int) $riNum : 1;
@@ -288,12 +286,10 @@ trait ArithmeticHelpers
             case 'halfFloor':
             case 'halfTrunc':
             case 'halfEven':
-                $half = bcdiv($incrementNs, '2', 0);
-                $cmp = bccomp($remainder, $half, 0);
-                $isExact = bccomp(bcmul($half, '2', 0), $incrementNs, 0) === 0;
-                if ($cmp > 0 || ($cmp === 0 && !$isExact)) {
+                $cmp = bccomp(bcmul($remainder, '2', 0), $incrementNs, 0);
+                if ($cmp > 0) {
                     $rounded = bcadd($quotient, '1', 0);
-                } elseif ($cmp === 0 && $isExact) {
+                } elseif ($cmp === 0) {
                     // Exact tie-breaking per mode.
                     if ($mode === 'halfExpand') {
                         $rounded = bcadd($quotient, '1', 0);
@@ -439,61 +435,41 @@ trait ArithmeticHelpers
     }
 
     /**
-     * Per spec AddDurationToYearMonth. Computes the effective sign of the
-     * duration, picks the correct reference day (1 or end-of-month), then
-     * adds the full duration via plainDateAdd.
+     * Add calendar years and months from the first native day of the month.
      *
-     * @return array{int, int} [year, month]
+     * @return array{int, int, int} ISO year, month, and reference day.
      */
-    private static function addDurationToYearMonth(int $sign, int $y, int $m, string $cal, JsObject $dur, string $overflow): array
-    {
-        $dY = $sign * self::getDurationField($dur, 'years');
-        $dMo = $sign * self::getDurationField($dur, 'months');
-        $dW = $sign * self::getDurationField($dur, 'weeks');
-        $dD = $sign * self::getDurationField($dur, 'days');
-        $dH = $sign * self::getDurationField($dur, 'hours');
-        $dMi = $sign * self::getDurationField($dur, 'minutes');
-        $dS = $sign * self::getDurationField($dur, 'seconds');
-        $dMs = $sign * self::getDurationField($dur, 'milliseconds');
-        $dUs = $sign * self::getDurationField($dur, 'microseconds');
-        $dNs = $sign * self::getDurationField($dur, 'nanoseconds');
-
-        // Per spec step 4: compute the overall duration sign.
-        $effectiveSign = 0;
-        foreach ([$dY, $dMo, $dW, $dD, $dH, $dMi, $dS, $dMs, $dUs, $dNs] as $v) {
-            if ($v > 0) {
-                $effectiveSign = 1;
-                break;
-            }
-            if ($v < 0) {
-                $effectiveSign = -1;
-                break;
+    private static function addDurationToYearMonth(
+        int $sign,
+        int $y,
+        int $m,
+        string $cal,
+        JsObject $dur,
+        string $overflow,
+        int $referenceDay = 1,
+    ): array {
+        foreach (['weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'] as $unit) {
+            if (self::getDurationField($dur, $unit) !== 0) {
+                throw new RangeError('PlainYearMonth arithmetic only accepts years and months');
             }
         }
-
-        // Per spec step 7-9: create intermediate date with day=1, validate.
-        self::validateISODate($y, $m, 1);
-
-        if ($effectiveSign < 0) {
-            // Per spec steps 10a-d: use end of month as reference day.
-            // Compute nextMonth = (y, m+1), validate it, then end-of-month = days-in-month(y, m).
-            $nextM = $m + 1;
-            $nextY = $y;
-            if ($nextM > 12) {
-                $nextM = 1;
-                $nextY++;
-            }
-            self::validateISODate($nextY, $nextM, 1);
-            $refDay = self::isoDaysInMonth($y, $m);
-        } else {
-            $refDay = 1;
+        $fields = self::calendarFieldsForIso($cal, $y, $m, $referenceDay);
+        $fields['day'] = 1;
+        $date = self::calendarDateFromFields($cal, $fields, 'constrain');
+        self::validateISODate($date['year'], $date['month'], $date['day']);
+        $result = self::calendarAddYearsMonthsIso(
+            $cal,
+            $date['year'],
+            $date['month'],
+            $date['day'],
+            $sign * self::getDurationField($dur, 'years'),
+            $sign * self::getDurationField($dur, 'months'),
+            $overflow,
+        );
+        if ($result === null) {
+            throw new RangeError('Date arithmetic overflow');
         }
-
-        // Build the effective duration and add it via plainDateAdd.
-        $fullDur = self::createDurationObject($dY, $dMo, $dW, $dD, $dH, $dMi, $dS, $dMs, $dUs, $dNs);
-        $date = self::createPlainDateObject($y, $m, $refDay, $cal);
-        $result = self::plainDateAdd($date, $fullDur, 1, $overflow);
-        return [self::getSlotInt($result, '[[ISOYear]]'), self::getSlotInt($result, '[[ISOMonth]]')];
+        return $result;
     }
 
     private static function plainDateAdd(JsValue $date, JsObject $dur, int $sign, string $overflow = 'constrain'): JsObject
@@ -514,24 +490,18 @@ trait ArithmeticHelpers
         $ms = $sign * self::getDurationField($dur, 'milliseconds');
         $us = $sign * self::getDurationField($dur, 'microseconds');
         $ns = $sign * self::getDurationField($dur, 'nanoseconds');
-        // Total nanoseconds from time units, convert to extra days.
-        $totalTimeNs = bcadd(
-            bcadd(
-                bcadd(
-                    bcmul((string) $hours, '3600000000000', 0),
-                    bcmul((string) $minutes, '60000000000', 0),
-                    0,
-                ),
-                bcmul((string) $seconds, '1000000000', 0),
-                0,
-            ),
-            bcadd(
-                bcadd(bcmul((string) $ms, '1000000', 0), bcmul((string) $us, '1000', 0), 0),
-                (string) $ns,
-                0,
-            ),
+        $totalTimeNs = self::durationToTotalNs(self::createDurationObject(
             0,
-        );
+            0,
+            0,
+            0,
+            $hours,
+            $minutes,
+            $seconds,
+            $ms,
+            $us,
+            $ns,
+        ));
         $extraDays = (int) bcdiv($totalTimeNs, '86400000000000', 0);
         $days += $extraDays;
 
@@ -619,85 +589,50 @@ trait ArithmeticHelpers
         int $months,
         string $overflow,
     ): ?array {
-        // Ethiopic / ethioaa: deterministic 13-month add (no ICU).
-        if ($calendar === 'ethiopic' || $calendar === 'ethioaa' || $calendar === 'ethiopic-amete-alem') {
-            return self::ethiopicAddYearsMonthsIso(
-                $isoY,
-                $isoM,
-                $isoD,
-                $years,
-                $months,
-                $overflow,
-            );
+        $fields = self::calendarFieldsForIso($calendar, $isoY, $isoM, $isoD);
+        $year = (int) $fields['year'] + $years;
+        if (abs($year) > 1000000 || abs($months) > 12000000) {
+            throw new RangeError('Date arithmetic overflow');
         }
-        // Hebrew: deterministic via pure-PHP isoToHebrewDate / hebrewToIsoDate.
-        if ($calendar === 'hebrew') {
-            return self::hebrewAddYearsMonthsIso(
-                $isoY,
-                $isoM,
-                $isoD,
-                $years,
-                $months,
-                $overflow,
-            );
-        }
-        // Chinese / dangi: deterministic via pure-PHP table.
-        if ($calendar === 'chinese' || $calendar === 'dangi') {
-            self::$chineseDispatchCalendar = $calendar;
-            $r = self::chineseAddYearsMonthsIso(
-                $isoY,
-                $isoM,
-                $isoD,
-                $years,
-                $months,
-                $overflow,
-            );
-            if ($r !== null) {
-                return $r;
-            }
-            // Out of table range: fall through to ICU.
-        }
-        if (!class_exists('IntlCalendar', false)) {
+        $start = self::calendarDateFromFields($calendar, [
+            'year' => $year, 'monthCode' => $fields['monthCode'], 'day' => 1,
+        ], $overflow);
+        $parts = self::isoToCalendarParts($calendar, $start['year'], $start['month'], $start['day']);
+        if ($parts === null) {
             return null;
         }
-        static $aliasMap = [
-            'gregory' => 'gregorian',
-            'islamicc' => 'islamic-civil',
-            'ethioaa' => 'ethiopic-amete-alem',
-        ];
-        $icuName = $aliasMap[$calendar] ?? $calendar;
-        try {
-            $cal = \IntlCalendar::createInstance(
-                'UTC',
-                "en@calendar={$icuName}",
-            );
-            $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
-            $cal->setTime($epochMs);
-            $startDay = $cal->get(\IntlCalendar::FIELD_DAY_OF_MONTH);
-            if ($years !== 0) {
-                $cal->add(\IntlCalendar::FIELD_YEAR, $years);
+        $month = (int) $parts['month'] + $months;
+        $lunisolar = in_array($calendar, ['chinese', 'dangi', 'hebrew'], true);
+        if (!$lunisolar) {
+            $count = in_array($calendar, ['coptic', 'ethiopic', 'ethioaa'], true) ? 13 : 12;
+            $year += (int) floor(($month - 1) / $count);
+            $month = (($month - 1) % $count + $count) % $count + 1;
+        } else {
+            while (true) {
+                $first = self::calendarPartsToIso($calendar, $year, 'M01', null, 1);
+                if ($first === null) {
+                    throw new RangeError('Date arithmetic overflow');
+                }
+                $count = self::calendarMonthsInYear($calendar, $first['year'], $first['month'], $first['day']) ?? 12;
+                if ($month > $count) {
+                    $month -= $count;
+                    $year++;
+                } elseif ($month < 1) {
+                    $year--;
+                    $first = self::calendarPartsToIso($calendar, $year, 'M01', null, 1);
+                    if ($first === null) {
+                        throw new RangeError('Date arithmetic overflow');
+                    }
+                    $month += self::calendarMonthsInYear($calendar, $first['year'], $first['month'], $first['day']) ?? 12;
+                } else {
+                    break;
+                }
             }
-            if ($months !== 0) {
-                $cal->add(\IntlCalendar::FIELD_MONTH, $months);
-            }
-            // ICU's add() already constrains to the month max if the
-            // start day exceeds it, but that's the implicit "constrain"
-            // mode we want anyway. For "reject", check the final day.
-            $finalDay = $cal->get(\IntlCalendar::FIELD_DAY_OF_MONTH);
-            if ($overflow === 'reject' && $finalDay !== $startDay) {
-                throw new RangeError("Day {$startDay} out of range after calendar arithmetic");
-            }
-            $resultMs = $cal->getTime();
-            $secs = (int) ($resultMs / 1000.0);
-            $dt = (new \DateTimeImmutable('@' . $secs))->setTimezone(new \DateTimeZone('UTC'));
-            return [
-                (int) $dt->format('Y'),
-                (int) $dt->format('n'),
-                (int) $dt->format('j'),
-            ];
-        } catch (\Throwable) {
-            return null;
         }
+        $date = self::calendarDateFromFields($calendar, [
+            'year' => $year, 'month' => $month, 'day' => $fields['day'],
+        ], $overflow);
+        return [$date['year'], $date['month'], $date['day']];
     }
 
     private static function plainYearMonthDifference(JsValue $ym1, JsValue $ym2, JsValue $options): JsObject
@@ -709,7 +644,7 @@ trait ArithmeticHelpers
                 "calendar IDs do not match: {$cal1} vs {$cal2}",
             );
         }
-        $opts = self::getOptionsObject($options);
+        $opts = self::readDifferenceOptionsAlphabetical(self::getOptionsObject($options), false);
         $y1 = self::getSlotInt($ym1, '[[ISOYear]]');
         $m1 = self::getSlotInt($ym1, '[[ISOMonth]]');
         $y2 = self::getSlotInt($ym2, '[[ISOYear]]');
@@ -718,54 +653,73 @@ trait ArithmeticHelpers
         $riFinal = 1;
         $rmFinal = 'trunc';
         $suFinal = 'month';
-        if ($opts instanceof JsObject) {
-            $lu = $opts->get('largestUnit');
-            if (!($lu instanceof JsUndefined)) {
-                $largestUnit = TypeConversion::toString($lu);
-                if ($largestUnit === 'auto') {
-                    $largestUnit = 'year';
-                } else {
-                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
-                }
-                if (!in_array($largestUnit, ['year', 'month'], true)) {
-                    throw new RangeError("Invalid largest unit for PlainYearMonth: {$largestUnit}");
-                }
+        $lu = $opts->get('largestUnit');
+        if (!($lu instanceof JsUndefined)) {
+            $largestUnit = TypeConversion::toString($lu);
+            if ($largestUnit === 'auto') {
+                $largestUnit = 'year';
+            } else {
+                $largestUnit = self::canonicalTemporalUnit($largestUnit);
             }
-            $ri = $opts->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum)) {
-                    throw new RangeError('roundingIncrement must be finite');
-                }
-                $riFinal = (int) $riNum;
-                if ($riFinal < 1 || $riFinal > 1_000_000_000) {
-                    throw new RangeError('roundingIncrement out of range');
-                }
+            if (!in_array($largestUnit, ['year', 'month'], true)) {
+                throw new RangeError("Invalid largest unit for PlainYearMonth: {$largestUnit}");
             }
-            $rm = $opts->get('roundingMode');
-            if (!($rm instanceof JsUndefined)) {
-                $rmFinal = TypeConversion::toString($rm);
-                $validRM = [
-                    'ceil', 'floor', 'expand', 'trunc',
-                    'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven',
-                ];
-                if (!in_array($rmFinal, $validRM, true)) {
-                    throw new RangeError("Invalid roundingMode: {$rmFinal}");
-                }
+        }
+        $ri = $opts->get('roundingIncrement');
+        if (!($ri instanceof JsUndefined)) {
+            $riNum = TypeConversion::toNumber($ri);
+            if (!is_finite($riNum)) {
+                throw new RangeError('roundingIncrement must be finite');
             }
-            $su = $opts->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $suStr = TypeConversion::toString($su);
-                $suFinal = self::canonicalTemporalUnit($suStr);
-                if (!in_array($suFinal, ['year', 'month'], true)) {
-                    throw new RangeError("Invalid smallest unit for PlainYearMonth: {$suFinal}");
-                }
+            $riFinal = (int) $riNum;
+            if ($riFinal < 1 || $riFinal > 1_000_000_000) {
+                throw new RangeError('roundingIncrement out of range');
             }
-            $allU = ['year', 'month'];
-            $liIdx = array_search($largestUnit, $allU);
-            $siIdx = array_search($suFinal, $allU);
-            if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
-                throw new RangeError('largestUnit must be >= smallestUnit');
+        }
+        $rm = $opts->get('roundingMode');
+        if (!($rm instanceof JsUndefined)) {
+            $rmFinal = TypeConversion::toString($rm);
+            $validRM = [
+                'ceil', 'floor', 'expand', 'trunc',
+                'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven',
+            ];
+            if (!in_array($rmFinal, $validRM, true)) {
+                throw new RangeError("Invalid roundingMode: {$rmFinal}");
+            }
+        }
+        $su = $opts->get('smallestUnit');
+        if (!($su instanceof JsUndefined)) {
+            $suStr = TypeConversion::toString($su);
+            $suFinal = self::canonicalTemporalUnit($suStr);
+            if (!in_array($suFinal, ['year', 'month'], true)) {
+                throw new RangeError("Invalid smallest unit for PlainYearMonth: {$suFinal}");
+            }
+        }
+        $allU = ['year', 'month'];
+        $liIdx = array_search($largestUnit, $allU);
+        $siIdx = array_search($suFinal, $allU);
+        if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+            throw new RangeError('largestUnit must be >= smallestUnit');
+        }
+        if ($cal1 !== 'iso8601' && $suFinal === 'month' && $riFinal === 1) {
+            $firstFields = self::calendarFieldsForIso($cal1, $y1, $m1, self::getSlotInt($ym1, '[[ISODay]]'));
+            $secondFields = self::calendarFieldsForIso($cal1, $y2, $m2, self::getSlotInt($ym2, '[[ISODay]]'));
+            $firstFields['day'] = 1;
+            $secondFields['day'] = 1;
+            $first = self::calendarDateFromFields($cal1, $firstFields, 'constrain');
+            $second = self::calendarDateFromFields($cal1, $secondFields, 'constrain');
+            $difference = self::calendarYearsMonthsDaysBetween(
+                $cal1,
+                $first['year'],
+                $first['month'],
+                $first['day'],
+                $second['year'],
+                $second['month'],
+                $second['day'],
+                $largestUnit,
+            );
+            if ($difference !== null) {
+                return self::createDurationObject($difference[0], $difference[1], 0, 0, 0, 0, 0, 0, 0, 0);
             }
         }
         if ($y1 !== $y2 || $m1 !== $m2) {
@@ -878,7 +832,7 @@ trait ArithmeticHelpers
                 "calendar IDs do not match: {$cal1} vs {$cal2}",
             );
         }
-        $opts = self::getOptionsObject($options);
+        $opts = self::readDifferenceOptionsAlphabetical(self::getOptionsObject($options), false);
         $y1 = self::getSlotInt($date1, '[[ISOYear]]');
         $m1 = self::getSlotInt($date1, '[[ISOMonth]]');
         $d1 = self::getSlotInt($date1, '[[ISODay]]');
@@ -888,65 +842,63 @@ trait ArithmeticHelpers
 
         $largestUnit = 'day';
         $largestUnitExplicit = false;
-        if ($opts instanceof JsObject) {
-            $lu = $opts->get('largestUnit');
-            if (!($lu instanceof JsUndefined)) {
-                $largestUnitExplicit = true;
-                $largestUnit = TypeConversion::toString($lu);
-                if ($largestUnit === 'auto') {
-                    $largestUnit = 'day';
-                    $largestUnitExplicit = false;
-                } else {
-                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
-                    $dateUnitsLU = ['year', 'month', 'week', 'day'];
-                    if (!in_array($largestUnit, $dateUnitsLU, true)) {
-                        throw new RangeError("Invalid largest unit for date: {$largestUnit}");
-                    }
+        $lu = $opts->get('largestUnit');
+        if (!($lu instanceof JsUndefined)) {
+            $largestUnitExplicit = true;
+            $largestUnit = TypeConversion::toString($lu);
+            if ($largestUnit === 'auto') {
+                $largestUnit = 'day';
+                $largestUnitExplicit = false;
+            } else {
+                $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                $dateUnitsLU = ['year', 'month', 'week', 'day'];
+                if (!in_array($largestUnit, $dateUnitsLU, true)) {
+                    throw new RangeError("Invalid largest unit for date: {$largestUnit}");
                 }
             }
-            // Read options in ALPHABETICAL order per spec.
-            $ri = $opts->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum)) {
-                    throw new RangeError("Invalid roundingIncrement");
-                }
-                // Truncate to integer per spec (ToTemporalRoundingIncrement step 3).
-                $riNum = (int) $riNum;
-                // Step 4: must be in [1, 1e9].
-                if ($riNum < 1 || $riNum > 1_000_000_000) {
-                    throw new RangeError("Invalid roundingIncrement");
-                }
+        }
+        // Read options in ALPHABETICAL order per spec.
+        $ri = $opts->get('roundingIncrement');
+        if (!($ri instanceof JsUndefined)) {
+            $riNum = TypeConversion::toNumber($ri);
+            if (!is_finite($riNum)) {
+                throw new RangeError("Invalid roundingIncrement");
             }
-            $rm = $opts->get('roundingMode');
-            if (!($rm instanceof JsUndefined)) {
-                $rmStr = TypeConversion::toString($rm);
-                $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
-                if (!in_array($rmStr, $validRM, true)) {
-                    throw new RangeError("Invalid roundingMode: {$rmStr}");
-                }
+            // Truncate to integer per spec (ToTemporalRoundingIncrement step 3).
+            $riNum = (int) $riNum;
+            // Step 4: must be in [1, 1e9].
+            if ($riNum < 1 || $riNum > 1_000_000_000) {
+                throw new RangeError("Invalid roundingIncrement");
             }
-            $su = $opts->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $smallestUnit = TypeConversion::toString($su);
-                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
-                $dateUnits = ['year', 'month', 'week', 'day'];
-                if (!in_array($smallestUnit, $dateUnits, true)) {
-                    throw new RangeError("Invalid smallest unit for date: {$smallestUnit}");
-                }
+        }
+        $rm = $opts->get('roundingMode');
+        if (!($rm instanceof JsUndefined)) {
+            $rmStr = TypeConversion::toString($rm);
+            $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
+            if (!in_array($rmStr, $validRM, true)) {
+                throw new RangeError("Invalid roundingMode: {$rmStr}");
             }
-            // Default largestUnit to smallestUnit if needed.
-            if (isset($smallestUnit)) {
-                $allU = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-                $liIdx = array_search($largestUnit, $allU);
-                $siIdx = array_search($smallestUnit, $allU);
-                if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
-                    $largestUnit = $smallestUnit;
-                    $liIdx = $siIdx;
-                }
-                if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
-                    throw new RangeError('largestUnit must be >= smallestUnit');
-                }
+        }
+        $su = $opts->get('smallestUnit');
+        if (!($su instanceof JsUndefined)) {
+            $smallestUnit = TypeConversion::toString($su);
+            $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+            $dateUnits = ['year', 'month', 'week', 'day'];
+            if (!in_array($smallestUnit, $dateUnits, true)) {
+                throw new RangeError("Invalid smallest unit for date: {$smallestUnit}");
+            }
+        }
+        // Default largestUnit to smallestUnit if needed.
+        if (isset($smallestUnit)) {
+            $allU = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+            $liIdx = array_search($largestUnit, $allU);
+            $siIdx = array_search($smallestUnit, $allU);
+            if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
+                $largestUnit = $smallestUnit;
+                $liIdx = $siIdx;
+            }
+            if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+                throw new RangeError('largestUnit must be >= smallestUnit');
             }
         }
 
@@ -971,21 +923,20 @@ trait ArithmeticHelpers
         $skipIsoYearMonth = false;
         if (
             ($largestUnit === 'year' || $largestUnit === 'month')
-            && $natSign > 0
             && !in_array($cal1, ['iso8601', 'gregory', 'roc', 'japanese'], true)
         ) {
             $calRes = self::calendarYearsMonthsDaysBetween(
                 $cal1,
-                $smlY,
-                $smlM,
-                $smlD,
-                $lrgY,
-                $lrgM,
-                $lrgD,
+                $y1,
+                $m1,
+                $d1,
+                $y2,
+                $m2,
+                $d2,
                 $largestUnit,
             );
             if ($calRes !== null) {
-                [$years, $months, $days] = $calRes;
+                [$years, $months, $days] = array_map('abs', $calRes);
                 $skipIsoYearMonth = true;
             }
         }
@@ -1061,71 +1012,27 @@ trait ArithmeticHelpers
                 default => $roundMode,
             };
         }
-        if ($roundedSU === 'year' && ($months !== 0 || $days !== 0)) {
-            $totalMonths = $months;
-            if ($natSign > 0) {
-                $midTotalM = $smlY * 12 + ($smlM - 1) + ($years * 12) + $months;
+        if ($roundedSU === 'year' || $roundedSU === 'month') {
+            $destination = bcmul((string) self::isoDateToDays($y2, $m2, $d2), '86400000000000', 0);
+            $bounds = self::calendarUnitBounds($date1, $destination, $roundedSU, $roundInc);
+            $rounded = abs(self::roundCalendarUnitFromBounds(
+                $bounds,
+                $destination,
+                $roundInc,
+                $natSign < 0 ? match ($roundMode) {
+                    'ceil' => 'floor', 'floor' => 'ceil',
+                    'halfCeil' => 'halfFloor', 'halfFloor' => 'halfCeil', default => $roundMode,
+                } : $roundMode,
+            ));
+            if ($roundedSU === 'year') {
+                $years = $rounded;
+                $months = 0;
+            } elseif ($largestUnit === 'year') {
+                $years = intdiv($rounded, 12);
+                $months = $rounded % 12;
             } else {
-                $midTotalM = $lrgY * 12 + ($lrgM - 1) - ($years * 12) - $months;
-                if (($midTotalM % 12) + 1 < 1) {
-                    $midTotalM += 12;
-                }
-            }
-            $midMY = intdiv($midTotalM, 12);
-            $midMM = ($midTotalM % 12) + 1;
-            $nextMonthDays = self::isoDaysInMonth($midMY, $midMM);
-            $frac = ($totalMonths + ($nextMonthDays > 0 ? $days / $nextMonthDays : 0)) / 12.0;
-            $totalYearsFloat = $years + $frac;
-            $roundedYears = self::roundToIncrement(
-                (int) round($totalYearsFloat * 1000000),
-                $roundInc * 1000000,
-                $roundMode,
-            );
-            $years = intdiv($roundedYears, 1000000);
-            $months = 0;
-            $weeks = 0;
-            $days = 0;
-        } elseif ($roundedSU === 'month' && $days !== 0) {
-            // For the fractional month: find the length of the month step that contains the remainder days.
-            // Forward: midpoint is at sml + years*12 + months, next month step goes forward.
-            // Backward: midpoint is at lrg - years*12 - months, next month step goes backward.
-            if ($natSign > 0) {
-                $midTotalM = $smlY * 12 + ($smlM - 1) + ($years * 12) + $months;
-                $midMY = intdiv($midTotalM, 12);
-                $midMM = ($midTotalM % 12) + 1;
-            } else {
-                // Go backward from anchor (lrg). The midpoint is lrg - totalMonths months.
-                $midTotalM = $lrgY * 12 + ($lrgM - 1) - ($years * 12) - $months;
-                $midMY = intdiv($midTotalM, 12);
-                $midMM = ($midTotalM % 12) + 1;
-                if ($midMM < 1) {
-                    $midMM += 12;
-                    $midMY--;
-                }
-                // The "next step" for backward is one more month back.
-                $prevM = $midMM - 1;
-                $prevY = $midMY;
-                if ($prevM < 1) {
-                    $prevM = 12;
-                    $prevY--;
-                }
-                $midMY = $prevY;
-                $midMM = $prevM;
-            }
-            $daysInMonth = self::isoDaysInMonth($midMY, $midMM);
-            $frac = $daysInMonth > 0 ? $days / $daysInMonth : 0;
-            $totalMonthsFloat = ($years * 12 + $months) + $frac;
-            $roundedMonths = self::roundToIncrement(
-                (int) round($totalMonthsFloat * 1000000),
-                $roundInc * 1000000,
-                $roundMode,
-            );
-            $totalMonthsRounded = intdiv($roundedMonths, 1000000);
-            $years = intdiv($totalMonthsRounded, 12);
-            $months = $totalMonthsRounded - $years * 12;
-            if ($largestUnit === 'month') {
-                $months = $totalMonthsRounded;
                 $years = 0;
+                $months = $rounded;
             }
             $weeks = 0;
             $days = 0;
@@ -1134,7 +1041,7 @@ trait ArithmeticHelpers
             $roundedDays = self::roundToIncrement($totalDays, $roundInc * 7, $roundMode);
             $weeks = intdiv($roundedDays, 7);
             $days = 0;
-        } elseif ($roundedSU === 'day' && $roundInc > 1) {
+        } elseif ($roundInc > 1) {
             $totalDays = $weeks * 7 + $days;
             $roundedDays = self::roundToIncrement($totalDays, $roundInc, $roundMode);
             if ($largestUnit === 'week') {
@@ -1212,23 +1119,30 @@ trait ArithmeticHelpers
             '0',
             0,
         );
-        $durH = (string) ($sign * self::getDurationField($dur, 'hours'));
-        $durMin = (string) ($sign * self::getDurationField($dur, 'minutes'));
-        $durS = (string) ($sign * self::getDurationField($dur, 'seconds'));
-        $durMs = (string) ($sign * self::getDurationField($dur, 'milliseconds'));
-        $durUs = (string) ($sign * self::getDurationField($dur, 'microseconds'));
-        $durNsV = (string) ($sign * self::getDurationField($dur, 'nanoseconds'));
-        $durNs = bcadd(
-            bcadd(bcmul($durH, '3600000000000', 0), bcmul($durMin, '60000000000', 0), 0),
-            bcadd(bcmul($durS, '1000000000', 0), bcadd(bcmul($durMs, '1000000', 0), bcadd(bcmul($durUs, '1000', 0), $durNsV, 0), 0), 0),
+        $durNs = self::durationToTotalNs(self::createDurationObject(
             0,
-        );
+            0,
+            0,
+            0,
+            self::getDurationField($dur, 'hours'),
+            self::getDurationField($dur, 'minutes'),
+            self::getDurationField($dur, 'seconds'),
+            self::getDurationField($dur, 'milliseconds'),
+            self::getDurationField($dur, 'microseconds'),
+            self::getDurationField($dur, 'nanoseconds'),
+        ));
+        if ($sign < 0) {
+            $durNs = bcsub('0', $durNs, 0);
+        }
 
         $result = bcadd($totalNs, $durNs, 0);
         $dayNs = '86400000000000';
         // Calculate overflow days.
         if (bccomp($result, '0', 0) < 0) {
-            $overflowDays = (int) bcsub(bcdiv($result, $dayNs, 0), '1', 0);
+            $overflowDays = (int) bcdiv($result, $dayNs, 0);
+            if (bcmod($result, $dayNs) !== '0') {
+                $overflowDays--;
+            }
             $result = bcsub($result, bcmul((string) $overflowDays, $dayNs, 0), 0);
         } else {
             $overflowDays = (int) bcdiv($result, $dayNs, 0);
@@ -1256,71 +1170,69 @@ trait ArithmeticHelpers
 
     private static function plainTimeDifference(JsValue $time1, JsValue $time2, JsValue $options): JsObject
     {
-        $opts = self::getOptionsObject($options);
+        $opts = self::readDifferenceOptionsAlphabetical(self::getOptionsObject($options), false);
         $ns1 = self::timeToNs($time1);
         $ns2 = self::timeToNs($time2);
         $diffNs = (string) ($ns2 - $ns1);
         $largestUnit = 'hour';
         $largestUnitExplicit = false;
         $validTimeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-        if ($opts instanceof JsObject) {
-            $lu = $opts->get('largestUnit');
-            if (!($lu instanceof JsUndefined)) {
-                $largestUnitExplicit = true;
-                $largestUnit = TypeConversion::toString($lu);
-                if ($largestUnit === 'auto') {
-                    $largestUnit = 'hour';
-                    $largestUnitExplicit = false;
-                } else {
-                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
-                    if (!in_array($largestUnit, $validTimeUnits, true)) {
-                        throw new RangeError("Invalid largest unit for time: {$largestUnit}");
-                    }
+        $lu = $opts->get('largestUnit');
+        if (!($lu instanceof JsUndefined)) {
+            $largestUnitExplicit = true;
+            $largestUnit = TypeConversion::toString($lu);
+            if ($largestUnit === 'auto') {
+                $largestUnit = 'hour';
+                $largestUnitExplicit = false;
+            } else {
+                $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                if (!in_array($largestUnit, $validTimeUnits, true)) {
+                    throw new RangeError("Invalid largest unit for time: {$largestUnit}");
                 }
             }
-            // Alphabetical order: roundingIncrement, roundingMode, smallestUnit.
-            $ri = $opts->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum)) {
-                    throw new RangeError("Invalid roundingIncrement");
-                }
-                $riNum = (int) $riNum;
-                if ($riNum < 1 || $riNum > 1_000_000_000) {
-                    throw new RangeError("Invalid roundingIncrement");
-                }
+        }
+        // Alphabetical order: roundingIncrement, roundingMode, smallestUnit.
+        $ri = $opts->get('roundingIncrement');
+        if (!($ri instanceof JsUndefined)) {
+            $riNum = TypeConversion::toNumber($ri);
+            if (!is_finite($riNum)) {
+                throw new RangeError("Invalid roundingIncrement");
             }
-            $rm = $opts->get('roundingMode');
-            if (!($rm instanceof JsUndefined)) {
-                $rmStr = TypeConversion::toString($rm);
-                $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
-                if (!in_array($rmStr, $validRM, true)) {
-                    throw new RangeError("Invalid roundingMode: {$rmStr}");
-                }
+            $riNum = (int) $riNum;
+            if ($riNum < 1 || $riNum > 1_000_000_000) {
+                throw new RangeError("Invalid roundingIncrement");
             }
-            $su = $opts->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $suStr = TypeConversion::toString($su);
-                $suCanon = self::canonicalTemporalUnit($suStr);
-                if (!in_array($suCanon, $validTimeUnits, true)) {
-                    throw new RangeError("Invalid smallest unit for time: {$suStr}");
-                }
+        }
+        $rm = $opts->get('roundingMode');
+        if (!($rm instanceof JsUndefined)) {
+            $rmStr = TypeConversion::toString($rm);
+            $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
+            if (!in_array($rmStr, $validRM, true)) {
+                throw new RangeError("Invalid roundingMode: {$rmStr}");
             }
-            // Validate roundingIncrement divides evenly.
-            if (isset($riNum) && $riNum > 1) {
-                self::validateRoundingIncrement($suCanon ?? 'nanosecond', $riNum);
+        }
+        $su = $opts->get('smallestUnit');
+        if (!($su instanceof JsUndefined)) {
+            $suStr = TypeConversion::toString($su);
+            $suCanon = self::canonicalTemporalUnit($suStr);
+            if (!in_array($suCanon, $validTimeUnits, true)) {
+                throw new RangeError("Invalid smallest unit for time: {$suStr}");
             }
-            // Default largestUnit to smallestUnit if needed.
-            if (isset($suCanon)) {
-                $luIdx = array_search($largestUnit, $validTimeUnits);
-                $suIdx = array_search($suCanon, $validTimeUnits);
-                if (!$largestUnitExplicit && $suIdx < $luIdx) {
-                    $largestUnit = $suCanon;
-                    $luIdx = $suIdx;
-                }
-                if ($luIdx !== false && $suIdx !== false && $luIdx > $suIdx) {
-                    throw new RangeError('largestUnit must be >= smallestUnit');
-                }
+        }
+        // Validate roundingIncrement divides evenly.
+        if (isset($riNum) && $riNum > 1) {
+            self::validateRoundingIncrement($suCanon ?? 'nanosecond', $riNum);
+        }
+        // Default largestUnit to smallestUnit if needed.
+        if (isset($suCanon)) {
+            $luIdx = array_search($largestUnit, $validTimeUnits);
+            $suIdx = array_search($suCanon, $validTimeUnits);
+            if (!$largestUnitExplicit && $suIdx < $luIdx) {
+                $largestUnit = $suCanon;
+                $luIdx = $suIdx;
+            }
+            if ($luIdx !== false && $suIdx !== false && $luIdx > $suIdx) {
+                throw new RangeError('largestUnit must be >= smallestUnit');
             }
         }
         // Apply rounding.

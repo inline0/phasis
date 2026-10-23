@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Keyed Promise combinators, iterator chunk/window/zip helpers, and immutable ArrayBuffers with protected typed-array, DataView, and Atomics writes.
+- Locale variants and locale-specific calendar, collation, hour-cycle, text-direction, and week information.
+
+### Fixed
+- Temporal calendar fields, arithmetic, rounding, parsing, timezone boundaries, and Intl formatting use consistent calendar data and option validation.
+- Module evaluation, source and typed imports, resource disposal, cross-realm intrinsics, numeric serialization, and compiled global bindings follow current language semantics.
+- Unicode 17 case mappings and complete emoji string properties are generated reproducibly from pinned upstream data.
+- Intl option precedence, legacy constructors, plural notation, numbering systems, and plain date/time formatting.
+
+### Changed
+- The test262 runner executes both variants of unflagged scripts, preserves raw sources and module parse goals, requires async completion, and checks negative-test error types and phases.
+- Compatibility shards retain full file manifests; merging rejects overlapping or stale results and keeps missing coverage visible.
+
 ## [0.8.0] - 2026-10-16
 
 - Route ordinary Unicode `/v` property patterns through bundled tables on older hosts; keep set and string operations on their existing lowering path.

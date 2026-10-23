@@ -15,6 +15,7 @@ use Phasis\Value\JsNumber;
 use Phasis\Value\JsObject;
 use Phasis\Value\JsPromise;
 use Phasis\Value\JsString;
+use Phasis\Value\JsSymbol;
 use Phasis\Value\JsUndefined;
 use Phasis\Value\JsValue;
 use Phasis\Object\PropertyDescriptor;
@@ -453,6 +454,32 @@ class PromiseConstructor
         }, 1);
         $constructor->defineOwnProperty('allSettled', PropertyDescriptor::data($allSettledFn, true, false, true));
 
+        foreach (['allKeyed' => false, 'allSettledKeyed' => true] as $name => $settled) {
+            $method = JsFunction::fromCallable($name, function (JsValue $this_, array $args) use ($settled): JsValue {
+                if (!$this_ instanceof JsFunction) {
+                    throw new TypeError('Promise combinator requires a constructor');
+                }
+                [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
+                try {
+                    $promiseResolve = $this_->get('resolve');
+                    if (!$promiseResolve instanceof JsFunction) {
+                        throw new TypeError('Promise resolve is not a function');
+                    }
+                    $input = $args[0] ?? JsUndefined::instance();
+                    if (!$input instanceof JsObject) {
+                        throw new TypeError('Promise keyed combinator requires an object');
+                    }
+                    self::performAllKeyed($input, $this_, $promiseResolve, $resolve, $reject, $settled);
+                } catch (\Phasis\Exceptions\JsThrowable $e) {
+                    $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                } catch (\Phasis\Exceptions\RuntimeError $e) {
+                    $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
+                }
+                return $promise;
+            }, 1);
+            $constructor->defineOwnProperty($name, PropertyDescriptor::data($method, true, false, true));
+        }
+
         // Promise.race(iterable)
         $raceFn = JsFunction::fromCallable('race', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
@@ -716,23 +743,25 @@ class PromiseConstructor
                 }
                 $callback = $args[0] ?? JsUndefined::instance();
                 $callArgs = array_slice($args, 1);
-                if (!$this_ instanceof JsFunction) {
-                    throw new TypeError('Promise.try called on non-constructor');
-                }
-                [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
                 try {
                     $result = $callback instanceof JsFunction
                         ? $callback->call(JsUndefined::instance(), $callArgs)
                         : throw new TypeError('Promise.try callback is not a function');
-                    $resolve->call(JsUndefined::instance(), [$result]);
                 } catch (\Phasis\Exceptions\JsThrowable $e) {
-                    $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                    if (!$this_ instanceof JsFunction) {
+                        throw new TypeError('Promise.try called on non-constructor');
+                    }
+                    return self::newPromiseCapabilityReject($this_, $e->jsValue);
                 } catch (\Phasis\Exceptions\RuntimeError $e) {
-                    $reject->call(JsUndefined::instance(), [
-                        self::phpErrorToJsValue($e),
-                    ]);
+                    if (!$this_ instanceof JsFunction) {
+                        throw new TypeError('Promise.try called on non-constructor');
+                    }
+                    return self::newPromiseCapabilityReject($this_, self::phpErrorToJsValue($e));
                 }
-                return $promise;
+                if (!$this_ instanceof JsFunction) {
+                    throw new TypeError('Promise.try called on non-constructor');
+                }
+                return self::promiseResolve($this_, $result);
             },
             1,
         );
@@ -961,6 +990,100 @@ class PromiseConstructor
         $obj->set('name', new JsString($name));
         $obj->set('message', new JsString($e->getMessage()));
         return $obj;
+    }
+
+    /** PerformPromiseAllKeyed, preserving input key order independently of settlement order. */
+    private static function performAllKeyed(
+        JsObject $input,
+        JsFunction $constructor,
+        JsFunction $promiseResolve,
+        JsFunction $resolve,
+        JsFunction $reject,
+        bool $settled,
+    ): void {
+        $keys = $input->ordinaryOwnPropertyKeys();
+        $entries = [];
+        $remaining = 1;
+        foreach ($keys as $key) {
+            $descriptor = $key instanceof JsSymbol
+                ? $input->getSymbolPropertyDescriptor($key)
+                : $input->getOwnPropertyDescriptor($key->toJsString());
+            if ($descriptor === null || !$descriptor->enumerable) {
+                continue;
+            }
+            $value = $key instanceof JsSymbol ? $input->getBySymbol($key) : $input->get($key->toJsString());
+            $index = count($entries);
+            $entries[] = ['key' => $key, 'value' => JsUndefined::instance()];
+            $nextPromise = $promiseResolve->call($constructor, [$value]);
+            $alreadyCalled = (object) ['value' => false];
+            $makeHandler = static function (bool $rejected) use (
+                $settled,
+                &$entries,
+                &$remaining,
+                $index,
+                $alreadyCalled,
+                $resolve,
+            ): JsFunction {
+                return JsFunction::fromCallable('', static function (
+                    JsValue $this_,
+                    array $args
+                ) use (
+                    $settled,
+                    $rejected,
+                    &$entries,
+                    &$remaining,
+                    $index,
+                    $alreadyCalled,
+                    $resolve,
+                ): JsValue {
+                    if ($alreadyCalled->value) {
+                        return JsUndefined::instance();
+                    }
+                    $alreadyCalled->value = true;
+                    $value = $args[0] ?? JsUndefined::instance();
+                    if ($settled) {
+                        $record = new JsObject();
+                        $record->defineOwnProperty('status', PropertyDescriptor::data(
+                            new JsString($rejected ? 'rejected' : 'fulfilled'),
+                        ));
+                        $record->defineOwnProperty($rejected ? 'reason' : 'value', PropertyDescriptor::data($value));
+                        $value = $record;
+                    }
+                    $entries[$index]['value'] = $value;
+                    if (--$remaining === 0) {
+                        return $resolve->call(JsUndefined::instance(), [self::keyedResult($entries)]);
+                    }
+                    return JsUndefined::instance();
+                }, 1);
+            };
+            $onFulfilled = $makeHandler(false);
+            $onRejected = $settled ? $makeHandler(true) : $reject;
+            $remaining++;
+            $then = TypeConversion::toObject($nextPromise)->get('then');
+            if (!$then instanceof JsFunction) {
+                throw new TypeError('Promise then is not a function');
+            }
+            $then->call($nextPromise, [$onFulfilled, $onRejected]);
+        }
+        if (--$remaining === 0) {
+            $resolve->call(JsUndefined::instance(), [self::keyedResult($entries)]);
+        }
+    }
+
+    /** @param list<array{key: JsString|JsSymbol, value: JsValue}> $entries */
+    private static function keyedResult(array $entries): JsObject
+    {
+        $result = JsObject::createNullPrototype();
+        foreach ($entries as $entry) {
+            $key = $entry['key'];
+            $descriptor = PropertyDescriptor::data($entry['value']);
+            if ($key instanceof JsSymbol) {
+                $result->defineOwnSymbolProperty($key, $descriptor);
+            } else {
+                $result->defineOwnProperty($key->value, $descriptor);
+            }
+        }
+        return $result;
     }
 
     /**
@@ -1205,7 +1328,7 @@ class PromiseConstructor
      * NewPromiseCapability(C) — §25.6.1.5
      * Creates a new promise via the C constructor and extracts resolve/reject.
      *
-     * @return array{0: JsValue, 1: ?JsFunction, 2: ?JsFunction} [promise, resolve, reject]
+     * @return array{0: JsValue, 1: JsFunction, 2: JsFunction} [promise, resolve, reject]
      */
     private static function newPromiseCapability(JsFunction $ctor): array
     {

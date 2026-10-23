@@ -280,6 +280,10 @@ trait DataView
                     throw new TypeError("Method DataView.prototype.{$name} called on incompatible receiver");
                 }
 
+                if (!$isGetter) {
+                    $this_->getBuffer()->validateMutable();
+                }
+
                 // Step 2: getIndex = ToIndex(requestIndex).
                 $offsetArg = $args[0] ?? JsUndefined::instance();
                 $getIndex = TypeConversion::toIndex($offsetArg);
@@ -317,14 +321,17 @@ trait DataView
                 // Step 5: IsDetachedBuffer check.
                 $this_->validateNotDetached();
 
+                $intValue = in_array($name, ['setInt8', 'setUint8', 'setInt16', 'setUint16', 'setInt32', 'setUint32'], true)
+                    ? TypeConversion::toInt32(JsNumber::of($numValue)) : 0;
+
                 // Step 6-7: bounds check + write.
                 match ($name) {
-                    'setInt8' => $this_->setInt8($getIndex, (int) $numValue),
-                    'setUint8' => $this_->setUint8($getIndex, (int) $numValue),
-                    'setInt16' => $this_->setInt16($getIndex, (int) $numValue, $littleEndian),
-                    'setUint16' => $this_->setUint16($getIndex, (int) $numValue, $littleEndian),
-                    'setInt32' => $this_->setInt32($getIndex, (int) $numValue, $littleEndian),
-                    'setUint32' => $this_->setUint32($getIndex, (int) $numValue, $littleEndian),
+                    'setInt8' => $this_->setInt8($getIndex, $intValue),
+                    'setUint8' => $this_->setUint8($getIndex, $intValue),
+                    'setInt16' => $this_->setInt16($getIndex, $intValue, $littleEndian),
+                    'setUint16' => $this_->setUint16($getIndex, $intValue, $littleEndian),
+                    'setInt32' => $this_->setInt32($getIndex, $intValue, $littleEndian),
+                    'setUint32' => $this_->setUint32($getIndex, $intValue, $littleEndian),
                     'setFloat16' => $this_->setFloat16($getIndex, $numValue, $littleEndian),
                     'setFloat32' => $this_->setFloat32($getIndex, $numValue, $littleEndian),
                     'setFloat64' => $this_->setFloat64($getIndex, $numValue, $littleEndian),

@@ -28,6 +28,45 @@ use Phasis\BuiltIn\SymbolConstructor;
  */
 trait InstantParsingHelpers
 {
+    private static function temporalTimePattern(bool $offset = false): string
+    {
+        $hour = '(?:[01][0-9]|2[0-3])';
+        $second = $offset ? '[0-5][0-9]' : '(?:[0-5][0-9]|60)';
+        $fraction = '(?:[.,][0-9]{1,9})?';
+        return $hour . '(?::[0-5][0-9](?::' . $second . $fraction . ')?'
+            . '|[0-5][0-9](?:' . $second . $fraction . ')?)?';
+    }
+
+    private static function validateTemporalOffsetString(string $offset): void
+    {
+        if (!preg_match('/^[+-]' . self::temporalTimePattern(true) . '$/D', $offset)) {
+            throw new RangeError("Invalid UTC offset: {$offset}");
+        }
+    }
+
+    private static function validateTemporalDatePrefix(string $value): void
+    {
+        $pattern = '/^(?:[+-][0-9]{6}|[0-9]{4})(?:-[0-9]{2}-[0-9]{2}|[0-9]{4})(?=[Tt \[]|$)/D';
+        if (!preg_match($pattern, $value)) {
+            throw new RangeError("Invalid Temporal date: {$value}");
+        }
+    }
+
+    private static function validateTemporalStringSyntax(string $value): void
+    {
+        $year = '(?:[+-][0-9]{6}|[0-9]{4})';
+        $date = $year . '(?:-[0-9]{2}-[0-9]{2}|[0-9]{4})';
+        $time = self::temporalTimePattern();
+        $offset = '(?:[Zz]|[+-]' . self::temporalTimePattern(true) . ')?';
+        $pattern = '/^(?:' . $date . '(?:[Tt ]' . $time . $offset . ')?'
+            . '|[Tt]?' . $time . $offset
+            . '|(?:--)?[0-9]{2}-?[0-9]{2}'
+            . '|' . $year . '-?[0-9]{2})(?:\[[^\]]+\])*$/D';
+        if (!preg_match($pattern, $value)) {
+            throw new RangeError("Invalid Temporal ISO string: {$value}");
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Helpers: Instant string parsing
     // -----------------------------------------------------------------------

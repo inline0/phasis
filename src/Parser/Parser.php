@@ -84,6 +84,7 @@ class Parser
 
     private int $pos = 0;
     private bool $noIn = false;
+    private bool $directEvalContext = false;
     private bool $inGenerator = false;
     private bool $inAsync = false;
     private bool $inStaticBlock = false;
@@ -358,6 +359,12 @@ class Parser
         }
     }
 
+    /** Defer context-dependent reference checks to PerformEval in the calling environment. */
+    public function setDirectEvalContext(bool $directEval): void
+    {
+        $this->directEvalContext = $directEval;
+    }
+
     public function setStrictMode(bool $strict): void
     {
         $this->strictMode = $strict;
@@ -435,62 +442,8 @@ class Parser
         // validator descends into nested function and arrow bodies and
         // re-applies the scope rules independently for each.
         self::validateBreakContinueProgram($program);
-        // Module-level early errors (duplicate exports etc.) so that
-        // syntax errors are reported before any module loading.
-        if ($this->moduleMode) {
-            $this->validateModuleExportNames($body);
-        }
+        ProgramEarlyErrors::validate($program, $this->moduleMode, $this->directEvalContext);
         return $program;
-    }
-
-    /**
-     * Per §16.1.7: ExportedNames must be unique. Detect duplicate
-     * `default` exports and other duplicate ExportedName entries.
-     *
-     * @param Node[] $body
-     */
-    private function validateModuleExportNames(array $body): void
-    {
-        $exported = [];
-        $addExport = function (string $name) use (&$exported): void {
-            if (isset($exported[$name])) {
-                throw new \Phasis\Exceptions\SyntaxError(
-                    "Duplicate export of '{$name}'",
-                );
-            }
-            $exported[$name] = true;
-        };
-        foreach ($body as $stmt) {
-            if (!($stmt instanceof \Phasis\Ast\Declaration\ExportDeclaration)) {
-                continue;
-            }
-            if ($stmt->isDefault) {
-                $addExport('default');
-            }
-            foreach ($stmt->specifiers as $spec) {
-                $addExport($spec->exported ?? $spec->local);
-            }
-            if ($stmt->isAll && $stmt->allAs !== null) {
-                $addExport($stmt->allAs);
-            }
-            if ($stmt->declaration !== null) {
-                $inner = $stmt->declaration;
-                if (
-                    $inner instanceof \Phasis\Ast\Declaration\FunctionDeclaration
-                    || $inner instanceof \Phasis\Ast\Declaration\ClassDeclaration
-                ) {
-                    if ($inner->id !== null) {
-                        $addExport($inner->id->name);
-                    }
-                } elseif ($inner instanceof VariableDeclaration) {
-                    foreach ($inner->declarations as $d) {
-                        foreach (self::collectPatternNames($d->id) as $n) {
-                            $addExport($n);
-                        }
-                    }
-                }
-            }
-        }
     }
 
     /**

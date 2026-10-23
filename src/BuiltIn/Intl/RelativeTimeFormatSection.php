@@ -278,6 +278,7 @@ trait RelativeTimeFormatSection
                 // -> numeric. Throwing getters in test262 verify this exact
                 // sequence.
                 $numberingSystem = 'latn';
+                $ns = null;
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
                     $ns = TypeConversion::toString($nsVal);
@@ -317,6 +318,13 @@ trait RelativeTimeFormatSection
                     false,
                 ));
                 $resolvedLocale = self::resolveLocale($locales, ["nu"]);
+                $numberingSystem = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'nu',
+                    $ns,
+                    self::getSupportedNumberingSystems(),
+                    'latn',
+                );
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,

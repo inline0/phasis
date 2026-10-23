@@ -241,16 +241,16 @@ trait PlainTimeSection
                 throw new TypeError('options parameter is required');
             }
             if ($roundTo instanceof JsString) {
-                $opt = new JsObject();
+                $opt = JsObject::createNullPrototype();
                 $opt->set('smallestUnit', $roundTo);
                 $roundTo = $opt;
             }
             if (!$roundTo instanceof JsObject) {
                 throw new TypeError('options must be an object');
             }
-            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'], true);
-            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
+            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
+            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'], true);
             if ($increment > 1) {
                 self::validateRoundingIncrement($unit, $increment);
             }

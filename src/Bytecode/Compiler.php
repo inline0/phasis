@@ -116,16 +116,13 @@ final class Compiler
     private array $varDeclaredNames = [];
 
     /**
-     * Set of top-level names that already have a FunctionDeclaration at
-     * program scope. compileProgram populates this BEFORE allocating
-     * frame slots for top-level vars so a `var x; function x() {}` pair
-     * leaves `x` on globalEnv (where the FD hoists it) rather than
-     * shadowing it with an undefined frame slot. Empty in all non-program
-     * compilation paths.
+     * Program var bindings live in the global environment so dynamic code
+     * and property writes share the same storage as compiled identifier reads.
+     * Empty when compiling an ordinary function.
      *
      * @var array<string,bool>
      */
-    private array $fnDeclShadowedVarNames = [];
+    private array $environmentVarNames = [];
 
     /**
      * Stack of (continueTargetPc, breakPatchOperandIndices). Each
@@ -206,19 +203,6 @@ final class Compiler
      * JsThrowable with that value.
      */
 
-    /**
-     * Slot indices that represent top-level `var` bindings. When set,
-     * every STORE_LOCAL into one of these slots is followed by an
-     * eager LOAD_LOCAL + STORE_NAME pair so the global object's
-     * property stays in lock-step with the frame slot. The end-of-
-     * program mirror loop alone is not enough: a Function-constructor
-     * body or any nested call that reads `globalThis.<name>` mid-
-     * program would observe the hoisted-undefined placeholder
-     * otherwise (the test262 S15.3_A3_T2 / T6 regression).
-     *
-     * @var array<int,string>
-     */
-    private array $programVarSlots = [];
 
     /**
      * Whether the program currently being compiled has a `"use strict"`
@@ -446,65 +430,11 @@ final class Compiler
             }
         }
 
-        // First pass: collect every top-level function-declaration name.
-        // These bind on globalEnv (via hoistDeclarations) and must NOT
-        // also get a frame slot — otherwise a `var __func; function
-        // __func() {}; __func()` shape would resolve `__func` through
-        // the frame slot (still undefined because var initializes to
-        // undefined; the function-decl hoist only writes to globalEnv),
-        // diverging from the tree-walker where the function-decl wins.
-        // §B.3.3 / §15.2.1.21 require the FD-name to shadow the var.
-        $topLevelFnDeclNames = [];
-        foreach ($program->body as $stmt) {
-            if ($stmt instanceof FunctionDeclaration && $stmt->id instanceof Identifier) {
-                $topLevelFnDeclNames[$stmt->id->name] = true;
-            }
-        }
-        $this->fnDeclShadowedVarNames = $topLevelFnDeclNames;
-
-        // Collect every top-level var name so each is assigned a frame slot.
-        // Function declarations are deliberately skipped: hoistDeclarations
-        // (in Interpreter::execute) already installs them onto globalEnv,
-        // and accessing them through LOAD_NAME lets nested closures resolve
-        // them through the env chain rather than via frame slots that the
-        // closures cannot see.
+        // Global var declarations are already hoisted by the interpreter.
+        // Keep their reads and writes on the environment: dynamic functions
+        // and callbacks can mutate the same global object during execution.
         foreach ($program->body as $stmt) {
             $this->collectProgramVarLocals($stmt);
-        }
-
-        // Closure-capture safety: top-level FunctionDeclarations are hoisted
-        // onto globalEnv at execute time, so their closure env is globalEnv
-        // — they cannot see the bytecode's frame slots. If any such function
-        // body references a top-level var name (which we just mapped to a
-        // frame slot), the call would resolve through globalEnv and find an
-        // undefined hoisted placeholder, silently diverging from the
-        // tree-walker. The same capturesOuterLocal scan already runs on
-        // nested function/arrow EXPRESSIONS via compileNestedFunction; here
-        // we cover the DECLARATION case the skip-in-emit loop would miss.
-        if ($this->localSlots !== []) {
-            foreach ($program->body as $stmt) {
-                if (
-                    $stmt instanceof FunctionDeclaration
-                    && $this->capturesOuterLocal($stmt)
-                ) {
-                    throw new CompilerBailout('top-level fn-decl captures top-level var');
-                }
-            }
-
-            // Writes through globalThis / this at program scope can
-            // clobber the globalEnv binding of a top-level var. The
-            // bytecode keeps top-level vars in frame slots, so e.g.
-            // `this['x'] = 1; ... ; var x;` would set the global binding
-            // to 1 but reads of `x` still see the frame-slot undefined.
-            // We can't model that statically without IR alias tracking,
-            // so bail conservatively when the program contains any
-            // assignment whose target is rooted at `this` or
-            // `globalThis` (member or computed-member). Pure reads
-            // (`this.x`, `globalThis.foo`) are fine and stay on the VM
-            // path.
-            if ($this->programWritesThroughGlobalAlias($program->body)) {
-                throw new CompilerBailout('top-level write through this/globalThis');
-            }
         }
 
         // Reserve a slot to hold the program's completion value. Each
@@ -513,28 +443,6 @@ final class Compiler
         // expression statement's value, matching executeStatements.
         $resultSlot = count($this->localNames);
         $this->localNames[] = '[[programResult]]';
-
-        // Snapshot top-level var slots BEFORE statement compilation so the
-        // end-of-program mirror loop only touches names that were truly
-        // top-level vars (not catch params, not the result slot, not
-        // inner-let slots discovered by collectStatementLocals during
-        // statement compile). Each (name, slot) entry will trigger one
-        // LOAD_LOCAL + STORE_NAME at program exit so subsequent
-        // engine->eval() calls see the latest values via globalEnv —
-        // matching the tree-walker's behaviour where every top-level
-        // var is a property of the global object.
-        $topLevelVarSlots = $this->localSlots;
-
-        // Enable eager STORE_NAME mirroring for every write to a
-        // top-level var slot during statement compile, so functions
-        // created during the program (Function-constructor bodies,
-        // setTimeout-style callbacks, nested closures invoked
-        // mid-script) see live values on globalThis rather than the
-        // hoisted-undefined placeholder. The end-of-program mirror
-        // loop alone is not sufficient.
-        foreach ($topLevelVarSlots as $name => $slot) {
-            $this->programVarSlots[$slot] = $name;
-        }
 
         foreach ($program->body as $stmt) {
             // Top-level FunctionDeclarations are pre-hoisted onto
@@ -555,19 +463,6 @@ final class Compiler
                 continue;
             }
             $this->compileStatement($stmt);
-        }
-
-        // Mirror each top-level var slot's final value back onto
-        // globalEnv. Without this, a `var $262 = {}` at top level would
-        // populate the frame slot only; the binding is gone the moment
-        // VM execution returns, and the next engine->eval() sees the
-        // hoisted undefined placeholder. The capturesOuterLocal scan
-        // already excluded the case where a still-pending closure
-        // reads these names mid-execution, so a final write is enough
-        // to keep subsequent eval()s consistent with the tree-walker.
-        foreach ($topLevelVarSlots as $name => $slot) {
-            $this->emit(Op::LOAD_LOCAL, $slot);
-            $this->emit(Op::STORE_NAME, $this->internName($name));
         }
 
         $this->emit(Op::LOAD_LOCAL, $resultSlot);

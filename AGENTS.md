@@ -88,7 +88,9 @@ gh run list --workflow=compat-matrix.yml --limit 1
 
 The workflow auto-commits the regenerated `compat.json` + `COMPAT.md`. Pull, read the files, then act. Local `./bin/test262 --category` runs are reserved for verifying a specific fix on a known path, not for discovery.
 
-The matrix run is the only canonical compliance number; commit the regenerated `compat.json` + `COMPAT.md` (auto-pushed by the workflow). Performance changes regress test262 just as easily as feature changes — the JsToPhp emitter and VM inline paths cut spec corners that surface in surprising places.
+The matrix run is the only canonical compliance number; commit the regenerated `compat.json` + `COMPAT.md` (auto-pushed by the workflow). Dispatch with `--ref <working-branch>` while developing so that branch's results cannot replace main's snapshot. Performance changes regress test262 just as easily as feature changes — the JsToPhp emitter and VM inline paths cut spec corners that surface in surprising places.
+
+Run every applicable test262 variant: unflagged scripts in both sloppy and strict mode, explicitly flagged scripts in their required mode, and raw sources unchanged with their declared script or module parse goal. Keep harness strictness separate, require async completion, and verify negative-test error types and phases. Never add skips, exclusions, altered assertions, or test-specific engine behavior to raise the compliance percentage. A 100% claim requires all discovered files accounted for, zero failures/skips/blocked/pending tests, and a complete canonical matrix from the same source and suite revision. Preserve full shard manifests and shared run identity so missing, overlapping, or stale results cannot appear complete.
 
 **Bench changes:** every perf change to `src/Bytecode/VM.php`, `src/Bytecode/JsToPhp.php`, or hot built-ins must pass under PHP 8.5 + tracing JIT before push:
 
@@ -119,7 +121,7 @@ All without `exec('node ...')`. Requirements: PHP 8.2+ with `ext-mbstring`, `ext
 
 ## What This Is Not
 
-Not a JIT compiler. Not a competitor to V8 for raw throughput. This is a tree-walking interpreter. It will be 100-1000x slower than V8. The value is: zero dependencies, pure PHP, runs anywhere PHP runs, and the host controls the entire execution environment. Direct PHP-JS object bridging without serialization.
+Phasis combines an AST interpreter with a bytecode VM and PHP code generation for supported hot paths. It is not a competitor to V8 for raw throughput. Its purpose is execution in PHP with host-controlled environments and direct PHP-JS object bridging without serialization.
 
 ## Project Structure
 
@@ -609,7 +611,7 @@ assert.sameValue(1 + 2, 3);
 |---|---|
 | `description` | What the test validates |
 | `esid` | ECMAScript spec section |
-| `features` | Required language features (skip test if feature not implemented) |
+| `features` | Required language features; unsupported behavior must count as a failure in canonical runs |
 | `includes` | Harness files to load before test (e.g., `assert.js`, `sta.js`) |
 | `flags` | Execution modifiers: `onlyStrict`, `noStrict`, `module`, `async`, `raw` |
 | `negative` | Test MUST throw: `{type: ErrorType, phase: parse|runtime}` |
@@ -630,14 +632,14 @@ class Test262Runner {
     public function runSuite(string $dir): SuiteResult;    // Run all tests in directory
     public function runAll(): SuiteResult;                 // Run everything
     
-    // Filter by feature (skip tests needing unimplemented features)
+    // Optional filtering for ad hoc runs; canonical runs use no skipped features.
     public function setSkipFeatures(array $features): void;
 }
 ```
 
 The runner:
 1. Parses the YAML frontmatter to extract metadata
-2. Checks `features` against skip list (don't run tests for unimplemented features)
+2. Reads feature metadata; canonical runs have an empty skip list
 3. Loads harness files specified in `includes`
 4. Executes the test body in a fresh Engine instance
 5. Checks the result against `negative` expectations (if any)
@@ -687,19 +689,13 @@ For quick spot checks on a single category during development:
 
 But repo-level documentation must come from `./bin/compat-report`.
 
-### Remaining structural gaps
+### Host and runtime coverage
 
-These failures cannot be fixed without architectural changes:
-
-- **`$262` / cross-realm**: test262 tests that use the `$262` host API for creating realms, detaching ArrayBuffers, etc. We do not implement multi-realm support.
-- **Detached ArrayBuffers**: requires `$262.detachArrayBuffer()` host API.
-- **PCRE2 vs ECMAScript regex**: PCRE2 handles some regex features differently (nullable quantifier capture groups, backreference reset in repetitions). Would require a custom regex engine.
-- **UTF-16 surrogates**: URI encode/decode functions need to validate lone surrogates per UTF-16 semantics. Requires tracking surrogate pairs in string operations.
-- **ES modules**: `import`/`export` not implemented.
+The runner implements the `$262` host API, including child realms, ArrayBuffer detachment, and cooperative agents. The engine supports ES modules and handles ECMAScript-specific regular-expression and UTF-16 semantics alongside its PHP backends. Consult the current canonical failure paths before assuming a host or runtime feature is missing.
 
 ### Skip list
 
-The skip list in `config/support.php` (`test262_skipped_features`) controls which test262 feature flags cause tests to be skipped. Only add features that are genuinely unimplemented. Remove features from the skip list as soon as they are supported.
+The skip list in `config/support.php` (`test262_skipped_features`) is empty. Keep canonical runs unfiltered: missing implementations must remain visible as failures.
 
 ## Comment Policy
 

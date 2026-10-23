@@ -74,40 +74,18 @@ trait SupportedValuesOfSection
     /** @return list<string> */
     private static function getSupportedCalendars(): array
     {
-        // The full BCP 47 calendar list per CLDR. ICU's
-        // `getKeywordValuesForLocale` historically returned only
-        // `gregorian`, so we merge it with the static list and
-        // sort to satisfy supportedValuesOf's spec ordering
-        // requirement.
-        $base = ['buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
-            'ethiopic', 'gregory', 'hebrew', 'indian', 'islamic',
-            'islamic-civil', 'islamic-rgsa', 'islamic-tbla',
+        // Intl era/monthCode specifies this exact set. Observational Islamic
+        // calendars (islamic and islamic-rgsa) are no longer exposed.
+        return ['buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
+            'ethiopic', 'gregory', 'hebrew', 'indian',
+            'islamic-civil', 'islamic-tbla',
             'islamic-umalqura', 'iso8601', 'japanese', 'persian', 'roc'];
-        if (extension_loaded('intl')) {
-            $iter = \IntlCalendar::getKeywordValuesForLocale('calendar', 'und', true);
-            foreach ($iter as $cal) {
-                $mapped = match ($cal) {
-                    'gregorian' => 'gregory',
-                    'ethiopic-amete-alem' => 'ethioaa',
-                    default => $cal,
-                };
-                if (!in_array($mapped, $base, true)) {
-                    $base[] = $mapped;
-                }
-            }
-        }
-        sort($base, SORT_STRING);
-        return $base;
     }
 
     /** @return list<string> */
     private static function getSupportedCollations(): array
     {
-        // Common collation types per CLDR/BCP 47.
-        // Per spec, 'standard' and 'search' are excluded from supportedValuesOf.
-        return ['big5han', 'compat', 'dict', 'direct', 'ducet', 'emoji', 'eor',
-            'gb2312', 'phonebk', 'phonetic', 'pinyin', 'reformed',
-            'searchjl', 'stroke', 'trad', 'unihan', 'zhuyin'];
+        return LocaleInfoData::supportedCollations();
     }
 
     /** @return list<string> */
@@ -166,15 +144,7 @@ trait SupportedValuesOfSection
     /** @return list<string> */
     private static function getSupportedNumberingSystems(): array
     {
-        return ['adlm', 'ahom', 'arab', 'arabext', 'bali', 'beng', 'bhks', 'brah',
-            'cakm', 'cham', 'deva', 'diak', 'fullwide', 'gong', 'gonm', 'gujr',
-            'guru', 'hanidec', 'hmng', 'hmnp', 'java', 'kali', 'kawi', 'khmr',
-            'knda', 'lana', 'lanatham', 'laoo', 'latn', 'lepc', 'limb', 'mathbold',
-            'mathdbl', 'mathmono', 'mathsanb', 'mathsans', 'mlym', 'modi', 'mong',
-            'mroo', 'mtei', 'mymr', 'mymrshan', 'mymrtlng', 'nagm', 'newa', 'nkoo',
-            'olck', 'orya', 'osma', 'rohg', 'saur', 'segment', 'shrd', 'sind',
-            'sinh', 'sora', 'sund', 'takr', 'talu', 'tamldec', 'telu', 'thai',
-            'tibt', 'tirh', 'tnsa', 'vaii', 'wara', 'wcho'];
+        return NumberingSystemData::identifiers();
     }
 
     /** @return list<string> */

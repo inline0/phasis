@@ -300,9 +300,10 @@ class GlobalObject
         // consists of the global environment only (not the calling scope).
         // We capture $env here so the Function constructor always uses the
         // engine's global environment for the created function.
+        $functionRealm = \Phasis\Engine::getCurrentRealm();
         $fnConstructor = JsFunction::fromCallable(
             'Function',
-            function (JsValue $this_, array $args) use ($env): JsValue {
+            function (JsValue $this_, array $args) use ($env, $functionRealm): JsValue {
                 $body = '';
                 $params = '';
                 if (count($args) > 0) {
@@ -352,13 +353,19 @@ class GlobalObject
             // so save and restore them around the dynamic execution.
                 $prevInstance = JsFunction::getInterpreterInstance();
                 $prevCallback = JsFunction::getInterpreterCallback();
+                $prevInterpreter = \Phasis\Engine::getCurrentInterpreter();
                 $interp = new Interpreter($env);
+                if ($functionRealm !== null) {
+                    $interp->setRealm($functionRealm);
+                }
                 if ($prevInstance !== null) {
                     $interp->inheritLimits($prevInstance);
                 }
                 try {
+                    \Phasis\Engine::setCurrentInterpreter($interp);
                     $result = $interp->execute($program);
                 } finally {
+                    \Phasis\Engine::setCurrentInterpreter($prevInterpreter);
                     if ($prevInstance !== null) {
                         JsFunction::setInterpreterInstance($prevInstance);
                     }
@@ -1081,7 +1088,7 @@ class GlobalObject
             ),
         );
         // %AsyncIteratorPrototype%[@@asyncDispose] per explicit-resource-management.
-        // Calls this.return() and wraps the result in a Promise.
+        // Return lookup and invocation failures reject the returned promise.
         $asyncDisposeSym = \Phasis\BuiltIn\SymbolConstructor::asyncDispose();
         $asyncIteratorPrototype->definePropertyBySymbol(
             $asyncDisposeSym,
@@ -1089,27 +1096,40 @@ class GlobalObject
                 JsFunction::fromCallable(
                     '[Symbol.asyncDispose]',
                     static function (JsValue $this_, array $args): JsValue {
-                        if (!$this_ instanceof \Phasis\Value\JsObject) {
-                            throw new \Phasis\Exceptions\TypeError(
-                                'Symbol.asyncDispose called on non-object'
-                            );
+                        $promise = new \Phasis\Value\JsPromise();
+                        try {
+                            $object = \Phasis\Spec\TypeConversion::toObject($this_);
+                            $returnFn = $this_ instanceof \Phasis\Value\JsObject
+                                ? $object->get('return')
+                                : $object->getWithValueReceiver('return', $this_);
+                            if (
+                                $returnFn instanceof \Phasis\Value\JsUndefined
+                                || $returnFn instanceof \Phasis\Value\JsNull
+                            ) {
+                                $promise->resolve(\Phasis\Value\JsUndefined::instance());
+                                return $promise;
+                            }
+                            if (!$returnFn instanceof JsFunction) {
+                                throw new \Phasis\Exceptions\TypeError('return is not a function');
+                            }
+                            $result = $returnFn->call($this_, []);
+                            $wrapper = $result instanceof \Phasis\Value\JsPromise
+                                && $result->get('constructor') === PromiseConstructor::getIntrinsicPromise()
+                                ? $result
+                                : \Phasis\Value\JsPromise::resolved($result);
+                            return $wrapper->then([JsFunction::fromCallable(
+                                '',
+                                static fn(): JsValue => \Phasis\Value\JsUndefined::instance(),
+                                1,
+                            )]);
+                        } catch (\Throwable $e) {
+                            $interpreter = JsFunction::getInterpreterInstance();
+                            $reason = $e instanceof \Phasis\Exceptions\JsThrowable
+                                ? $e->jsValue
+                                : ($interpreter?->phpExceptionToJsValue($e) ?? new JsString($e->getMessage()));
+                            $promise->reject($reason);
+                            return $promise;
                         }
-                        $returnFn = $this_->get('return');
-                        if (
-                            $returnFn instanceof \Phasis\Value\JsUndefined
-                            || $returnFn instanceof \Phasis\Value\JsNull
-                        ) {
-                            return \Phasis\Value\JsPromise::resolved(
-                                \Phasis\Value\JsUndefined::instance()
-                            );
-                        }
-                        if (!$returnFn instanceof JsFunction) {
-                            throw new \Phasis\Exceptions\TypeError(
-                                'return is not a function'
-                            );
-                        }
-                        $result = $returnFn->call($this_, []);
-                        return \Phasis\Value\JsPromise::resolved($result);
                     },
                     0,
                 ),

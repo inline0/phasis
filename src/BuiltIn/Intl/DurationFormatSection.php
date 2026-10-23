@@ -60,16 +60,22 @@ trait DurationFormatSection
                     false,
                 ));
 
-                // numberingSystem: "latn" only (we support latn).
-                $numberingSystem = 'latn';
+                $resolvedLocale = self::resolveLocale($locales, ['nu']);
+                $ns = null;
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
                     $ns = TypeConversion::toString($nsVal);
                     if (!self::isValidUnicodeTypeValue($ns)) {
                         throw new RangeError("Invalid numberingSystem: {$ns}");
                     }
-                    $numberingSystem = $ns;
                 }
+                $numberingSystem = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'nu',
+                    $ns,
+                    self::getSupportedNumberingSystems(),
+                    'latn',
+                );
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
                     false,
@@ -198,7 +204,6 @@ trait DurationFormatSection
                     ));
                 }
 
-                $resolvedLocale = self::resolveLocale($locales, ['nu']);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,

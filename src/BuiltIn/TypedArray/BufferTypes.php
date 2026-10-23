@@ -112,8 +112,10 @@ trait BufferTypes
                     ? (float) $len
                     : TypeConversion::toIntegerOrInfinity($endArg);
 
-                // Compute the slice parameters.
-                [$newLen, , $slicedData] = $this_->computeSlice($begin, $end);
+                // Bounds use the length captured before user coercions.
+                $first = (int) ($begin < 0 ? max($len + $begin, 0) : min($begin, $len));
+                $final = (int) ($end < 0 ? max($len + $end, 0) : min($end, $len));
+                $newLen = max($final - $first, 0);
 
                 // Step 13: SpeciesConstructor(O, %ArrayBuffer%).
                 $ctor = $this_->get('constructor');
@@ -160,19 +162,14 @@ trait BufferTypes
                     );
                 }
 
+                if ($newBuf instanceof JsSharedArrayBuffer || $newBuf->isDetached() || $newBuf->isImmutable()) {
+                    throw new TypeError('ArrayBuffer.prototype.slice: invalid destination buffer');
+                }
+
                 // Step 19: If SameValue(new, O) is true, throw a TypeError.
                 if ($newBuf === $this_) {
                     throw new TypeError(
                         'ArrayBuffer.prototype.slice: species constructor returned same buffer'
-                    );
-                }
-
-                // Per spec, Construct above runs the species constructor's
-                // body, which can detach the source through user code.
-                // Re-validate before the slice copy.
-                if ($this_->isDetached()) {
-                    throw new TypeError(
-                        'Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer'
                     );
                 }
 
@@ -183,12 +180,16 @@ trait BufferTypes
                     );
                 }
 
-                // Step 24-25: Copy data.
-                if ($newLen > 0 && $newBuf->getByteLength() >= $newLen) {
-                    // Copy bytes from source into the new buffer.
-                    $existingData = $newBuf->getData();
-                    $newData = substr_replace($existingData, $slicedData, 0, $newLen);
-                    $newBuf->setData($newData);
+                // Species can mutate, detach, or resize the source. Copy its
+                // current bytes and leave the destination's remaining bytes intact.
+                if ($this_->isDetached()) {
+                    throw new TypeError(
+                        'Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer'
+                    );
+                }
+                $copyLength = min($newLen, max($this_->getByteLength() - $first, 0));
+                if ($copyLength > 0) {
+                    $newBuf->writeBytes(0, $this_->readBytes($first, $copyLength));
                 }
 
                 return $newBuf;
@@ -196,6 +197,68 @@ trait BufferTypes
             2,
         );
         $proto->defineOwnProperty('slice', PropertyDescriptor::data($sliceFn, true, false, true));
+
+        $sliceToImmutable = JsFunction::fromCallable(
+            'sliceToImmutable',
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError('ArrayBuffer.prototype.sliceToImmutable called on incompatible receiver');
+                }
+                if ($this_->isDetached()) {
+                    throw new TypeError('Cannot slice a detached ArrayBuffer');
+                }
+                $length = $this_->getByteLength();
+                $start = TypeConversion::toIntegerOrInfinity($args[0] ?? JsUndefined::instance());
+                $endArg = $args[1] ?? JsUndefined::instance();
+                $end = $endArg instanceof JsUndefined ? $length : TypeConversion::toIntegerOrInfinity($endArg);
+                $first = (int) ($start < 0 ? max($length + $start, 0) : min($start, $length));
+                $final = (int) ($end < 0 ? max($length + $end, 0) : min($end, $length));
+                $newLength = max($final - $first, 0);
+                if ($this_->isDetached()) {
+                    throw new TypeError('Cannot slice a detached ArrayBuffer');
+                }
+                if ($this_->getByteLength() < $final) {
+                    throw new RangeError('ArrayBuffer shrank below the end of the slice');
+                }
+                $result = new JsArrayBuffer($newLength, $proto);
+                $result->setData($this_->readBytes($first, $newLength));
+                $result->makeImmutable();
+                return $result;
+            },
+            2,
+        );
+        $proto->defineOwnProperty('sliceToImmutable', PropertyDescriptor::data($sliceToImmutable, true, false, true));
+
+        $transferToImmutable = JsFunction::fromCallable(
+            'transferToImmutable',
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError('ArrayBuffer.prototype.transferToImmutable called on incompatible receiver');
+                }
+                $lengthArg = $args[0] ?? JsUndefined::instance();
+                $length = $lengthArg instanceof JsUndefined ? null : TypeConversion::toIndex($lengthArg);
+                $result = $this_->transferToFixedLength($length, $proto);
+                $result->makeImmutable();
+                return $result;
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'transferToImmutable',
+            PropertyDescriptor::data($transferToImmutable, true, false, true),
+        );
+
+        $immutableGetter = JsFunction::fromCallable(
+            'get immutable',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError('ArrayBuffer.prototype.immutable called on incompatible receiver');
+                }
+                return new JsBoolean($this_->isImmutable());
+            },
+            0,
+        );
+        $proto->defineOwnProperty('immutable', PropertyDescriptor::accessor($immutableGetter, null, false, true));
 
         // ArrayBuffer.prototype.byteLength getter.
         $byteLengthGetter = JsFunction::fromCallable(
@@ -302,20 +365,17 @@ trait BufferTypes
         // ArrayBuffer.prototype.transfer(newLength?).
         $transferFn = JsFunction::fromCallable(
             'transfer',
-            function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsArrayBuffer) {
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError(
                         'Method ArrayBuffer.prototype.transfer called on incompatible receiver'
                     );
-                }
-                if ($this_->isDetached()) {
-                    throw new TypeError('Cannot transfer a detached ArrayBuffer');
                 }
                 $newLenArg = $args[0] ?? JsUndefined::instance();
                 $newLen = $newLenArg instanceof JsUndefined
                     ? null
                     : TypeConversion::toIndex($newLenArg);
-                return $this_->transfer($newLen);
+                return $this_->transfer($newLen, $proto);
             },
             0,
         );
@@ -324,20 +384,17 @@ trait BufferTypes
         // ArrayBuffer.prototype.transferToFixedLength(newLength?).
         $transferToFixedLengthFn = JsFunction::fromCallable(
             'transferToFixedLength',
-            function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsArrayBuffer) {
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError(
                         'Method ArrayBuffer.prototype.transferToFixedLength called on incompatible receiver'
                     );
-                }
-                if ($this_->isDetached()) {
-                    throw new TypeError('Cannot transfer a detached ArrayBuffer');
                 }
                 $newLenArg = $args[0] ?? JsUndefined::instance();
                 $newLen = $newLenArg instanceof JsUndefined
                     ? null
                     : TypeConversion::toIndex($newLenArg);
-                return $this_->transferToFixedLength($newLen);
+                return $this_->transferToFixedLength($newLen, $proto);
             },
             0,
         );

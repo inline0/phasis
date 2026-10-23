@@ -32,13 +32,13 @@ trait NumberFormatSection
     // Intl.NumberFormat
     // ---------------------------------------------------------------
 
-    private static function installNumberFormat(JsObject $intl): void
+    private static function installNumberFormat(JsObject $intl, \Phasis\Value\JsSymbol $fallbackSymbol): void
     {
         $proto = new JsObject();
 
         $constructor = JsFunction::fromCallable(
             'NumberFormat',
-            function (JsValue $this_, array $args) use ($proto): JsValue {
+            function (JsValue $this_, array $args) use ($proto, $fallbackSymbol): JsValue {
                 $localesArg = $args[0] ?? JsUndefined::instance();
                 $optionsArg = $args[1] ?? JsUndefined::instance();
 
@@ -64,6 +64,7 @@ trait NumberFormatSection
                 // Algorithmic systems (armn, hebr, roman, ...) and
                 // unknown ones fall back to "latn".
                 $numberingSystem = 'latn';
+                $nsEarly = null;
                 $nsValEarly = $options->get('numberingSystem');
                 if (!$nsValEarly instanceof JsUndefined) {
                     $nsEarly = TypeConversion::toString($nsValEarly);
@@ -73,9 +74,14 @@ trait NumberFormatSection
                     if (in_array($nsEarly, self::getSupportedNumberingSystems(), true)) {
                         $numberingSystem = $nsEarly;
                     }
-                    // User option overrides the locale extension.
-                    $resolvedLocale = self::filterUnicodeExtensions($resolvedLocale, []);
                 }
+                $numberingSystem = self::resolveUnicodeKeyword(
+                    $resolvedLocale,
+                    'nu',
+                    $nsEarly,
+                    self::getSupportedNumberingSystems(),
+                    'latn',
+                );
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -638,7 +644,7 @@ trait NumberFormatSection
                     }
                 }
 
-                return $obj;
+                return self::chainLegacyIntlConstructor($this_, $obj, $proto, $fallbackSymbol);
             },
             0,
         );
@@ -685,13 +691,12 @@ trait NumberFormatSection
         }, 1);
         $formatGetter = JsFunction::fromCallable('get format', function (
             JsValue $this_,
-        ) use ($formatFn): JsValue {
-            if (
-                !$this_ instanceof JsObject
-                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
-            ) {
-                throw new TypeError('Intl.NumberFormat.prototype.format called on non-NumberFormat');
-            }
+        ) use (
+            $formatFn,
+            $proto,
+            $fallbackSymbol
+): JsValue {
+            $this_ = self::unwrapLegacyIntl($this_, $proto, $fallbackSymbol, 'NumberFormat');
             $boundFormat = JsFunction::fromCallable('', function (
                 JsValue $unused,
                 array $innerArgs,
@@ -913,14 +918,11 @@ trait NumberFormatSection
         // NumberFormat.prototype.resolvedOptions()
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
             JsValue $this_,
-        ): JsValue {
-            if (
-                !$this_ instanceof JsObject
-                || $this_ instanceof \Phasis\Value\JsProxy
-                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
-            ) {
-                throw new TypeError('Intl.NumberFormat.prototype.resolvedOptions called on non-NumberFormat');
-            }
+        ) use (
+            $proto,
+            $fallbackSymbol
+): JsValue {
+            $this_ = self::unwrapLegacyIntl($this_, $proto, $fallbackSymbol, 'NumberFormat');
             $result = new JsObject();
             self::defineDataProp($result, 'locale', new JsString(
                 self::extractInternalString($this_, '[[Locale]]', 'en'),
@@ -2278,15 +2280,11 @@ trait NumberFormatSection
         $sign = '';
         $rest = $bigIntStr;
         if (str_starts_with($rest, '-')) {
-            // Probe the formatter to learn the locale's actual sign
-            // prefix (RTL locales like Arabic emit U+200E + "-").
-            $probe = $formatter->format(-1);
+            // Read the pattern prefix directly so non-Latin digits and
+            // minimum integer padding cannot become part of the sign.
+            $prefix = $formatter->getTextAttribute(\NumberFormatter::NEGATIVE_PREFIX);
             $rest = substr($rest, 1);
-            if (is_string($probe) && preg_match('/^([^0-9]+)/u', $probe, $m) === 1) {
-                $sign = $m[1];
-            } else {
-                $sign = '-';
-            }
+            $sign = is_string($prefix) ? $prefix : '-';
         } elseif (str_starts_with($rest, '+')) {
             $rest = substr($rest, 1);
         }
@@ -2483,19 +2481,28 @@ trait NumberFormatSection
 
         // Mixed sig+frac priority modes: format both ways and pick.
         if ($rtTop === 'morePrecision' || $rtTop === 'lessPrecision') {
-            return self::formatNumberWithPriority($nf, $number, $bigIntStr, $rtTop);
+            return NumberingSystemData::substitute(
+                self::formatNumberWithPriority($nf, $number, $bigIntStr, $rtTop),
+                $numberingSystem,
+            );
         }
 
         // Engineering / scientific notations decompose into a
         // mantissa + locale-rendered exponent.
         if ($notation === 'engineering' || $notation === 'scientific') {
-            return self::formatScientificNumber($nf, $number, $notation);
+            return NumberingSystemData::substitute(
+                self::formatScientificNumber($nf, $number, $notation),
+                $numberingSystem,
+            );
         }
         // Compact notation: covers en-US short/long; other locales
         // share the same structure with localised suffix labels.
         if ($notation === 'compact') {
             $compact = self::formatCompactNumber($nf, $number);
-            return self::applySignDisplay($nf, $compact, $number);
+            return NumberingSystemData::substitute(
+                self::applySignDisplay($nf, $compact, $number),
+                $numberingSystem,
+            );
         }
 
         $fmtStyle = match ($style) {
@@ -2591,6 +2598,7 @@ trait NumberFormatSection
             $localeForUnit = self::extractInternalString($nf, '[[Locale]]', 'en');
             $bareResult = self::normalizeIntlInfinity($bareResult, $number);
             $bareResult = self::applySignDisplay($nf, $bareResult, $number);
+            $bareResult = NumberingSystemData::substitute($bareResult, $numberingSystem);
             $pattern = self::localeUnitPattern($localeForUnit, $unit, $unitDisplay);
             if ($pattern !== null) {
                 return str_replace('{0}', $bareResult, $pattern);
@@ -2677,7 +2685,7 @@ trait NumberFormatSection
             $result = self::stripMin2GroupingSeparator($result);
         }
 
-        return $result;
+        return NumberingSystemData::substitute($result, $numberingSystem);
     }
 
     /**

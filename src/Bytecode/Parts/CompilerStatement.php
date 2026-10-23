@@ -612,20 +612,10 @@ trait CompilerStatement
                 throw new CompilerBailout('destructuring var');
             }
             $name = $decl->id->name;
-            // §B.3.2 var-vs-function-decl name conflict at program scope:
-            // collectProgramVarLocals deliberately left this name OFF the
-            // localSlots table because the FunctionDeclaration hoists it
-            // onto globalEnv. Emit the var binding via the env path so
-            // a later read sees the hoisted function rather than an
-            // undefined frame-slot. Pure declarations (no init) become
-            // a no-op because the FD hoist already created the binding;
-            // declarations with an initializer (e.g. `var f = 1; function
-            // f() {}` — initializer order matters per source-order
-            // execution) emit a STORE_NAME so the var-init clobbers the
-            // FD-installed value, matching the tree-walker's behaviour
-            // where statement-list evaluation reaches the var initializer
-            // after both have been hoisted.
-            if ($node->kind === 'var' && isset($this->fnDeclShadowedVarNames[$name])) {
+            // Program var bindings are shared with the global object.
+            // Hoisting already created the binding, so only an initializer
+            // emits a write; a declaration without one preserves its value.
+            if ($node->kind === 'var' && isset($this->environmentVarNames[$name])) {
                 if ($decl->init !== null) {
                     if (self::initNeedsNamedEvaluation($decl->init)) {
                         throw new CompilerBailout('var init needs named evaluation');

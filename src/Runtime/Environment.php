@@ -103,15 +103,7 @@ class Environment
      */
     private array $privateNameMap = [];
 
-    /**
-     * Disposal stack for `using` and `await using` declarations.
-     * Entries are [JsObject resource, bool isAsync]. Disposed in reverse
-     * order at block exit. Resources are validated as JsObject by the
-     * `using` statement evaluator before being added; null/undefined are
-     * silently skipped per spec sec-disposeresources.
-     *
-     * @var list<array{0: \Phasis\Value\JsObject, 1: bool}>
-     */
+    /** @var list<DisposableResource> Resources in registration order. */
     private array $disposables = [];
 
     public function __construct(
@@ -1145,16 +1137,16 @@ class Environment
      * Called when processing `using` or `await using` declarations
      * after the resource has been validated as a non-null object.
      */
-    public function addDisposable(\Phasis\Value\JsObject $resource, bool $isAsync): void
+    public function addDisposable(DisposableResource $resource): void
     {
-        $this->disposables[] = [$resource, $isAsync];
+        $this->disposables[] = $resource;
     }
 
     /**
      * Get the disposal stack for this environment (in registration order).
      * Caller should iterate in reverse for disposal.
      *
-     * @return list<array{0: \Phasis\Value\JsObject, 1: bool}>
+     * @return list<DisposableResource>
      */
     public function getDisposables(): array
     {
@@ -1172,7 +1164,7 @@ class Environment
     /**
      * Transfer all disposables out of this environment (used by move()).
      *
-     * @return list<array{0: \Phasis\Value\JsValue, 1: bool}>
+     * @return list<DisposableResource>
      */
     public function takeDisposables(): array
     {

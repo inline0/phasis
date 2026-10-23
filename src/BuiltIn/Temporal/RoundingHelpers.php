@@ -64,29 +64,6 @@ trait RoundingHelpers
         if ($increment === '0') {
             return $value;
         }
-        // quotient = value / increment, round according to mode.
-        $q = bcdiv($value, $increment, 20);
-        $truncQ = bcdiv($value, $increment, 0);
-        $isNonNeg = bccomp($value, '0', 0) >= 0;
-        $rounded = match ($mode) {
-            'ceil' => bcadd($q, '0', 0) === $q
-                ? $q
-                : ($isNonNeg ? bcadd($truncQ, '1', 0) : $truncQ),
-            'floor' => $isNonNeg
-                ? $truncQ
-                : (bcsub($value, bcsub($increment, '1', 0), 0) !== $value
-                    ? bcsub($truncQ, '1', 0) : $truncQ),
-            'trunc' => $truncQ,
-            default => bcdiv(
-                bcadd(
-                    bcmul($value, '2', 0),
-                    $isNonNeg ? $increment : bcsub('0', $increment, 0),
-                    0,
-                ),
-                bcmul($increment, '2', 0),
-                0,
-            ),
-        };
-        return bcmul($rounded, $increment, 0);
+        return self::roundNs($value, $increment, $mode);
     }
 }

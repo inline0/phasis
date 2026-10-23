@@ -329,7 +329,8 @@ trait RegExpHelpers
             $customParseOk = false;
             if ($customNeeded) {
                 try {
-                    (new \Phasis\Regex\Parser($pattern, $flags))->parse();
+                    $customPattern = str_contains($flags, 'v') ? $this->transformVFlagPattern($pattern) : $pattern;
+                    (new \Phasis\Regex\Parser($customPattern, $flags))->parse();
                     $customParseOk = true;
                 } catch (\Throwable) {
                     $customParseOk = false;
@@ -394,7 +395,9 @@ trait RegExpHelpers
         // exec() routes through the in-engine matcher in those cases.
         if (self::patternNeedsCustomMatcher($pattern, $flags)) {
             try {
-                $regexAst = (new \Phasis\Regex\Parser($pattern, $flags))->parse();
+                // The AST parser consumes ordinary alternatives after Unicode string sets are lowered.
+                $customPattern = str_contains($flags, 'v') ? $this->transformVFlagPattern($pattern) : $pattern;
+                $regexAst = (new \Phasis\Regex\Parser($customPattern, $flags))->parse();
                 $obj->defineOwnProperty(
                     '[[CustomRegexAst]]',
                     PropertyDescriptor::data(
@@ -816,12 +819,11 @@ trait RegExpHelpers
                             if ($isVFlag && $next === 'p' && !$inCharClass) {
                                 $stringSet = self::vFlagPropertyOfStringsSet($propExpr);
                                 if ($stringSet !== null) {
-                                    $pcreSet = array_map(
-                                        static fn (string $s): string =>
-                                            str_replace('\\u{', '\\x{', $s),
-                                        $stringSet,
+                                    $result .= str_replace(
+                                        '\\u{',
+                                        '\\x{',
+                                        self::vFlagStringSetPattern($stringSet),
                                     );
-                                    $result .= '(?:' . implode('|', $pcreSet) . ')';
                                     $i = $closeBrace + 1;
                                     continue;
                                 }
@@ -2113,6 +2115,18 @@ trait RegExpHelpers
 
         while ($i < $len) {
             if ($pattern[$i] === '\\' && $i + 1 < $len) {
+                if ($pattern[$i + 1] === 'p' && ($pattern[$i + 2] ?? '') === '{') {
+                    $end = strpos($pattern, '}', $i + 3);
+                    if ($end !== false) {
+                        $property = substr($pattern, $i + 3, $end - $i - 3);
+                        $strings = self::vFlagPropertyOfStringsSet($property);
+                        if ($strings !== null) {
+                            $result .= self::vFlagStringSetPattern($strings);
+                            $i = $end + 1;
+                            continue;
+                        }
+                    }
+                }
                 $result .= $pattern[$i] . $pattern[$i + 1];
                 $next = $pattern[$i + 1];
                 if (($next === 'p' || $next === 'P' || $next === 'q' || $next === 'u') && $i + 2 < $len && $pattern[$i + 2] === '{') {
@@ -2212,7 +2226,19 @@ trait RegExpHelpers
                     $pos = $j + 1;
                 } elseif ($escNext === 'q' && $pos + 2 < $len && $pattern[$pos + 2] === '{') {
                     $j = $pos + 3;
-                    while ($j < $len && $pattern[$j] !== '}') {
+                    while ($j < $len) {
+                        if ($pattern[$j] === '\\' && $j + 1 < $len) {
+                            if ($pattern[$j + 1] === 'u' && ($pattern[$j + 2] ?? '') === '{') {
+                                $end = strpos($pattern, '}', $j + 3);
+                                $j = $end === false ? $len : $end + 1;
+                            } else {
+                                $j += 2;
+                            }
+                            continue;
+                        }
+                        if ($pattern[$j] === '}') {
+                            break;
+                        }
                         $j++;
                     }
                     $qContent = substr($pattern, $pos + 3, $j - ($pos + 3));
@@ -2303,6 +2329,109 @@ trait RegExpHelpers
             $data = file_exists($path) ? require $path : [];
         }
         return $data[$body] ?? null;
+    }
+
+    /**
+     * Factor literal string alternatives so large properties fit PCRE's compiled-pattern limit.
+     *
+     * @param list<string> $strings JavaScript string-set fragments.
+     */
+    private static function vFlagStringSetPattern(array $strings): string
+    {
+        /** @var list<array{children: array<int, int>, terminal: bool}> $nodes */
+        $nodes = [['children' => [], 'terminal' => false]];
+        foreach ($strings as $string) {
+            $node = 0;
+            foreach (self::vFlagStringCodepoints($string) as $codepoint) {
+                if (!isset($nodes[$node]['children'][$codepoint])) {
+                    $next = count($nodes);
+                    $nodes[$node]['children'][$codepoint] = $next;
+                    $nodes[] = ['children' => [], 'terminal' => false];
+                }
+                $node = $nodes[$node]['children'][$codepoint];
+            }
+            $nodes[$node]['terminal'] = true;
+        }
+        return '(?:' . self::emitVFlagStringTrie($nodes, 0) . ')';
+    }
+
+    /** @return list<int> */
+    private static function vFlagStringCodepoints(string $string): array
+    {
+        $codepoints = [];
+        $length = strlen($string);
+        for ($i = 0; $i < $length;) {
+            if ($string[$i] === '\\' && $i + 1 < $length) {
+                $escape = $string[$i + 1];
+                if (($escape === 'u' || $escape === 'x') && ($string[$i + 2] ?? '') === '{') {
+                    $end = strpos($string, '}', $i + 3);
+                    if ($end !== false) {
+                        $codepoints[] = (int) hexdec(substr($string, $i + 3, $end - $i - 3));
+                        $i = $end + 1;
+                        continue;
+                    }
+                }
+                $digits = $escape === 'u' ? 4 : ($escape === 'x' ? 2 : 0);
+                if ($digits !== 0 && $i + 2 + $digits <= $length) {
+                    $codepoints[] = (int) hexdec(substr($string, $i + 2, $digits));
+                    $i += 2 + $digits;
+                    continue;
+                }
+                if ($escape === 'c' && $i + 2 < $length) {
+                    $codepoints[] = ord($string[$i + 2]) % 32;
+                    $i += 3;
+                    continue;
+                }
+                $codepoints[] = match ($escape) {
+                    '0' => 0, 'b' => 8, 't' => 9, 'n' => 10, 'v' => 11, 'f' => 12, 'r' => 13,
+                    default => ord($escape),
+                };
+                $i += 2;
+                continue;
+            }
+            $byte = ord($string[$i]);
+            $width = $byte < 0x80 ? 1 : ($byte < 0xE0 ? 2 : ($byte < 0xF0 ? 3 : 4));
+            $codepoint = $byte & (0x7F >> ($width === 1 ? 0 : $width));
+            for ($offset = 1; $offset < $width && $i + $offset < $length; $offset++) {
+                $codepoint = ($codepoint << 6) | (ord($string[$i + $offset]) & 0x3F);
+            }
+            $codepoints[] = $codepoint;
+            $i += $width;
+        }
+        $scalars = [];
+        for ($i = 0, $count = count($codepoints); $i < $count; $i++) {
+            $codepoint = $codepoints[$i];
+            $next = $codepoints[$i + 1] ?? 0;
+            if ($codepoint >= 0xD800 && $codepoint <= 0xDBFF && $next >= 0xDC00 && $next <= 0xDFFF) {
+                $codepoint = 0x10000 + (($codepoint - 0xD800) << 10) + $next - 0xDC00;
+                $i++;
+            }
+            $scalars[] = $codepoint;
+        }
+        return $scalars;
+    }
+
+    /** @param list<array{children: array<int, int>, terminal: bool}> $nodes */
+    private static function emitVFlagStringTrie(array $nodes, int $index): string
+    {
+        $alternatives = [];
+        $leaves = '';
+        foreach ($nodes[$index]['children'] as $codepoint => $child) {
+            $character = '\\u{' . strtoupper(dechex($codepoint)) . '}';
+            if ($nodes[$child]['children'] === [] && $nodes[$child]['terminal']) {
+                $leaves .= $character;
+            } else {
+                $alternatives[] = $character . self::emitVFlagStringTrie($nodes, $child);
+            }
+        }
+        if ($leaves !== '') {
+            $alternatives[] = '[' . $leaves . ']';
+        }
+        // Ending at a prefix is tried only after its longer descendants.
+        if ($nodes[$index]['terminal']) {
+            $alternatives[] = '';
+        }
+        return count($alternatives) === 1 ? $alternatives[0] : '(?:' . implode('|', $alternatives) . ')';
     }
 
     /**
@@ -2651,11 +2780,7 @@ trait RegExpHelpers
      */
     private function emitDecomposedVFlagOperand(array $op): string
     {
-        $alts = $op['strings'];
-        // Sort by codepoint length descending so longer strings get
-        // tried first — required since "9️⃣" must beat "9" at the
-        // same start position.
-        usort($alts, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
+        $alts = $op['strings'] === [] ? [] : [self::vFlagStringSetPattern($op['strings'])];
         $cc = $op['charClass'];
         if ($cc !== '') {
             // If charClass starts with a lookahead/lookbehind sentinel
@@ -2759,10 +2884,7 @@ trait RegExpHelpers
             $remaining .= $classContent[$i];
             $i++;
         }
-        // Sort longer alternatives first so PCRE alternation tries
-        // them before shorter prefixes at the same position.
-        usort($stringAlts, static fn (string $a, string $b): int => strlen($b) - strlen($a));
-        $parts = $stringAlts;
+        $parts = $stringAlts === [] ? [] : [self::vFlagStringSetPattern($stringAlts)];
         if ($remaining !== '') {
             $parts[] = '[' . ($negated ? '^' : '') . $remaining . ']';
         }

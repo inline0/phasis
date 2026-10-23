@@ -11,6 +11,21 @@ use Phasis\Value\JsObject;
  */
 class ModuleRecord
 {
+    /** @var array<string, string> Exported names mapped to local binding names. */
+    public array $localExports = [];
+
+    /** @var array<string, array{source:string,name:string}> Local imported binding origins. */
+    public array $importBindings = [];
+
+    /** Host-provided Module Source for a source-capable module kind. */
+    public ?JsObject $moduleSource = null;
+
+    /** Live environment retained after module evaluation for resolved export bindings. */
+    public ?\Phasis\Runtime\Environment $environment = null;
+
+    /** Completion of this module's body, including any asynchronous dependencies. */
+    public ?\Phasis\Value\JsPromise $completionPromise = null;
+
     /**
      * True for modules whose named exports aren't known statically
      * (CommonJS, stubs). Named imports from them never fail to link;

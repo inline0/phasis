@@ -162,7 +162,12 @@ trait PlainDateTimeSection
         });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsBoolean(self::isoIsLeapYear(self::getSlotInt($this_, '[[ISOYear]]')));
+            return new JsBoolean(self::calendarInLeapYear(
+                self::getSlotString($this_, '[[Calendar]]'),
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            ) ?? false);
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
@@ -383,161 +388,31 @@ trait PlainDateTimeSection
             }
             self::rejectObjectWithCalendarOrTimeZone($item);
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true);
-            if ($useCalendarNative) {
-                $iy = self::getSlotInt($this_, '[[ISOYear]]');
-                $im = self::getSlotInt($this_, '[[ISOMonth]]');
-                $id = self::getSlotInt($this_, '[[ISODay]]');
-                $instParts = self::isoToCalendarParts($cal, $iy, $im, $id);
-                if ($instParts === null) {
-                    $useCalendarNative = false;
-                }
+            $fields = self::calendarFieldsForIso(
+                $cal,
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            );
+            foreach (['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'] as $name) {
+                $fields[$name] = self::getSlotInt($this_, '[[ISO' . ucfirst($name) . ']]');
             }
-            if ($useCalendarNative) {
-                $y = $instParts['year'];
-                $m = $instParts['month'];
-                $dd = $instParts['day'];
-                $instMonthCode = $instParts['monthCode'];
-            } else {
-                $y = self::getSlotInt($this_, '[[ISOYear]]');
-                $m = self::getSlotInt($this_, '[[ISOMonth]]');
-                $dd = self::getSlotInt($this_, '[[ISODay]]');
-                $instMonthCode = null;
+            $additional = self::prepareCalendarFields($item, $cal, [
+                'day', 'hour', 'microsecond', 'millisecond', 'minute',
+                'month', 'monthCode', 'nanosecond', 'second', 'year',
+            ]);
+            if ($additional === []) {
+                throw new TypeError('at least one temporal property required');
             }
-            $h = self::getSlotInt($this_, '[[ISOHour]]');
-            $min = self::getSlotInt($this_, '[[ISOMinute]]');
-            $s = self::getSlotInt($this_, '[[ISOSecond]]');
-            $ms = self::getSlotInt($this_, '[[ISOMillisecond]]');
-            $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
-            $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
-            $any = false;
-            $monthWasSet = false;
-            $userMonthCode = null;
-            // Read fields in ALPHABETICAL order per spec:
-            // day, hour, microsecond, millisecond, minute, month, monthCode, nanosecond, second, year
-            $allFields = [
-                'day' => &$dd, 'hour' => &$h,
-                'microsecond' => &$us, 'millisecond' => &$ms,
-                'minute' => &$min, 'month' => &$m,
-            ];
-            foreach ($allFields as $name => &$ref) {
-                $v = $item->get($name);
-                if (!($v instanceof JsUndefined)) {
-                    $n = TypeConversion::toNumber($v);
-                    if (!is_finite($n)) {
-                        throw new RangeError("{$name} must be finite");
-                    }
-                    $ref = (int) $n;
-                    $any = true;
-                    if ($name === 'month') {
-                        $monthWasSet = true;
-                    }
-                }
-            }
-            unset($ref);
-            $mcv = $item->get('monthCode');
-            if (!($mcv instanceof JsUndefined)) {
-                $mc = TypeConversion::toString($mcv);
-                $mcMonth = self::parseMonthCode($mc, $cal);
-                if ($monthWasSet && $m !== $mcMonth && !$useCalendarNative) {
-                    throw new RangeError('month and monthCode must agree');
-                }
-                if (!$useCalendarNative) {
-                    $m = $mcMonth;
-                }
-                $userMonthCode = $mc;
-                $any = true;
-            }
-            $nsv = $item->get('nanosecond');
-            if (!($nsv instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($nsv);
-                if (!is_finite($n)) {
-                    throw new RangeError('nanosecond must be finite');
-                }
-                $ns = (int) $n;
-                $any = true;
-            }
-            $sv = $item->get('second');
-            if (!($sv instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($sv);
-                if (!is_finite($n)) {
-                    throw new RangeError('second must be finite');
-                }
-                $s = (int) $n;
-                $any = true;
-            }
-            $yv = $item->get('year');
-            if (!($yv instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($yv);
-                if (!is_finite($n)) {
-                    throw new RangeError('year must be finite');
-                }
-                $y = (int) $n;
-                $any = true;
-            }
-            if (!$any) {
-                throw new TypeError('at least one property required');
-            }
-            // Validate bounds before options (negative day/month).
-            if ($m < 1 || $dd < 1) {
-                throw new RangeError('month and day must be >= 1');
-            }
-            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            $overflow = 'constrain';
-            if ($options instanceof JsObject) {
-                $ov = $options->get('overflow');
-                if (!($ov instanceof JsUndefined)) {
-                    $overflow = TypeConversion::toString($ov);
-                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
-                        throw new RangeError("Invalid overflow: {$overflow}");
-                    }
-                }
-            }
-            if ($useCalendarNative) {
-                $mcForIso = $userMonthCode ?? ($monthWasSet ? null : $instMonthCode);
-                $monthForIso = $userMonthCode === null ? $m : null;
-                $isoParts = self::calendarPartsToIso($cal, $y, $mcForIso, $monthForIso, $dd);
-                if ($isoParts !== null) {
-                    if ($overflow === 'constrain') {
-                        $h = max(0, min(23, $h));
-                        $min = max(0, min(59, $min));
-                        $s = max(0, min(59, $s));
-                        $ms = max(0, min(999, $ms));
-                        $us = max(0, min(999, $us));
-                        $ns = max(0, min(999, $ns));
-                    } else {
-                        self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-                    }
-                    return self::createPlainDateTimeObject(
-                        $isoParts['year'],
-                        $isoParts['month'],
-                        $isoParts['day'],
-                        $h,
-                        $min,
-                        $s,
-                        $ms,
-                        $us,
-                        $ns,
-                        $cal,
-                    );
-                }
-            }
-            if ($overflow === 'constrain') {
-                [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
-                $h = max(0, min(23, $h));
-                $min = max(0, min(59, $min));
-                $s = max(0, min(59, $s));
-                $ms = max(0, min(999, $ms));
-                $us = max(0, min(999, $us));
-                $ns = max(0, min(999, $ns));
-            } else {
-                self::validateISODate($y, $m, $dd);
-                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-            }
+            $fields = self::mergeCalendarFields($fields, $additional);
+            $overflow = self::getOverflow(self::getOptionsObject($args[1] ?? JsUndefined::instance()));
+
+            $date = self::calendarDateFromFields($cal, $fields, $overflow);
+            [$h, $min, $s, $ms, $us, $ns] = self::timeFromFields($fields, $overflow);
             return self::createPlainDateTimeObject(
-                $y,
-                $m,
-                $dd,
+                $date['year'],
+                $date['month'],
+                $date['day'],
                 $h,
                 $min,
                 $s,
@@ -572,21 +447,21 @@ trait PlainDateTimeSection
                 throw new TypeError('options parameter is required');
             }
             if ($roundTo instanceof JsString) {
-                $opt = new JsObject();
+                $opt = JsObject::createNullPrototype();
                 $opt->set('smallestUnit', $roundTo);
                 $roundTo = $opt;
             }
             if (!$roundTo instanceof JsObject) {
                 throw new TypeError('options must be an object');
             }
+            $increment = self::getRoundingIncrement($roundTo);
+            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $unit = self::getTemporalUnit(
                 $roundTo,
                 'smallestUnit',
                 ['day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'],
                 true,
             );
-            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
-            $increment = self::getRoundingIncrement($roundTo);
             if ($increment > 1) {
                 if ($unit === 'day') {
                     throw new RangeError('roundingIncrement for day must be 1');

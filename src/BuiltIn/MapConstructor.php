@@ -481,6 +481,9 @@ class MapConstructor
             if (!$callbackfn instanceof JsFunction) {
                 throw new TypeError('callbackfn is not a function');
             }
+            if ($key instanceof JsNumber && $key->value === 0.0) {
+                $key = JsNumber::of(0.0);
+            }
             if ($this_->mapHas($key)) {
                 return $this_->mapGet($key);
             }

@@ -1275,7 +1275,11 @@ trait StatementExecution
         if ($node->hoistsLexicalCache) {
             $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
         }
-        $completion = $this->executeBody($node->body, $blockEnv);
+        try {
+            $completion = $this->executeBody($node->body, $blockEnv);
+        } catch (\Phasis\Exceptions\JsThrowable | \Phasis\Exceptions\RuntimeError $exception) {
+            $completion = Completion::throw($this->phpExceptionToJsValue($exception));
+        }
         return $this->applyDisposals($blockEnv, $completion);
     }
 
@@ -1327,6 +1331,16 @@ trait StatementExecution
     private function execForStatement(ForStatement $node, Environment $env, ?string $label = null): Completion
     {
         $loopEnv = $env->createChild();
+        try {
+            $completion = $this->execForStatementBody($node, $env, $loopEnv, $label);
+        } catch (\Phasis\Exceptions\JsThrowable | \Phasis\Exceptions\RuntimeError $exception) {
+            $completion = Completion::throw($this->phpExceptionToJsValue($exception));
+        }
+        return $this->applyDisposals($loopEnv, $completion);
+    }
+
+    private function execForStatementBody(ForStatement $node, Environment $env, Environment $loopEnv, ?string $label): Completion
+    {
         $isLetConst = $node->init instanceof VariableDeclaration
             && ($node->init->kind === 'let' || $node->init->kind === 'const');
 
@@ -1697,7 +1711,7 @@ trait StatementExecution
                     $declareKind = $node->left->kind;
                     foreach ($node->left->declarations as $decl) {
                         foreach ($this->patternBoundNames($decl->id) as $boundName) {
-                            if ($declareKind === 'const') {
+                            if (in_array($declareKind, ['const', 'using', 'await using'], true)) {
                                 $iterEnv->declareConst($boundName);
                             } else {
                                 $iterEnv->declareLet($boundName);
@@ -1718,6 +1732,7 @@ trait StatementExecution
                 }
                 try {
                     $completion = $this->executeStatement($node->body, $iterEnv);
+                    $completion = $this->applyDisposals($iterEnv, $completion);
                 } catch (\Phasis\Value\GeneratorReturnSignal $returnSignal) {
                     // Per spec ForIn/OfBodyEvaluation: an abrupt completion in
                     // the body (including a generator-return resumption that
@@ -1731,11 +1746,13 @@ trait StatementExecution
                     }
                     throw $returnSignal;
                 } catch (\Phasis\Exceptions\JsThrowable $bodyErr) {
-                    $closeIterator(Completion::throw($bodyErr->jsValue));
-                    throw $bodyErr;
+                    $completion = $this->applyDisposals($iterEnv, Completion::throw($bodyErr->jsValue));
+                    $closeIterator($completion);
+                    return $completion;
                 } catch (\Phasis\Exceptions\RuntimeError $bodyErr) {
-                    $closeIterator(Completion::throw($this->phpExceptionToJsValue($bodyErr)));
-                    throw $bodyErr;
+                    $completion = $this->applyDisposals($iterEnv, Completion::throw($this->phpExceptionToJsValue($bodyErr)));
+                    $closeIterator($completion);
+                    return $completion;
                 }
 
                 if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {

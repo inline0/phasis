@@ -122,7 +122,12 @@ trait PlainYearMonthSection
         });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
-            return new JsBoolean(self::isoIsLeapYear(self::getSlotInt($this_, '[[ISOYear]]')));
+            return new JsBoolean(self::calendarInLeapYear(
+                self::getSlotString($this_, '[[Calendar]]'),
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            ) ?? false);
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
@@ -235,15 +240,13 @@ trait PlainYearMonthSection
             $yy = self::getSlotInt($this_, '[[ISOYear]]');
             $mm = self::getSlotInt($this_, '[[ISOMonth]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            // Default overflow is constrain: clamp day to days-in-month.
-            $dim = self::isoDaysInMonth($yy, $mm);
-            if ($dd > $dim) {
-                $dd = $dim;
-            }
             if ($dd < 1) {
-                $dd = 1;
+                throw new RangeError('day must be positive');
             }
-            return self::createPlainDateObject($yy, $mm, $dd, $cal);
+            $fields = self::calendarFieldsForIso($cal, $yy, $mm, self::getSlotInt($this_, '[[ISODay]]'));
+            $fields['day'] = $dd;
+            $date = self::calendarDateFromFields($cal, $fields, 'constrain');
+            return self::createPlainDateObject($date['year'], $date['month'], $date['day'], $cal);
         }, 1);
 
         $d('with', function (JsValue $this_, array $args): JsValue {
@@ -254,85 +257,22 @@ trait PlainYearMonthSection
             }
             self::rejectObjectWithCalendarOrTimeZone($item);
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true);
-            $instMonthCode = null;
-            if ($useCalendarNative) {
-                $iy = self::getSlotInt($this_, '[[ISOYear]]');
-                $im = self::getSlotInt($this_, '[[ISOMonth]]');
-                $id = self::getSlotInt($this_, '[[ISODay]]');
-                $instParts = self::isoToCalendarParts($cal, $iy, $im, $id);
-                if ($instParts === null) {
-                    $useCalendarNative = false;
-                }
+            $fields = self::calendarFieldsForIso(
+                $cal,
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            );
+
+            $additional = self::prepareCalendarFields($item, $cal, ['month', 'monthCode', 'year']);
+            if ($additional === []) {
+                throw new TypeError('at least one temporal property required');
             }
-            if ($useCalendarNative) {
-                $y = $instParts['year'];
-                $m = $instParts['month'];
-                $refDay = $instParts['day'];
-                $instMonthCode = $instParts['monthCode'];
-            } else {
-                $y = self::getSlotInt($this_, '[[ISOYear]]');
-                $m = self::getSlotInt($this_, '[[ISOMonth]]');
-                $refDay = self::getSlotInt($this_, '[[ISODay]]');
-            }
-            $any = false;
-            $userMonthCode = null;
-            $monthFromVal = null;
-            // Read in alphabetical order: month, monthCode, year.
-            $monthVal = $item->get('month');
-            if (!($monthVal instanceof JsUndefined)) {
-                $mNum = TypeConversion::toNumber($monthVal);
-                if (!is_finite($mNum)) {
-                    throw new RangeError('month must be finite');
-                }
-                $monthFromVal = (int) $mNum;
-                $m = $monthFromVal;
-                $any = true;
-            }
-            $monthCodeVal = $item->get('monthCode');
-            if (!($monthCodeVal instanceof JsUndefined)) {
-                $mc = TypeConversion::toString($monthCodeVal);
-                $monthFromCode = self::parseMonthCode($mc, $cal);
-                if ($monthFromVal !== null && $monthFromVal !== $monthFromCode && !$useCalendarNative) {
-                    throw new RangeError("month and monthCode disagree");
-                }
-                if (!$useCalendarNative) {
-                    $m = $monthFromCode;
-                }
-                $userMonthCode = $mc;
-                $any = true;
-            }
-            $yearVal = $item->get('year');
-            if (!($yearVal instanceof JsUndefined)) {
-                $yNum = TypeConversion::toNumber($yearVal);
-                if (!is_finite($yNum)) {
-                    throw new RangeError('year must be finite');
-                }
-                $y = (int) $yNum;
-                $any = true;
-            }
-            if (!$any) {
-                throw new TypeError('At least one temporal property must be provided');
-            }
-            if ($m < 1) {
-                throw new RangeError('month must be >= 1');
-            }
-            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            $overflow = self::getOverflow($options);
-            if ($useCalendarNative) {
-                $mcForIso = $userMonthCode ?? ($monthFromVal !== null ? null : $instMonthCode);
-                $monthForIso = $userMonthCode === null ? $m : null;
-                $isoParts = self::calendarPartsToIso($cal, $y, $mcForIso, $monthForIso, 1);
-                if ($isoParts !== null) {
-                    return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
-                }
-            }
-            if ($overflow === 'constrain') {
-                $m = max(1, min(12, $m));
-            } elseif ($m > 12) {
-                throw new RangeError("month {$m} out of range");
-            }
-            return self::createPlainYearMonthObject($y, $m, $refDay, $cal);
+            $fields = self::mergeCalendarFields($fields, $additional);
+            $overflow = self::getOverflow(self::getOptionsObject($args[1] ?? JsUndefined::instance()));
+            $fields['day'] = 1;
+            $date = self::calendarDateFromFields($cal, $fields, $overflow);
+            return self::createPlainYearMonthObject($date['year'], $date['month'], $date['day'], $cal);
         }, 1);
 
         $d('add', function (JsValue $this_, array $args): JsValue {
@@ -343,8 +283,8 @@ trait PlainYearMonthSection
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = self::getOverflow($options);
-            $result = self::addDurationToYearMonth(1, $y, $m, $cal, $dur, $overflow);
-            return self::createPlainYearMonthObject($result[0], $result[1], 1, $cal);
+            $result = self::addDurationToYearMonth(1, $y, $m, $cal, $dur, $overflow, self::getSlotInt($this_, '[[ISODay]]'));
+            return self::createPlainYearMonthObject($result[0], $result[1], $result[2], $cal);
         }, 1);
 
         $d('subtract', function (JsValue $this_, array $args): JsValue {
@@ -355,8 +295,8 @@ trait PlainYearMonthSection
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = self::getOverflow($options);
-            $result = self::addDurationToYearMonth(-1, $y, $m, $cal, $dur, $overflow);
-            return self::createPlainYearMonthObject($result[0], $result[1], 1, $cal);
+            $result = self::addDurationToYearMonth(-1, $y, $m, $cal, $dur, $overflow, self::getSlotInt($this_, '[[ISODay]]'));
+            return self::createPlainYearMonthObject($result[0], $result[1], $result[2], $cal);
         }, 1);
 
         $d('until', function (JsValue $this_, array $args): JsValue {
@@ -368,7 +308,11 @@ trait PlainYearMonthSection
         $d('since', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $other = self::toPlainYearMonth($args[0] ?? JsUndefined::instance());
-            return self::plainYearMonthDifference($other, $this_, $args[1] ?? JsUndefined::instance());
+            $options = self::readDifferenceOptionsAlphabetical(
+                self::getOptionsObject($args[1] ?? JsUndefined::instance()),
+                true,
+            );
+            return self::negateDuration(self::plainYearMonthDifference($this_, $other, $options));
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.PlainYearMonth');

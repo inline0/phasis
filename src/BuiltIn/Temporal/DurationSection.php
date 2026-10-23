@@ -143,7 +143,7 @@ trait DurationSection
                 throw new TypeError('options parameter is required');
             }
             if ($roundTo instanceof JsString) {
-                $opt = new JsObject();
+                $opt = JsObject::createNullPrototype();
                 $opt->set('smallestUnit', $roundTo);
                 $roundTo = $opt;
             }

@@ -89,8 +89,11 @@ class JsTypedArray extends JsObject
      * Per spec (ValidateTypedArray), a typed array backed by a resizable buffer
      * is out of bounds if its fixed view extends beyond the buffer's current byte length.
      */
-    public function validateNotDetached(): void
+    public function validateNotDetached(bool $write = false): void
     {
+        if ($write) {
+            $this->buffer->validateMutable();
+        }
         if ($this->buffer->isDetached()) {
             throw new \Phasis\Exceptions\TypeError(
                 'Cannot perform %TypedArray%.prototype method'
@@ -417,6 +420,7 @@ class JsTypedArray extends JsObject
     /** Set element at typed index. */
     public function setIndex(int $index, JsValue $value): void
     {
+        $this->buffer->validateMutable();
         // Per spec IntegerIndexedElementSet: silently fail for detached buffers.
         if ($this->buffer->isDetached()) {
             return;
@@ -576,6 +580,12 @@ class JsTypedArray extends JsObject
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
+        if ($this->buffer->isImmutable() && self::isCanonicalNumericIndex($name)) {
+            if ($strict) {
+                throw new \Phasis\Exceptions\TypeError('Cannot assign to an immutable TypedArray index');
+            }
+            return;
+        }
         // Fast path: short digit-only canonical index. See get() for why the
         // length cap is necessary (long digit strings like
         // "1000000000000000000000" are not CanonicalNumericIndexStrings and
@@ -619,6 +629,9 @@ class JsTypedArray extends JsObject
      */
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
+        if ($this->buffer->isImmutable() && self::isCanonicalNumericIndex($name)) {
+            return false;
+        }
         // Fast path: short digit-only canonical index with self-receiver.
         // Cap at 15 digits so we don't mis-classify non-canonical big-int
         // strings like "1000000000000000000000" (= 1e21) as integer indices.
@@ -685,9 +698,9 @@ class JsTypedArray extends JsObject
                 // writable, enumerable, and (since ES2023) configurable.
                 return \Phasis\Object\PropertyDescriptor::data(
                     $this->getIndex($index),
+                    !$this->buffer->isImmutable(),
                     true,
-                    true,
-                    true,
+                    !$this->buffer->isImmutable(),
                 );
             }
             return null;
@@ -724,6 +737,14 @@ class JsTypedArray extends JsObject
             $index = (int) $name;
             if ($index < 0 || $index >= $this->getLength()) {
                 return false;
+            }
+            if ($this->buffer->isImmutable()) {
+                return !$desc->isAccessorDescriptor()
+                    && $desc->writable !== true
+                    && $desc->configurable !== true
+                    && $desc->enumerable !== false
+                    && ($desc->value === null
+                        || \Phasis\Spec\AbstractOperations::sameValue($desc->value, $this->getIndex($index)));
             }
             if ($desc->isAccessorDescriptor()) {
                 return false;

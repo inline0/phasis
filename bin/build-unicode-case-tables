@@ -1,0 +1,84 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/scripts/unicode-data.php';
+
+if ($argc > 2) {
+    fwrite(STDERR, "Usage: bin/build-unicode-case-tables [unicode-data-directory]\n");
+    exit(1);
+}
+$directory = $argv[1] ?? null;
+$upper = [];
+$lower = [];
+foreach (unicodeDataRecords(readUnicodeData('UnicodeData.txt', $directory)) as $fields) {
+    $codepoint = (int) hexdec($fields[0]);
+    if ($fields[12] !== '') {
+        $upper[$codepoint] = [(int) hexdec($fields[12])];
+    }
+    if ($fields[13] !== '') {
+        $lower[$codepoint] = [(int) hexdec($fields[13])];
+    }
+}
+foreach (unicodeDataRecords(readUnicodeData('SpecialCasing.txt', $directory)) as $fields) {
+    if (($fields[4] ?? '') !== '') {
+        continue;
+    }
+    $codepoint = (int) hexdec($fields[0]);
+    $lower[$codepoint] = array_map(static fn (string $cp): int => (int) hexdec($cp), explode(' ', $fields[1]));
+    $upper[$codepoint] = array_map(static fn (string $cp): int => (int) hexdec($cp), explode(' ', $fields[3]));
+}
+$properties = ['Cased' => [], 'Case_Ignorable' => []];
+foreach (unicodeDataRecords(readUnicodeData('DerivedCoreProperties.txt', $directory)) as $fields) {
+    if (!isset($properties[$fields[1]])) {
+        continue;
+    }
+    $bounds = explode('..', $fields[0]);
+    $properties[$fields[1]][] = [(int) hexdec($bounds[0]), (int) hexdec($bounds[1] ?? $bounds[0])];
+}
+
+$out = "<?php\n\n"
+    . "// Generated from Unicode " . UNICODE_DATA_VERSION . " UnicodeData, SpecialCasing, and DerivedCoreProperties.\n"
+    . "// Sources: https://www.unicode.org/Public/" . UNICODE_DATA_VERSION . "/ucd/\n"
+    . "// Regenerate with: bin/build-unicode-case-tables\n"
+    . "// Unicode data license: UNICODE-LICENSE.txt in the package root.\n\n"
+    . "declare(strict_types=1);\n\nnamespace Phasis\\BuiltIn;\n\n"
+    . "/** Host-independent default case mappings and context properties for all Unicode scalar values. */\n"
+    . "final class UnicodeCaseTables\n{\n";
+foreach (['UPPER' => $upper, 'LOWER' => $lower] as $name => $table) {
+    ksort($table, SORT_NUMERIC);
+    $out .= "    /** @var array<int, list<int>> */\n    public const {$name} = [\n";
+    foreach ($table as $codepoint => $mapping) {
+        if ($mapping === [$codepoint]) {
+            continue;
+        }
+        $mapped = implode(', ', array_map(static fn (int $cp): string => sprintf('0x%04X', $cp), $mapping));
+        $out .= sprintf("        0x%04X => [%s],\n", $codepoint, $mapped);
+    }
+    $out .= "    ];\n\n";
+}
+foreach ($properties as $name => $ranges) {
+    usort($ranges, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
+    $merged = [];
+    foreach ($ranges as [$start, $end]) {
+        $last = count($merged) - 1;
+        if ($last >= 0 && $start <= $merged[$last][1] + 1) {
+            $merged[$last][1] = max($merged[$last][1], $end);
+        } else {
+            $merged[] = [$start, $end];
+        }
+    }
+    $constant = strtoupper($name) . '_RANGES';
+    $out .= "    /** @var list<array{int, int}> */\n    public const {$constant} = [\n";
+    foreach ($merged as [$start, $end]) {
+        $out .= sprintf("        [0x%04X, 0x%04X],\n", $start, $end);
+    }
+    $out .= "    ];\n\n";
+}
+$out = rtrim($out) . "\n}\n";
+$path = dirname(__DIR__) . '/src/BuiltIn/UnicodeCaseTables.php';
+if (file_put_contents($path, $out) === false) {
+    throw new RuntimeException("Could not write {$path}");
+}
+fwrite(STDERR, "Generated Unicode " . UNICODE_DATA_VERSION . " case tables.\n");

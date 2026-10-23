@@ -66,22 +66,9 @@ trait CompilerEmit
         }
     }
 
-    /**
-     * Emit a STORE_LOCAL to $slot. When $slot is a top-level program
-     * var slot, also mirror the value onto globalEnv via STORE_NAME so
-     * mid-program reads of globalThis.<name> (e.g. from Function-
-     * constructor bodies) see the live value. Spec-required: per ES,
-     * top-level `var` creates a property on the global object whose
-     * value is updated synchronously by the var initializer / any
-     * subsequent assignment.
-     */
     private function emitStoreLocal(int $slot): void
     {
         $this->emit(Op::STORE_LOCAL, $slot);
-        if (isset($this->programVarSlots[$slot])) {
-            $this->emit(Op::LOAD_LOCAL, $slot);
-            $this->emit(Op::STORE_NAME, $this->internName($this->programVarSlots[$slot]));
-        }
     }
 
     /**

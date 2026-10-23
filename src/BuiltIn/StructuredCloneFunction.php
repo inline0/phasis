@@ -300,6 +300,9 @@ final class StructuredCloneFunction
         \SplObjectStorage $seen,
         \SplObjectStorage $transferSet,
     ): JsArrayBuffer {
+        if ($seen->offsetExists($value)) {
+            return $seen[$value];
+        }
         if ($transferSet->offsetExists($value)) {
             $transferred = $transferSet[$value];
             $seen[$value] = $transferred;
@@ -317,6 +320,9 @@ final class StructuredCloneFunction
             JsArrayBuffer::getDefaultPrototype(),
         );
         $clone->setData($value->getData());
+        if ($value->isImmutable()) {
+            $clone->makeImmutable();
+        }
 
         $seen[$value] = $clone;
         return $clone;

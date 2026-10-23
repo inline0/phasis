@@ -53,9 +53,9 @@ trait FormattingHelpers
         // Allow known IANA calendar names.
         $known = [
             'buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
-            'ethiopic', 'gregory', 'hebrew', 'indian', 'islamic',
+            'ethiopic', 'gregory', 'hebrew', 'indian',
             'islamic-umalqura', 'islamic-tbla', 'islamic-civil',
-            'islamic-rgsa', 'islamicc', 'japanese', 'persian', 'roc',
+            'islamicc', 'japanese', 'persian', 'roc',
         ];
         return in_array($cal, $known, true);
     }
@@ -113,7 +113,7 @@ trait FormattingHelpers
     }
 
     /**
-     * Normalize a Temporal ISO string: replace Unicode minus, validate annotations.
+     * Validate Temporal ISO syntax and normalize its annotations.
      * Returns the normalized string. Throws RangeError for critical unknown annotations
      * or duplicate critical calendar annotations.
      *
@@ -125,6 +125,10 @@ trait FormattingHelpers
         if (str_contains($str, "\xE2\x88\x92")) {
             throw new RangeError("Non-ASCII minus sign is not acceptable: {$str}");
         }
+        if (str_starts_with($str, '-000000')) {
+            throw new RangeError('A negative-zero extended year is not allowed');
+        }
+        self::validateTemporalStringSyntax($str);
         // Parse annotations.
         $cal = 'iso8601';
         $calCount = 0;

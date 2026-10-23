@@ -86,7 +86,7 @@ trait TemporalUnitsHelpers
     private static function getOptionsObject(JsValue $options): JsValue
     {
         if ($options instanceof JsUndefined) {
-            return new JsObject();
+            return JsObject::createNullPrototype();
         }
         if ($options instanceof JsObject) {
             return $options;
@@ -103,23 +103,32 @@ trait TemporalUnitsHelpers
      */
     private static function readDifferenceOptionsAlphabetical(JsValue $options, bool $swapRoundingMode): JsObject
     {
-        $newOpts = new JsObject();
+        $newOpts = JsObject::createNullPrototype();
         if (!$options instanceof JsObject) {
             return $newOpts;
         }
         $lu = $options->get('largestUnit');
         if (!($lu instanceof JsUndefined)) {
             $luStr = TypeConversion::toString($lu);
+            if ($luStr !== 'auto') {
+                $luStr = self::canonicalTemporalUnit($luStr);
+            }
             $newOpts->set('largestUnit', new JsString($luStr));
         }
         $ri = $options->get('roundingIncrement');
         if (!($ri instanceof JsUndefined)) {
             $riNum = TypeConversion::toNumber($ri);
-            $newOpts->set('roundingIncrement', JsNumber::of($riNum));
+            if (!is_finite($riNum) || floor($riNum) < 1 || floor($riNum) > 1000000000) {
+                throw new RangeError('Invalid roundingIncrement');
+            }
+            $newOpts->set('roundingIncrement', JsNumber::of(floor($riNum)));
         }
         $rm = $options->get('roundingMode');
         if (!($rm instanceof JsUndefined)) {
             $rmStr = TypeConversion::toString($rm);
+            if (!in_array($rmStr, ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'], true)) {
+                throw new RangeError("Invalid roundingMode: {$rmStr}");
+            }
             if ($swapRoundingMode) {
                 $rmStr = match ($rmStr) {
                     'ceil' => 'floor',
@@ -134,6 +143,9 @@ trait TemporalUnitsHelpers
         $su = $options->get('smallestUnit');
         if (!($su instanceof JsUndefined)) {
             $suStr = TypeConversion::toString($su);
+            if ($suStr !== 'auto') {
+                $suStr = self::canonicalTemporalUnit($suStr);
+            }
             $newOpts->set('smallestUnit', new JsString($suStr));
         }
         return $newOpts;
@@ -236,8 +248,8 @@ trait TemporalUnitsHelpers
         // Known valid calendars from the Unicode CLDR.
         $known = [
             'iso8601', 'gregory', 'japanese', 'buddhist', 'chinese', 'coptic',
-            'dangi', 'ethioaa', 'ethiopic', 'hebrew', 'indian', 'islamic',
-            'islamic-umalqura', 'islamic-tbla', 'islamic-civil', 'islamic-rgsa',
+            'dangi', 'ethioaa', 'ethiopic', 'hebrew', 'indian',
+            'islamic-umalqura', 'islamic-tbla', 'islamic-civil',
             'islamicc', 'persian', 'roc',
         ];
         // Canonicalize CLDR aliases to their preferred form so the
@@ -253,49 +265,17 @@ trait TemporalUnitsHelpers
         if (in_array($cal, $known, true)) {
             return $cal;
         }
-        // Try to parse as ISO datetime string. If it parses, extract calendar (default iso8601).
-        if (preg_match('/^\d{4}/', $cal) || preg_match('/^[+-]\d{4,6}/', $cal)) {
-            // Reject minus zero year.
-            if (preg_match('/^-0{4,6}-/', $cal)) {
-                throw new RangeError("reject minus zero as extended year: {$cal}");
-            }
-            // Per spec: ISO strings with annotations are NOT valid as direct calendar IDs
-            // (constructor args), but are valid in property bags.
-            if (preg_match('/\[/', $cal)) {
-                if (!$allowAnnotations) {
-                    throw new RangeError(
-                        "ISO string with annotations is not a valid calendar: {$cal}"
-                    );
-                }
-                // Extract calendar from annotation.
-                if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
-                    $extracted = strtolower($cm[1]);
-                    if (in_array($extracted, $known, true)) {
-                        return $extracted;
-                    }
-                    throw new RangeError("Invalid calendar: {$extracted}");
-                }
-                return 'iso8601';
-            }
-            // Default to iso8601 for valid-looking date strings without annotations.
-            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $cal) || preg_match('/^[+-]\d{4,6}-\d{2}-\d{2}/', $cal)) {
-                return 'iso8601';
-            }
+        if (!$allowAnnotations) {
+            throw new RangeError("Invalid calendar: {$cal}");
         }
-        // Also accept MM-DD, --MM-DD, YYYY-MM as valid temporal strings -> iso8601.
-        if (preg_match('/^\d{2}-\d{2}/', $cal) || preg_match('/^--\d{2}-\d{2}/', $cal)) {
-            if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
-                return strtolower($cm[1]);
-            }
-            return 'iso8601';
+        [, $parsedCalendar] = self::normalizeTemporalString($cal);
+        if (isset($aliases[$parsedCalendar])) {
+            return $aliases[$parsedCalendar];
         }
-        if (preg_match('/^\d{4}-\d{2}$/', $cal) || preg_match('/^\d{4}-\d{2}\[/', $cal)) {
-            if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
-                return strtolower($cm[1]);
-            }
-            return 'iso8601';
+        if (!in_array($parsedCalendar, $known, true)) {
+            throw new RangeError("Invalid calendar: {$parsedCalendar}");
         }
-        throw new RangeError("Invalid calendar: {$cal}");
+        return $parsedCalendar;
     }
 
 

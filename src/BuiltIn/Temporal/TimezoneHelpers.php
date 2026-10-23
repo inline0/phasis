@@ -645,137 +645,17 @@ trait TimezoneHelpers
             $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
             $refD = $ref instanceof JsObject && $ref->has('[[ISODay]]') ? self::getSlotInt($ref, '[[ISODay]]') : 1;
         }
-        if ($smallestUnit === 'year') {
-            // Compute fractional year per spec: remaining days / year-boundary days.
-            // yearStart = ref + absYears years (in the forward direction).
-            $ysY = $refY + $absYears * $sign;
-            $ysM = $refM;
-            $ysD = min($refD, self::isoDaysInMonth($ysY, $ysM));
-            // yearEnd = yearStart + 1 year.
-            $yeY = $ysY + $sign;
-            $yeM = $ysM;
-            $yeD = min($refD, self::isoDaysInMonth($yeY, $yeM));
-            $yearLengthDays = abs(self::isoToJulianDay($yeY, $yeM, $yeD) - self::isoToJulianDay($ysY, $ysM, $ysD));
-            // Compute remaining days from yearStart to (yearStart + months + days + time).
-            $midDur = self::createDurationObject(0, $absMonths, $absWeeks, $absDays, 0, 0, 0, 0, 0, 0);
-            $midEnd = self::plainDateAdd(self::createPlainDateObject($ysY, $ysM, $ysD, 'iso8601'), $midDur, $sign);
-            $remainDays = abs(self::isoToJulianDay(
-                self::getSlotInt($midEnd, '[[ISOYear]]'),
-                self::getSlotInt($midEnd, '[[ISOMonth]]'),
-                self::getSlotInt($midEnd, '[[ISODay]]'),
-            ) - self::isoToJulianDay($ysY, $ysM, $ysD));
-            $timeFrac = (abs($hours) * 3600 + abs($minutes) * 60 + abs($seconds)) / 86400.0;
-            $frac = $yearLengthDays > 0 ? ($remainDays + $timeFrac) / (float) $yearLengthDays : 0;
-            $totalYears = $absYears + $frac;
-            $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $absRoundingMode);
-            $roundedYears = intdiv($rounded, 1000000);
-            // Validate the ceil endpoint (rounded + increment) is representable.
-            $ceilY = $refY + ($roundedYears + $increment) * $sign;
-            if ($ceilY < self::ISO_YEAR_MIN || $ceilY > self::ISO_YEAR_MAX) {
-                throw new RangeError('Rounded date outside valid ISO date range');
-            }
-            return self::createDurationObject($sign * $roundedYears, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-        }
-        if ($smallestUnit === 'month') {
-            // The fractional month comes from the "remainder" days. For positive durations,
-            // $ref is the start, and the span goes forward $absMonths months then $absDays days.
-            // The relevant daysInMonth is at ref + absMonths.
-            // For negative durations, $ref is the end (later), and the absDays span ends at ref.
-            // The relevant month is the one just before ref (ref.month - 1).
-            if ($sign < 0) {
-                $midTotalM = $refY * 12 + ($refM - 2); // zero-based months: refM-1 then subtract 1
-                $midY2 = intdiv($midTotalM, 12);
-                $midM2 = ($midTotalM % 12) + 1;
-                if ($midM2 < 1) {
-                    $midM2 += 12;
-                    $midY2--;
-                }
-            } else {
-                $midTotalM = ($refY * 12 + ($refM - 1)) + ($absYears * 12 + $absMonths);
-                $midY2 = intdiv($midTotalM, 12);
-                $midM2 = ($midTotalM % 12) + 1;
-            }
-            if ($refZdt !== null) {
-                // ZDT-aware: month length and progress in epoch ns so that
-                // DST transitions inside the span are accounted for.
-                $absTotalMonthCount = $absYears * 12 + $absMonths;
-                $midDur = self::createDurationObject(
-                    0,
-                    $sign * $absTotalMonthCount,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                );
-                $nextDur = self::createDurationObject(
-                    0,
-                    $sign * ($absTotalMonthCount + 1),
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                );
-                $midNsRef = self::addDurationToZdt($refZdt, $midDur, 1, 'constrain');
-                $nextNsRef = self::addDurationToZdt($refZdt, $nextDur, 1, 'constrain');
-                $monthLenNs = bcsub($nextNsRef, $midNsRef, 0);
-                $absMonthLen = bccomp($monthLenNs, '0', 0) < 0 ? substr($monthLenNs, 1) : $monthLenNs;
-                $fullDur = self::createDurationObject(
-                    $sign * $absYears,
-                    $sign * $absMonths,
-                    $sign * $absWeeks,
-                    $sign * $absDays,
-                    (float) $hours,
-                    (float) $minutes,
-                    (float) $seconds,
-                    (float) $ms,
-                    (float) $us,
-                    (float) $ns,
-                );
-                $endNsRef = self::addDurationToZdt($refZdt, $fullDur, 1, 'constrain');
-                $progressNs = bcsub($endNsRef, $midNsRef, 0);
-                $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
-                if (bccomp($absMonthLen, '0', 0) === 0) {
-                    $fracTimes1e9 = '0';
-                } else {
-                    $fracTimes1e9 = bcdiv(bcmul($absProgress, '1000000000', 0), $absMonthLen, 0);
-                }
-                $totalMonthsScaled = bcadd(
-                    bcmul((string) $absTotalMonthCount, '1000000000', 0),
-                    $fracTimes1e9,
-                    0,
-                );
-                $rounded = self::roundToIncrement(
-                    (int) $totalMonthsScaled,
-                    $increment * 1000000000,
-                    $absRoundingMode,
-                );
-                $rm = intdiv($rounded, 1000000000);
-            } else {
-                $daysInMonth = self::isoDaysInMonth($midY2, $midM2);
-                $frac = $daysInMonth > 0 ? ($absDays + abs($hours) / 24.0) / $daysInMonth : 0;
-                $totalMonths = $absYears * 12 + $absMonths + $frac;
-                $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
-                $rm = intdiv($rounded, 1000000);
-            }
-            // Validate both the rounded endpoint and ceil endpoint are representable.
-            $ceilM = $rm + $increment;
-            $ceilTotalM = $refY * 12 + ($refM - 1) + $ceilM * $sign;
-            $ceilY = intdiv($ceilTotalM, 12);
-            if ($ceilY < self::ISO_YEAR_MIN || $ceilY > self::ISO_YEAR_MAX) {
-                throw new RangeError('Rounded date outside valid ISO date range');
+        if ($smallestUnit === 'year' || $smallestUnit === 'month') {
+            $destination = self::durationDestinationEpochNs($ref, $dur);
+            $bounds = self::calendarUnitBounds($ref, $destination, $smallestUnit, $increment);
+            $rounded = self::roundCalendarUnitFromBounds($bounds, $destination, $increment, $roundingMode);
+            if ($smallestUnit === 'year') {
+                return self::createDurationObject($rounded, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             }
             if ($largestUnit === 'year') {
-                return self::createDurationObject($sign * intdiv($rm, 12), $sign * ($rm % 12), 0, 0, 0, 0, 0, 0, 0, 0);
+                return self::createDurationObject(intdiv($rounded, 12), $rounded % 12, 0, 0, 0, 0, 0, 0, 0, 0);
             }
-            return self::createDurationObject(0, $sign * $rm, 0, 0, 0, 0, 0, 0, 0, 0);
+            return self::createDurationObject(0, $rounded, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'week') {
             // Include sub-day time as fractional days for rounding purposes.
@@ -838,23 +718,17 @@ trait TimezoneHelpers
                 );
                 $rounded = intdiv($roundedScaled, 1000000000);
             } else {
-                $timeNs = abs($hours) * 3600000000000
-                    + abs($minutes) * 60000000000
-                    + abs($seconds) * 1000000000
-                    + abs($ms) * 1000000
-                    + abs($us) * 1000
-                    + abs($ns);
-                $dayNs = 86400000000000;
-                $totalNs = ($absWeeks * 7 + $absDays) * $dayNs + $timeNs;
-                $incrNs = $dayNs * $increment;
-                $roundedNs = self::roundNs((string) ($sign < 0 ? -$totalNs : $totalNs), (string) $incrNs, $roundingMode);
-                $rounded = (int) (abs((int) $roundedNs) / $dayNs);
+                $timeDuration = self::createDurationObject(0, 0, 0, 0, $hours, $minutes, $seconds, $ms, $us, $ns);
+                $timeNs = self::durationToTotalNs($timeDuration);
+                $dayNs = '86400000000000';
+                $totalNs = bcadd(bcmul((string) ($weeks * 7 + $days), $dayNs, 0), $timeNs, 0);
+                $incrementNs = bcmul($dayNs, (string) $increment, 0);
+                $roundedNs = self::roundNs($totalNs, $incrementNs, $roundingMode);
+                $rounded = abs((int) bcdiv($roundedNs, $dayNs, 0));
             }
-            // Validate ceiling (rounded + increment) doesn't exceed 100M days.
-            $ceilDays = $rounded + $increment;
-            if ($ceilDays > 100000000) {
-                throw new RangeError('Rounded date outside valid ISO date range');
-            }
+            $ceilingDays = (intdiv($absDays + $absWeeks * 7, $increment) + 1) * $increment;
+            $boundaryDuration = self::createDurationObject($years, $months, 0, $sign * $ceilingDays, 0, 0, 0, 0, 0, 0);
+            self::durationDestinationEpochNs($ref, $boundaryDuration);
             if ($largestUnit === 'week') {
                 return self::createDurationObject(
                     $sign * $absYears,
@@ -873,23 +747,18 @@ trait TimezoneHelpers
         }
         // Time-unit smallestUnit: compute total time ns (including days if largestUnit is a time unit).
         $dayNs = '86400000000000';
-        $timeNsBc = bcadd(
-            bcadd(
-                bcadd(
-                    bcmul((string) abs($hours), '3600000000000', 0),
-                    bcmul((string) abs($minutes), '60000000000', 0),
-                    0,
-                ),
-                bcmul((string) abs($seconds), '1000000000', 0),
-                0,
-            ),
-            bcadd(
-                bcadd(bcmul((string) abs($ms), '1000000', 0), bcmul((string) abs($us), '1000', 0), 0),
-                (string) abs($ns),
-                0,
-            ),
+        $timeNsBc = self::durationToTotalNs(self::createDurationObject(
             0,
-        );
+            0,
+            0,
+            0,
+            abs($hours),
+            abs($minutes),
+            abs($seconds),
+            abs($ms),
+            abs($us),
+            abs($ns),
+        ));
         // If largestUnit is a time unit, fold days into time nanoseconds.
         // Under DST, a wall-clock day is 23/24/25 hours, not always 24 — fold
         // via actual epoch ns from ref so the conversion matches reality.
@@ -1062,6 +931,44 @@ trait TimezoneHelpers
         $y2 = self::getSlotInt($dt2, '[[ISOYear]]');
         $m2 = self::getSlotInt($dt2, '[[ISOMonth]]');
         $d2 = self::getSlotInt($dt2, '[[ISODay]]');
+        $calendar = self::getSlotString($dt1, '[[Calendar]]');
+        if ($calendar !== 'iso8601' && ($largestUnit === 'year' || $largestUnit === 'month')) {
+            $timeDifference = self::timeToNs($dt2) - self::timeToNs($dt1);
+            $startDays = self::isoDateToDays($y1, $m1, $d1);
+            $endDays = self::isoDateToDays($y2, $m2, $d2);
+            $dateSign = $endDays <=> $startDays;
+            if ($dateSign !== 0 && $timeDifference !== 0 && ($timeDifference <=> 0) !== $dateSign) {
+                $endDays -= $dateSign;
+                $timeDifference += $dateSign * 86400000000000;
+            }
+            $end = self::isoDateFromDays($endDays);
+            $difference = self::calendarYearsMonthsDaysBetween(
+                $calendar,
+                $y1,
+                $m1,
+                $d1,
+                $end['year'],
+                $end['month'],
+                $end['day'],
+                $largestUnit,
+            );
+            if ($difference === null) {
+                throw new RangeError('Cannot calculate calendar difference');
+            }
+            $time = self::nsToTimeDuration((string) $timeDifference, 'hour');
+            return self::createDurationObject(
+                $difference[0],
+                $difference[1],
+                0,
+                $difference[2],
+                self::getDurationField($time, 'hours'),
+                self::getDurationField($time, 'minutes'),
+                self::getDurationField($time, 'seconds'),
+                self::getDurationField($time, 'milliseconds'),
+                self::getDurationField($time, 'microseconds'),
+                self::getDurationField($time, 'nanoseconds'),
+            );
+        }
         // Determine sign.
         $cmp = ($y2 <=> $y1) ?: ($m2 <=> $m1) ?: ($d2 <=> $d1);
         if ($cmp === 0) {
