@@ -60,6 +60,9 @@ trait CompilerEmit
 {
     private function emit(int $op, int ...$operands): void
     {
+        if ($op === Op::LOAD_THIS) {
+            $this->hasLoadThis = true;
+        }
         $this->code[] = $op;
         foreach ($operands as $o) {
             $this->code[] = $o;

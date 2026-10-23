@@ -61,6 +61,7 @@ use Phasis\Value\JsValue;
 final class Compiler
 {
     use Parts\CompilerBailoutAnalysis;
+    use Parts\CompilerBlockBindings;
     use Parts\CompilerScope;
     use Parts\CompilerEmit;
     use Parts\CompilerStatement;
@@ -102,6 +103,9 @@ final class Compiler
 
     /** @var array<string, string> Captured function-scope bindings and declaration kinds. */
     private array $capturedLocals = [];
+
+    /** @var array<string, true> Uncaptured let bindings with proven disjoint block lifetimes. */
+    private array $reusableBlockLocals = [];
 
     /** @var list<\Phasis\Ast\Node> */
     private array $nestedFns = [];
@@ -258,6 +262,9 @@ final class Compiler
      */
     private bool $thisFromFrame = false;
 
+    /** Operands can equal LOAD_THIS, so track actual instructions during emission. */
+    private bool $hasLoadThis = false;
+
     public function compile(JsFunction $fn): CompiledFunction
     {
         $template = CompilationTemplates::get($fn);
@@ -349,7 +356,7 @@ final class Compiler
             // (LOAD_THIS — arrows/generators) or when a nested arrow /
             // class outer-position lexically references this or super
             // and will resolve it through the env chain at run time.
-            $needsEnvThis = in_array(Op::LOAD_THIS, $this->code, true)
+            $needsEnvThis = $this->hasLoadThis
                 || $this->nestedFnsLexicallyReferenceThis();
             $cf = new CompiledFunction(
                 code: $this->code,
@@ -372,6 +379,7 @@ final class Compiler
 
         // Pre-walk: collect every var/let/const/function name in
         // the body so each is assigned a unique frame slot up front.
+        $this->collectReusableBlockBindings($body);
         $this->collectFunctionLocals($body->body);
         if ($this->needsArguments && isset($this->localSlots['arguments'])) {
             throw new CompilerBailout('local arguments binding');
@@ -402,7 +410,7 @@ final class Compiler
 
         // See the expression-body site above for the needsThis /
         // canSkipEnvAlloc semantics under frame-based this.
-        $needsEnvThis = in_array(Op::LOAD_THIS, $this->code, true)
+        $needsEnvThis = $this->hasLoadThis
             || $this->nestedFnsLexicallyReferenceThis();
         $cf = new CompiledFunction(
             code: $this->code,
@@ -548,7 +556,7 @@ final class Compiler
         $this->emit(Op::LOAD_LOCAL, $resultSlot);
         $this->emit(Op::RET);
 
-        $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
+        $needsThis = $this->hasLoadThis;
         $cf = new CompiledFunction(
             code: $this->code,
             consts: $this->consts,

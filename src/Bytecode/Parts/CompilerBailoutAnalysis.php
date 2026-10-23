@@ -434,6 +434,11 @@ trait CompilerBailoutAnalysis
         $declOrder = [];
         $idx = 0;
         $this->collectLetConstOrder($body, $declOrder, $idx);
+        // Independent block bindings were checked against each block's own
+        // declaration, rather than the flat source order used below.
+        foreach ($this->reusableBlockLocals as $name => $_) {
+            unset($declOrder[$name]);
+        }
         if ($declOrder === []) {
             return;
         }

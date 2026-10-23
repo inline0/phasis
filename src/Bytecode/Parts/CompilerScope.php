@@ -343,7 +343,10 @@ trait CompilerScope
                     // earlier var) would need separate slot allocation
                     // per scope, which the flat-slot compiler doesn't
                     // model. Bail.
-                    if ($isLexical && isset($this->localSlots[$decl->id->name])) {
+                    if (
+                        $isLexical && isset($this->localSlots[$decl->id->name])
+                        && !isset($this->reusableBlockLocals[$decl->id->name])
+                    ) {
                         throw new CompilerBailout('let/const shadowing existing local');
                     }
                     if (!$isLexical) {

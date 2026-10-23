@@ -252,7 +252,7 @@ final class JsToPhp
         // the per-invocation environment that defines those bindings,
         // so emitting `$env->get('arguments')` would either throw
         // ReferenceError or read a stale binding from an outer scope.
-        if (self::bodyReferencesPerCallBindings($body)) {
+        if (self::bodyReferencesPerCallBindings($body, $fn->isArrow())) {
             return null;
         }
         // Refuse to compile bodies that contain nested block-scoped

@@ -427,16 +427,17 @@ trait JsToPhpEligibility
         return false;
     }
 
-    private static function bodyReferencesPerCallBindings(Node $node): bool
+    private static function bodyReferencesPerCallBindings(Node $node, bool $lexicalThis): bool
     {
         if ($node instanceof Identifier) {
             // 'super' / 'arguments' / 'new.target' — all per-call.
             return $node->name === 'arguments' || $node->name === 'super';
         }
-        // ThisExpression is allowed: the compiled closure now accepts
-        // an explicit `$thisValue` parameter that emit binds to PHP
-        // `$thisValue`, so `this` reads in the body resolve to it
-        // directly rather than walking the closure env.
+        // The emitted receiver is the call's receiver. Lexical this needs
+        // the defining activation, including when a nested arrow captures it.
+        if ($node instanceof \Phasis\Ast\Expression\ThisExpression) {
+            return $lexicalThis;
+        }
         if ($node instanceof \Phasis\Ast\Expression\MetaProperty) {
             return true;
         }
@@ -449,6 +450,7 @@ trait JsToPhpEligibility
         ) {
             return false;
         }
+        $lexicalThis = $lexicalThis || $node instanceof \Phasis\Ast\Expression\ArrowFunction;
         // ArrowFunction bodies CAN see the outer arguments / this,
         // but we already bail on outer-local capture in
         // checkNestedCaptures; arguments isn't in declaredLocals so
@@ -456,14 +458,14 @@ trait JsToPhpEligibility
         // bodies too.
         foreach ((array) $node as $value) {
             if ($value instanceof Node) {
-                if (self::bodyReferencesPerCallBindings($value)) {
+                if (self::bodyReferencesPerCallBindings($value, $lexicalThis)) {
                     return true;
                 }
                 continue;
             }
             if (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof Node && self::bodyReferencesPerCallBindings($item)) {
+                    if ($item instanceof Node && self::bodyReferencesPerCallBindings($item, $lexicalThis)) {
                         return true;
                     }
                 }

@@ -691,7 +691,10 @@ trait CompilerStatement
                 if ($node->kind === 'const') {
                     throw new CompilerBailout('const without initializer');
                 }
-                if ($node->kind === 'let' && isset($this->capturedLocals[$name])) {
+                if (
+                    $node->kind === 'let'
+                    && (isset($this->capturedLocals[$name]) || isset($this->reusableBlockLocals[$name]))
+                ) {
                     $this->emit(Op::LOAD_UNDEF);
                     $this->emitInitializeLocal($slot, $node->kind);
                 }
