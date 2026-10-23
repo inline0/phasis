@@ -68,7 +68,7 @@ class StringPrototype
         };
 
         $d('charAt', self::charAt(), 1);
-        $d('charCodeAt', self::charCodeAt(), 1);
+        $tagged('charCodeAt', self::charCodeAt(), 1, 'string.charCodeAt');
         $d('indexOf', self::indexOf(), 1);
         $d('lastIndexOf', self::lastIndexOf(), 1);
         $d('includes', self::includes(), 1);

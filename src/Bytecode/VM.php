@@ -646,6 +646,20 @@ final class VM
         return null;
     }
 
+    /** Primitive numeric positions cannot invoke user coercion or realm-specific errors. */
+    private function inlineStringCharCodeAt(JsString $receiver, JsNumber $position): JsNumber
+    {
+        $index = $position->value;
+        $index = is_nan($index) ? 0.0 : ($index < 0 ? ceil($index) : floor($index));
+        $utf16 = $receiver->utf16LE();
+        $length = (int) (strlen($utf16) / 2);
+        if ($index < 0 || $index >= $length) {
+            return JsNumber::of(NAN);
+        }
+        $offset = (int) $index * 2;
+        return JsNumber::of((float) (ord($utf16[$offset]) | (ord($utf16[$offset + 1]) << 8)));
+    }
+
     /**
      * String.prototype.split inline: receiver is a JsString, single
      * non-empty JsString separator. Lowers to PHP's native explode +
@@ -2118,13 +2132,22 @@ final class VM
                                         }
                                     }
                                 }
-                            // String.prototype.split inline lives in
-                            // a helper so the dispatch-loop body stays
+                            // String intrinsics live in helpers so
+                            // the dispatch-loop body stays
                             // small enough for PHP 8.5's tracing JIT
                             // to compile (otherwise the trace exceeds
                             // jit_max_trace_length and the entire
                             // VM->execute() runs uncompiled — way
                             // worse than the spec path).
+                                if (
+                                    $kind === 'string.charCodeAt' && $receiver instanceof JsString
+                                    && $argc === 1 && $args[0] instanceof JsNumber
+                                    && !$this->interp->hasExecutionBudget()
+                                ) {
+                                    $stack[$sp++] = $this->inlineStringCharCodeAt($receiver, $args[0]);
+                                    $pc += 2;
+                                    break;
+                                }
                                 if ($kind === 'string.split' && $receiver instanceof JsString) {
                                     $inlined = $this->inlineStringSplit($receiver, $args, $argc);
                                     if ($inlined !== null) {
