@@ -223,9 +223,12 @@ class Matcher
      * record (skips capture-slice extraction and per-group UTF-16
      * conversion). For inputs in the millions of code points (e.g.
      * test262's CharacterClassEscapes corpus) this is the difference
-     * between two O(N) post-match walks and zero.
+     * between two O(N) post-match walks and zero. An optional observer receives
+     * the strings needed by RegExp's legacy match state, without result objects.
+     *
+     * @param ?\Closure(string, string, string, list<string>): void $onMatch
      */
-    public function matchTest(string $inputUtf8, int $startCodeUnit): bool
+    public function matchTest(string $inputUtf8, int $startCodeUnit, ?\Closure $onMatch = null): bool
     {
         // Vectorized fast path for `^\p{X}+$` / `^\P{X}+$` style
         // anchored-greedy unicode-property patterns. test262's property-
@@ -238,13 +241,17 @@ class Matcher
         if ($startCodeUnit === 0 && $this->unicode && !$this->multiline) {
             $shape = $this->detectAnchoredPropertyShape();
             if ($shape !== null) {
-                return self::sweepAnchoredProperty(
+                $matched = self::sweepAnchoredProperty(
                     $inputUtf8,
                     $shape['table'],
                     $shape['propertyNegated'],
                     $shape['min'],
                     $shape['max'],
                 );
+                if ($matched && $onMatch !== null) {
+                    $onMatch($inputUtf8, '', '', []);
+                }
+                return $matched;
             }
         }
         $this->input = $this->unicode
@@ -287,6 +294,9 @@ class Matcher
                     }
                 }
                 if ($negated ? !$hit : $hit) {
+                    if ($onMatch !== null) {
+                        $this->reportTestMatch($inputUtf8, $pos, $pos + 1, [], $onMatch);
+                    }
                     return true;
                 }
             }
@@ -298,9 +308,31 @@ class Matcher
             $caps = $captures;
             $end = $this->matchNode($this->pattern->body, $pos, $caps, /*direction=*/+1);
             if ($end !== null) {
+                if ($onMatch !== null) {
+                    $this->reportTestMatch($inputUtf8, $pos, $end, $caps, $onMatch);
+                }
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * @param array<int, ?array{int, int}> $captures
+     * @param \Closure(string, string, string, list<string>): void $onMatch
+     */
+    private function reportTestMatch(string $input, int $start, int $end, array $captures, \Closure $onMatch): void
+    {
+        $groups = [];
+        for ($index = 1; $index <= $this->pattern->groupCount; $index++) {
+            $capture = $captures[$index] ?? null;
+            $groups[] = $capture === null ? '' : $this->sliceCapture($input, $capture[0], $capture[1]);
+        }
+        $onMatch(
+            $start === 0 && $end === $this->inputLen ? $input : $this->sliceCapture($input, $start, $end),
+            $start === 0 ? '' : $this->sliceCapture($input, 0, $start),
+            $end === $this->inputLen ? '' : $this->sliceCapture($input, $end, $this->inputLen),
+            $groups,
+        );
     }
 }
