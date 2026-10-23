@@ -13,7 +13,9 @@
 - Live Fetch request and response bodies retain streaming, cancellation and clone behavior; Node fetch can communicate with servers in the same engine.
 - Promise reactions preserve registration-time async context; cross-realm generators preserve their realm prototypes; global-property deletion and CommonJS cache behavior remain observable.
 - JSON property names and Unicode separators, callable proxies, and UTF-16 string indexing preserve JavaScript behavior across framework workloads.
-- Recursive compiled calls keep captured bindings separate, completed VM frames release their references, and WeakMap entries no longer retain otherwise unreachable keys.
+- Recursive compiled calls keep captured bindings separate, completed VM frames release their references, and WeakMap entries release unreachable keys without overflowing the host stack on deep chains.
+- Symbol property writes preserve Proxy traps and receivers; typed-array copies clamp array-like lengths before checking destination bounds.
+- Compiled identifier updates and strict program assignments retain their original references through coercion and right-hand-side effects.
 - Stream controllers, readers and writers retain their originating realm after VM context creation; pending Promise finalizers retain their registered async context.
 - Temporal calendar fields, arithmetic, rounding, parsing, timezone boundaries, and Intl formatting use consistent calendar data and option validation.
 - Module evaluation, source and typed imports, resource disposal, cross-realm intrinsics, numeric serialization, and compiled global bindings follow current language semantics.
@@ -23,7 +25,8 @@
 - Intl option precedence, legacy constructors, plural notation, numbering systems, and plain date/time formatting.
 
 ### Changed
-- Bytecode compilation handles captured bindings, default initializers, array bindings, spread calls, computed methods, object prototypes, regular-expression literals and strict tail calls; reusable syntax templates keep closure state separate.
+- Bytecode compilation handles captured bindings, default initializers, array bindings and assignments, optional chains, spread calls, computed methods, object prototypes, regular-expression literals and strict tail calls; reusable syntax templates keep closure state separate.
+- Proven disjoint lexical scopes reuse frame slots, ordinary function prototypes materialize when observed, and numeric typed-array writes avoid redundant conversions while retaining buffer-resize and detachment behavior.
 - Protected returns preserve finalizer completion order in bytecode, and logical assignments and object relational operators use the shared JavaScript semantics.
 - Bounded regular-expression preparation and cached UTF-16 searches reduce repeated work while preserving fresh objects and observable coercions.
 - The test262 runner executes both variants of unflagged scripts, preserves raw sources and module parse goals, requires async completion, and checks negative-test error types and phases.
