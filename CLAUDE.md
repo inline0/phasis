@@ -2,6 +2,14 @@
 
 Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shelling out to Node.js and without FFI. Beyond pure ECMAScript, also ships the WHATWG / W3C **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException) and **Fetch Pack** (fetch via ext-curl, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget/Event, full WHATWG Streams, navigator). Node.js (V8) is the oracle: if V8 produces a result, phasis must produce the same result. Compliance is measured against test262 (ECMAScript) and the Web Platform Tests (WHATWG/W3C).
 
+## Releases
+
+Follow the [shared release rule](https://github.com/inline0/_cp/blob/main/CLAUDE.md#canonical-github-releases).
+Titles are exactly the tag. Bodies contain only the linked `CHANGELOG.md`
+sentence with that tag. Keep complete notes in `CHANGELOG.md` before publishing.
+`.github/workflows/release-format.yml` enforces this format; keep it identical
+to `_cp/scripts/release-format.yml`.
+
 ## Quick Reference
 
 ```bash

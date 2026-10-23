@@ -14,13 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Normalize release notes
-        run: |
-          gh release edit "${{ github.event.release.tag_name }}" \
-            --notes "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for the full release notes for \`${{ github.event.release.tag_name }}\`."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
