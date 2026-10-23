@@ -2624,6 +2624,23 @@ final class VM
                                     break;
                                 }
                             }
+                            if (
+                                $obj instanceof \Phasis\Value\JsTypedArray && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
+                            ) {
+                                $index = (int) $key->value;
+                                if ((float) $index === $key->value) {
+                                    // Number keys have no observable coercion. Keep value
+                                    // conversion and detached/resizable checks in [[Set]].
+                                    $ok = $obj->setIntegerIndex($index, $val);
+                                    if (!$ok && $this->interp->isStrictMode()) {
+                                        throw new TypeError('Cannot assign to an immutable TypedArray index');
+                                    }
+                                    $stack[$sp++] = $val;
+                                    $pc++;
+                                    break;
+                                }
+                            }
                             $this->writeComputed($obj, $key, $val);
                             $stack[$sp++] = $val;
                             $pc++;
