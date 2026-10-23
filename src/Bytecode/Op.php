@@ -181,6 +181,7 @@ final class Op
     public const TYPEOF_NAME = 112; // N: typeof a binding, allowing unresolvable names but preserving TDZ.
     public const DELETE_NAME = 113; // N: delete an environment binding without reading its value.
     public const DELETE_PROPERTY = 114; // pop key and base, delete the property, push the Boolean result.
+    public const UPDATE_NAME = 115; // N I I: resolve a binding once, update by +/-1, push prefix/postfix result.
 
     public const LOOP_INIT = 120;
     public const LOOP_TICK = 121;
@@ -280,6 +281,7 @@ final class Op
             case self::NEW_REGEXP:
                 return 2;
             // 3-operand opcodes
+            case self::UPDATE_NAME:
             case self::JUMP_IF_LOCAL_GE_CONST:
             case self::JUMP_IF_LOCAL_GE_LOCAL:
             case self::JUMP_IF_LOCAL_GT_LOCAL:

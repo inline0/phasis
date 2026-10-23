@@ -923,6 +923,15 @@ final class VM
                             $env->set($names[$code[$pc + 1]], $stack[--$sp], $strict);
                             $pc += 2;
                             break;
+                        case Op::UPDATE_NAME:
+                            $stack[$sp++] = $this->interp->vmUpdateName(
+                                $env,
+                                $names[$code[$pc + 1]],
+                                (bool) $code[$pc + 2],
+                                (bool) $code[$pc + 3],
+                            );
+                            $pc += 4;
+                            break;
                         case Op::DEFINE_NAME:
                             $env->defineVar($names[$code[$pc + 1]], $stack[--$sp]);
                             $pc += 2;

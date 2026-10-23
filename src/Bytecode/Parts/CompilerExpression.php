@@ -366,7 +366,7 @@ trait CompilerExpression
             if ($name === 'eval' || $name === 'arguments') {
                 throw new CompilerBailout('update eval/arguments');
             }
-            if (isset($this->localSlots[$name])) {
+            if (isset($this->localSlots[$name]) && !isset($this->capturedLocals[$name])) {
                 $slot = $this->localSlots[$name];
                 if (isset($this->constSlots[$slot])) {
                     throw new CompilerBailout('update of const');
@@ -395,10 +395,10 @@ trait CompilerExpression
                 $this->emitStoreLocal($slot);
                 return;
             }
-            // Free variable: bail to tree-walker (Reference path is
-            // spec-correct for Update on names that may resolve via
-            // a with-environment etc.).
-            throw new CompilerBailout('update free var');
+            // Keep reference resolution and coercion in one instruction so
+            // getters or ToNumeric cannot redirect the eventual write.
+            $this->emit(Op::UPDATE_NAME, $this->internName($name), (int) $isInc, (int) $node->prefix);
+            return;
         }
         // Member targets (`o.x++`, `o[k]++`) come in a later phase.
         throw new CompilerBailout('update non-identifier');

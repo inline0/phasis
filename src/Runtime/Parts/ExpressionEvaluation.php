@@ -904,28 +904,8 @@ trait ExpressionEvaluation
             }
         }
 
-        // Fast path: `i++` / `++i` / `i--` / `--i` on a plain Identifier
-        // when there is no with-environment reachable from the current
-        // chain (covers both currently-active with statements and
-        // with-envs captured by an enclosing closure). Skips the
-        // Reference allocation, the deferred-key path, and the with-
-        // trap dance for the case that dominates loop counters.
-        if (
-            $node->argument instanceof Identifier
-            && $this->withEnvObjects === []
-            && $node->argument->name !== 'undefined'
-            && !$env->hasAnyWithObjectInChain()
-        ) {
-            $name = $node->argument->name;
-            $current = $env->get($name, $this->strictMode);
-            if ($current instanceof JsNumber) {
-                $delta = $node->operator === '++' ? 1.0 : -1.0;
-                $newValue = JsNumber::of($current->value + $delta);
-                $env->set($name, $newValue, $this->strictMode);
-                return $node->prefix ? $newValue : $current;
-            }
-            // Non-number paths (BigInt, ToNumeric coercion) fall through
-            // to the spec path below.
+        if ($node->argument instanceof Identifier) {
+            return $this->vmUpdateName($env, $node->argument->name, $node->operator === '++', $node->prefix);
         }
 
         $ref = $this->resolveReference($node->argument, $env);
@@ -943,31 +923,43 @@ trait ExpressionEvaluation
             );
         }
 
-        // Use ToNumeric (not ToNumber) so BigInt values are preserved.
-        // Use withGetBindingValue for spec-correct HasProperty trap order.
-        $oldNumeric = TypeConversion::toNumeric($this->withGetBindingValue($ref));
+        return $this->updateReferenceValue($ref, $node->operator === '++', $node->prefix);
+    }
+
+    /** Update an identifier through its original reference, shared by the VM and interpreter. */
+    public function vmUpdateName(Environment $env, string $name, bool $increment, bool $prefix): JsValue
+    {
+        return $this->updateReferenceValue($this->resolveIdentifierReference($env, $name), $increment, $prefix);
+    }
+
+    private function updateReferenceValue(Reference $ref, bool $increment, bool $prefix): JsValue
+    {
+        // GetValue must run exactly once, before any user-defined numeric
+        // conversion, while PutValue retains the originally resolved base.
+        $current = $this->withGetBindingValue($ref);
+        $oldNumeric = $current instanceof JsNumber ? $current : TypeConversion::toNumeric($current);
 
         if ($oldNumeric instanceof JsBigInt) {
             // BigInt::add(oldValue, BigInt::unit) per spec.
             $decVal = $this->bigIntToDecimal($oldNumeric->value);
-            $delta = $node->operator === '++' ? '1' : '-1';
+            $delta = $increment ? '1' : '-1';
             $raw = self::bigStrBcAdd($decVal, $delta);
             if ($raw === '-0') {
                 $raw = '0';
             }
             $newValue = new JsBigInt($raw);
             $this->withSetMutableBindingCheck($ref, $newValue);
-            return $node->prefix ? $newValue : $oldNumeric;
+            return $prefix ? $newValue : $oldNumeric;
         }
 
-        $oldValue = JsNumber::of(
-            $oldNumeric instanceof JsNumber ? $oldNumeric->value : TypeConversion::toNumber($oldNumeric),
-        );
-        $delta = $node->operator === '++' ? 1.0 : -1.0;
+        $oldValue = $oldNumeric instanceof JsNumber
+            ? $oldNumeric
+            : JsNumber::of(TypeConversion::toNumber($oldNumeric));
+        $delta = $increment ? 1.0 : -1.0;
         $newValue = JsNumber::of($oldValue->value + $delta);
         $this->withSetMutableBindingCheck($ref, $newValue);
 
-        return $node->prefix ? $newValue : $oldValue;
+        return $prefix ? $newValue : $oldValue;
     }
 
     private function evalAssignment(AssignmentExpression $node, Environment $env): JsValue
