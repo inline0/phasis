@@ -388,16 +388,7 @@ class JsProxy extends JsObject
             $this->validateSetInvariants($name, $value, $target);
             return true;
         }
-        // No trap: forward to target.[[Set]](P, V, Receiver). Target is
-        // a JsObject which only accepts JsObject receivers; coerce the
-        // (potentially primitive) receiver to itself by using the target
-        // as the receiver when it's not an Object — the underlying spec
-        // semantics for OrdinarySet then return false for primitive
-        // receivers on data descriptors.
-        if ($receiver instanceof JsObject) {
-            return $target->internalSet($name, $value, $receiver);
-        }
-        return $target->internalSet($name, $value, $target);
+        return $target->setWithValueReceiver($name, $value, $receiver);
     }
 
     /**

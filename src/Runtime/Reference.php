@@ -57,8 +57,8 @@ class Reference
      * Resolve the deferred property key to a string name.
      * Performs ToPropertyKey on the stored raw key (so a Symbol wrapper's
      * @@toPrimitive returning the unboxed Symbol promotes the reference
-     * into a Symbol-keyed reference). The result is cached so that the
-     * ToPrimitive/ToString sequence runs at most once per reference.
+     * into a Symbol-keyed reference). GetValue normalizes the Reference's
+     * name, so PutValue must retain that key through later user coercion.
      */
     private function resolvedName(): string
     {
@@ -123,7 +123,11 @@ class Reference
             return $this->base->get($name);
         }
 
-        return JsUndefined::instance();
+        $wrapper = TypeConversion::toObject($this->base);
+        $name = $this->resolvedName();
+        return $this->symbolKey !== null
+            ? $wrapper->getBySymbolWithReceiver($this->symbolKey, $this->base)
+            : $wrapper->getWithValueReceiver($name, $this->base);
     }
 
     /** Assign a value through this reference. */
@@ -186,33 +190,11 @@ class Reference
         // write that would create a new own property on the primitive must
         // fail; accessors (including proxy set traps) still run, observing
         // the primitive as the receiver.
-        $wrapper = \Phasis\Spec\TypeConversion::toObject($this->base);
+        $wrapper = TypeConversion::toObject($this->base);
         $name = $this->resolvedName();
-        $cursor = $wrapper;
-        $handled = false;
-        while ($cursor !== null) {
-            // Proxies intercept [[Set]] directly rather than exposing
-            // own property descriptors, so give them a turn at the chain.
-            if ($cursor instanceof \Phasis\Value\JsProxy) {
-                $handled = $cursor->internalSet($name, $value, $wrapper);
-                break;
-            }
-            $desc = $cursor->getOwnPropertyDescriptor($name);
-            if ($desc === null) {
-                $cursor = $cursor->getPrototype();
-                continue;
-            }
-            if ($desc->isAccessorDescriptor()) {
-                if ($desc->set instanceof \Phasis\Value\JsFunction) {
-                    $desc->set->call($this->base, [$value]);
-                    $handled = true;
-                }
-                break;
-            }
-            // Data descriptor found in chain; the write would create a
-            // new own property on the primitive receiver, which fails.
-            break;
-        }
+        $handled = $this->symbolKey !== null
+            ? $wrapper->setBySymbolWithValueReceiver($this->symbolKey, $value, $this->base)
+            : $wrapper->setWithValueReceiver($name, $value, $this->base);
         if ($handled) {
             return;
         }

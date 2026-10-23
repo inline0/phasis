@@ -304,6 +304,28 @@ class JsObject implements JsValue
         }
     }
 
+    /** Ordinary [[Set]] with a receiver that may be a primitive. */
+    public function setWithValueReceiver(string $name, JsValue $value, JsValue $receiver): bool
+    {
+        if ($receiver instanceof JsObject) {
+            return $this->internalSet($name, $value, $receiver);
+        }
+        if ($this->isModuleNamespace && !self::isInternalSlot($name)) {
+            return false;
+        }
+        $descriptor = $this->getOwnPropertyDescriptor($name);
+        if ($descriptor === null) {
+            $prototype = $this->getPrototype();
+            return $prototype !== null && $prototype->setWithValueReceiver($name, $value, $receiver);
+        }
+        if ($descriptor->isDataDescriptor() || $descriptor->set === null) {
+            // OrdinarySet cannot create an own data property on a primitive.
+            return false;
+        }
+        $descriptor->set->call($receiver, [$value]);
+        return true;
+    }
+
     /**
      * ES spec: OrdinarySet ( O, P, V, Receiver ).
      *
