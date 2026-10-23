@@ -188,6 +188,9 @@ final class Op
 
     public const LOOP_INIT = 120;
     public const LOOP_TICK = 121;
+    public const ITERATOR_INIT = 122; // L: acquire an iterator and cached next in adjacent private slots.
+    public const ITERATOR_NEXT = 123; // L I J: check loop limits, push the next value or branch when done.
+    public const ITERATOR_CLOSE = 124; // L L L: close with the pending completion and value.
 
     // ---- Sentinel / bailout placeholder -------------------------------
     public const NOP = 0;
@@ -280,6 +283,7 @@ final class Op
             case self::MAKE_CLASS:
             case self::LOOP_INIT:
             case self::LOOP_TICK:
+            case self::ITERATOR_INIT:
                 return 1;
             // 2-operand opcodes
             case self::NEW_REGEXP:
@@ -287,6 +291,8 @@ final class Op
                 return 2;
             // 3-operand opcodes
             case self::UPDATE_NAME:
+            case self::ITERATOR_NEXT:
+            case self::ITERATOR_CLOSE:
             case self::UPDATE_MEMBER:
             case self::JUMP_IF_LOCAL_GE_CONST:
             case self::JUMP_IF_LOCAL_GE_LOCAL:

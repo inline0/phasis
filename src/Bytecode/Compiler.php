@@ -61,6 +61,7 @@ use Phasis\Value\JsValue;
 final class Compiler
 {
     use Parts\CompilerBailoutAnalysis;
+    use Parts\CompilerForOf;
     use Parts\CompilerBlockBindings;
     use Parts\CompilerScope;
     use Parts\CompilerEmit;
@@ -386,6 +387,7 @@ final class Compiler
 
         // Pre-walk: collect every var/let/const/function name in
         // the body so each is assigned a unique frame slot up front.
+        $this->forOfBody = $body;
         $this->collectReusableBlockBindings($body);
         $this->collectFunctionLocals($body->body);
         if ($this->needsArguments && isset($this->localSlots['arguments'])) {

@@ -99,6 +99,10 @@ trait CompilerStatement
             $this->compileFor($node);
             return;
         }
+        if ($node instanceof \Phasis\Ast\Statement\ForOfStatement) {
+            $this->compileForOf($node);
+            return;
+        }
         if ($node instanceof WhileStatement) {
             $this->compileWhile($node);
             return;
@@ -697,7 +701,7 @@ trait CompilerStatement
                 }
                 if (
                     $node->kind === 'let'
-                    && (isset($this->capturedLocals[$name]) || isset($this->reusableBlockLocals[$name]))
+                    && ($this->forOfBodyDepth > 0 || isset($this->capturedLocals[$name]) || isset($this->reusableBlockLocals[$name]))
                 ) {
                     $this->emit(Op::LOAD_UNDEF);
                     $this->emitInitializeLocal($slot, $node->kind);

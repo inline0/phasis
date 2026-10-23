@@ -357,6 +357,15 @@ trait CompilerScope
 
     private function collectStatementLocals(Node $stmt): void
     {
+        if ($stmt instanceof \Phasis\Ast\Statement\ForOfStatement) {
+            if ($this->forOfBody === null || !$stmt->left instanceof VariableDeclaration) {
+                throw new CompilerBailout('for-of assignment target');
+            }
+            $this->validateForOfScopes($this->forOfBody);
+            $this->collectStatementLocals($stmt->left);
+            $this->collectStatementLocals($stmt->body);
+            return;
+        }
         if ($stmt instanceof VariableDeclaration) {
             $isLexical = $stmt->kind === 'let' || $stmt->kind === 'const';
             foreach ($stmt->declarations as $decl) {
@@ -644,6 +653,13 @@ trait CompilerScope
      */
     private function collectInnerDeclaredNamesNode(Node $node, array &$out): void
     {
+        if ($node instanceof \Phasis\Ast\Statement\ForOfStatement) {
+            if ($node->left instanceof VariableDeclaration) {
+                $this->collectInnerDeclaredNamesNode($node->left, $out);
+            }
+            $this->collectInnerDeclaredNamesNode($node->body, $out);
+            return;
+        }
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $decl) {
                 $this->collectPatternBoundNames($decl->id, $out);

@@ -821,6 +821,38 @@ final class VM
                             }
                             $pc += 2;
                             break;
+                        case Op::ITERATOR_INIT:
+                            $iteratorSlot = $code[$pc + 1];
+                            [$locals[$iteratorSlot], $locals[$iteratorSlot + 1]] = $this->interp->vmGetIterator($stack[--$sp]);
+                            $pc += 2;
+                            break;
+                        case Op::ITERATOR_NEXT:
+                            // Match the interpreter's host-budget checkpoint
+                            // before its iteration limit and iterator effects.
+                            if ($this->interp->hasExecutionBudget()) {
+                                $this->interp->checkBudget();
+                            }
+                            if (++$loopCounts[$code[$pc + 2]] > $this->interp->getMaxLoopIterations()) {
+                                throw new InternalError('Maximum loop iterations exceeded');
+                            }
+                            $iteratorSlot = $code[$pc + 1];
+                            $iterator = $locals[$iteratorSlot];
+                            assert($iterator instanceof JsObject);
+                            $done = false;
+                            $value = $this->interp->vmIteratorNext($iterator, $locals[$iteratorSlot + 1], $done);
+                            if ($done) {
+                                $pc += $code[$pc + 3];
+                            } else {
+                                $stack[$sp++] = $value;
+                                $pc += 4;
+                            }
+                            break;
+                        case Op::ITERATOR_CLOSE:
+                            $iterator = $locals[$code[$pc + 1]];
+                            assert($iterator instanceof JsObject);
+                            $this->interp->vmIteratorClose($iterator, $locals[$code[$pc + 2]], $locals[$code[$pc + 3]]);
+                            $pc += 4;
+                            break;
                         case Op::POP:
                             $sp--;
                             $pc++;

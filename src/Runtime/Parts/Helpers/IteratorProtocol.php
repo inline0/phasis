@@ -103,6 +103,27 @@ use Phasis\Runtime\Reference;
  */
 trait IteratorProtocol
 {
+    /** @return array{JsObject, JsValue} Iterator and cached next method for a compiled for-of loop. */
+    public function vmGetIterator(JsValue $value): array
+    {
+        return $this->getIteratorOrThrow($value);
+    }
+
+    /** Advance a compiled for-of loop with the shared IteratorStepValue semantics. */
+    public function vmIteratorNext(JsObject $iterator, JsValue $nextMethod, bool &$done): JsValue
+    {
+        return $this->iteratorNext($iterator, $nextMethod, $done);
+    }
+
+    /** Close a compiled loop; a pending throw takes precedence over close failures. */
+    public function vmIteratorClose(JsObject $iterator, JsValue $completion, JsValue $value): void
+    {
+        $this->iteratorClose(
+            $iterator,
+            $completion instanceof JsBoolean && !$completion->value ? new \Phasis\Exceptions\JsThrowable($value) : null,
+        );
+    }
+
     /**
      * Bind or assign a compiled flat array pattern without reading ahead.
      * Iterator methods can observe each earlier write through captured closures.
