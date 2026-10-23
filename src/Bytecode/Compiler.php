@@ -173,9 +173,12 @@ final class Compiler
     private array $classNodes = [];
 
     /**
-     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|null>}>
+     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|array{target: Node, rest: bool}|null>}>
      */
     private array $arrayBindings = [];
+
+    /** Interpreted assignment references need the activation's lexical this binding. */
+    private bool $arrayAssignmentReferences = false;
 
     /**
      * Source-like display string for each CALL_METHOD opcode emitted,
@@ -356,7 +359,7 @@ final class Compiler
             // (LOAD_THIS — arrows/generators) or when a nested arrow /
             // class outer-position lexically references this or super
             // and will resolve it through the env chain at run time.
-            $needsEnvThis = $this->hasLoadThis
+            $needsEnvThis = $this->arrayAssignmentReferences || $this->hasLoadThis
                 || $this->nestedFnsLexicallyReferenceThis();
             $cf = new CompiledFunction(
                 code: $this->code,
@@ -373,6 +376,7 @@ final class Compiler
                 parametersFromEnvironment: $this->parametersFromEnvironment,
                 hasTailCalls: $this->hasTailCalls,
             );
+            $cf->arrayBindings = $this->arrayBindings;
             $cf->callMethodDisplays = $this->callMethodDisplays;
             return $cf;
         }
@@ -410,7 +414,7 @@ final class Compiler
 
         // See the expression-body site above for the needsThis /
         // canSkipEnvAlloc semantics under frame-based this.
-        $needsEnvThis = $this->hasLoadThis
+        $needsEnvThis = $this->arrayAssignmentReferences || $this->hasLoadThis
             || $this->nestedFnsLexicallyReferenceThis();
         $cf = new CompiledFunction(
             code: $this->code,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Phasis\Bytecode;
 
+use Phasis\Ast\Node;
 use Phasis\Value\JsValue;
 
 /**
@@ -24,7 +25,7 @@ final class CompiledFunction
      * Ordered flat array bindings reuse the interpreter's iterator protocol.
      * Captured identifiers retain their live Environment binding.
      *
-     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|null>}>
+     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|array{target: Node, rest: bool}|null>}>
      */
     public array $arrayBindings = [];
 

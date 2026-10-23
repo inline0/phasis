@@ -736,6 +736,10 @@ trait CompilerExpression
         }
         $left = $node->left;
         $op = $node->operator;
+        if ($op === '=' && ($left instanceof ArrayPattern || $left instanceof ArrayExpression)) {
+            $this->compileArrayAssignment($left, $node->right);
+            return;
+        }
         if ($op === '&&=' || $op === '||=' || $op === '??=') {
             $this->compileLogicalAssignment($node);
             return;
@@ -878,6 +882,56 @@ trait CompilerExpression
         }
 
         throw new CompilerBailout('unsupported assignment target');
+    }
+
+    /** Keep each reference and write beside its iterator step, including abrupt closing. */
+    private function compileArrayAssignment(ArrayPattern|ArrayExpression $pattern, Node $right): void
+    {
+        $elements = [];
+        foreach ($pattern->elements as $element) {
+            if ($element === null) {
+                $elements[] = null;
+                continue;
+            }
+            $rest = $element instanceof RestElement || $element instanceof SpreadElement;
+            $target = $rest ? $element->argument : $element;
+            if ($target instanceof Identifier) {
+                if ($target->name === 'eval' || $target->name === 'arguments') {
+                    throw new CompilerBailout('array assignment to eval/arguments');
+                }
+                $slot = $this->localSlots[$target->name] ?? null;
+                if ($slot !== null) {
+                    if (isset($this->constSlots[$slot])) {
+                        throw new CompilerBailout('array assignment to const');
+                    }
+                    $elements[] = [
+                        'slot' => $slot,
+                        'capturedName' => isset($this->capturedLocals[$target->name]) ? $target->name : null,
+                        'rest' => $rest,
+                    ];
+                    continue;
+                }
+            } elseif (
+                !$target instanceof MemberExpression || $target->optional
+                || $target->property instanceof PrivateIdentifier
+                || ($target->object instanceof Identifier && $target->object->name === 'super')
+            ) {
+                throw new CompilerBailout('complex array assignment target');
+            }
+            // Member references can invoke arbitrary getters and computed-key
+            // expressions. Their local dependencies use captured bindings, so
+            // the shared reference evaluator observes the live activation.
+            if ($this->inGenerator) {
+                throw new CompilerBailout('generator array assignment reference');
+            }
+            $elements[] = ['target' => $target, 'rest' => $rest];
+            $this->arrayAssignmentReferences = true;
+        }
+        $this->compileExpression($right);
+        $this->emit(Op::DUP);
+        $index = count($this->arrayBindings);
+        $this->arrayBindings[] = ['kind' => 'assignment', 'elements' => $elements];
+        $this->emit(Op::BIND_ARRAY, $index);
     }
 
     private function compileLogicalAssignment(AssignmentExpression $node): void

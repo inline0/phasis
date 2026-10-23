@@ -104,10 +104,10 @@ use Phasis\Runtime\Reference;
 trait IteratorProtocol
 {
     /**
-     * Initialize a compiled flat array binding without reading ahead. Iterator
-     * methods can observe each earlier binding through captured closures.
+     * Bind or assign a compiled flat array pattern without reading ahead.
+     * Iterator methods can observe each earlier write through captured closures.
      *
-     * @param array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|null>} $binding
+     * @param array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|array{target: Node, rest: bool}|null>} $binding
      * @param list<JsValue> $locals
      */
     public function vmBindArray(JsValue $value, array $binding, array &$locals, Environment $env): void
@@ -120,9 +120,17 @@ trait IteratorProtocol
                     $this->iteratorNext($iterator, $nextMethod, $done, false);
                     continue;
                 }
+                $reference = isset($element['target']) ? $this->resolveReference($element['target'], $env) : null;
                 $item = $element['rest']
                     ? $this->iteratorRest($iterator, $nextMethod, $done)
                     : $this->iteratorNext($iterator, $nextMethod, $done);
+                if ($reference !== null) {
+                    $reference->setValue($item);
+                    continue;
+                }
+                if (isset($element['target'])) {
+                    throw new \LogicException('Array assignment reference was not resolved');
+                }
                 $name = $element['capturedName'];
                 if ($name === null) {
                     $slot = $element['slot'];
@@ -130,7 +138,7 @@ trait IteratorProtocol
                         throw new \LogicException('Array binding references an unallocated local slot');
                     }
                     $locals[$slot] = $item;
-                } elseif ($binding['kind'] === 'var') {
+                } elseif ($binding['kind'] === 'var' || $binding['kind'] === 'assignment') {
                     $env->set($name, $item);
                 } else {
                     $env->initialize($name, $item);

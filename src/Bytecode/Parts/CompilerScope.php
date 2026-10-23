@@ -110,6 +110,28 @@ trait CompilerScope
      */
     private function collectNestedLocalReferences(Node $node, bool $nested, array &$references, array $shadow = []): void
     {
+        if (
+            $node instanceof AssignmentExpression
+            && ($node->left instanceof ArrayPattern || $node->left instanceof ArrayExpression)
+        ) {
+            foreach ($node->left->elements as $element) {
+                $target = $element instanceof RestElement || $element instanceof SpreadElement
+                    ? $element->argument : $element;
+                if ($target instanceof Node) {
+                    // The iterator helper evaluates member references between
+                    // steps. Reify their local reads and writes in the same
+                    // environment used by nested interpreted closures.
+                    $this->collectNestedLocalReferences(
+                        $target,
+                        $nested || $target instanceof MemberExpression,
+                        $references,
+                        $shadow,
+                    );
+                }
+            }
+            $this->collectNestedLocalReferences($node->right, $nested, $references, $shadow);
+            return;
+        }
         if ($node instanceof Identifier) {
             if ($nested && isset($this->localSlots[$node->name]) && !isset($shadow[$node->name])) {
                 $references[$node->name] = true;
