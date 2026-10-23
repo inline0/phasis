@@ -204,6 +204,18 @@ final class JsToPhp
 
     public static function compile(JsFunction $fn): ?\Closure
     {
+        if (CompilationFailures::get($fn, 'php') !== null) {
+            return null;
+        }
+        $compiled = self::compileFunction($fn);
+        if ($compiled === null) {
+            CompilationFailures::remember($fn, 'php', 'unsupported syntax');
+        }
+        return $compiled;
+    }
+
+    private static function compileFunction(JsFunction $fn): ?\Closure
+    {
         // Class / derived constructors and method-bound functions
         // (homeObject != null) carry spec semantics — `this`, `super`,
         // [[NewTarget]], MakeSuperPropertyKey — that the JsToPhp emit

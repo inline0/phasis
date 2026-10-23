@@ -124,6 +124,7 @@ final class RequestConstructor
         );
 
         $env->defineVar('Request', $ctor);
+        $env->setIntrinsic('Request', $ctor);
     }
 
     /**
@@ -196,16 +197,13 @@ final class RequestConstructor
 
         // -------- Headers ----------------------------------------------
         $headers = HeadersConstructor::create($env, []);
-        if ($sourceRequest !== null) {
+        $headerInit = $initObj?->get('headers') ?? JsUndefined::instance();
+        if (!$headerInit instanceof JsUndefined) {
+            self::fillHeadersFromValue($headers, $headerInit, $env);
+        } elseif ($sourceRequest !== null) {
             $srcHeaders = $sourceRequest->getInternalProperty('[[Headers]]');
             if ($srcHeaders instanceof JsObject) {
                 self::copyHeadersInto($headers, $srcHeaders);
-            }
-        }
-        if ($hasInit) {
-            $hInit = $initObj->get('headers');
-            if (!$hInit instanceof JsUndefined && !$hInit instanceof JsNull) {
-                self::fillHeadersFromValue($headers, $hInit, $env);
             }
         }
         $instance->setInternalProperty('[[Headers]]', $headers);
@@ -254,14 +252,29 @@ final class RequestConstructor
             'follow',
             self::VALID_REDIRECT,
         ));
-        $instance->setInternalProperty('[[Referrer]]', self::pickString(
+        $referrer = self::pickString(
             $sourceRequest,
             $initObj,
             '[[Referrer]]',
             'referrer',
             'about:client',
             null,
-        ));
+        );
+        if ($referrer !== '' && $referrer !== 'about:client') {
+            $referrerBase = null;
+            if ($env->has('__phasisRequestBaseUrl')) {
+                $baseValue = $env->get('__phasisRequestBaseUrl');
+                if ($baseValue instanceof JsString && $baseValue->value !== '') {
+                    $referrerBase = UrlParser::parse($baseValue->value);
+                }
+            }
+            $parsedReferrer = UrlParser::parse($referrer, $referrerBase);
+            if ($parsedReferrer === null) {
+                throw new TypeError("Failed to construct 'Request': Invalid referrer: '$referrer'");
+            }
+            $referrer = UrlSerializer::serializeUrl($parsedReferrer);
+        }
+        $instance->setInternalProperty('[[Referrer]]', $referrer);
         $instance->setInternalProperty('[[ReferrerPolicy]]', self::pickString(
             $sourceRequest,
             $initObj,
@@ -335,6 +348,8 @@ final class RequestConstructor
         // -------- Body --------------------------------------------------
         $bodyBytes = null;
         $bodyContentType = null;
+        $bodyStream = null;
+        $bodyProvided = false;
 
         // From source Request (if no init body): clone its buffered bytes.
         if ($sourceRequest !== null) {
@@ -351,6 +366,7 @@ final class RequestConstructor
         if ($hasInit) {
             $bInit = $initObj->get('body');
             if (!$bInit instanceof JsUndefined && !$bInit instanceof JsNull) {
+                $bodyProvided = true;
                 $methodUpper = strtoupper($method);
                 if ($methodUpper === 'GET' || $methodUpper === 'HEAD') {
                     throw new TypeError(
@@ -360,11 +376,25 @@ final class RequestConstructor
                 $extracted = BodyExtraction::extractBody($bInit, $headers, $env, $keepalive);
                 $bodyBytes = $extracted['bytes'];
                 $bodyContentType = $extracted['contentType'];
+                $bodyStream = $extracted['stream'] ?? null;
                 BodyExtraction::maybeSetContentType($headers, $extracted);
             }
         }
 
-        BodyMixin::markAsBodyHost($instance, $bodyBytes, $bodyContentType);
+        if (!$bodyProvided && $sourceRequest !== null && $bodyBytes !== null) {
+            if (BodyMixin::isBodyUsed($sourceRequest) || BodyMixin::isStreamLockedOrDisturbed($sourceRequest)) {
+                throw new TypeError('Failed to construct Request: input body is unusable');
+            }
+            if ($method === 'GET' || $method === 'HEAD') {
+                throw new TypeError('Request with GET/HEAD method cannot have body');
+            }
+            $bodyStream = BodyMixin::transferBodyStream($sourceRequest, $env);
+        }
+
+        BodyMixin::markAsBodyHost($instance, $bodyBytes, $bodyContentType, null, $bodyStream);
+        if (!$bodyProvided && $sourceRequest !== null) {
+            $instance->setInternalProperty('[[BodyReplayable]]', $sourceRequest->getInternalProperty('[[BodyReplayable]]'));
+        }
     }
 
     private static function copyHeadersInto(JsObject $dst, JsObject $src): void
@@ -715,14 +745,10 @@ final class RequestConstructor
         $newHeaders = HeadersConstructor::create($env, []);
         if ($srcHeaders instanceof JsObject) {
             self::copyHeadersInto($newHeaders, $srcHeaders);
+            HeadersConstructor::copyGuard($newHeaders, $srcHeaders);
         }
         $dst->setInternalProperty('[[Headers]]', $newHeaders);
 
-        // Body: clone bytes verbatim. The cached stream is NOT carried
-        // over so the clone has its own fresh stream on first .body read
-        // (matches spec's "tee" semantics for the buffered case).
-        $bytes = BodyMixin::bodyBytes($src);
-        $ct = BodyMixin::bodyContentType($src);
-        BodyMixin::markAsBodyHost($dst, $bytes, $ct);
+        BodyMixin::cloneBody($src, $dst);
     }
 }

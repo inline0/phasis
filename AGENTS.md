@@ -8,6 +8,16 @@ Keep agent instructions in `AGENTS.md` only. Use nested `AGENTS.md` files when
 guidance needs a narrower scope. Do not add `CLAUDE.md` files, symlinks, or
 forwarding stubs for repository guidance.
 
+Node compatibility is opt-in through `Engine::enableNode()` or `phasis --node`.
+JavaScript still executes entirely in PHP. Node/npm may prepare pinned assets or
+run test oracles, but must never become an execution backend. Explicit
+`child_process` operations use PHP host processes; a JavaScript child launched
+through `process.execPath` runs the Phasis PHP entry point. New host resources
+must register cleanup with their owning NodeRuntime. Keep original framework
+assertions and timeouts, report all discovered cases and upstream skips, and
+retain source identity for complete-run claims. Close and reap owned test
+processes and listeners after every run.
+
 ## Releases
 
 Follow the [shared release rule](https://github.com/inline0/_cp/blob/main/AGENTS.md#canonical-github-releases).

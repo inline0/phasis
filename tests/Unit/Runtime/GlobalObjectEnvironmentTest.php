@@ -9,6 +9,41 @@ use PHPUnit\Framework\TestCase;
 
 class GlobalObjectEnvironmentTest extends TestCase
 {
+    public function testDeletedConfigurableGlobalsDoNotRestoreSavedBindings(): void
+    {
+        $engine = new Engine();
+        self::assertSame(['object', true, 'undefined', 'ReferenceError', 17], $engine->eval(<<<'JS'
+const values = [typeof performance];
+values.push(delete globalThis.performance, typeof performance);
+try { (() => { 'use strict'; performance = 3; })(); } catch (error) { values.push(error.name); }
+globalThis.performance = 17;
+values.push(performance);
+values;
+JS));
+    }
+
+    public function testDeletedGlobalCanResolveAnInheritedPropertyAndLexicalShadowSurvives(): void
+    {
+        $engine = new Engine();
+        self::assertSame([9, 20, false], $engine->eval(<<<'JS'
+globalThis.replaceable = 3;
+replaceable = 4;
+delete globalThis.replaceable;
+Object.defineProperty(Object.prototype, 'replaceable', { value: 9, configurable: true });
+const first = replaceable;
+let shadow = 20;
+globalThis.shadow = 5;
+delete globalThis.shadow;
+[first, shadow, 'shadow' in globalThis];
+JS));
+    }
+
+    public function testLazyGlobalCanBeReplacedBeforeFirstRead(): void
+    {
+        $engine = new Engine();
+        self::assertSame(42, $engine->eval('"use strict"; globalThis.fetch = () => 42; fetch();'));
+    }
+
     public function testGlobalVarCreatesAnOwnPropertyWithoutInvokingInheritedAccessors(): void
     {
         foreach (['', '"use strict";'] as $directive) {

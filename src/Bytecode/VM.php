@@ -658,6 +658,9 @@ final class VM
         if ($sepArg->value === '') {
             return null;
         }
+        if (!mb_check_encoding($receiver->value, 'UTF-8') || !mb_check_encoding($sepArg->value, 'UTF-8')) {
+            return null;
+        }
         $parts = explode($sepArg->value, $receiver->value);
         $arr = new \Phasis\Value\JsArray();
         foreach ($parts as $p) {
@@ -804,6 +807,13 @@ final class VM
                             $stack[$sp++] = $consts[$code[$pc + 1]];
                             $pc += 2;
                             break;
+                        case Op::NEW_REGEXP:
+                            $stack[$sp++] = $this->interp->createRegExpFromConstructor(
+                                $names[$code[$pc + 1]],
+                                $names[$code[$pc + 2]],
+                            );
+                            $pc += 3;
+                            break;
                         case Op::LOAD_UNDEF:
                             $stack[$sp++] = $undef;
                             $pc++;
@@ -896,6 +906,10 @@ final class VM
                             break;
                         case Op::DEFINE_NAME:
                             $env->defineVar($names[$code[$pc + 1]], $stack[--$sp]);
+                            $pc += 2;
+                            break;
+                        case Op::INITIALIZE_NAME:
+                            $env->initialize($names[$code[$pc + 1]], $stack[--$sp]);
                             $pc += 2;
                             break;
 
@@ -1208,6 +1222,30 @@ final class VM
                             $stack[$sp++] = TypeConversion::toBoolean($v) ? $false : $true;
                             $pc++;
                             break;
+                        case Op::TYPEOF:
+                            $stack[$sp - 1] = AbstractOperations::typeofOperator($stack[$sp - 1]);
+                            $pc++;
+                            break;
+                        case Op::TYPEOF_NAME:
+                            $name = $names[$code[$pc + 1]];
+                            $stack[$sp++] = $env->has($name)
+                                ? AbstractOperations::typeofOperator($env->get($name))
+                                : new JsString('undefined');
+                            $pc += 2;
+                            break;
+                        case Op::DELETE_NAME:
+                            if ($strict) {
+                                throw new \Phasis\Exceptions\SyntaxError('Delete of an unqualified identifier in strict mode.');
+                            }
+                            $stack[$sp++] = $env->deleteBinding($names[$code[$pc + 1]]) ? $true : $false;
+                            $pc += 2;
+                            break;
+                        case Op::DELETE_PROPERTY:
+                            $key = $stack[--$sp];
+                            $object = $stack[--$sp];
+                            $stack[$sp++] = AbstractOperations::deletePropertyReference($object, $key, $strict) ? $true : $false;
+                            $pc++;
+                            break;
                         case Op::NEG:
                             $v = $stack[--$sp];
                             if ($v instanceof JsNumber) {
@@ -1402,6 +1440,25 @@ final class VM
                             break;
 
                 // ---- Calls / return -------------------------------------
+                        case Op::TAIL_CALL:
+                        case Op::TAIL_CALL_METHOD:
+                            $argc = $code[$pc + 1];
+                            $base = $sp - $argc;
+                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            $callee = $stack[$base - 1];
+                            $methodCall = $code[$pc] === Op::TAIL_CALL_METHOD;
+                            $receiver = $methodCall ? $stack[$base - 2] : $undef;
+                            $sp = $base - ($methodCall ? 2 : 1);
+                            if ($callee instanceof JsFunction) {
+                                $stack[$sp++] = new \Phasis\Runtime\TailCallThunk($callee, $receiver, $args);
+                            } elseif ($callee instanceof \Phasis\Value\JsProxy && $callee->isCallable()) {
+                                $stack[$sp++] = $callee->apply($receiver, $args);
+                            } else {
+                                $display = $cf->callMethodDisplays[$pc] ?? (TypeConversion::toString($callee) ?: 'value');
+                                throw new TypeError($display . ' is not a function');
+                            }
+                            $pc += 2;
+                            break;
                         case Op::CALL:
                             $argc = $code[$pc + 1];
                             $base = $sp - $argc;
@@ -1641,6 +1698,18 @@ final class VM
                             $stack[$sp++] = $this->interp->vmNewObject();
                             $pc++;
                             break;
+                        case Op::SET_LITERAL_PROTOTYPE:
+                            $prototype = $stack[--$sp];
+                            $object = $stack[$sp - 1];
+                            if ($object instanceof JsObject && ($prototype instanceof JsObject || $prototype instanceof JsNull)) {
+                                $object->setPrototype($prototype instanceof JsObject ? $prototype : null);
+                            }
+                            $pc++;
+                            break;
+                        case Op::TO_PROPERTY_KEY:
+                            $stack[$sp - 1] = TypeConversion::toPropertyKey($stack[$sp - 1]);
+                            $pc++;
+                            break;
                         case Op::NEW_ARRAY:
                             $count = $code[$pc + 1];
                             $base = $sp - $count;
@@ -1662,6 +1731,31 @@ final class VM
                             $stack[$sp++] = \Phasis\Value\JsArray::fromArray($items);
                             $pc += 2;
                             break;
+                        case Op::ARRAY_APPEND:
+                        case Op::ARRAY_SPREAD:
+                            $value = $stack[--$sp];
+                            $array = $stack[$sp - 1];
+                            if (!$array instanceof \Phasis\Value\JsArray) {
+                                throw new \LogicException('Array literal stack invariant violated');
+                            }
+                            if ($op === Op::ARRAY_SPREAD) {
+                                $this->interp->vmArraySpread($array, $value);
+                            } else {
+                                $array->defineOwnProperty(
+                                    (string) $array->getLength(),
+                                    \Phasis\Object\PropertyDescriptor::data($value, true, true, true),
+                                );
+                            }
+                            $pc++;
+                            break;
+                        case Op::ARRAY_HOLE:
+                            $array = $stack[$sp - 1];
+                            if (!$array instanceof \Phasis\Value\JsArray) {
+                                throw new \LogicException('Array literal stack invariant violated');
+                            }
+                            $array->setLength($array->getLength() + 1);
+                            $pc++;
+                            break;
                         case Op::SET_PROP:
                             // Stack: [obj, val] -> [obj]; effect: obj.name = val.
                             $val = $stack[--$sp];
@@ -1680,7 +1774,7 @@ final class VM
                             if ($obj instanceof JsObject) {
                                 $resolved = TypeConversion::toPropertyKey($key);
                                 if ($resolved instanceof \Phasis\Value\JsSymbol) {
-                                    $obj->setBySymbol($resolved, $val);
+                                    $obj->defineOwnSymbolProperty($resolved, \Phasis\Object\PropertyDescriptor::data($val));
                                 } else {
                                     $name = $resolved instanceof JsString
                                         ? $resolved->value

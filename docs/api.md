@@ -19,11 +19,17 @@ use Phasis\Engine;
 
 $engine = new Engine();                 // lazy mode (default)
 $engine = new Engine(eager: true);      // install every built-in up front
+$engine = new Engine(node: true);       // opt-in Node modules and host I/O
 ```
 
 A fresh `Engine` exposes the full standard library — `Object`, `Array`, `String`, `Number`, `Symbol`, `BigInt`, `Promise`, `RegExp`, `Error` and the core language intrinsics install eagerly so the spec works (you can't have classes without `Function.prototype`, async/await without `Promise`, regex literals without `RegExp`). Everything else — `Math`, `JSON`, `Map`, `Set`, `Date`, `TypedArray` and the array-buffer family, `Atomics`, `Proxy`, `Reflect`, `console`, `Intl`, the weak-ref family, `Temporal`, `ShadowRealm`, the Web Platform Pack, and the Fetch Pack — is registered as a placeholder accessor and materializes on first read. Reading the global is transparent: `Map`, `typeof Map`, `'Map' in globalThis`, `Object.keys(globalThis).includes('Map')` all work, and after the first read the placeholder is replaced with a regular data descriptor.
 
 Pass `eager: true` if you specifically need the pre-lazy behavior — every built-in installed at construction with the full descriptor surface visible to introspection. The conformance harness (`bin/test262`, `bin/wpt`) constructs engines in eager mode so test262/WPT see the descriptor shapes they expect.
+
+`enableNode(?Phasis\Node\NodeOptions $options = null)` enables Node mode on an
+existing engine. Options select its initial directory, environment and program
+arguments. See [Node compatibility](/docs/modules#node-compatibility) for the
+built-in registry, host requirements and limitations.
 
 ## eval
 
@@ -243,6 +249,20 @@ Clears all user-defined globals and the console buffer, and rebuilds the standar
 
 Both lazy and eager engines rebuild their global object, standard built-ins and aliases, so the same engine is reusable after reset.
 
+In Node mode, reset first closes owned sockets, file descriptors, codec contexts
+and child processes, then reinstalls Node mode with its original `NodeOptions`.
+
+## close
+
+```php
+public function close(): void
+```
+
+Cancels pending timers and releases owned Node resources, including terminating
+and reaping direct child processes. Call it in a `finally` block when an embedded
+program finishes or fails. Repeated calls are harmless. Use `reset()` to prepare
+a closed Node engine for another program.
+
 ## Event loop
 
 The engine ships a JavaScript event loop with `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, and `queueMicrotask` on the global object. Microtasks (Promise handlers, `queueMicrotask`) drain between every macrotask; timers fire in deadline order via a per-realm task queue.
@@ -269,6 +289,15 @@ while ($engine->pendingTaskCount() > 0) {
 `setTimersEnabled(false)` keeps `setTimeout` and `setInterval` callbacks from firing: they are still accepted and return ids, and draining the loop runs microtasks only. The switch persists across `reset()`.
 
 A runaway `setInterval` is bounded: `runEventLoop()` caps at 100,000 cycles and throws a plain `\RuntimeException` — the JS code's fault surfaces as a clear PHP error rather than a hang. The interval stays scheduled, so every later `eval()` on the same engine throws the same error; discard the engine afterwards. Uncaught errors in a timer callback are emitted via `error_log()` and the loop keeps draining; one bad timer doesn't kill the program.
+
+Node mode uses elapsed time and polls sockets and child pipes between timer
+phases. Referenced servers, sockets and timers keep `runEventLoop()` alive;
+`unref()` handles do not. Node timers return handles with `ref`, `unref`,
+`hasRef`, `refresh` and disposal, and `setImmediate` runs in the check phase.
+Long-lived Node programs have no iteration-count ceiling; an explicit execution
+budget still applies. Uncaught Node timer errors propagate to the PHP caller.
+Use `evalScript($source, drainEventLoop: false)` followed by `tickEventLoop()`
+when the PHP application needs to drive a server's loop itself.
 
 ## Fetch hooks
 

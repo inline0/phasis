@@ -111,6 +111,26 @@ final class StreamHelpers
     }
 
     /**
+     * Run a stream algorithm's promise reactions in their own microtasks.
+     *
+     * @param \Closure(JsValue): void $fulfilled
+     * @param \Closure(JsValue): void $rejected
+     */
+    public static function uponPromise(JsPromise $promise, \Closure $fulfilled, \Closure $rejected): void
+    {
+        $promise->then([
+            JsFunction::fromCallable('', static function (JsValue $_, array $args) use ($fulfilled): JsValue {
+                $fulfilled($args[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1),
+            JsFunction::fromCallable('', static function (JsValue $_, array $args) use ($rejected): JsValue {
+                $rejected($args[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1),
+        ]);
+    }
+
+    /**
      * Set the value of the [[Resolve]] / [[Reject]] capability for a promise.
      * Returns [resolve, reject] closures bound to the given promise.
      *

@@ -207,14 +207,13 @@ trait CompilerExpression
             if ($prop->method) {
                 throw new CompilerBailout('method shorthand');
             }
-            // Property NamedEvaluation must use the evaluated key, including
-            // Symbol descriptions and names visible during class evaluation.
-            if (self::initNeedsNamedEvaluation($prop->value)) {
-                throw new CompilerBailout('object property needs named evaluation');
-            }
             if ($prop->computed) {
-                // [expr]: val — push key, push val, SET_COMPUTED.
+                if (self::initNeedsNamedEvaluation($prop->value)) {
+                    throw new CompilerBailout('object property needs named evaluation');
+                }
+                // Coercion of the key must finish before evaluating the value.
                 $this->compileExpression($prop->key);
+                $this->emit(Op::TO_PROPERTY_KEY);
                 $this->compileExpression($prop->value);
                 $this->emit(Op::SET_COMPUTED);
                 continue;
@@ -230,12 +229,14 @@ trait CompilerExpression
             } else {
                 throw new CompilerBailout('non-identifier non-literal key');
             }
-            // `__proto__: value` is the special prototype-set sugar
-            // when shorthand=false (method=false has already bailed
-            // above); the tree-walker handles it via setPrototype rather
-            // than defining a property. Bail to keep spec semantics.
             if ($name === '__proto__' && !$prop->shorthand) {
-                throw new CompilerBailout('__proto__ literal');
+                $this->compileExpression($prop->value);
+                $this->emit(Op::SET_LITERAL_PROTOTYPE);
+                continue;
+            }
+            // Prototype initializers do not perform property name inference.
+            if (self::initNeedsNamedEvaluation($prop->value)) {
+                throw new CompilerBailout('object property needs named evaluation');
             }
             $this->compileExpression($prop->value);
             $this->emit(Op::SET_PROP, $this->internName($name));
@@ -245,8 +246,8 @@ trait CompilerExpression
 
     private function compileArrayLiteral(ArrayExpression $node): void
     {
-        // Use NEW_ARRAY <count> for dense literals with no holes /
-        // spread. Sparse / spread arrays bail.
+        // Dense literals can pack their values in one instruction. Spread
+        // operands must finish iteration before evaluating the next element.
         $count = count($node->elements);
         $hasHoles = false;
         $hasSpread = false;
@@ -258,7 +259,19 @@ trait CompilerExpression
             }
         }
         if ($hasHoles || $hasSpread) {
-            throw new CompilerBailout('array literal with hole/spread');
+            $this->emit(Op::NEW_ARRAY, 0);
+            foreach ($node->elements as $element) {
+                if ($element === null) {
+                    $this->emit(Op::ARRAY_HOLE);
+                } elseif ($element instanceof SpreadElement) {
+                    $this->compileExpression($element->argument);
+                    $this->emit(Op::ARRAY_SPREAD);
+                } else {
+                    $this->compileExpression($element);
+                    $this->emit(Op::ARRAY_APPEND);
+                }
+            }
+            return;
         }
         foreach ($node->elements as $el) {
             $this->compileExpression($el);
@@ -341,7 +354,7 @@ trait CompilerExpression
         if ($name === 'eval' || $name === 'arguments' || $name === '[[NewTarget]]') {
             return false;
         }
-        if (!isset($this->localSlots[$name])) {
+        if (!isset($this->localSlots[$name]) || isset($this->capturedLocals[$name])) {
             return false;
         }
         $slot = $this->localSlots[$name];
@@ -366,7 +379,7 @@ trait CompilerExpression
                 if (isset($this->constSlots[$slot])) {
                     throw new CompilerBailout('update of const');
                 }
-                $this->emit(Op::LOAD_LOCAL, $slot);
+                $this->emitLoadLocal($slot);
                 // Per §13.4 (UpdateExpression) and §6.1.6.1.10 NumericAdd:
                 // both ++x and x++ start with ToNumber(oldValue). Op::ADD
                 // on a JsString left operand is a string-concat, so emit
@@ -405,11 +418,18 @@ trait CompilerExpression
             throw new CompilerBailout('postfix unary');
         }
         $op = $node->operator;
-        // `delete`, `typeof` on identifiers, `void` are easy enough,
-        // but the spec edge cases (delete on with-bindings, typeof
-        // on undeclared) are subtle. Bail to tree-walker for safety.
-        if ($op === 'delete' || $op === 'typeof') {
-            throw new CompilerBailout('delete/typeof');
+        if ($op === 'typeof') {
+            if ($node->argument instanceof Identifier && !isset($this->localSlots[$node->argument->name])) {
+                $this->emit(Op::TYPEOF_NAME, $this->internName($node->argument->name));
+            } else {
+                $this->compileExpression($node->argument);
+                $this->emit(Op::TYPEOF);
+            }
+            return;
+        }
+        if ($op === 'delete') {
+            $this->compileDelete($node->argument);
+            return;
         }
         if ($op === 'void') {
             $this->compileExpression($node->argument);
@@ -434,6 +454,45 @@ trait CompilerExpression
             default:
                 throw new CompilerBailout('unary: ' . $op);
         }
+    }
+
+    private function compileDelete(Node $argument): void
+    {
+        if ($argument instanceof Identifier) {
+            if ($argument->name === '[[NewTarget]]' || $argument->name === '[[ImportMeta]]') {
+                $this->emit(Op::LOAD_TRUE);
+            } elseif (isset($this->localSlots[$argument->name])) {
+                // Deleting a declarative binding does not read its value or TDZ.
+                $this->emit(Op::LOAD_FALSE);
+            } else {
+                $this->emit(Op::DELETE_NAME, $this->internName($argument->name));
+            }
+            return;
+        }
+        if ($argument instanceof MemberExpression) {
+            if (
+                $argument->optional || $argument->property instanceof PrivateIdentifier
+                || ($argument->object instanceof Identifier && $argument->object->name === 'super')
+            ) {
+                throw new CompilerBailout('optional/private/super delete reference');
+            }
+            $this->compileExpression($argument->object);
+            if ($argument->computed) {
+                $this->compileExpression($argument->property);
+            } elseif ($argument->property instanceof Identifier) {
+                $this->emit(Op::LOAD_CONST, $this->internConst(
+                    new JsString($argument->property->name),
+                    's:' . $argument->property->name,
+                ));
+            } else {
+                throw new CompilerBailout('non-identifier delete property');
+            }
+            $this->emit(Op::DELETE_PROPERTY);
+            return;
+        }
+        $this->compileExpression($argument);
+        $this->emit(Op::POP);
+        $this->emit(Op::LOAD_TRUE);
     }
 
     private function compileLogical(LogicalExpression $node): void
@@ -492,10 +551,12 @@ trait CompilerExpression
             return;
         }
         if (is_string($value)) {
-            // RegExp literal: bail — fresh regex per evaluation, plus
-            // BigInt literal sharing the string slot.
             if (str_starts_with($node->raw, '__REGEXP__')) {
-                throw new CompilerBailout('regexp literal');
+                if (!preg_match('#^/(.+)/([dgimsuvy]*)$#s', $value, $parts)) {
+                    throw new CompilerBailout('invalid regexp literal');
+                }
+                $this->emit(Op::NEW_REGEXP, $this->internName($parts[1]), $this->internName($parts[2]));
+                return;
             }
             if (str_starts_with($node->raw, '__BIGINT__')) {
                 throw new CompilerBailout('bigint literal');
@@ -510,12 +571,8 @@ trait CompilerExpression
     private function compileIdentifier(Identifier $node): void
     {
         $name = $node->name;
-        if ($name === 'undefined') {
-            $this->emit(Op::LOAD_UNDEF);
-            return;
-        }
         if (isset($this->localSlots[$name])) {
-            $this->emit(Op::LOAD_LOCAL, $this->localSlots[$name]);
+            $this->emitLoadLocal($this->localSlots[$name]);
             return;
         }
         // Free variable — let the VM walk the env via the existing
@@ -728,7 +785,7 @@ trait CompilerExpression
             // Compound on identifier:
             //   load lhs; compile rhs; <op>; DUP; STORE_*
             if ($isLocal) {
-                $this->emit(Op::LOAD_LOCAL, $this->localSlots[$name]);
+                $this->emitLoadLocal($this->localSlots[$name]);
             } else {
                 $this->emit(Op::LOAD_NAME, $this->internName($name));
             }

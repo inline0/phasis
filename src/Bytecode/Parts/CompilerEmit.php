@@ -68,7 +68,32 @@ trait CompilerEmit
 
     private function emitStoreLocal(int $slot): void
     {
-        $this->emit(Op::STORE_LOCAL, $slot);
+        $name = $this->localNames[$slot];
+        if (isset($this->capturedLocals[$name])) {
+            $this->emit(Op::STORE_NAME, $this->internName($name));
+        } else {
+            $this->emit(Op::STORE_LOCAL, $slot);
+        }
+    }
+
+    private function emitLoadLocal(int $slot): void
+    {
+        $name = $this->localNames[$slot];
+        if (isset($this->capturedLocals[$name])) {
+            $this->emit(Op::LOAD_NAME, $this->internName($name));
+        } else {
+            $this->emit(Op::LOAD_LOCAL, $slot);
+        }
+    }
+
+    private function emitInitializeLocal(int $slot, string $kind): void
+    {
+        $name = $this->localNames[$slot];
+        if (($kind === 'let' || $kind === 'const') && isset($this->capturedLocals[$name])) {
+            $this->emit(Op::INITIALIZE_NAME, $this->internName($name));
+        } else {
+            $this->emitStoreLocal($slot);
+        }
     }
 
     /**

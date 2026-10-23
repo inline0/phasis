@@ -113,7 +113,7 @@ trait StringIteration
         // Build character list using UTF-16 code units, combining valid
         // surrogate pairs into single code points.
         $chars = [];
-        $u16 = JsString::utf8ToUtf16LE($str->value);
+        $u16 = $str->utf16LE();
         $u16Len = (int) (strlen($u16) / 2);
         $i = 0;
         while ($i < $u16Len) {
@@ -150,19 +150,14 @@ trait StringIteration
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            // ToInteger(pos): call ToNumber first (may throw TypeError for
-            // objects without valueOf/toString, e.g. Object.create(null)).
-            $posNum = isset($args[0]) ? TypeConversion::toNumber($args[0]) : 0.0;
-            $index = (int) $posNum;
-            if (is_nan($posNum)) {
-                $index = 0;
-            }
+            $position = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
             // Per spec charAt uses UTF-16 code unit indices.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
-            if ($index < 0 || $index >= $len) {
+            if ($position < 0 || $position >= $len) {
                 return new JsString('');
             }
+            $index = (int) $position;
             $codeUnit = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
             return new JsString(JsString::utf16CodeUnitToUtf8($codeUnit));
         };
@@ -172,13 +167,14 @@ trait StringIteration
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $position = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
             // Index by UTF-16 code units, not Unicode codepoints.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
-            if ($index < 0 || $index >= $len) {
+            if ($position < 0 || $position >= $len) {
                 return JsNumber::of(NAN);
             }
+            $index = (int) $position;
             $cu = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
             return JsNumber::of((float) $cu);
         };
@@ -190,7 +186,7 @@ trait StringIteration
             $str = self::extractString($this_);
             // Per spec, String.prototype.slice indices are UTF-16 code unit
             // offsets, not code point offsets, so work on the UTF-16LE form.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
 
             // Per spec 22.1.3.22: intStart = ToIntegerOrInfinity(start).
@@ -236,7 +232,7 @@ trait StringIteration
             $str = self::extractString($this_);
             // Per spec, substring operates on UTF-16 code unit offsets, not
             // code point offsets.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
 
             // Per spec: ToIntegerOrInfinity(start). NaN -> 0.
@@ -308,7 +304,7 @@ trait StringIteration
             $relative = isset($args[0])
                 ? TypeConversion::toIntegerOrInfinity($args[0])
                 : 0.0;
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
             $k = $relative >= 0 ? $relative : $len + $relative;
             if ($k < 0 || $k >= $len) {
@@ -327,7 +323,7 @@ trait StringIteration
             $pos = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
 
             // Convert UTF-8 string to UTF-16 code units to match JS semantics.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $size = (int) (strlen($u16) / 2);
 
             if ($pos < 0 || $pos >= $size) {

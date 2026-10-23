@@ -59,6 +59,183 @@ use Phasis\Bytecode\CompilerBailout;
  */
 trait CompilerScope
 {
+    /**
+     * Captured names use the same Environment records as interpreted closures.
+     * Only function-scope bindings are supported. Block and iteration captures
+     * need distinct records and remain on the interpreter path.
+     */
+    private function collectCapturedLocals(Node $body): void
+    {
+        $references = [];
+        $this->collectNestedLocalReferences($body, false, $references);
+        if ($references === []) {
+            return;
+        }
+        if ($this->inGenerator) {
+            throw new CompilerBailout('generator captures local bindings');
+        }
+        $supported = [];
+        foreach ($this->paramSlots as $slot) {
+            $supported[$this->localNames[$slot]] = 'parameter';
+        }
+        foreach ($this->varDeclaredNames as $name => $_) {
+            $supported[$name] = 'var';
+        }
+        if ($body instanceof BlockStatement) {
+            foreach ($body->body as $statement) {
+                if ($statement instanceof FunctionDeclaration && $statement->id !== null) {
+                    $supported[$statement->id->name] = 'function';
+                } elseif ($statement instanceof VariableDeclaration) {
+                    foreach ($statement->declarations as $declaration) {
+                        $bound = [];
+                        $this->collectPatternBoundNames($declaration->id, $bound);
+                        foreach ($bound as $name => $_) {
+                            $supported[$name] = $statement->kind;
+                        }
+                    }
+                }
+            }
+        }
+        foreach ($references as $name => $_) {
+            if (!isset($supported[$name])) {
+                throw new CompilerBailout('closure captures block binding: ' . $name);
+            }
+            $this->capturedLocals[$name] = $supported[$name];
+        }
+    }
+
+    /**
+     * @param array<string, true> $references
+     * @param array<string, bool> $shadow
+     */
+    private function collectNestedLocalReferences(Node $node, bool $nested, array &$references, array $shadow = []): void
+    {
+        if ($node instanceof Identifier) {
+            if ($nested && isset($this->localSlots[$node->name]) && !isset($shadow[$node->name])) {
+                $references[$node->name] = true;
+            }
+            return;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+        ) {
+            foreach ($node->params as $parameter) {
+                $this->collectPatternBoundNames($parameter, $shadow);
+            }
+            if ($node instanceof \Phasis\Ast\Expression\FunctionExpression && $node->name !== null) {
+                $shadow[$node->name] = true;
+            }
+            foreach ($node->params as $parameter) {
+                $this->collectCapturePatternInitializers($parameter, true, $references, $shadow);
+            }
+            // Body var declarations cannot shadow reads from parameter defaults.
+            $this->collectCaptureVarNames($node->body, $shadow);
+            $this->collectNestedLocalReferences($node->body, true, $references, $shadow);
+            return;
+        }
+        if ($nested && $node instanceof BlockStatement) {
+            foreach ($node->body as $statement) {
+                if ($statement instanceof VariableDeclaration && $statement->kind !== 'var') {
+                    foreach ($statement->declarations as $declaration) {
+                        $this->collectPatternBoundNames($declaration->id, $shadow);
+                    }
+                } elseif (
+                    ($statement instanceof FunctionDeclaration || $statement instanceof \Phasis\Ast\Declaration\ClassDeclaration)
+                    && $statement->id !== null
+                ) {
+                    $shadow[$statement->id->name] = true;
+                }
+            }
+        }
+        if ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $declaration) {
+                if ($declaration->init !== null) {
+                    $this->collectNestedLocalReferences($declaration->init, $nested, $references, $shadow);
+                }
+                $this->collectCapturePatternInitializers($declaration->id, $nested, $references, $shadow);
+            }
+            return;
+        }
+        $nested = $nested
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration;
+        if ($node instanceof MemberExpression && !$node->computed) {
+            $this->collectNestedLocalReferences($node->object, $nested, $references, $shadow);
+            return;
+        }
+        if ($node instanceof Property && !$node->computed) {
+            $this->collectNestedLocalReferences($node->value, $nested, $references, $shadow);
+            return;
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node) {
+                    $this->collectNestedLocalReferences($child, $nested, $references, $shadow);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array<string, true> $references
+     * @param array<string, bool> $shadow
+     */
+    private function collectCapturePatternInitializers(Node $pattern, bool $nested, array &$references, array $shadow): void
+    {
+        if ($pattern instanceof AssignmentPattern) {
+            $this->collectNestedLocalReferences($pattern->right, $nested, $references, $shadow);
+            $this->collectCapturePatternInitializers($pattern->left, $nested, $references, $shadow);
+        } elseif ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $property) {
+                if ($property instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
+                    if ($property->computed) {
+                        $this->collectNestedLocalReferences($property->key, $nested, $references, $shadow);
+                    }
+                    $this->collectCapturePatternInitializers($property->value, $nested, $references, $shadow);
+                } elseif ($property instanceof RestElement) {
+                    $this->collectCapturePatternInitializers($property->argument, $nested, $references, $shadow);
+                }
+            }
+        } elseif ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $element) {
+                if ($element !== null) {
+                    $this->collectCapturePatternInitializers($element, $nested, $references, $shadow);
+                }
+            }
+        } elseif ($pattern instanceof RestElement) {
+            $this->collectCapturePatternInitializers($pattern->argument, $nested, $references, $shadow);
+        }
+    }
+
+    /** @param array<string, bool> $shadow */
+    private function collectCaptureVarNames(Node $node, array &$shadow): void
+    {
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+        ) {
+            return;
+        }
+        if ($node instanceof VariableDeclaration && $node->kind === 'var') {
+            foreach ($node->declarations as $declaration) {
+                $this->collectPatternBoundNames($declaration->id, $shadow);
+            }
+            return;
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node) {
+                    $this->collectCaptureVarNames($child, $shadow);
+                }
+            }
+        }
+    }
+
     /** Record program var bindings while reserving only lexical temporary slots. */
     private function collectProgramVarLocals(Node $stmt): void
     {
@@ -177,16 +354,22 @@ trait CompilerScope
                 }
                 if ($decl->id instanceof ObjectPattern) {
                     foreach ($decl->id->properties as $prop) {
+                        $target = $prop instanceof \Phasis\Ast\Pattern\AssignmentProperty ? $prop->value : null;
+                        if ($target instanceof AssignmentPattern) {
+                            $target = $target->left;
+                        }
                         if (
                             $prop instanceof \Phasis\Ast\Pattern\AssignmentProperty
                             && !$prop->computed
-                            && !($prop->value instanceof \Phasis\Ast\Pattern\AssignmentPattern)
-                            && $prop->value instanceof Identifier
+                            && $target instanceof Identifier
                         ) {
-                            if ($isLexical && isset($this->localSlots[$prop->value->name])) {
+                            if ($isLexical && isset($this->localSlots[$target->name])) {
                                 throw new CompilerBailout('let/const pattern shadowing');
                             }
-                            $this->declareLocal($prop->value->name);
+                            if (!$isLexical) {
+                                $this->varDeclaredNames[$target->name] = true;
+                            }
+                            $this->declareLocal($target->name);
                             continue;
                         }
                         throw new CompilerBailout('complex object pattern');
@@ -295,9 +478,8 @@ trait CompilerScope
      * forward references resolve. Each declaration's slot was
      * already reserved by collectFunctionLocals.
      *
-     * Bails if the declaration captures an outer local (its inner
-     * body would fail the env-walk) or is a generator / async
-     * function (those still need the tree-walker's full prologue).
+     * Captured function-scope names resolve through their shared environment.
+     * Unsupported captures and generator/async declarations still fall back.
      *
      * @param Node[] $statements
      */
@@ -345,12 +527,9 @@ trait CompilerScope
      * JsFunction at runtime, capturing the current Frame's env as
      * the closure.
      *
-     * Capture safety: the outer function's locals live in frame
-     * slots, NOT in the env. A nested function that references any
-     * outer local would walk the env chain at call time and not
-     * find it. Bail when such a capture exists so the tree-walker
-     * keeps owning the outer function (which uses env-based
-     * bindings the inner closure can read).
+     * Captured function-scope names were assigned Environment storage by the
+     * capture prepass. Any remaining slot capture needs scope semantics the
+     * VM cannot represent and stays on the tree-walker.
      */
     private function compileNestedFunction(Node $node): void
     {

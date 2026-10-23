@@ -24,6 +24,7 @@ use Phasis\Value\JsValue;
 final class EventLoopTask
 {
     public bool $cancelled = false;
+    public bool $referenced = true;
 
     /**
      * @param array{0: array<int, \Phasis\Value\JsObject>, 1: array<int, \Phasis\Value\JsValue>} $contextSnapshot

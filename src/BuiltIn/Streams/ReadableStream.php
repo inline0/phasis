@@ -657,29 +657,16 @@ final class ReadableStream
             }
         }
         $startPromise = StreamHelpers::toPromise($startResult);
-        // Per WHATWG Streams §SetUpReadableStreamDefaultController step 14
-        // ("Upon fulfillment of startPromise..."): the reaction runs as a
-        // microtask even when the start algorithm returned synchronously.
-        // Our addFulfillHandler invokes immediately on already-fulfilled
-        // promises, so wrap the [[Started]]/pullIfNeeded transition in
-        // scheduleCallback to preserve spec ordering. Without this defer,
-        // a stream constructed without a start algorithm fires pull
-        // synchronously during construction, which (a) lets pull observe
-        // the source closure in TDZ for `const stream = new ReadableStream`
-        // patterns, and (b) loses the race against a synchronous cancel
-        // that should preempt the first pull (async-iterator return() →
-        // ReadableStreamCancel sets state to closed).
-        $startPromise->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            JsPromise::scheduleCallback(static function () use ($controller): void {
+        StreamHelpers::uponPromise(
+            $startPromise,
+            static function (JsValue $_) use ($controller): void {
                 $controller->setInternalProperty('[[Started]]', true);
                 self::defaultControllerCallPullIfNeeded($controller);
-            });
-        });
-        $startPromise->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            JsPromise::scheduleCallback(static function () use ($controller, $reason): void {
+            },
+            static function (JsValue $reason) use ($controller): void {
                 self::defaultControllerError($controller, $reason);
-            });
-        });
+            },
+        );
     }
 
     /**
@@ -700,16 +687,19 @@ final class ReadableStream
             return;
         }
         $promise = $pullAlgorithm();
-        $promise->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            $controller->setInternalProperty('[[Pulling]]', false);
-            if ($controller->getInternalProperty('[[PullAgain]]') === true) {
-                $controller->setInternalProperty('[[PullAgain]]', false);
-                self::defaultControllerCallPullIfNeeded($controller);
-            }
-        });
-        $promise->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            self::defaultControllerError($controller, $reason);
-        });
+        StreamHelpers::uponPromise(
+            $promise,
+            static function (JsValue $_) use ($controller): void {
+                $controller->setInternalProperty('[[Pulling]]', false);
+                if ($controller->getInternalProperty('[[PullAgain]]') === true) {
+                    $controller->setInternalProperty('[[PullAgain]]', false);
+                    self::defaultControllerCallPullIfNeeded($controller);
+                }
+            },
+            static function (JsValue $reason) use ($controller): void {
+                self::defaultControllerError($controller, $reason);
+            },
+        );
     }
 
     /**

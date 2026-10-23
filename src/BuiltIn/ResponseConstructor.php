@@ -96,6 +96,7 @@ final class ResponseConstructor
         self::installStatics($ctor, $proto, $env);
 
         $env->defineVar('Response', $ctor);
+        $env->setIntrinsic('Response', $ctor);
     }
 
     /**
@@ -120,7 +121,9 @@ final class ResponseConstructor
         string $type = 'basic',
         bool $redirected = false,
     ): JsObject {
-        $proto = self::$prototype ?? new JsObject();
+        $constructor = $env->getIntrinsic('Response');
+        $prototype = $constructor instanceof JsObject ? $constructor->get('prototype') : null;
+        $proto = $prototype instanceof JsObject ? $prototype : self::$prototype ?? new JsObject();
         $obj = new JsObject($proto);
         $obj->setInternalProperty('[[IsResponse]]', true);
         $obj->setInternalProperty('[[Status]]', $status);
@@ -253,11 +256,7 @@ final class ResponseConstructor
                 $extracted['contentType'] = $contentTypeOverride;
             }
             BodyExtraction::maybeSetContentType($headers, $extracted);
-            // Preserve original ReadableStream chunks so .body
-            // re-emits them with identity (response-clone teed
-            // structureClone WPT tests rely on this).
-            $bodyChunks = $extracted['chunks'] ?? null;
-            BodyMixin::markAsBodyHost($instance, $bodyBytes, $bodyContentType, $bodyChunks);
+            BodyMixin::markAsBodyHost($instance, $bodyBytes, $bodyContentType, null, $extracted['stream'] ?? null);
             return;
         }
 
@@ -634,27 +633,11 @@ final class ResponseConstructor
                             HeadersConstructor::appendFromPhp($newHeaders, (string) $pair[0], (string) $pair[1]);
                         }
                     }
+                    HeadersConstructor::copyGuard($newHeaders, $srcHeaders);
                 }
                 $clone->setInternalProperty('[[Headers]]', $newHeaders);
 
-                $bytes = BodyMixin::bodyBytes($this_);
-                $ct = BodyMixin::bodyContentType($this_);
-                // For ReadableStream-backed bodies, the spec clones
-                // the underlying stream — implemented here by
-                // structuredClone-ing each captured chunk so the
-                // cloned half reads independent (but content-equal)
-                // JS values.
-                $srcChunks = $this_->getInternalProperty('[[BodyChunks]]');
-                $clonedChunks = null;
-                if (is_array($srcChunks) && !empty($srcChunks)) {
-                    $clonedChunks = [];
-                    foreach ($srcChunks as $chunk) {
-                        if ($chunk instanceof JsValue) {
-                            $clonedChunks[] = \Phasis\BuiltIn\StructuredCloneFunction::cloneJsValue($chunk);
-                        }
-                    }
-                }
-                BodyMixin::markAsBodyHost($clone, $bytes, $ct, $clonedChunks);
+                BodyMixin::cloneBody($this_, $clone);
                 return $clone;
             },
             0,

@@ -8,6 +8,9 @@ class JsString implements JsValue
 {
     private static ?JsObject $stringPrototype = null;
 
+    private ?string $utf16 = null;
+    private ?int $codeUnitLength = null;
+
     public static function setStringPrototype(JsObject $proto): void
     {
         self::$stringPrototype = $proto;
@@ -66,8 +69,15 @@ class JsString implements JsValue
     /** JavaScript String.length (UTF-16 code unit count). */
     public function length(): int
     {
-        $u16 = self::utf8ToUtf16LE($this->value);
-        return (int) (strlen($u16) / 2);
+        return $this->codeUnitLength ??= mb_check_encoding($this->value, 'ASCII')
+            ? strlen($this->value)
+            : (int) (strlen($this->utf16LE()) / 2);
+    }
+
+    /** UTF-16 code units cached for this immutable string value. */
+    public function utf16LE(): string
+    {
+        return $this->utf16 ??= self::utf8ToUtf16LE($this->value);
     }
 
     /**
@@ -95,6 +105,9 @@ class JsString implements JsValue
      */
     public static function utf8ToUtf16LE(string $str): string
     {
+        if (mb_check_encoding($str, 'UTF-8')) {
+            return mb_convert_encoding($str, 'UTF-16LE', 'UTF-8');
+        }
         $len = strlen($str);
         $result = '';
         $i = 0;

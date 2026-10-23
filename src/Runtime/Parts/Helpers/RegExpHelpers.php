@@ -212,17 +212,13 @@ trait RegExpHelpers
             throw $e;
         }
 
-        $regexpProto = null;
-        if ($this->globalEnv->has('RegExp')) {
-            $ctor = $this->globalEnv->get('RegExp');
-            if ($ctor instanceof JsFunction) {
-                $proto = $ctor->get('prototype');
-                if ($proto instanceof JsObject) {
-                    $regexpProto = $proto;
-                }
-            }
+        $regexpProto = $this->globalEnv->getIntrinsic('RegExpPrototype');
+        if (!$regexpProto instanceof JsObject && $this->globalEnv->has('RegExp')) {
+            // Force lazy installation before reading the private intrinsic.
+            $this->globalEnv->get('RegExp');
+            $regexpProto = $this->globalEnv->getIntrinsic('RegExpPrototype');
         }
-        $obj = new JsObject($regexpProto);
+        $obj = new JsObject($regexpProto instanceof JsObject ? $regexpProto : null);
 
         // Per spec §22.2.5.3 get RegExp.prototype.flags, flags are returned in canonical order:
         // d, g, i, m, s, u, v, y (alphabetical subset of valid flag characters).

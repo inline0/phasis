@@ -2575,8 +2575,15 @@ trait StatementExecution
         // TailCallThunk instead of evaluating the call immediately. The
         // helper returns either a TailCallThunk or a JsValue (when the
         // tail branch could be evaluated directly with its side-effecting
-        // prefix); we wrap accordingly.
-        if ($this->strictMode && $node->argument !== null && $this->inTailPosition) {
+        // prefix); we wrap accordingly. Async and generator bodies have no
+        // proper tail positions: their return values still need their own
+        // promise or iterator completion processing.
+        if (
+            $this->strictMode
+            && $node->argument !== null
+            && $this->inTailPosition
+            && !in_array($env->getEnclosingFunctionKind(), ['async', 'generator', 'async-generator'], true)
+        ) {
             $result = $this->evalTailPositionExpr($node->argument, $env);
             if ($result !== null) {
                 return Completion::return($result);

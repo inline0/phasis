@@ -465,14 +465,7 @@ trait CompilerBailoutAnalysis
                 if ($decl->init !== null) {
                     $this->collectLetConstOrderNode($decl->init, $out, $idx);
                 }
-                if (
-                    $decl->id instanceof Identifier
-                    && !isset($out[$decl->id->name])
-                    && !isset($this->varDeclaredNames[$decl->id->name])
-                ) {
-                    $idx++;
-                    $out[$decl->id->name] = $idx;
-                }
+                $this->collectPatternInitializationOrder($decl->id, $out, $idx);
             }
             return;
         }
@@ -529,7 +522,7 @@ trait CompilerBailoutAnalysis
     {
         $idx++;
         $myIdx = $idx;
-        if ($node instanceof Identifier && isset($declOrder[$node->name])) {
+        if ($node instanceof Identifier && isset($declOrder[$node->name]) && !isset($this->capturedLocals[$node->name])) {
             if ($myIdx < $declOrder[$node->name]) {
                 throw new CompilerBailout('let/const used before declaration: ' . $node->name);
             }
@@ -543,12 +536,7 @@ trait CompilerBailoutAnalysis
                 if ($decl->init !== null) {
                     $this->checkTdzReferencesNode($decl->init, $declOrder, $idx);
                 }
-                if ($decl->id instanceof Identifier) {
-                    $idx++;
-                } elseif ($decl->id instanceof Node) {
-                    // Destructuring decl id — bailout already triggers.
-                    $this->checkTdzReferencesNode($decl->id, $declOrder, $idx);
-                }
+                $this->checkPatternInitializationReferences($decl->id, $declOrder, $idx);
             }
             return;
         }
@@ -559,9 +547,9 @@ trait CompilerBailoutAnalysis
             || $node instanceof \Phasis\Ast\Expression\ClassExpression
             || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
         ) {
-            // Closures: any reference to outer let/const we haven't
-            // yet declared would race with slot init at call time.
-            $this->scanIdentifiersForTdz($node, $declOrder, $myIdx);
+            // Captured function-scope lexicals resolve through real TDZ records.
+            // The capture walk already rejects unsupported block captures and
+            // excludes identifiers shadowed by the nested function's bindings.
             return;
         }
         // MemberExpression `obj.prop`: the `property` is a name, not
@@ -596,40 +584,66 @@ trait CompilerBailoutAnalysis
         }
     }
 
-    /**
-     * Scan an inner closure for identifier references to outer let/
-     * const bindings; if any are still pre-declaration, bail.
-     *
-     * @param array<string,int> $declOrder
-     */
-    private function scanIdentifiersForTdz(Node $node, array $declOrder, int $closurePos): void
+    /** @param array<string, int> $order */
+    private function collectPatternInitializationOrder(Node $pattern, array &$order, int &$index): void
     {
-        if ($node instanceof Identifier) {
-            if (isset($declOrder[$node->name]) && $closurePos < $declOrder[$node->name]) {
-                throw new CompilerBailout('inner closure refs let/const pre-decl: ' . $node->name);
+        if ($pattern instanceof Identifier) {
+            $index++;
+            if (!isset($order[$pattern->name]) && !isset($this->varDeclaredNames[$pattern->name])) {
+                $order[$pattern->name] = $index;
             }
-            return;
-        }
-        if ($node instanceof MemberExpression && !$node->computed) {
-            $this->scanIdentifiersForTdz($node->object, $declOrder, $closurePos);
-            return;
-        }
-        if ($node instanceof Property && !$node->computed) {
-            $this->scanIdentifiersForTdz($node->value, $declOrder, $closurePos);
-            return;
-        }
-        $ref = new \ReflectionObject($node);
-        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            $value = $prop->getValue($node);
-            if ($value instanceof Node) {
-                $this->scanIdentifiersForTdz($value, $declOrder, $closurePos);
-            } elseif (is_array($value)) {
-                foreach ($value as $item) {
-                    if ($item instanceof Node) {
-                        $this->scanIdentifiersForTdz($item, $declOrder, $closurePos);
+        } elseif ($pattern instanceof AssignmentPattern) {
+            $this->collectLetConstOrderNode($pattern->right, $order, $index);
+            $this->collectPatternInitializationOrder($pattern->left, $order, $index);
+        } elseif ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $property) {
+                if ($property instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
+                    if ($property->computed) {
+                        $this->collectLetConstOrderNode($property->key, $order, $index);
                     }
+                    $this->collectPatternInitializationOrder($property->value, $order, $index);
+                } elseif ($property instanceof RestElement) {
+                    $this->collectPatternInitializationOrder($property->argument, $order, $index);
                 }
             }
+        } elseif ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $element) {
+                if ($element !== null) {
+                    $this->collectPatternInitializationOrder($element, $order, $index);
+                }
+            }
+        } elseif ($pattern instanceof RestElement) {
+            $this->collectPatternInitializationOrder($pattern->argument, $order, $index);
+        }
+    }
+
+    /** @param array<string, int> $order */
+    private function checkPatternInitializationReferences(Node $pattern, array $order, int &$index): void
+    {
+        if ($pattern instanceof Identifier) {
+            $index++;
+        } elseif ($pattern instanceof AssignmentPattern) {
+            $this->checkTdzReferencesNode($pattern->right, $order, $index);
+            $this->checkPatternInitializationReferences($pattern->left, $order, $index);
+        } elseif ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $property) {
+                if ($property instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
+                    if ($property->computed) {
+                        $this->checkTdzReferencesNode($property->key, $order, $index);
+                    }
+                    $this->checkPatternInitializationReferences($property->value, $order, $index);
+                } elseif ($property instanceof RestElement) {
+                    $this->checkPatternInitializationReferences($property->argument, $order, $index);
+                }
+            }
+        } elseif ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $element) {
+                if ($element !== null) {
+                    $this->checkPatternInitializationReferences($element, $order, $index);
+                }
+            }
+        } elseif ($pattern instanceof RestElement) {
+            $this->checkPatternInitializationReferences($pattern->argument, $order, $index);
         }
     }
 
@@ -775,6 +789,7 @@ trait CompilerBailoutAnalysis
             $name = $node->name;
             if (
                 isset($this->localSlots[$name])
+                && !isset($this->capturedLocals[$name])
                 && !isset($shadow[$name])
             ) {
                 return true;

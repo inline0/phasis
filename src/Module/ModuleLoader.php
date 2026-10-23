@@ -35,6 +35,9 @@ class ModuleLoader
     /** @var array<string, ModuleRecord> Evaluated module cache keyed by absolute path. */
     private array $modules = [];
 
+    /** @var array<string, true> Module paths requested through the ES-module loader. */
+    private array $namespaceRequests = [];
+
     /** @var array<string, JsObject> Host-provided modules supporting the source import phase. */
     private array $sourceModules = [];
 
@@ -79,6 +82,9 @@ class ModuleLoader
     /** @var array<string, \Closure(): array<string, JsValue>> Built-in module export factories by specifier. */
     private array $builtins = [];
 
+    /** @var array<string, \Closure(): JsValue> Built-ins whose require result is a CommonJS value. */
+    private array $commonJsBuiltins = [];
+
     /** @var ?\Closure(string): string */
     private ?\Closure $assetResolver = null;
 
@@ -100,7 +106,7 @@ class ModuleLoader
         $this->globalEnv = $globalEnv;
         $this->resolver = new ModuleResolver(
             new ModuleOptions(),
-            fn (string $specifier): bool => isset($this->builtins[$specifier]),
+            fn (string $specifier): bool => isset($this->builtins[$specifier]) || isset($this->commonJsBuiltins[$specifier]),
         );
     }
 
@@ -123,6 +129,12 @@ class ModuleLoader
     public function moduleOptions(): ModuleOptions
     {
         return $this->resolver->options();
+    }
+
+    /** Build CommonJS require for an embedded script or module.createRequire. */
+    public function createRequire(string $filename): JsFunction
+    {
+        return $this->commonJs()->makeRequire($filename);
     }
 
     /**
@@ -162,6 +174,21 @@ class ModuleLoader
         $this->resolver->clearCache();
     }
 
+    /**
+     * Register a native CommonJS module with an ES-module namespace view.
+     *
+     * @param \Closure(): JsValue $factory
+     * @param list<string> $aliases
+     */
+    public function registerCommonJsBuiltinModule(string $specifier, \Closure $factory, array $aliases = []): void
+    {
+        $this->commonJsBuiltins[$specifier] = $factory;
+        foreach ($aliases as $alias) {
+            $this->resolver->registerBuiltinAlias($alias, $specifier);
+        }
+        $this->resolver->clearCache();
+    }
+
     public function resolver(): ModuleResolver
     {
         return $this->resolver;
@@ -194,6 +221,7 @@ class ModuleLoader
     public function loadModule(string $specifier, ?string $referrer = null, ?string $type = null): JsObject
     {
         $resolved = $this->resolveRequest($specifier, $referrer, $type);
+        $this->namespaceRequests[$resolved] = true;
         if (isset($this->sourceModules[$specifier])) {
             if (!isset($this->modules[$resolved])) {
                 $record = new ModuleRecord($resolved, JsObject::createNullPrototype());
@@ -243,6 +271,7 @@ class ModuleLoader
                     throw new \Phasis\Exceptions\JsThrowable($cached->evaluationError);
                 }
             }
+            $this->populateCommonJsNamespace($cached);
             return $cached->namespace;
         }
 
@@ -262,11 +291,13 @@ class ModuleLoader
     public function loadModuleForDeferred(string $specifier, ?string $referrer = null): JsObject
     {
         $resolved = $this->resolve($specifier, $referrer);
+        $this->namespaceRequests[$resolved] = true;
         if (isset($this->modules[$resolved])) {
             // Even if the module has a cached evaluation error, return
             // its namespace so the deferred-namespace exotic can mirror
             // its export shape. The error will be re-thrown by
             // ensureEvaluated() when an observable trap actually fires.
+            $this->populateCommonJsNamespace($this->modules[$resolved]);
             return $this->modules[$resolved]->namespace;
         }
         return $this->loadModuleInternal($resolved, $specifier);
@@ -1459,6 +1490,20 @@ class ModuleLoader
     public function requireModule(string $specifier, string $referrer): JsValue
     {
         $resolved = $this->resolve($specifier, $referrer, 'require');
+        if ($this->moduleOptions()->nodeCompatible) {
+            $this->commonJs()->prepareRequire($resolved, $referrer);
+            $cache = $this->commonJs()->cache();
+            $builtin = str_starts_with($resolved, ModuleResolver::BUILTIN);
+            $cacheKey = $builtin ? $specifier : $resolved;
+            $cached = $cache->get($cacheKey);
+            if (!str_starts_with($specifier, 'node:') && $cached instanceof JsObject) {
+                return $cached->get('exports');
+            }
+            $existing = $this->modules[$resolved] ?? null;
+            if (!$builtin && $existing?->commonJsModule !== null && !$cache->hasOwnProperty($resolved)) {
+                unset($this->modules[$resolved]);
+            }
+        }
         $record = $this->modules[$resolved] ?? $this->linkMidEvaluation($resolved, $specifier);
         if ($record->commonJsProgram !== null) {
             $this->runCommonJs($record);
@@ -1467,7 +1512,17 @@ class ModuleLoader
             return $record->commonJsModule->get('exports');
         }
         if (str_ends_with(strtolower($resolved), '.json')) {
-            return $record->namespace->get('default');
+            $value = $record->namespace->get('default');
+            if ($this->moduleOptions()->nodeCompatible) {
+                $module = new JsObject();
+                $module->set('exports', $value);
+                $module->set('id', new JsString($resolved));
+                $module->set('filename', new JsString($resolved));
+                $module->set('loaded', \Phasis\Value\JsBoolean::of(true));
+                $record->commonJsModule = $module;
+                $this->commonJs()->cache()->set($resolved, $module);
+            }
+            return $value;
         }
         if (!$record->bodyEvaluated && $record->pendingBody !== null && !$record->bodyEvaluating) {
             $this->evaluateModuleBodyOnDemand($record);
@@ -2128,7 +2183,7 @@ class ModuleLoader
         // Application code is ES modules, as bundlers treat it. Inside
         // node_modules, package.json "type" decides, with Node's syntax
         // detection when it is absent.
-        if (!str_contains($path, '/node_modules/')) {
+        if (!str_contains($path, '/node_modules/') && !$options->nodeCompatible) {
             return 'esm';
         }
         if (str_ends_with($lower, '.js')) {
@@ -2144,12 +2199,14 @@ class ModuleLoader
 
     private function parseModule(ModuleRecord $record, string $path, string $source): \Phasis\Ast\Program
     {
-        $nodeEnv = $this->resolver->options()->nodeEnv;
+        $nodeEnv = $this->resolver->options()->nodeCompatible ? null : $this->resolver->options()->nodeEnv;
         $jsx = $this->jsxOptions !== null && $this->jsxOptions->appliesTo($path) ? $this->jsxOptions : null;
         $parse = static function () use ($source, $nodeEnv, $jsx): array {
             $parser = new Parser($source);
             $parser->setModuleMode(true);
-            $parser->setDefines(['process.env.NODE_ENV' => $nodeEnv]);
+            if ($nodeEnv !== null) {
+                $parser->setDefines(['process.env.NODE_ENV' => $nodeEnv]);
+            }
             if ($jsx !== null) {
                 $parser->setJsxOptions($jsx);
             }
@@ -2166,7 +2223,7 @@ class ModuleLoader
     {
         $cache = $this->parseCache();
         $parse = fn (): \Phasis\Ast\Program => $this->commonJs()->parse($source);
-        return $cache === null ? $parse() : $cache->remember('commonjs', $source, [], $parse);
+        return $cache === null ? $parse() : $cache->remember('commonjs', $source, ['node' => $this->resolver->options()->nodeCompatible], $parse);
     }
 
     private function parseCache(): ?ParseCache
@@ -2277,11 +2334,33 @@ class ModuleLoader
         $record->bodyEvaluated = true;
         try {
             $module = $this->commonJs()->run($record, $record->path, $program);
-        } catch (\Phasis\Exceptions\JsThrowable $e) {
-            $record->evaluationError = $e->jsValue;
-            throw $e;
+        } catch (\Throwable $error) {
+            if ($error instanceof \Phasis\Exceptions\JsThrowable) {
+                $record->evaluationError = $error->jsValue;
+            }
+            if ($this->moduleOptions()->nodeCompatible) {
+                $this->commonJs()->forgetFailedModule($record->path);
+                unset($this->modules[$record->path]);
+            }
+            throw $error;
         }
-        CommonJsLoader::populateNamespace($record->namespace, $module->get('exports'));
+        $this->populateCommonJsNamespace($record);
+    }
+
+    /** CommonJS require never reads exported getters merely to create an unused ESM view. */
+    private function populateCommonJsNamespace(ModuleRecord $record): void
+    {
+        if (!$record->namespaceOpen || $record->commonJsModule === null) {
+            return;
+        }
+        if ($this->moduleOptions()->nodeCompatible && !isset($this->namespaceRequests[$record->path])) {
+            return;
+        }
+        CommonJsLoader::populateNamespace(
+            $record->namespace,
+            $record->commonJsModule->get('exports'),
+            $this->moduleOptions()->nodeCompatible,
+        );
         $record->namespaceOpen = false;
         $record->namespace->markAsModuleNamespace();
         $record->namespace->preventExtensions();
@@ -2295,6 +2374,15 @@ class ModuleLoader
                 return $this->linkCommonJs($record, $path, $this->parseCommonJs($source));
             case 'builtin':
                 $specifier = substr($path, strlen(ModuleResolver::BUILTIN));
+                if (isset($this->commonJsBuiltins[$specifier])) {
+                    $value = ($this->commonJsBuiltins[$specifier])();
+                    $record->commonJsModule = new JsObject();
+                    $record->commonJsModule->set('exports', $value);
+                    $record->namespaceOpen = true;
+                    $namespace = $this->finishSyntheticModule($record, [], false);
+                    $this->populateCommonJsNamespace($record);
+                    return $namespace;
+                }
                 $factory = $this->builtins[$specifier] ?? null;
                 if ($factory === null) {
                     throw new \Phasis\Exceptions\TypeError("Unknown built-in module '{$specifier}'");
@@ -2413,7 +2501,9 @@ class ModuleLoader
 
     public function reset(): void
     {
+        $this->commonJs?->resetCache();
         $this->modules = [];
+        $this->namespaceRequests = [];
         $this->evaluating = [];
         $this->onDemandStack = [];
         $this->bodyQueue = [];

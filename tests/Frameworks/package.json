@@ -1,0 +1,41 @@
+{
+  "name": "phasis-framework-oracles",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pinned real-framework packages and upstream test dependencies for Phasis compatibility validation.",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "test:express:node": "node express/run-node.cjs"
+  },
+  "devDependencies": {
+    "@hono/node-server": "2.0.12",
+    "@sinonjs/fake-timers": "15.4.0",
+    "@vitest/expect": "5.0.1",
+    "@vitest/spy": "5.0.1",
+    "after": "0.8.2",
+    "connect-redis": "8.1.0",
+    "cookie-parser": "1.4.7",
+    "cookie-session": "2.1.1",
+    "ejs": "3.1.10",
+    "esbuild": "0.28.2",
+    "express": "5.3.0",
+    "express-session": "1.19.0",
+    "hbs": "4.3.1",
+    "hono": "4.13.13",
+    "jsdom": "22.1.0",
+    "marked": "15.0.12",
+    "method-override": "3.0.0",
+    "mocha": "11.8.0",
+    "morgan": "1.12.1",
+    "msw": "2.6.0",
+    "pbkdf2-password": "1.2.1",
+    "supertest": "6.3.4",
+    "typescript": "6.0.3",
+    "vhost": "3.0.2",
+    "vitest": "5.0.1",
+    "ws": "8.21.0",
+    "zod": "3.23.8"
+  }
+}

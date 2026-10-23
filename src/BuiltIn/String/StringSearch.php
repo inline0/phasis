@@ -453,13 +453,35 @@ trait StringSearch
             $sep = $separatorString ?? TypeConversion::toString($separator);
 
             if ($sep === '') {
-                // Split into individual characters.
+                $units = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
                 $chars = [];
-                $len = mb_strlen($str, 'UTF-8');
+                $len = (int) (strlen($units) / 2);
                 for ($i = 0; $i < $len && $i < $lim; $i++) {
-                    $chars[] = new JsString(mb_substr($str, $i, 1, 'UTF-8'));
+                    $chars[] = new JsString(JsString::utf16LEToUtf8(substr($units, $i * 2, 2)));
                 }
                 return JsArray::fromArray($chars);
+            }
+
+            if (!mb_check_encoding($str, 'UTF-8') || !mb_check_encoding($sep, 'UTF-8')) {
+                $units = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
+                $separatorUnits = JsString::utf8ToUtf16LE($sep);
+                $parts = [];
+                $cursor = 0;
+                $search = 0;
+                while (count($parts) < $lim && ($index = strpos($units, $separatorUnits, $search)) !== false) {
+                    // UTF-16 substrings must start at a code-unit boundary.
+                    if (($index & 1) !== 0) {
+                        $search = $index + 1;
+                        continue;
+                    }
+                    $parts[] = new JsString(JsString::utf16LEToUtf8(substr($units, $cursor, $index - $cursor)));
+                    $cursor = $index + strlen($separatorUnits);
+                    $search = $cursor;
+                }
+                if (count($parts) < $lim) {
+                    $parts[] = new JsString(JsString::utf16LEToUtf8(substr($units, $cursor)));
+                }
+                return JsArray::fromArray($parts);
             }
 
             $parts = explode($sep, $str);

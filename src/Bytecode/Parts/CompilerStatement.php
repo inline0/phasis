@@ -69,7 +69,7 @@ trait CompilerStatement
             if ($node->argument === null) {
                 $this->emit(Op::LOAD_UNDEF);
             } else {
-                $this->compileExpression($node->argument);
+                $this->compileReturnExpression($node->argument);
             }
             $this->emit(Op::RET);
             return;
@@ -176,30 +176,68 @@ trait CompilerStatement
         throw new CompilerBailout('unsupported statement: ' . $node->type());
     }
 
+    /** Compile a return value, preserving strict tail positions recursively. */
+    private function compileReturnExpression(Node $expression): void
+    {
+        if ($this->tailCallsEnabled && $expression instanceof ConditionalExpression) {
+            $this->compileExpression($expression->test);
+            $alternate = $this->emitJump(Op::JUMP_IF_FALSE);
+            $this->compileReturnExpression($expression->consequent);
+            $end = $this->emitJump(Op::JUMP);
+            $this->patchJumpToHere($alternate);
+            $this->compileReturnExpression($expression->alternate);
+            $this->patchJumpToHere($end);
+            return;
+        }
+        if ($this->tailCallsEnabled && $expression instanceof LogicalExpression) {
+            // The left call is not in tail position: its result is tested
+            // before deciding whether to evaluate the right operand.
+            $this->compileExpression($expression->left);
+            if ($expression->operator === '??') {
+                $right = $this->emitJump(Op::JUMP_IF_NULLISH);
+                $end = $this->emitJump(Op::JUMP);
+                $this->patchJumpToHere($right);
+            } else {
+                $end = $this->emitJump($expression->operator === '&&'
+                    ? Op::JUMP_IF_FALSY_KEEP
+                    : Op::JUMP_IF_TRUTHY_KEEP);
+            }
+            $this->compileReturnExpression($expression->right);
+            $this->patchJumpToHere($end);
+            return;
+        }
+        if ($this->tailCallsEnabled && $expression instanceof SequenceExpression) {
+            $last = count($expression->expressions) - 1;
+            foreach ($expression->expressions as $index => $part) {
+                if ($index === $last) {
+                    $this->compileReturnExpression($part);
+                } else {
+                    $this->compileExpression($part);
+                    $this->emit(Op::POP);
+                }
+            }
+            return;
+        }
+        $this->compileExpression($expression);
+        if (!$this->tailCallsEnabled || !$expression instanceof CallExpression) {
+            return;
+        }
+        // compileCall preserves lookup/argument order and ends in a two-word
+        // CALL instruction. Return a thunk through the interpreter's existing
+        // trampoline instead of growing either the PHP or VM call stack.
+        $pc = count($this->code) - 2;
+        $this->code[$pc] = match ($this->code[$pc]) {
+            Op::CALL => Op::TAIL_CALL,
+            Op::CALL_METHOD => Op::TAIL_CALL_METHOD,
+            default => throw new CompilerBailout('unsupported tail call lowering'),
+        };
+        $this->hasTailCalls = true;
+    }
+
     /**
-     * Lower a TryStatement to a bytecode block plus handler-table
-     * entries. Three shapes are supported:
-     *
-     *  - try / catch (Phase 1): one handler protecting the try body;
-     *    on throw, the VM stores the value in the catch param slot
-     *    and jumps to the catch body. Normal exit JUMPs past catch.
-     *
-     *  - try / finally (Phase 2): the finally body is inlined twice —
-     *    once on the normal exit path, once on the exception-rethrow
-     *    path that runs after the handler captures the thrown value.
-     *
-     *  - try / catch / finally (Phase 2): both handlers are emitted.
-     *    Handler1 covers the try body and routes the exception
-     *    through the catch body, then to the normal-finally inline
-     *    (the catch already swallowed the original exception).
-     *    Handler2 covers the catch body and routes any catch-body
-     *    exception to the rethrow-finally inline so the catch's
-     *    exception still surfaces after finally runs.
-     *
-     * Phase 2 enforces (via finallyLoopBoundaries / finallyDepth) that
-     * no return / break / continue escapes the protected blocks; those
-     * cases bail to the tree-walker because the inlined-finally
-     * approach would otherwise need to inline at every exit point.
+     * Lower try/catch/finally through handlers and duplicated finally bodies.
+     * Returns and loop exits that would escape a protected finally block bail
+     * to the tree-walker rather than bypassing its completion semantics.
      */
     private function compileTryCatch(\Phasis\Ast\Statement\TryStatement $node): void
     {
@@ -401,7 +439,7 @@ trait CompilerStatement
         }
         $left = $test->left;
         $right = $test->right;
-        if (!$left instanceof Identifier || !isset($this->localSlots[$left->name])) {
+        if (!$left instanceof Identifier || !isset($this->localSlots[$left->name]) || isset($this->capturedLocals[$left->name])) {
             return -1;
         }
         $localSlot = $this->localSlots[$left->name];
@@ -422,7 +460,7 @@ trait CompilerStatement
             $this->code[] = 0; // placeholder offset
             return $opcodePc;
         }
-        if ($right instanceof Identifier && isset($this->localSlots[$right->name])) {
+        if ($right instanceof Identifier && isset($this->localSlots[$right->name]) && !isset($this->capturedLocals[$right->name])) {
             $rightSlot = $this->localSlots[$right->name];
             $opcodePc = count($this->code);
             $this->code[] = $op === '<' ? Op::JUMP_IF_LOCAL_GE_LOCAL : Op::JUMP_IF_LOCAL_GT_LOCAL;
@@ -588,7 +626,8 @@ trait CompilerStatement
                     if ($prop->computed) {
                         throw new CompilerBailout('computed key in pattern');
                     }
-                    if (!($prop->value instanceof Identifier)) {
+                    $target = $prop->value instanceof AssignmentPattern ? $prop->value->left : $prop->value;
+                    if (!$target instanceof Identifier) {
                         throw new CompilerBailout('non-identifier pattern target');
                     }
                     $keyName = $prop->key instanceof Identifier
@@ -600,8 +639,20 @@ trait CompilerStatement
                         $this->emit(Op::DUP);
                     }
                     $this->emit(Op::LOAD_MEMBER, $this->internName($keyName));
-                    $slot = $this->localSlots[$prop->value->name] ?? $this->declareLocal($prop->value->name);
-                    $this->emitStoreLocal($slot);
+                    if ($prop->value instanceof AssignmentPattern) {
+                        if (self::initNeedsNamedEvaluation($prop->value->right)) {
+                            throw new CompilerBailout('pattern initializer needs named evaluation');
+                        }
+                        $this->emit(Op::DUP);
+                        $this->emit(Op::LOAD_UNDEF);
+                        $this->emit(Op::SEQ);
+                        $provided = $this->emitJump(Op::JUMP_IF_FALSE);
+                        $this->emit(Op::POP);
+                        $this->compileExpression($prop->value->right);
+                        $this->patchJumpToHere($provided);
+                    }
+                    $slot = $this->localSlots[$target->name] ?? $this->declareLocal($target->name);
+                    $this->emitInitializeLocal($slot, $node->kind);
                     if ($node->kind === 'const') {
                         $this->constSlots[$slot] = true;
                     }
@@ -636,10 +687,14 @@ trait CompilerStatement
                     throw new CompilerBailout('var init needs named evaluation');
                 }
                 $this->compileExpression($decl->init);
-                $this->emitStoreLocal($slot);
+                $this->emitInitializeLocal($slot, $node->kind);
             } else {
                 if ($node->kind === 'const') {
                     throw new CompilerBailout('const without initializer');
+                }
+                if ($node->kind === 'let' && isset($this->capturedLocals[$name])) {
+                    $this->emit(Op::LOAD_UNDEF);
+                    $this->emitInitializeLocal($slot, $node->kind);
                 }
             }
             if ($node->kind === 'const') {

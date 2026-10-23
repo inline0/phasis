@@ -48,6 +48,9 @@ class HeadersConstructor
     /** Marker slot so prototype methods can authenticate the receiver. */
     public const SLOT_BRAND = '[[IsHeaders]]';
 
+    /** Server runtimes permit headers that browser network APIs restrict. */
+    private const SLOT_SERVER_POLICY = '[[HeadersServerPolicy]]';
+
     private static ?JsObject $iteratorPrototype = null;
 
     /** Cache of Headers.prototype after install. */
@@ -79,6 +82,9 @@ class HeadersConstructor
         if (!self::isHeaders($headers)) {
             return;
         }
+        if ($guard !== 'immutable' && $headers->getInternalProperty(self::SLOT_SERVER_POLICY) === true) {
+            $guard = 'none';
+        }
         $headers->setInternalProperty(self::SLOT_GUARD, $guard);
         // Re-filter the existing list: drop any pair that the guard now
         // rejects. Pairs are validated by the *combined* per-name view, so
@@ -91,6 +97,14 @@ class HeadersConstructor
             }
         }
         self::setList($headers, $newList);
+    }
+
+    /** Preserve a cloned request or response's header policy and mutability. */
+    public static function copyGuard(JsObject $target, JsObject $source): void
+    {
+        $target->setInternalProperty(self::SLOT_SERVER_POLICY, $source->getInternalProperty(self::SLOT_SERVER_POLICY));
+        $guard = $source->getInternalProperty(self::SLOT_GUARD);
+        self::setGuard($target, is_string($guard) ? $guard : 'none');
     }
 
     /**
@@ -129,6 +143,10 @@ class HeadersConstructor
 
         $obj = new JsObject($proto);
         $obj->setInternalProperty(self::SLOT_BRAND, true);
+        $obj->setInternalProperty(
+            self::SLOT_SERVER_POLICY,
+            \Phasis\Engine::getCurrentRealm()?->getNodeRuntime() !== null,
+        );
         $obj->setInternalProperty(self::SLOT_GUARD, 'none');
         $obj->setInternalProperty(self::SLOT_LIST, []);
 
@@ -231,6 +249,10 @@ class HeadersConstructor
                 }
 
                 $this_->setInternalProperty(self::SLOT_BRAND, true);
+                $this_->setInternalProperty(
+                    self::SLOT_SERVER_POLICY,
+                    \Phasis\Engine::getCurrentRealm()?->getNodeRuntime() !== null,
+                );
                 $this_->setInternalProperty(self::SLOT_GUARD, 'none');
                 $this_->setInternalProperty(self::SLOT_LIST, []);
 

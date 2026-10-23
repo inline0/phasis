@@ -34,6 +34,7 @@ final class Op
     public const LOAD_TRUE = 13;   // push JsBoolean(true)
     public const LOAD_FALSE = 14;  // push JsBoolean(false)
     public const LOAD_THIS = 15;   // push this via env chain walk (arrow lexical-this, derived-ctor TDZ, generators)
+    public const NEW_REGEXP = 16;  // N N — create a fresh RegExp from pattern and flags strings.
     public const LOAD_THIS_FRAME = 111; // push frame->thisValue directly (ordinary fn bodies; receiver fixed per call)
 
     // ---- Locals ---------------------------------------------------------
@@ -62,6 +63,10 @@ final class Op
                                    // VM-instantiated JsFunction value so both
                                    // the frame slot and env binding stay in
                                    // sync (closure-capture safety).
+    public const INITIALIZE_NAME = 33; // N: initialize a captured lexical binding, leaving TDZ.
+    public const ARRAY_APPEND = 34; // Append a data element to the array below it on the stack.
+    public const ARRAY_SPREAD = 35; // Consume an iterable into the array below it on the stack.
+    public const ARRAY_HOLE = 36; // Extend the array's length without defining an element.
 
     // ---- Arithmetic & comparison ----------------------------------------
     public const ADD = 40;
@@ -138,6 +143,8 @@ final class Op
                                        // return YieldResult to VM caller. Resume
                                        // re-enters at pc+1 with the resumed value
                                        // pushed onto the operand stack.
+    public const TAIL_CALL = 85;     // I — CALL layout, produce a trampoline thunk for RET
+    public const TAIL_CALL_METHOD = 86; // I — CALL_METHOD layout, preserve the receiver in the thunk
 
     // ---- Object / array literals & member access ----------------------
     public const NEW_OBJECT = 90;    // push new {} (with %ObjectPrototype%)
@@ -148,6 +155,8 @@ final class Op
     public const LOAD_COMPUTED = 95; // pop key, pop obj; push obj[key]
     public const STORE_MEMBER = 96;  // N — pop val, pop obj; obj.name = val (writes, no push)
     public const STORE_COMPUTED = 97;// pop val, key, obj; obj[key] = val
+    public const SET_LITERAL_PROTOTYPE = 98; // pop value; initialize the remaining object's prototype if object/null.
+    public const TO_PROPERTY_KEY = 99; // replace the top value with its string or Symbol property key.
 
     // ---- Function expressions & arrows ---------------------------------
     public const MAKE_FUNCTION = 100; // I — index into CompiledFunction::$nestedFns;
@@ -164,6 +173,9 @@ final class Op
 
     // ---- Throw -----------------------------------------------------------
     public const THROW = 110;          // pop value, raise as JsThrowable.
+    public const TYPEOF_NAME = 112; // N: typeof a binding, allowing unresolvable names but preserving TDZ.
+    public const DELETE_NAME = 113; // N: delete an environment binding without reading its value.
+    public const DELETE_PROPERTY = 114; // pop key and base, delete the property, push the Boolean result.
 
     public const LOOP_INIT = 120;
     public const LOOP_TICK = 121;
@@ -212,10 +224,16 @@ final class Op
             case self::RET:
             case self::YIELD:
             case self::NEW_OBJECT:
+            case self::ARRAY_APPEND:
+            case self::ARRAY_SPREAD:
+            case self::ARRAY_HOLE:
+            case self::SET_LITERAL_PROTOTYPE:
+            case self::TO_PROPERTY_KEY:
             case self::SET_COMPUTED:
             case self::LOAD_COMPUTED:
             case self::STORE_COMPUTED:
             case self::THROW:
+            case self::DELETE_PROPERTY:
             case self::NOP:
                 return 0;
             // 1-operand opcodes
@@ -227,6 +245,9 @@ final class Op
             case self::LOAD_NAME:
             case self::STORE_NAME:
             case self::DEFINE_NAME:
+            case self::INITIALIZE_NAME:
+            case self::TYPEOF_NAME:
+            case self::DELETE_NAME:
             case self::JUMP:
             case self::JUMP_IF_TRUE:
             case self::JUMP_IF_FALSE:
@@ -234,6 +255,8 @@ final class Op
             case self::JUMP_IF_TRUTHY_KEEP:
             case self::JUMP_IF_FALSY_KEEP:
             case self::CALL:
+            case self::TAIL_CALL:
+            case self::TAIL_CALL_METHOD:
             case self::NEW_CALL:
             case self::NEW_ARRAY:
             case self::SET_PROP:
@@ -245,6 +268,9 @@ final class Op
             case self::LOOP_INIT:
             case self::LOOP_TICK:
                 return 1;
+            // 2-operand opcodes
+            case self::NEW_REGEXP:
+                return 2;
             // 3-operand opcodes
             case self::JUMP_IF_LOCAL_GE_CONST:
             case self::JUMP_IF_LOCAL_GE_LOCAL:

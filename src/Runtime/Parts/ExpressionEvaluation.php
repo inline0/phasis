@@ -103,6 +103,9 @@ use Phasis\Runtime\TailCallThunk;
  */
 trait ExpressionEvaluation
 {
+    /** @var ?\WeakMap<Node, bool> */
+    private ?\WeakMap $argumentsUsage = null;
+
     // -------------------------------------------------------------------------
     // Expression evaluation
     // -------------------------------------------------------------------------
@@ -118,9 +121,6 @@ trait ExpressionEvaluation
         // node types. Literals never produce the sentinel.
         if ($node instanceof Identifier) {
             $name = $node->name;
-            if ($name === 'undefined') {
-                return JsUndefined::instance();
-            }
             // Identifier scope-depth cache: if we have already
             // resolved this Identifier in a structurally identical
             // env chain, jump directly to the owning env. Safe only
@@ -875,62 +875,10 @@ trait ExpressionEvaluation
             if ($obj instanceof JsOptionalUndefined) {
                 return new JsBoolean(true);
             }
-            if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
-                throw new TypeError(
-                    'Cannot read properties of ' . ($obj instanceof JsNull ? 'null' : 'undefined') . ' (deleting)',
-                );
-            }
-            if ($obj instanceof JsObject) {
-                $rawKey = null;
-                if ($argument->computed) {
-                    // ToPropertyKey on the computed key so a Symbol returned
-                    // by a custom toString stays a Symbol key.
-                    $rawKey = TypeConversion::toPropertyKey($this->evaluate($argument->property, $env));
-                    if ($rawKey instanceof JsSymbol) {
-                        // Delete symbol-keyed property.
-                        $deleted = $obj->deleteBySymbol($rawKey);
-                        if (!$deleted && $this->strictMode) {
-                            throw new TypeError(
-                                "Cannot delete property '" . $rawKey->toString() . "' of #<Object>"
-                            );
-                        }
-                        return new JsBoolean($deleted);
-                    }
-                    $key = $rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey);
-                } else {
-                    $key = $argument->property instanceof Identifier ? $argument->property->name : '';
-                }
-                return new JsBoolean($obj->delete($key, $this->strictMode));
-            }
-            // Deleting a property on a primitive base: per spec [[Delete]] on
-            // an Object Reference Record uses ToObject(GetBase) then attempts
-            // delete. For string-indexed properties (non-configurable), this
-            // returns false in sloppy mode and throws TypeError in strict.
-            if ($obj instanceof JsString) {
-                $rawKey = null;
-                if ($argument->computed) {
-                    $rawKey = TypeConversion::toPropertyKey($this->evaluate($argument->property, $env));
-                    $key = $rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey);
-                } else {
-                    $key = $argument->property instanceof Identifier ? $argument->property->name : '';
-                }
-                // String indices and length are non-configurable on the
-                // exotic String object — deletion fails.
-                $u16 = JsString::utf8ToUtf16LE($obj->value);
-                $u16Len = (int) (strlen($u16) / 2);
-                if ($key === 'length' || (ctype_digit($key) && (int) $key < $u16Len)) {
-                    if ($this->strictMode) {
-                        throw new TypeError("Cannot delete property '{$key}' of '{$obj->value}'");
-                    }
-                    return new JsBoolean(false);
-                }
-                // Other properties (those on String.prototype etc.) cannot
-                // be deleted via the exotic — also non-configurable on the
-                // wrapper, so always true (no own slot to remove).
-                return new JsBoolean(true);
-            }
-            // Other primitives: no own properties, delete is a no-op.
-            return new JsBoolean(true);
+            $key = $argument->computed
+                ? $this->evaluate($argument->property, $env)
+                : new JsString($argument->property instanceof Identifier ? $argument->property->name : '');
+            return new JsBoolean(AbstractOperations::deletePropertyReference($obj, $key, $this->strictMode));
         }
 
         // Delete on an identifier reference.
@@ -4010,6 +3958,7 @@ trait ExpressionEvaluation
         // standard executeFunction path so spec semantics are preserved.
         if (
             $fn->phpCompiled !== null
+            && $this->budget === null
             && !$fn->isClassConstructor()
             && !$fn->isDerivedConstructor()
             && $fn->getHomeObject() === null
@@ -4122,7 +4071,7 @@ trait ExpressionEvaluation
         JsValue $thisValue,
         array $args,
     ): JsValue|TailCallThunk {
-        $this->callStack->push($fn->getName(), 0);
+        $this->callStack->push($fn->getName(), 0, $fn);
         $this->callerStack[] = $fn;
         $fnBody = $fn->getBody();
         // Only ordinary constructable functions (e.g. 'function f(){}') track
@@ -4183,6 +4132,7 @@ trait ExpressionEvaluation
         // the lexical-this scan.
         if (
             $fn->compiled !== null
+            && $this->budget === null
             && $fn->compiled->canSkipEnvAlloc
             && !$fn->isClassConstructor()
             && !$fn->isDerivedConstructor()
@@ -4350,7 +4300,7 @@ trait ExpressionEvaluation
                 // compiler never emits LOAD_NEW_TARGET (no MetaProperty
                 // support yet, so any new.target use bails). Frame
                 // params come from $args directly via paramSlots.
-                $vmCanSkipEnvBindings = $fn->compiled !== null;
+                $vmCanSkipEnvBindings = $fn->compiled !== null && !$fn->compiled->parametersFromEnvironment && $this->budget === null;
                 if (!$vmCanSkipEnvBindings || $fn->compiled->needsThis) {
                     $fnEnv->defineVar('this', $thisValue);
                 }
@@ -4430,7 +4380,7 @@ trait ExpressionEvaluation
             // directly via tryRunOnVm; their nested closures are
             // forbidden from observing outer locals via the env
             // (capture-detection bails). Skip the env bindings then.
-            if ($fn->compiled === null) {
+            if ($fn->compiled === null || $fn->compiled->parametersFromEnvironment || $fn->compiled->needsArgsBinding || $this->budget !== null) {
                 $this->bindParameters($params, $args, $fnEnv, $hasDefaultParams);
             }
 
@@ -4499,25 +4449,31 @@ trait ExpressionEvaluation
             // the parameter list do not see body-scoped var declarations.
             if ($hasDefaultParams && $body instanceof BlockStatement) {
                 $bodyEnv = $fnEnv->createChild();
-                // Copy parameter bindings to the body environment as vars.
+                $this->forceHoistVarNames($body->body, $bodyEnv);
+                // Only var-redeclared parameters get a separate body binding.
+                // Other assignments must remain visible to parameter closures.
                 foreach ($params as $p) {
                     $this->copyParamBindings($p, $fnEnv, $bodyEnv);
                 }
                 // arguments in body env should still be available, but only
                 // when we actually built the arguments object on entry.
-                if (!$fn->isArrow() && $argsObj !== null) {
+                if (!$fn->isArrow() && $argsObj !== null && $bodyEnv->hasOwnBinding('arguments')) {
                     $bodyEnv->defineVar('arguments', $argsObj);
                 }
                 // Force-hoist var names into bodyEnv so they shadow parent bindings.
                 // This is necessary because the body environment is separate from
                 // the parameter environment, and var declarations must create
                 // bindings in the body scope, not update parent scope bindings.
-                $this->forceHoistVarNames($body->body, $bodyEnv);
                 $this->hoistDeclarations($body->body, $bodyEnv);
                 $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $savedTailPos = $this->inTailPosition;
                 $this->inTailPosition = $this->strictMode;
+                $vmReturn = $this->tryRunOnVm($fn, $bodyEnv, $thisValue, $args);
+                if ($vmReturn !== null) {
+                    $this->inTailPosition = $savedTailPos;
+                    return $this->derivedConstructorReturn($fn, $fnEnv, $vmReturn);
+                }
                 $completion = $this->executeDisposableBody($body->body, $bodyEnv);
                 $this->inTailPosition = $savedTailPos;
                 $completion = $this->applyDisposals($bodyEnv, $completion);
@@ -4640,7 +4596,7 @@ trait ExpressionEvaluation
         // each one method dispatch per call. The hot-path field reads
         // collapse to plain property fetches now that JsFunction
         // exposes these as public.
-        $this->callStack->push($fn->name, 0);
+        $this->callStack->push($fn->name, 0, $fn);
         $this->callerStack[] = $fn;
 
         if ($fn->setCallerPropCache === null) {
@@ -4910,62 +4866,70 @@ trait ExpressionEvaluation
         ?JsValue $throwValue = null,
         ?string $modulePath = null,
     ): void {
-        // Swap currentModulePath to the async function's defining
-        // module for the duration of the resume so that import() and
-        // import.meta inside the body see the right referrer.
-        $previousModulePath = $this->currentModulePath;
-        if ($modulePath !== null) {
-            $this->currentModulePath = $modulePath;
-        }
+        $storage = \Phasis\Runtime\AsyncContextStorage::active();
+        $previousContext = $storage->snapshot();
         try {
-            if ($start) {
-                $suspended = $fiber->start();
-            } elseif ($resumeAsThrow) {
-                $suspended = $fiber->throw(
-                    new \Phasis\Exceptions\JsThrowable($throwValue ?? JsUndefined::instance()),
-                );
-            } else {
-                $suspended = $fiber->resume($resumeValue);
+            // Swap currentModulePath to the async function's defining
+            // module for the duration of the resume so that import() and
+            // import.meta inside the body see the right referrer.
+            $previousModulePath = $this->currentModulePath;
+            if ($modulePath !== null) {
+                $this->currentModulePath = $modulePath;
             }
-        } catch (\Phasis\Exceptions\JsThrowable $e) {
-            $this->currentModulePath = $previousModulePath;
-            $promise->reject($e->jsValue);
-            return;
-        } catch (\Phasis\Exceptions\RuntimeError $e) {
-            $this->currentModulePath = $previousModulePath;
-            $promise->reject($this->phpExceptionToJsValue($e));
-            return;
-        } catch (\Throwable $e) {
-            $this->currentModulePath = $previousModulePath;
-            $promise->reject($this->phpExceptionToJsValue($e));
-            return;
-        }
-        // Restore on the normal-completion path too. If the fiber
-        // suspended again we've already taken its module path off
-        // the saved trail, and the next resume will reinstate it.
-        $this->currentModulePath = $previousModulePath;
-
-        if ($fiber->isTerminated()) {
-            $returnValue = $fiber->getReturn();
-            if (!$returnValue instanceof JsValue) {
-                $returnValue = JsUndefined::instance();
+            try {
+                if ($start) {
+                    $suspended = $fiber->start();
+                } elseif ($resumeAsThrow) {
+                    $suspended = $fiber->throw(
+                        new \Phasis\Exceptions\JsThrowable($throwValue ?? JsUndefined::instance()),
+                    );
+                } else {
+                    $suspended = $fiber->resume($resumeValue);
+                }
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
+                $this->currentModulePath = $previousModulePath;
+                $promise->reject($e->jsValue);
+                return;
+            } catch (\Phasis\Exceptions\RuntimeError $e) {
+                $this->currentModulePath = $previousModulePath;
+                $promise->reject($this->phpExceptionToJsValue($e));
+                return;
+            } catch (\Throwable $e) {
+                $this->currentModulePath = $previousModulePath;
+                $promise->reject($this->phpExceptionToJsValue($e));
+                return;
             }
-            $promise->resolve($returnValue);
-            return;
-        }
+            // Restore on the normal-completion path too. If the fiber
+            // suspended again we've already taken its module path off
+            // the saved trail, and the next resume will reinstate it.
+            $this->currentModulePath = $previousModulePath;
 
-        if ($suspended instanceof \Phasis\Value\AwaitSuspension) {
-            // Per spec Await(value): synchronously do PromiseResolve and
-            // PerformPromiseThen, then suspend. The .then path itself queues
-            // the resumption as a microtask, so we attach handlers
-            // synchronously here. Wrapping in scheduleCallback would add
-            // an extra tick that breaks await/microtask interleaving.
-            $this->settleAwaitedAndResume($fiber, $promise, $suspended->value, $modulePath);
-            return;
-        }
+            if ($fiber->isTerminated()) {
+                $returnValue = $fiber->getReturn();
+                if (!$returnValue instanceof JsValue) {
+                    $returnValue = JsUndefined::instance();
+                }
+                $promise->resolve($returnValue);
+                return;
+            }
 
-        // Unknown suspension shape: treat as resolved with undefined.
-        $promise->resolve(JsUndefined::instance());
+            if ($suspended instanceof \Phasis\Value\AwaitSuspension) {
+                // Per spec Await(value): synchronously do PromiseResolve and
+                // PerformPromiseThen, then suspend. The .then path itself queues
+                // the resumption as a microtask, so we attach handlers
+                // synchronously here. Wrapping in scheduleCallback would add
+                // an extra tick that breaks await/microtask interleaving.
+                $this->settleAwaitedAndResume($fiber, $promise, $suspended->value, $modulePath);
+                return;
+            }
+
+            // Unknown suspension shape: treat as resolved with undefined.
+            $promise->resolve(JsUndefined::instance());
+        } finally {
+            // A suspended Fiber can still be inside AsyncLocalStorage.run.
+            // Capture its continuation first, then restore the caller's map.
+            $storage->restore($previousContext);
+        }
     }
 
     /**
@@ -5342,7 +5306,7 @@ trait ExpressionEvaluation
         array $args,
         ?Environment $prebuiltEnv = null,
     ): JsValue {
-        $this->callStack->push($fn->getName(), 0);
+        $this->callStack->push($fn->getName(), 0, $fn);
 
         try {
             // Use pre-built environment if provided (parameters already bound).
@@ -5371,11 +5335,13 @@ trait ExpressionEvaluation
 
             if ($hasDefaultParams && $body instanceof BlockStatement) {
                 $bodyEnv = $fnEnv->createChild();
+                $this->forceHoistVarNames($body->body, $bodyEnv);
                 foreach ($params as $p) {
                     $this->copyParamBindings($p, $fnEnv, $bodyEnv);
                 }
-                $bodyEnv->defineVar('arguments', $fnEnv->get('arguments'));
-                $this->forceHoistVarNames($body->body, $bodyEnv);
+                if ($bodyEnv->hasOwnBinding('arguments')) {
+                    $bodyEnv->defineVar('arguments', $fnEnv->get('arguments'));
+                }
                 $this->hoistDeclarations($body->body, $bodyEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $completion = $this->executeDisposableBody($body->body, $bodyEnv);
@@ -6269,7 +6235,10 @@ trait ExpressionEvaluation
         // into those slots without going through env->defineVar.
         $argCount = count($args);
         for ($i = 0; $i < $paramCount; $i++) {
-            $frame->locals[$paramSlots[$i]] = $i < $argCount ? $args[$i] : $undef;
+            $slot = $paramSlots[$i];
+            $frame->locals[$slot] = $cf->parametersFromEnvironment
+                ? $fnEnv->get($cf->localNames[$slot])
+                : ($i < $argCount ? $args[$i] : $undef);
         }
         if ($this->vm === null) {
             $this->vm = new \Phasis\Bytecode\VM($this);
@@ -6478,6 +6447,15 @@ trait ExpressionEvaluation
 
     private function nodeReferencesArguments(Node $node): bool
     {
+        $cache = $this->argumentsUsage ??= new \WeakMap();
+        if (isset($cache[$node])) {
+            return $cache[$node];
+        }
+        return $cache[$node] = $this->scanNodeReferencesArguments($node);
+    }
+
+    private function scanNodeReferencesArguments(Node $node): bool
+    {
         if ($node instanceof Identifier) {
             // Direct eval can introspect arguments, so any `eval` reference
             // is treated as a use. Identifier `arguments` is the obvious case.
@@ -6664,7 +6642,9 @@ trait ExpressionEvaluation
     private function copyParamBindings(Node $param, Environment $source, Environment $target): void
     {
         if ($param instanceof Identifier) {
-            $target->defineVar($param->name, $source->get($param->name));
+            if ($target->hasOwnBinding($param->name)) {
+                $target->defineVar($param->name, $source->get($param->name));
+            }
         } elseif ($param instanceof AssignmentPattern) {
             $this->copyParamBindings($param->left, $source, $target);
         } elseif ($param instanceof ArrayPattern) {
@@ -7172,6 +7152,19 @@ trait ExpressionEvaluation
         };
 
         return JsFunction::fromCallable('[Symbol.iterator]', $iteratorFactory);
+    }
+
+    /** Consume a compiled array spread with the interpreter's iterator protocol. */
+    public function vmArraySpread(JsArray $array, JsValue $iterable): void
+    {
+        $items = [];
+        $this->spreadInto($iterable, $items);
+        foreach ($items as $item) {
+            $array->defineOwnProperty(
+                (string) $array->getLength(),
+                PropertyDescriptor::data($item, true, true, true),
+            );
+        }
     }
 
     private function evalArrayExpression(ArrayExpression $node, Environment $env): JsValue

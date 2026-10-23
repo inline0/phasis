@@ -107,6 +107,7 @@ class DomExceptionConstructor
             2,
         );
         $constructor->setConstructable();
+        $env->setIntrinsic('DOMException', $constructor);
 
         // Wire prototype <-> constructor.
         $proto->defineOwnProperty(

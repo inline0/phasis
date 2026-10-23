@@ -166,6 +166,8 @@ final class CompiledFunction
      *        executeFunction can hand the closure environment to the
      *        Frame directly and skip the per-call createChild
      *        allocation.
+     * @param bool $parametersFromEnvironment Read initialized parameter
+     *        bindings after the interpreter applies defaults and parameter TDZ.
      */
     public function __construct(
         public readonly array $code,
@@ -178,6 +180,7 @@ final class CompiledFunction
         public readonly bool $needsThis = true,
         public readonly bool $needsArgsBinding = true,
         public readonly bool $canSkipEnvAlloc = false,
+        public readonly bool $parametersFromEnvironment = false,
     ) {
     }
 }

@@ -21,6 +21,8 @@ class CallStack
     private array $names = [];
     /** @var list<int> */
     private array $lines = [];
+    /** @var list<?\Phasis\Value\JsFunction> */
+    private array $functions = [];
     private int $depth = 0;
 
     public function __construct(
@@ -45,19 +47,21 @@ class CallStack
     }
 
     /** Push a new frame onto the call stack. Throws if the stack depth limit is exceeded. */
-    public function push(string $name, int $line): void
+    public function push(string $name, int $line, ?\Phasis\Value\JsFunction $function = null): void
     {
         if ($this->depth >= $this->maxDepth) {
             throw new InternalError('Maximum call stack size exceeded');
         }
         $this->names[$this->depth] = $name;
         $this->lines[$this->depth] = $line;
+        $this->functions[$this->depth] = $function;
         $this->depth++;
     }
 
     public function pop(): void
     {
         $this->depth--;
+        unset($this->functions[$this->depth]);
     }
 
     public function depth(): int
@@ -70,7 +74,7 @@ class CallStack
     {
         $result = [];
         for ($i = 0; $i < $this->depth; $i++) {
-            $result[] = new CallFrame($this->names[$i], $this->lines[$i]);
+            $result[] = new CallFrame($this->names[$i], $this->lines[$i], $this->functions[$i]);
         }
         return $result;
     }

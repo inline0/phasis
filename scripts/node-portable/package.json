@@ -1,0 +1,14 @@
+{
+  "name": "phasis-node-portable-build",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "assert": "2.1.0",
+    "esbuild": "0.27.0",
+    "hpack.js": "2.1.6",
+    "minimatch": "10.2.2",
+    "tr46": "7.0.0",
+    "url": "0.11.4",
+    "util": "0.12.5"
+  }
+}

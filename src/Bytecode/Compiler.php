@@ -90,6 +90,15 @@ final class Compiler
     /** @var list<int> */
     private array $paramSlots = [];
 
+    private bool $parametersFromEnvironment = false;
+
+    private bool $tailCallsEnabled = false;
+
+    private bool $hasTailCalls = false;
+
+    /** @var array<string, string> Captured function-scope bindings and declaration kinds. */
+    private array $capturedLocals = [];
+
     /** @var list<\Phasis\Ast\Node> */
     private array $nestedFns = [];
 
@@ -239,6 +248,26 @@ final class Compiler
 
     public function compile(JsFunction $fn): CompiledFunction
     {
+        $template = CompilationTemplates::get($fn);
+        if ($template !== null) {
+            return $template;
+        }
+        $reason = CompilationFailures::get($fn, 'bytecode');
+        if ($reason !== null) {
+            throw new CompilerBailout($reason);
+        }
+        try {
+            $compiled = $this->compileFunction($fn);
+            CompilationTemplates::remember($fn, $compiled);
+            return $compiled;
+        } catch (CompilerBailout $error) {
+            CompilationFailures::remember($fn, 'bytecode', $error->getMessage());
+            throw $error;
+        }
+    }
+
+    private function compileFunction(JsFunction $fn): CompiledFunction
+    {
         if ($fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
             throw new CompilerBailout('non-ordinary function kind');
         }
@@ -256,15 +285,9 @@ final class Compiler
             }
             $this->inGenerator = true;
         }
-        // Strict-mode bodies that have a return-with-call shape need
-        // tail-call optimisation per spec. The bytecode VM emits
-        // CALL+RET which recurses normally and grows the PHP stack
-        // (test262 tco-* tests at $MAX_ITERATIONS=100000 hit
-        // maxCallDepth). Bail compile so the tree-walker (which
-        // returns TailCallThunk + callFunction trampolines) handles
-        // these. Mirrors the same bail in JsToPhp::compile.
-        if ($fn->isStrict() && self::bytecodeBailsForTailCall($fn->getBody())) {
-            throw new CompilerBailout('strict-mode tail-call body');
+        $this->tailCallsEnabled = $fn->isStrict() && !$fn->isGenerator();
+        if ($this->tailCallsEnabled) {
+            $this->checkTailCallShapes($fn->getBody());
         }
         $body = $fn->getBody();
         $isExpressionBody = !$body instanceof BlockStatement;
@@ -283,6 +306,13 @@ final class Compiler
         }
 
         foreach ($fn->getParams() as $param) {
+            if ($param instanceof AssignmentPattern && $param->left instanceof Identifier && !$fn->isGenerator()) {
+                if ($this->parameterInitializerCanCapture($param->right)) {
+                    throw new CompilerBailout('parameter initializer captures bindings');
+                }
+                $this->parametersFromEnvironment = true;
+                $param = $param->left;
+            }
             if (!$param instanceof Identifier) {
                 throw new CompilerBailout('non-simple parameter');
             }
@@ -291,10 +321,11 @@ final class Compiler
         }
 
         if ($isExpressionBody) {
+            $this->collectCapturedLocals($body);
             // Arrow expression body: nothing to pre-walk (no var
             // decls allowed), no TDZ, no statements. Compile the
             // single expression directly.
-            $this->compileExpression($body);
+            $this->compileReturnExpression($body);
             $this->emit(Op::RET);
             // needsThis now means "the env must carry a `this` binding":
             // true when the body's own bytecode walks the env for this
@@ -312,8 +343,10 @@ final class Compiler
                 slotCount: max(1, count($this->localNames)),
                 nestedFns: $this->nestedFns,
                 needsThis: $needsEnvThis,
-                needsArgsBinding: false,
-                canSkipEnvAlloc: !$needsEnvThis,
+                needsArgsBinding: $this->capturedLocals !== [],
+                canSkipEnvAlloc: !$needsEnvThis && !$this->parametersFromEnvironment
+                    && $this->capturedLocals === [] && !$this->hasTailCalls,
+                parametersFromEnvironment: $this->parametersFromEnvironment,
             );
             $cf->callMethodDisplays = $this->callMethodDisplays;
             return $cf;
@@ -322,6 +355,7 @@ final class Compiler
         // Pre-walk: collect every var/let/const/function name in
         // the body so each is assigned a unique frame slot up front.
         $this->collectFunctionLocals($body->body);
+        $this->collectCapturedLocals($body);
 
         // TDZ guard: bail if any let/const name appears in source
         // BEFORE its declaration.
@@ -358,13 +392,58 @@ final class Compiler
             slotCount: max(1, count($this->localNames)),
             nestedFns: $this->nestedFns,
             needsThis: $needsEnvThis,
-            needsArgsBinding: false,
-            canSkipEnvAlloc: !$needsEnvThis,
+            needsArgsBinding: $this->capturedLocals !== [],
+            canSkipEnvAlloc: !$needsEnvThis && !$this->parametersFromEnvironment
+                && $this->capturedLocals === [] && $this->nestedFns === [] && !$this->hasTailCalls,
+            parametersFromEnvironment: $this->parametersFromEnvironment,
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
+    }
+
+    private function checkTailCallShapes(Node $node): void
+    {
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Declaration\ClassDeclaration
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+        ) {
+            return;
+        }
+        if ($node instanceof \Phasis\Ast\Statement\TryStatement && self::bytecodeBailsForTailCall($node)) {
+            throw new CompilerBailout('tail calls in try statement');
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node) {
+                    $this->checkTailCallShapes($child);
+                }
+            }
+        }
+    }
+
+    private function parameterInitializerCanCapture(Node $node): bool
+    {
+        if (
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || ($node instanceof Identifier && $node->name === 'eval')
+        ) {
+            return true;
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node && $this->parameterInitializerCanCapture($child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

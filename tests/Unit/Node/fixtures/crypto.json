@@ -1,0 +1,79 @@
+{
+  "hashes": [
+    "qZk+NkcGgWq6PiVxeFDCbJzQ2J0=",
+    "f742b965f156c10374bc23aea96e3a8aff8facd6fc079defeaa30219ad86f211",
+    "905458d59155883bb6a62bd52c7bd3b8e67e9326fff5de0e3c374b78d012170c5da3b0ab125b9969b6b6ac09ad4baeb39bb42fa7c6373250c7c8cce5a92e8ec0",
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    "a9993e364706816aba3e25717850c26c9cd0d89d"
+  ],
+  "copy": [
+    "d00b165959fc320ec37d8253e6c56e17d5a0a61adcf32e6c9ed808a9aa378d76",
+    "c88f21611d1ea6b8d24106d291755e119a43c7e1c52eee79d3514d7df3903f20"
+  ],
+  "hmac": [
+    "6e9ef29b75fffc5b7abae527d58fdadb2fe42e7219011976917343065f58ed4a",
+    "thNnmggU2ex3L5XXeMNfxf8Wl8STcVZTxscSFEKSxa0=",
+    ""
+  ],
+  "pbkdf2": "ad35240ac683febfaf3cd49d845473fbbbaa2437f5f82d5a415ae00ac76c6bfc",
+  "hkdf": [
+    "eb70f01dede9afaf",
+    "9ca0d662557439e3b83365f2da4626d35da195c6d9d1779f09838cf9e408966ece99106e2585ace6f083"
+  ],
+  "equal": [
+    true,
+    false
+  ],
+  "random": [
+    true,
+    0,
+    true,
+    4,
+    true,
+    1234,
+    4321
+  ],
+  "identity": [
+    true,
+    true
+  ],
+  "errors": [
+    [
+      "Error",
+      "ERR_CRYPTO_HASH_FINALIZED"
+    ],
+    [
+      "Error",
+      "ERR_CRYPTO_HASH_FINALIZED"
+    ],
+    [
+      "RangeError",
+      "ERR_OUT_OF_RANGE"
+    ],
+    [
+      "RangeError",
+      "ERR_OUT_OF_RANGE"
+    ],
+    [
+      "RangeError",
+      "ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH"
+    ],
+    [
+      "RangeError",
+      "ERR_OUT_OF_RANGE"
+    ]
+  ],
+  "async": [
+    [
+      "pbkdf2",
+      null,
+      "372cc9815244c4a2"
+    ],
+    [
+      "random",
+      null,
+      0
+    ]
+  ],
+  "stream": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+}

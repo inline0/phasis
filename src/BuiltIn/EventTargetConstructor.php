@@ -9,6 +9,7 @@ use Phasis\Object\PropertyDescriptor;
 use Phasis\Runtime\Environment;
 use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsBoolean;
+use Phasis\Value\JsArray;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsNull;
 use Phasis\Value\JsNumber;
@@ -105,11 +106,14 @@ class EventTargetConstructor
         $eventProto = self::createEventPrototype();
         $eventCtor = self::createEventConstructor($eventProto);
         $env->defineVar('Event', $eventCtor);
+        $env->setIntrinsic('Event', $eventCtor);
 
         // CustomEvent extends Event and adds a `detail` accessor + init.
         $customProto = self::createCustomEventPrototype($eventProto);
         $customCtor = self::createCustomEventConstructor($customProto, $eventCtor);
         $env->defineVar('CustomEvent', $customCtor);
+
+        $env->defineVar('MessageEvent', self::createMessageEventConstructor($eventProto, $eventCtor));
 
         $targetProto = self::createEventTargetPrototype();
         $targetCtor = self::createEventTargetConstructor($targetProto);
@@ -170,6 +174,122 @@ class EventTargetConstructor
     // ------------------------------------------------------------------
     // CustomEvent
     // ------------------------------------------------------------------
+
+    private static function createMessageEventConstructor(JsObject $eventProto, JsFunction $eventCtor): JsFunction
+    {
+        $proto = new JsObject($eventProto);
+        foreach (['data', 'origin', 'lastEventId', 'source', 'ports'] as $name) {
+            $getter = JsFunction::fromCallable('get ' . $name, static function (JsValue $value) use ($name): JsValue {
+                if (!$value instanceof JsObject || $value->getInternalProperty('[[IsMessageEvent]]') !== true) {
+                    throw new TypeError('MessageEvent getter called on an incompatible receiver');
+                }
+                $stored = $value->getInternalProperty('[[MessageEvent:' . $name . ']]');
+                return $stored instanceof JsValue ? $stored : JsNull::instance();
+            });
+            $getter->setNonConstructable();
+            $proto->defineOwnProperty($name, PropertyDescriptor::accessor($getter, null, true, true));
+        }
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('MessageEvent'), false, false, true),
+        );
+        $ctor = JsFunction::fromCallable('MessageEvent', static function (JsValue $this_, array $args) use ($proto): JsValue {
+            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                throw new TypeError("Constructor MessageEvent requires 'new'");
+            }
+            if (!isset($args[0])) {
+                throw new TypeError('MessageEvent requires an event type');
+            }
+            $newTarget = $this_->get('[[NewTarget]]');
+            $newProto = $newTarget instanceof JsObject ? $newTarget->get('prototype') : null;
+            $this_->setPrototype($newProto instanceof JsObject ? $newProto : $proto);
+            $type = TypeConversion::toString($args[0]);
+            $init = $args[1] ?? JsUndefined::instance();
+            if (!$init instanceof JsObject && !$init instanceof JsNull && !$init instanceof JsUndefined) {
+                throw new TypeError('MessageEvent options must be a dictionary');
+            }
+            $get = static fn (string $name): JsValue => $init instanceof JsObject
+                ? $init->get($name)
+                : JsUndefined::instance();
+            $bubbles = TypeConversion::toBoolean($get('bubbles'));
+            $cancelable = TypeConversion::toBoolean($get('cancelable'));
+            $composed = TypeConversion::toBoolean($get('composed'));
+            $data = $get('data');
+            if ($data instanceof JsUndefined) {
+                $data = JsNull::instance();
+            }
+            $lastEventId = $get('lastEventId');
+            $lastEventId = new JsString($lastEventId instanceof JsUndefined ? '' : TypeConversion::toString($lastEventId));
+            $origin = $get('origin');
+            $origin = new JsString($origin instanceof JsUndefined ? '' : TypeConversion::toString($origin));
+            $portValues = $get('ports');
+            $ports = [];
+            if (!$portValues instanceof JsUndefined) {
+                if (!$portValues instanceof JsObject) {
+                    throw new TypeError('MessageEvent ports must be a sequence of MessagePort values');
+                }
+                $iteratorMethod = $portValues->getBySymbol(SymbolConstructor::iterator());
+                if (!$iteratorMethod instanceof JsFunction) {
+                    throw new TypeError('MessageEvent ports must be iterable');
+                }
+                $iterator = $iteratorMethod->call($portValues, []);
+                $next = $iterator instanceof JsObject ? $iterator->get('next') : null;
+                if (!$next instanceof JsFunction) {
+                    throw new TypeError('Invalid MessageEvent ports iterator');
+                }
+                while (true) {
+                    $step = $next->call($iterator, []);
+                    if (!$step instanceof JsObject) {
+                        throw new TypeError('Invalid MessageEvent ports iterator result');
+                    }
+                    if (TypeConversion::toBoolean($step->get('done'))) {
+                        break;
+                    }
+                    $port = $step->get('value');
+                    if (!$port instanceof JsObject || $port->getInternalProperty('[[IsMessagePort]]') !== true) {
+                        throw new TypeError('MessageEvent ports must contain MessagePort values');
+                    }
+                    $ports[] = $port;
+                }
+            }
+            $source = $get('source');
+            if ($source instanceof JsUndefined) {
+                $source = JsNull::instance();
+            }
+            if (
+                !$source instanceof JsNull
+                && !($source instanceof JsObject && $source->getInternalProperty('[[IsMessagePort]]') === true)
+            ) {
+                throw new TypeError('MessageEvent source must be a MessagePort or null');
+            }
+            $portsArray = JsArray::fromArray($ports);
+            foreach ($portsArray->ordinaryOwnPropertyKeys() as $keyValue) {
+                if (!$keyValue instanceof JsString) {
+                    continue;
+                }
+                $key = $keyValue->value;
+                $descriptor = $portsArray->getOwnPropertyDescriptor($key);
+                if ($descriptor !== null) {
+                    $descriptor->configurable = false;
+                    $descriptor->writable = false;
+                    $portsArray->defineOwnProperty($key, $descriptor);
+                }
+            }
+            $portsArray->preventExtensions();
+            self::initEventSlots($this_, $type, $bubbles, $cancelable, $composed);
+            $this_->setInternalProperty('[[IsMessageEvent]]', true);
+            $fields = ['data' => $data, 'origin' => $origin, 'lastEventId' => $lastEventId, 'source' => $source, 'ports' => $portsArray];
+            foreach ($fields as $name => $value) {
+                $this_->setInternalProperty('[[MessageEvent:' . $name . ']]', $value);
+            }
+            return $this_;
+        }, 1);
+        $ctor->setConstructable();
+        $ctor->setPrototype($eventCtor);
+        $ctor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($ctor, true, false, true));
+        return $ctor;
+    }
 
     private static function createCustomEventPrototype(JsObject $eventProto): JsObject
     {

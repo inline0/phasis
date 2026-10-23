@@ -145,6 +145,11 @@ final class SubtleCryptoObject
                 $key = $args[1] ?? JsUndefined::instance();
                 $data = self::bufferSourceBytes($args[2] ?? JsUndefined::instance());
                 $algName = strtoupper(self::normalizeAlgorithmName($alg));
+                if ($algName === 'ED25519') {
+                    $cryptoKey = self::requireCryptoKey($key);
+                    self::assertEd25519Key($cryptoKey, 'private', 'sign');
+                    return JsPromise::resolved(self::bufferFromBytes(Ed25519Crypto::sign(self::cryptoKeyMaterial($cryptoKey), $data)));
+                }
                 if ($algName === 'HMAC') {
                     $cryptoKey = self::requireCryptoKey($key);
                     self::assertUsage($cryptoKey, 'sign');
@@ -195,6 +200,11 @@ final class SubtleCryptoObject
                 $signature = self::bufferSourceBytes($args[2] ?? JsUndefined::instance());
                 $data = self::bufferSourceBytes($args[3] ?? JsUndefined::instance());
                 $algName = strtoupper(self::normalizeAlgorithmName($alg));
+                if ($algName === 'ED25519') {
+                    $cryptoKey = self::requireCryptoKey($key);
+                    self::assertEd25519Key($cryptoKey, 'public', 'verify');
+                    return JsPromise::resolved(JsBoolean::of(Ed25519Crypto::verify(self::cryptoKeyMaterial($cryptoKey), $signature, $data)));
+                }
                 if ($algName === 'HMAC') {
                     $cryptoKey = self::requireCryptoKey($key);
                     self::assertUsage($cryptoKey, 'verify');
@@ -423,10 +433,25 @@ final class SubtleCryptoObject
         return static function (JsValue $this_, array $args): JsValue {
             unset($this_);
             try {
-                $alg = self::requireObject($args[0] ?? JsUndefined::instance(), 'generateKey');
+                $algorithmInput = $args[0] ?? JsUndefined::instance();
+                $algName = strtoupper(self::normalizeAlgorithmName($algorithmInput));
                 $extractable = TypeConversion::toBoolean($args[1] ?? JsUndefined::instance());
                 $usages = self::collectUsages($args[2] ?? JsUndefined::instance());
-                $algName = strtoupper(self::stringPropOrThrow($alg, 'name', 'generateKey'));
+                if ($algName === 'ED25519') {
+                    Ed25519Crypto::validateUsages($usages, 'private', true);
+                    [$public, $private] = Ed25519Crypto::generate();
+                    $algorithm = ['name' => 'Ed25519'];
+                    $publicKey = self::makeCryptoKey('public', $algorithm, true, array_values(array_intersect($usages, ['verify'])), $public);
+                    $privateKey = self::makeCryptoKey(
+                        'private',
+                        $algorithm,
+                        $extractable,
+                        array_values(array_intersect($usages, ['sign'])),
+                        $private,
+                    );
+                    return JsPromise::resolved(self::makeCryptoKeyPair($publicKey, $privateKey));
+                }
+                $alg = self::requireObject($algorithmInput, 'generateKey');
 
                 if ($algName === 'HMAC') {
                     // Per spec, hash can be a string ('SHA-256') or an
@@ -525,6 +550,18 @@ final class SubtleCryptoObject
                 $extractable = TypeConversion::toBoolean($args[3] ?? JsUndefined::instance());
                 $usages = self::collectUsages($args[4] ?? JsUndefined::instance());
                 $algName = self::normalizeAlgorithmName($algRaw);
+
+                if (strtoupper($algName) === 'ED25519') {
+                    $data = $format === 'jwk' ? self::requireObject($keyData, 'jwk import') : self::bufferSourceBytes($keyData);
+                    $imported = Ed25519Crypto::import($format, $data, $extractable, $usages);
+                    return JsPromise::resolved(self::makeCryptoKey(
+                        $imported['type'],
+                        ['name' => 'Ed25519'],
+                        $extractable,
+                        $usages,
+                        $imported['material'],
+                    ));
+                }
 
                 if ($format === 'raw') {
                     $bytes = self::bufferSourceBytes($keyData);
@@ -647,6 +684,11 @@ final class SubtleCryptoObject
                 $keyType = $key->getInternalProperty('[[KeyType]]');
                 $alg = $key->getInternalProperty('[[KeyAlgorithm]]');
                 $algName = is_array($alg) ? (string) ($alg['name'] ?? '') : '';
+                if ($algName === 'Ed25519') {
+                    $usages = $key->getInternalProperty('[[KeyUsages]]');
+                    $exported = Ed25519Crypto::export($format, (string) $keyType, $material, is_array($usages) ? $usages : []);
+                    return JsPromise::resolved(is_string($exported) ? self::bufferFromBytes($exported) : $exported);
+                }
                 $isAsym = in_array($algName, [
                     'RSA-OAEP',
                     'RSA-PSS',
@@ -1830,7 +1872,7 @@ final class SubtleCryptoObject
         array $usages,
         string $material,
     ): JsObject {
-        $key = new JsObject();
+        $key = new JsObject(CryptoKeyConstructor::prototype());
         $key->setInternalProperty('[[IsCryptoKey]]', true);
         $key->setInternalProperty('[[KeyType]]', $type);
         $key->setInternalProperty('[[KeyAlgorithm]]', $algorithm);
@@ -1940,6 +1982,18 @@ final class SubtleCryptoObject
             throw new TypeError('Expected CryptoKey');
         }
         return $val;
+    }
+
+    private static function assertEd25519Key(JsObject $key, string $type, string $usage): void
+    {
+        $algorithm = $key->getInternalProperty('[[KeyAlgorithm]]');
+        $usages = $key->getInternalProperty('[[KeyUsages]]');
+        if (
+            !is_array($algorithm) || ($algorithm['name'] ?? '') !== 'Ed25519'
+            || $key->getInternalProperty('[[KeyType]]') !== $type || !is_array($usages) || !in_array($usage, $usages, true)
+        ) {
+            Ed25519Crypto::error('InvalidAccessError', 'The key cannot be used for the requested Ed25519 operation.');
+        }
     }
 
     private static function cryptoKeyMaterial(JsObject $key): string
@@ -2078,6 +2132,9 @@ final class SubtleCryptoObject
 
     private static function rejectFromThrow(\Throwable $e): JsValue
     {
+        if ($e instanceof \Phasis\Exceptions\JsThrowable) {
+            return JsPromise::rejected($e->jsValue);
+        }
         // Map host exception class to the spec-correct rejection
         // shape. SubtleCrypto's reject conditions per spec:
         //   - TypeError → caller passed a bad argument shape

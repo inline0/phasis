@@ -9,6 +9,18 @@ use PHPUnit\Framework\TestCase;
 
 class TextDecoderTest extends TestCase
 {
+    public function testMalformedUtf8ConsumesTheValidPrefixAndReprocessesTheBadByte(): void
+    {
+        $engine = new Engine();
+        self::assertSame("\u{FFFD}%A", $engine->eval('new TextDecoder().decode(new Uint8Array([0xe0, 0xa4, 0x25, 0x41]))'));
+        self::assertSame("\u{FFFD}A", $engine->eval('new TextDecoder().decode(new Uint8Array([0xf0, 0x90, 0x41]))'));
+        self::assertSame("\u{FFFD}\u{FFFD}", $engine->eval('new TextDecoder().decode(new Uint8Array([0xe0, 0x80]))'));
+        self::assertSame("\u{FFFD}A", $engine->eval(<<<'JS'
+const prefixDecoder = new TextDecoder();
+prefixDecoder.decode(new Uint8Array([0xf0, 0x90]), { stream: true }) + prefixDecoder.decode(new Uint8Array([0x41]));
+JS));
+    }
+
     public function testDefaultsToUtf8(): void
     {
         $engine = new Engine();

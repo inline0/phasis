@@ -1,0 +1,17 @@
+'use strict';
+const { Buffer } = require('buffer');
+async function blob(stream) {
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return new Blob(chunks);
+}
+async function arrayBuffer(stream) { return (await blob(stream)).arrayBuffer(); }
+async function buffer(stream) { return Buffer.from(await arrayBuffer(stream)); }
+async function text(stream) {
+  const decoder = new TextDecoder();
+  let output = '';
+  for await (const chunk of stream) output += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+  return output + decoder.decode();
+}
+async function json(stream) { return JSON.parse(await text(stream)); }
+module.exports = { arrayBuffer, blob, buffer, json, text };

@@ -163,7 +163,11 @@ class Engine
 
     private ?\Closure $cssModuleResolver = null;
 
-    public function __construct(bool $eager = false)
+    private ?\Phasis\Node\NodeRuntime $nodeRuntime = null;
+
+    private ?\Phasis\Node\NodeOptions $nodeOptions = null;
+
+    public function __construct(bool $eager = false, bool $node = false)
     {
         $this->eager = $eager;
         $this->jsxOptions = new \Phasis\Parser\Jsx\JsxOptions();
@@ -190,6 +194,31 @@ class Engine
         // loop also installs the hook — every microtask drain from
         // now on rolls into a timer-fire pass.
         $this->eventLoop = new EventLoop($this);
+        if ($node) {
+            $this->enableNode();
+        }
+    }
+
+    /** Enable Node-compatible modules, globals, and host I/O for this realm. */
+    public function enableNode(?\Phasis\Node\NodeOptions $options = null): void
+    {
+        if ($this->nodeRuntime !== null) {
+            if ($options !== null && $options !== $this->nodeOptions) {
+                throw new \LogicException('Node options must be supplied when Node support is first enabled.');
+            }
+            return;
+        }
+        $this->nodeOptions = $options ?? new \Phasis\Node\NodeOptions();
+        $this->moduleOptions = $this->moduleOptions->forNode();
+        $this->configureModuleLoader();
+        $this->nodeRuntime = new \Phasis\Node\NodeRuntime($this, $this->nodeOptions);
+        $this->nodeRuntime->install();
+    }
+
+    /** The optional Node runtime owned by this engine. */
+    public function getNodeRuntime(): ?\Phasis\Node\NodeRuntime
+    {
+        return $this->nodeRuntime;
     }
 
     private function initializeGlobalObject(): void
@@ -333,7 +362,7 @@ class Engine
                     // and re-enter this accessor when an install used
                     // defineDeletable (which doesn't sync to the
                     // linked global object).
-                    $value = $env->getAtDepth($name, 0) ?? JsUndefined::instance();
+                    $value = $env->getInstalledBinding($name) ?? JsUndefined::instance();
                     // Make sure the accessor is fully gone from the
                     // global object after install. defineVar replaces
                     // it automatically; defineDeletable does not, so
@@ -352,6 +381,24 @@ class Engine
                 $name,
                 PropertyDescriptor::accessor(
                     get: $getter,
+                    set: JsFunction::fromCallable('set ' . $name, static function (
+                        JsValue $receiver,
+                        array $args,
+                    ) use (
+                        $name,
+                        $registry,
+                        $env,
+                        $globalObj
+                    ): JsValue {
+                        $registry->realize($name);
+                        $value = $args[0] ?? JsUndefined::instance();
+                        if ($receiver === $globalObj) {
+                            $env->defineVar($name, $value);
+                        } elseif ($receiver instanceof JsObject) {
+                            $receiver->defineOwnProperty($name, PropertyDescriptor::data($value, true, true, true));
+                        }
+                        return JsUndefined::instance();
+                    }, 1),
                     enumerable: false,
                     configurable: true,
                 ),
@@ -403,6 +450,13 @@ class Engine
     public function pendingTaskCount(): int
     {
         return $this->eventLoop->pendingTaskCount();
+    }
+
+    /** Release host resources and pending timers. Use reset() before starting another Node program. */
+    public function close(): void
+    {
+        $this->nodeRuntime?->close();
+        $this->eventLoop->clearAll();
     }
 
     /** Internal: whether this engine eagerly installs every built-in. */
@@ -1332,7 +1386,7 @@ class Engine
 
         // --- Fetch Pack ---
         $reg->register(
-            ['EventTarget', 'Event', 'CustomEvent'],
+            ['EventTarget', 'Event', 'CustomEvent', 'MessageEvent'],
             [],
             static fn () => \Phasis\BuiltIn\EventTargetConstructor::install($env),
         );
@@ -1687,6 +1741,7 @@ class Engine
         $this->globalEnv->defineVar($name, $constructor);
         // Store prototype for internal use (e.g. Interpreter::createRegExpObject).
         $this->globalEnv->defineVar("__{$name}Prototype__", $proto);
+        $this->globalEnv->setIntrinsic($name . 'Prototype', $proto);
     }
 
     public function eval(string $source): mixed
@@ -1767,6 +1822,16 @@ class Engine
 
     public function execFile(string $path): mixed
     {
+        if ($this->nodeRuntime !== null) {
+            $resolved = realpath($path);
+            if ($resolved === false) {
+                throw new \RuntimeException("Cannot read file: {$path}");
+            }
+            $this->interpreter->setCurrentModulePath($resolved);
+            $this->interpreter->getModuleLoader()->requireModule($resolved, $resolved);
+            $this->runEventLoop();
+            return null;
+        }
         // ES modules (.mjs) and JSX files go through the module loader, so
         // their imports resolve. Like evalAsModule(), they return null.
         if (str_ends_with(strtolower($path), '.mjs') || $this->jsxOptions->appliesTo($path)) {
@@ -1956,6 +2021,8 @@ class Engine
 
     public function reset(): void
     {
+        $this->nodeRuntime?->close();
+        $this->nodeRuntime = null;
         // Detach the old event loop's post-drain hook before clearing
         // the microtask queue. clearMicrotasks() also nulls the hook
         // but doing it explicitly via the loop keeps the contract
@@ -1982,6 +2049,9 @@ class Engine
         $this->initializeGlobalObject();
         $this->eventLoop = new EventLoop($this);
         $this->eventLoop->setTimersEnabled($this->timersEnabled);
+        if ($this->nodeOptions !== null) {
+            $this->enableNode($this->nodeOptions);
+        }
     }
 
     /**

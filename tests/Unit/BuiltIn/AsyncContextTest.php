@@ -76,6 +76,28 @@ JS);
         $this->assertSame('A', $engine->eval('globalThis.__seen'));
     }
 
+    public function testPendingPromiseReactionsRetainRegistrationContext(): void
+    {
+        $engine = new Engine();
+        $engine->eval(<<<'JS'
+const context = new AsyncContext.Variable({ defaultValue: 'outside' });
+const seen = [];
+let resolve, reject;
+const fulfilled = new Promise(done => { resolve = done; });
+const rejected = new Promise((_, fail) => { reject = fail; });
+context.run('first', () => fulfilled.then(() => seen.push('then:' + context.get())));
+context.run('second', () => rejected.catch(() => seen.push('catch:' + context.get())));
+context.run('await', async () => { await fulfilled; seen.push('await:' + context.get()); });
+fulfilled.then(() => seen.push('outside:' + context.get()));
+context.run('settlement', () => { resolve(); reject(); });
+JS);
+        self::assertSame(
+            ['then:first', 'await:await', 'outside:outside', 'catch:second'],
+            $engine->eval('seen'),
+        );
+        self::assertSame('outside', $engine->eval('context.get()'));
+    }
+
     public function testContextPropagatesAcrossQueueMicrotask(): void
     {
         $engine = new Engine();

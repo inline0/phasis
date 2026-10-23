@@ -10,6 +10,7 @@ use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsBoolean;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsNumber;
+use Phasis\Value\JsProxy;
 use Phasis\Value\JsString;
 use Phasis\Value\JsUndefined;
 use Phasis\Value\JsValue;
@@ -455,18 +456,19 @@ class GlobalObject
         // Per spec §19.2.3.3, Function.prototype.call passes thisArg as-is.
         // Sloppy-mode this-wrapping happens inside the function body, not here.
         $callFn = JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsFunction) {
+            if (!$this_ instanceof JsFunction && !($this_ instanceof JsProxy && $this_->isCallable())) {
                 throw new \Phasis\Exceptions\TypeError('call called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
-            return $this_->call($thisArg, array_slice($args, 1));
+            $callArgs = array_slice($args, 1);
+            return $this_ instanceof JsProxy ? $this_->apply($thisArg, $callArgs) : $this_->call($thisArg, $callArgs);
         }, 1);
         $fnProto->defineOwnProperty(
             'call',
             \Phasis\Object\PropertyDescriptor::data($callFn, true, false, true),
         );
         $applyFn = JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsFunction) {
+            if (!$this_ instanceof JsFunction && !($this_ instanceof JsProxy && $this_->isCallable())) {
                 throw new \Phasis\Exceptions\TypeError('apply called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
@@ -508,10 +510,12 @@ class GlobalObject
                             $callArgs = $len === count($dense)
                                 ? array_values($dense)
                                 : array_slice($dense, 0, $len);
-                            return $this_->call($thisArg, $callArgs);
+                            return $this_ instanceof JsProxy
+                                ? $this_->apply($thisArg, $callArgs)
+                                : $this_->call($thisArg, $callArgs);
                         }
                     } else {
-                        return $this_->call($thisArg, []);
+                        return $this_ instanceof JsProxy ? $this_->apply($thisArg, []) : $this_->call($thisArg, []);
                     }
                 }
                 // Get length and iterate index properties.
@@ -521,7 +525,7 @@ class GlobalObject
                     $callArgs[] = $argsArr->get((string) $i);
                 }
             }
-            return $this_->call($thisArg, $callArgs);
+            return $this_ instanceof JsProxy ? $this_->apply($thisArg, $callArgs) : $this_->call($thisArg, $callArgs);
         }, 2);
         $fnProto->defineOwnProperty(
             'apply',

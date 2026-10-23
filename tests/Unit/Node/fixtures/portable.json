@@ -1,0 +1,114 @@
+{
+  "paths": [
+    "/bar/",
+    "../c/d",
+    "C:\\a\\c",
+    "..\\baz",
+    {
+      "root": "\\\\server\\share\\",
+      "dir": "\\\\server\\share\\dir",
+      "base": "file.txt",
+      "ext": ".txt",
+      "name": "file"
+    },
+    {
+      "root": "/",
+      "dir": "/a",
+      "base": ".config",
+      "ext": "",
+      "name": ".config"
+    },
+    "/a/b.txt",
+    true,
+    false,
+    false
+  ],
+  "query": [
+    {
+      "x": [
+        "1",
+        "2"
+      ],
+      "space": "a b",
+      "bad": "�%A"
+    },
+    "x=a%20b&x=x%2By&n=4&nil=&nested=",
+    {
+      "a": "1",
+      "b": "2"
+    },
+    true
+  ],
+  "urls": [
+    {
+      "protocol": "https:",
+      "slashes": true,
+      "auth": "a:b",
+      "host": "example.com:8443",
+      "port": "8443",
+      "hostname": "example.com",
+      "hash": "#hash",
+      "search": "?q=1",
+      "query": {
+        "q": "1"
+      },
+      "pathname": "/a%20b",
+      "path": "/a%20b?q=1",
+      "href": "https://a:b@example.com:8443/a%20b?q=1#hash"
+    },
+    "http://example.com/c?d",
+    "https://example.com/a b?q=x%20y",
+    "xn--mnich-kva.example",
+    "münich.example",
+    "file:///tmp/a%20%23%25.txt",
+    "/tmp/a b",
+    "C:\\Users\\A B",
+    "2f746d702ffffe",
+    "https://münich.example/a?q=1",
+    {
+      "protocol": "http:",
+      "hostname": "::1",
+      "hash": "",
+      "search": "?q=1",
+      "pathname": "/x",
+      "path": "/x?q=1",
+      "href": "http://a:b@[::1]:8080/x?q=1",
+      "port": 8080,
+      "auth": "a:b"
+    }
+  ],
+  "format": [
+    "hello 3 4 5.2 % {\"a\":1}",
+    "{ a: [Object] }",
+    "1_234_567.123_456 1_234_567n",
+    "{ a: [Object] }",
+    "NaN NaN NaN",
+    "-0 1n",
+    "red",
+    "[Circular]",
+    "TypeError"
+  ],
+  "assertions": [
+    [
+      "AssertionError",
+      "ERR_ASSERTION"
+    ],
+    [
+      "AssertionError",
+      "ERR_ASSERTION"
+    ],
+    [
+      "AssertionError",
+      "ERR_ASSERTION"
+    ],
+    [
+      "AssertionError",
+      "ERR_ASSERTION"
+    ]
+  ],
+  "deep": [
+    true,
+    false
+  ],
+  "promisify": true
+}

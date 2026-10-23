@@ -1,0 +1,44 @@
+'use strict';
+const { Readable, Writable, Duplex } = require('stream');
+const { finished } = require('stream/promises');
+const consumers = require('stream/consumers');
+const { TextEncoderStream, TextDecoderStream } = require('stream/web');
+require('./helpers.cjs').run(async () => {
+  const output = [];
+  const web = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([97, 98])); controller.enqueue(new Uint8Array([99])); controller.close(); } });
+  output.push(['from-web', await consumers.text(Readable.fromWeb(web)), web.locked]);
+  const node = Readable.from(['one', 'two']);
+  const reader = Readable.toWeb(node).getReader();
+  const values = [];
+  while (true) { const item = await reader.read(); if (item.done) break; values.push(item.value); }
+  output.push(['to-web', values, node.readableEnded]);
+  const received = [];
+  const webSink = new WritableStream({ write(value) { received.push(new TextDecoder().decode(value)); } });
+  const nodeSink = Writable.fromWeb(webSink);
+  nodeSink.write('first');
+  nodeSink.end('second');
+  await finished(nodeSink);
+  output.push(['writable-from-web', received, webSink.locked]);
+  const nativeReceived = [];
+  const nativeSink = new Writable({ write(chunk, encoding, callback) { nativeReceived.push(chunk.toString()); callback(); } });
+  const writer = Writable.toWeb(nativeSink).getWriter();
+  await writer.write('third');
+  await writer.close();
+  output.push(['writable-to-web', nativeReceived, nativeSink.writableFinished]);
+  const source = new ReadableStream({ start(controller) { controller.enqueue('a\ud83c'); controller.enqueue('\udf0db'); controller.close(); } });
+  const encoded = source.pipeThrough(new TextEncoderStream());
+  const decoded = encoded.pipeThrough(new TextDecoderStream());
+  output.push(['text-streams', await consumers.text(decoded)]);
+  const pair = new TransformStream({ transform(value, controller) { controller.enqueue(value); } });
+  const duplex = Duplex.fromWeb(pair);
+  duplex.end('duplex');
+  output.push(['duplex', await consumers.text(duplex)]);
+  let cancelled;
+  const cancellable = Readable.fromWeb(new ReadableStream({ cancel(reason) { cancelled = reason.message; } }));
+  cancellable.on('error', () => {});
+  cancellable.destroy(new Error('cancelled'));
+  try { await finished(cancellable); } catch {}
+  output.push(['cancel', cancelled]);
+  output.push(['consumers', await consumers.json(Readable.from(['{"ok":', 'true}'])), [...new Uint8Array(await consumers.arrayBuffer(Readable.from(['hi'])))]]);
+  return output;
+});

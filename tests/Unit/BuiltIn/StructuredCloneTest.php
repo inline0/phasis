@@ -13,14 +13,6 @@ use PHPUnit\Framework\TestCase;
  * Covers the HTML §2.7 StructuredClone algorithm:
  *   https://html.spec.whatwg.org/multipage/structured-data.html#structured-cloning
  *
- * NOTE on DataCloneError: this worktree does not yet wire up
- * DOMException as a global (Subagent A is implementing that
- * concurrently). The implementation under test probes for the
- * DOMException constructor at runtime and falls back to a JS
- * Error-shaped object with `name === 'DataCloneError'`. The tests
- * below assert on `e.name === 'DataCloneError'` so they remain
- * green both before and after DOMException lands; the reviewer
- * can later add `e instanceof DOMException` once it exists.
  */
 class StructuredCloneTest extends TestCase
 {

@@ -18,13 +18,13 @@ For each specifier, the first rule that applies wins:
 
 1. **Import map** (`Engine::setImportMap()`): exact keys, then keys ending in `/` as prefixes. A `null` value loads the module as an empty stub.
 2. **Built-in modules**: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server`, `react-dom/static`, `phasis`, `phasis/jsx-runtime`.
-3. **`node:` specifiers** are an error naming the module.
+3. **`node:` specifiers** resolve supported built-ins when [Node compatibility](#node-compatibility) is enabled; otherwise they are an error naming the module.
 4. **`#` specifiers** through the nearest `package.json` `imports` field.
 5. **Relative and absolute paths**, trying the extensions (`.jsx`, `.js`, `.mjs`, `.cjs`, `.json` by default), then `index` files.
 6. **Path aliases** from the nearest `jsconfig.json` or `tsconfig.json` (`compilerOptions.paths` and `baseUrl`; comments and trailing commas allowed).
 7. **`node_modules`**, walking up from the importing file: `package.json` `exports` (with conditions, subpath patterns and blocked `null` subpaths), then `module`, then `main`.
 
-Bare Node built-in names (`fs`, `path`, ...) with no package of that name in `node_modules` are an error too. Stub them through the import map when a dependency imports one it does not use while rendering.
+In the default mode, bare Node built-in names (`fs`, `path`, ...) with no package of that name in `node_modules` are an error too. An import-map stub can represent a dependency that is unused while rendering. Node mode resolves the supported built-ins under both their bare and `node:` names.
 
 ```php
 $engine->setImportMap([
@@ -62,6 +62,84 @@ Packages that ship only CommonJS (`classnames`, `dayjs`, `lodash`, `prop-types`,
 - **Interop** follows bundlers: importing a CommonJS module gives `module.exports` as the default export, or its `default` property when `__esModule` is set, plus every property as a named export. Importers with Node semantics (`.mjs` files, or `.js` files in `"type": "module"` packages) always get `module.exports` as the default, as in Node.
 
 In ES modules, `process.env.NODE_ENV` is replaced with the configured value at parse time, the way bundlers define it, so `if (process.env.NODE_ENV !== 'production')` branches work without a `process` object.
+
+## Node compatibility
+
+Enable Node mode explicitly for packages that use Node APIs:
+
+```php
+use Phasis\Engine;
+use Phasis\Node\NodeOptions;
+
+$engine = new Engine();
+$engine->enableNode(new NodeOptions(
+    cwd: __DIR__,
+    env: ['NODE_ENV' => 'production'],
+    argv: ['phasis', __DIR__ . '/server.cjs'],
+));
+try {
+    $engine->execFile(__DIR__ . '/server.cjs');
+} finally {
+    $engine->close();
+}
+```
+
+`new Engine(node: true)` enables the same mode with default options. The default
+directory and environment are inherited from PHP; an explicit `env` replaces the
+inherited environment. `process.chdir()` changes the realm's directory without
+changing PHP's working directory. Node mode uses the PHP host's filesystem,
+network and subprocess permissions; `cwd` is a starting directory, not an access
+restriction.
+
+Entry files and packages use Node-aware module resolution, the `node` package
+condition, and a live `process.env`. CommonJS wrappers expose `module.parent`,
+`module.children`, `require.main`, `require.resolve` and `require.cache`.
+Deleting a cache entry causes the next require to execute the module again;
+cycles see partial exports. Built-in bare and `node:` aliases share identity.
+ES module imports of CommonJS retain the complete `module.exports` as their
+default export.
+
+The built-in registry includes these modules and their listed subpaths:
+
+| Area | Modules |
+|---|---|
+| Binary data and streams | `buffer`, `string_decoder`, `events`, `stream`, `stream/promises`, `stream/consumers`, `stream/web` |
+| Files and paths | `fs`, `fs/promises`, `path`, `path/posix`, `path/win32`, `os` |
+| Networking | `net`, `http`, `https`, `tls`, `http2` |
+| Encoding and security | `url`, `querystring`, `zlib`, `crypto` |
+| Utilities | `util`, `util/types`, `assert`, `assert/strict` |
+| Execution | `process`, `module`, `vm`, `child_process`, `tty`, `timers`, `timers/promises`, `async_hooks` |
+
+These modules combine interpreted JavaScript implementations with PHP host
+operations. TCP, Unix sockets, files and child pipes use real host resources.
+HTTP2 uses real frames and HPACK, including multiplexing and TLS ALPN. Node-mode
+`fetch` uses asynchronous HTTP transports so a client and server can share one
+engine. `AsyncLocalStorage` follows Promise reactions, timers and I/O callbacks.
+`BroadcastChannel` communicates between channels inside the same engine.
+
+PHP's OpenSSL extension supplies TLS and AES/RSA/EC cryptography; sodium supplies
+Ed25519; zlib supplies incremental gzip/deflate codecs. Brotli is bundled
+JavaScript. No Node installation is needed to execute JavaScript. An explicit
+`child_process` request launches the requested host program through PHP;
+launching `process.execPath` with a JavaScript file starts another Phasis PHP
+process.
+
+Framework coverage is measured by the pinned test suites; the registry is a
+subset of Node's API surface. Current host limits include filesystem watching and portable
+subsecond/birth timestamps, raw TTY mode, optional unverified TLS client
+certificates, Worker threads, child-process IPC/detached sessions, V8 cache
+serialization and VM code-generation controls. Brotli transforms buffer a full
+frame; partial flush and changing zlib compression parameters after construction
+are unavailable. Asymmetric Node key/sign APIs are not exposed; WebCrypto
+provides its documented algorithms. Some OS memory/uptime queries require Linux
+`/proc` and report unavailability on other hosts. Process memory figures describe PHP allocations. Unsupported
+host operations report errors or remain absent from the module surface.
+
+The pinned original Express and Hono test runners live in
+`tests/Frameworks`. Their manifests retain discovered cases, upstream skips,
+failures, blocked tests, source hashes and process timeouts. Framework versions
+and suite revisions are recorded there; passing a framework suite does not imply
+that the complete Node test suite or Hono's Bun/Deno/Fastly/workerd hosts pass.
 
 ## Styles and assets
 
@@ -125,5 +203,5 @@ Entries are keyed by the source text and the options that change parsing (JSX op
 ## Not supported
 
 - Bundler-specific import features: query suffixes (`?raw`, `?url`), SVG-as-component imports, `import.meta.glob`, `import.meta.env`, webpack loaders.
-- Node's built-in modules and packages that need them at render time.
+- Node built-ins outside the opt-in registry above, and native Node addons.
 - TypeScript sources.

@@ -32,6 +32,7 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - **Fetch Pack**: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`
 - **Crypto**: `crypto.getRandomValues`, `crypto.randomUUID`, full `SubtleCrypto` (SHA family, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2)
 - **WebSocket** (RFC 6455 + replaceable transport), **XMLHttpRequest** (layered over fetch), and a real **event loop** (`setTimeout` / `setInterval` / `queueMicrotask`, plus Stage-3 `AsyncContext`)
+- **Opt-in Node compatibility** for Express and Hono: CommonJS packages, Buffer, streams, filesystem access, HTTP/HTTPS/HTTP2 servers and clients, TLS, crypto, timers, and async context, executed inside PHP. See the [module coverage and host limits](./docs/modules.md#node-compatibility).
 - **JSX Pack**: render JSX components to HTML from PHP with `Engine::render()`, no build step
   - **Native React 19.3 server renderer** in PHP: `react`, `react-dom/server` and `react-dom/static` are built in, with HTML byte-identical to `react-dom@19.3.1` and hydratable by React on the client (hooks, context, Suspense, `useId`, async components, resource hints)
   - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8.1, plus `raw()`
@@ -88,6 +89,9 @@ echo $engine->call('add', 2, 3);              // 5
 
 # Dump the AST as JSON
 ./vendor/bin/phasis --ast script.js
+
+# Run a Node-compatible package or server with live stdout/stderr
+./vendor/bin/phasis --node server.cjs
 ```
 
 `bin/test262`, the conformance runner, needs the `test262` submodule and the dev autoloader, so run it from a clone of this repository (see Testing below).
@@ -111,6 +115,13 @@ composer cs
 
 # Full quality gate (PHPStan + PHPCS + PHPUnit + oracle)
 ./bin/verify-all
+
+# Original Express and Hono suites, with pinned development dependencies
+npm ci --prefix tests/Frameworks
+python3 tests/Frameworks/express/setup.py
+python3 tests/Frameworks/hono/setup.py
+python3 tests/Frameworks/express/run.py --output /tmp/phasis-express-report
+python3 tests/Frameworks/hono/run.py
 
 # test262 conformance sample (needs: git submodule update --init test262)
 ./bin/test262 --category built-ins/Array --jobs 4

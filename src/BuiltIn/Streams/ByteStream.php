@@ -497,13 +497,16 @@ final class ByteStream
             }
         }
         $startPromise = StreamHelpers::toPromise($startResult);
-        $startPromise->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            $controller->setInternalProperty('[[Started]]', true);
-            self::byteControllerCallPullIfNeeded($controller);
-        });
-        $startPromise->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            self::byteControllerError($controller, $reason);
-        });
+        StreamHelpers::uponPromise(
+            $startPromise,
+            static function (JsValue $_) use ($controller): void {
+                $controller->setInternalProperty('[[Started]]', true);
+                self::byteControllerCallPullIfNeeded($controller);
+            },
+            static function (JsValue $reason) use ($controller): void {
+                self::byteControllerError($controller, $reason);
+            },
+        );
     }
 
     public static function byteControllerDesiredSize(JsObject $controller): ?float
@@ -573,16 +576,19 @@ final class ByteStream
             return;
         }
         $p = $pullAlgo();
-        $p->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            $controller->setInternalProperty('[[Pulling]]', false);
-            if ($controller->getInternalProperty('[[PullAgain]]') === true) {
-                $controller->setInternalProperty('[[PullAgain]]', false);
-                self::byteControllerCallPullIfNeeded($controller);
-            }
-        });
-        $p->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            self::byteControllerError($controller, $reason);
-        });
+        StreamHelpers::uponPromise(
+            $p,
+            static function (JsValue $_) use ($controller): void {
+                $controller->setInternalProperty('[[Pulling]]', false);
+                if ($controller->getInternalProperty('[[PullAgain]]') === true) {
+                    $controller->setInternalProperty('[[PullAgain]]', false);
+                    self::byteControllerCallPullIfNeeded($controller);
+                }
+            },
+            static function (JsValue $reason) use ($controller): void {
+                self::byteControllerError($controller, $reason);
+            },
+        );
     }
 
     /**

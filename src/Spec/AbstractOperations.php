@@ -498,6 +498,35 @@ final class AbstractOperations
     }
 
     /**
+     * Delete an evaluated property reference, preserving strict failures and key coercion.
+     *
+     * The key expression has already run; nullish bases fail before ToPropertyKey.
+     */
+    public static function deletePropertyReference(JsValue $object, JsValue $key, bool $strict): bool
+    {
+        if ($object instanceof JsNull || $object instanceof JsUndefined) {
+            throw new TypeError('Cannot delete a property of ' . $object->toJsString());
+        }
+        $key = TypeConversion::toPropertyKey($key);
+        $deleted = true;
+        if ($object instanceof JsObject) {
+            $deleted = $key instanceof JsSymbol
+                ? $object->deleteBySymbol($key)
+                : $object->delete($key->toJsString(), $strict);
+        } elseif ($object instanceof JsString && $key instanceof JsString) {
+            $name = $key->value;
+            $index = (int) $name;
+            $deleted = $name !== 'length' && !(ctype_digit($name) && (string) $index === $name
+                && $index < $object->length());
+        }
+        if (!$deleted && $strict) {
+            $name = $key instanceof JsSymbol ? $key->toString() : $key->toJsString();
+            throw new TypeError("Cannot delete property '{$name}'");
+        }
+        return $deleted;
+    }
+
+    /**
      * 13.10.2 InstanceofOperator(V, target).
      *
      * target must be an object. Checks target[Symbol.hasInstance], then falls

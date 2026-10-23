@@ -27,6 +27,9 @@ class Environment
     /** @var array<string, JsValue> */
     private array $bindings = [];
 
+    /** @var array<string, JsValue> Host intrinsics retained independently of mutable global bindings. */
+    private array $intrinsics = [];
+
     /** @var array<string, bool> Track which bindings are const. */
     private array $constants = [];
 
@@ -128,6 +131,24 @@ class Environment
         return $this->linkedObject;
     }
 
+    /** Read an installed intrinsic during lazy realization without reentering its global accessor. */
+    public function getInstalledBinding(string $name): ?JsValue
+    {
+        return $this->bindings[$name] ?? null;
+    }
+
+    /** Internal: retain a realm intrinsic when its built-in module is installed. */
+    public function setIntrinsic(string $name, JsValue $value): void
+    {
+        $this->intrinsics[$name] = $value;
+    }
+
+    /** Internal: read a realm intrinsic without invoking a replacement global. */
+    public function getIntrinsic(string $name): ?JsValue
+    {
+        return $this->intrinsics[$name] ?? null;
+    }
+
     /** Whether this scope or any parent is a `with` (Object Environment) scope. */
     public function isUnderWithScope(): bool
     {
@@ -144,8 +165,18 @@ class Environment
     /** Check whether a binding exists in this scope only (not parents). */
     public function hasOwnBinding(string $name): bool
     {
+        if ($this->isGlobalObjectBinding($name)) {
+            return $this->linkedObject->has($name);
+        }
         return array_key_exists($name, $this->bindings)
             || array_key_exists($name, $this->importBindings);
+    }
+
+    private function isGlobalObjectBinding(string $name): bool
+    {
+        return $this->linkedObject !== null && $this->parent === null
+            && $name !== 'this' && !self::isInternalPrototypeName($name)
+            && !isset($this->constants[$name]) && !isset($this->lexical[$name]);
     }
 
     /**
@@ -423,6 +454,9 @@ class Environment
         if ($cur === null) {
             return null;
         }
+        if ($cur->isGlobalObjectBinding($name)) {
+            return null;
+        }
         if (
             isset($cur->bindings[$name])
             && !isset($cur->tdz[$name])
@@ -461,11 +495,7 @@ class Environment
                 // Linked-object globals are dynamic via globalThis writes;
                 // do not memoise their depth.
                 if (
-                    $cur->linkedObject !== null
-                    && $cur->parent === null
-                    && !isset($cur->constants[$name])
-                    && !isset($cur->lexical[$name])
-                    && $cur->linkedObject->hasOwnProperty($name)
+                    $cur->isGlobalObjectBinding($name)
                 ) {
                     return null;
                 }
@@ -565,12 +595,11 @@ class Environment
             // bindings whose linked property exists (e.g. mutated via
             // `this.x = ...`).
             if (
-                $this->linkedObject !== null
-                && $this->parent === null
-                && !isset($this->constants[$name])
-                && !isset($this->lexical[$name])
-                && $this->linkedObject->hasOwnProperty($name)
+                $this->isGlobalObjectBinding($name)
             ) {
+                if (!$this->linkedObject->has($name)) {
+                    throw new ReferenceError("{$name} is not defined");
+                }
                 return $this->linkedObject->get($name);
             }
 
@@ -703,6 +732,17 @@ class Environment
                 throw new TypeError('Assignment to constant variable');
             }
 
+            if ($this->isGlobalObjectBinding($name)) {
+                if ($strict && !$this->linkedObject->has($name)) {
+                    throw new ReferenceError("{$name} is not defined");
+                }
+                $this->linkedObject->set($name, $value, $strict);
+                if ($this->linkedObject->hasOwnProperty($name)) {
+                    $this->bindings[$name] = $value;
+                }
+                return;
+            }
+
             // Check global object writability before updating the binding.
             // Per spec, non-writable global properties (NaN, Infinity, undefined)
             // silently fail in sloppy mode and throw TypeError in strict mode.
@@ -772,6 +812,9 @@ class Environment
     /** Check whether a binding exists anywhere in the scope chain. */
     public function has(string $name): bool
     {
+        if ($this->isGlobalObjectBinding($name)) {
+            return $this->linkedObject->has($name);
+        }
         // "with" object environment record: delegate to the binding object using [[Has]].
         if ($this->withObject !== null) {
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
@@ -826,6 +869,14 @@ class Environment
         }
 
         if (array_key_exists($name, $this->bindings)) {
+            if ($this->isGlobalObjectBinding($name)) {
+                if (!$this->linkedObject->delete($name)) {
+                    return false;
+                }
+                unset($this->bindings[$name], $this->deletable[$name]);
+                self::$globalBindingsVersion++;
+                return true;
+            }
             if (isset($this->deletable[$name])) {
                 unset($this->bindings[$name], $this->deletable[$name]);
                 // Mirror the delete to the linked global object, if any, so
