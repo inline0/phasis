@@ -4,23 +4,15 @@ declare(strict_types=1);
 
 namespace Phasis\BuiltIn\Array_;
 
-use Phasis\Exceptions\RangeError;
+use Phasis\BuiltIn\SymbolConstructor;
 use Phasis\Exceptions\TypeError;
 use Phasis\Object\PropertyDescriptor;
-use Phasis\Runtime\Environment;
-use Phasis\Spec\AbstractOperations;
-use Phasis\Spec\TypeConversion;
-use Phasis\Value\JsArray;
+use Phasis\Value\JsArrayIterator;
 use Phasis\Value\JsBoolean;
 use Phasis\Value\JsFunction;
-use Phasis\Value\JsNull;
-use Phasis\Value\JsNumber;
 use Phasis\Value\JsObject;
 use Phasis\Value\JsString;
-use Phasis\Value\JsSymbol;
-use Phasis\Value\JsUndefined;
 use Phasis\Value\JsValue;
-use Phasis\BuiltIn\SymbolConstructor;
 
 /**
  * ArrayConstructor trait part: ArrayIterator. Composed into
@@ -41,90 +33,20 @@ trait ArrayIterator
     {
         $proto = new JsObject($iteratorPrototype);
 
-        // next method on the prototype. Validates internal slots via hidden property.
-        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsObject) {
-                throw new \Phasis\Exceptions\TypeError(
-                    'Method Array Iterator.prototype.next called on incompatible receiver',
-                );
+        $nextFn = JsFunction::fromCallable('next', static function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsArrayIterator) {
+                throw new TypeError('Method Array Iterator.prototype.next called on incompatible receiver');
             }
-            $slotDesc = $this_->getOwnPropertyDescriptor('[[ArrayIteratorData]]');
-            if ($slotDesc === null) {
-                throw new \Phasis\Exceptions\TypeError(
-                    'Method Array Iterator.prototype.next called on incompatible receiver',
-                );
-            }
-            $data = $slotDesc->value;
-            $isExhausted = $data instanceof JsObject
-                && $data->get('exhausted') instanceof JsBoolean
-                && $data->get('exhausted')->value;
-            if (!$data instanceof JsObject || $isExhausted) {
-                $result = new JsObject();
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
-                return $result;
-            }
-            $array = $data->get('array');
-            if (!$array instanceof JsObject) {
-                $result = new JsObject();
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
-                return $result;
-            }
-            $kind = ($data->get('kind') instanceof JsString) ? $data->get('kind')->value : 'value';
-            $indexVal = $data->get('index');
-            $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
-
-            // Per spec 23.1.5.2.1 step 8: if the array is a TypedArray
-            // with a detached buffer, throw TypeError. For resizable buffers
-            // also throw if the view is now out of bounds.
-            if ($array instanceof \Phasis\Value\JsTypedArray) {
-                $buffer = $array->getBuffer();
-                if ($buffer->isDetached()) {
-                    throw new \Phasis\Exceptions\TypeError(
-                        'Cannot perform Array Iterator.prototype.next on a detached ArrayBuffer',
-                    );
-                }
-                if ($array->isOutOfBounds()) {
-                    throw new \Phasis\Exceptions\TypeError(
-                        'Cannot perform Array Iterator.prototype.next on an out-of-bounds TypedArray',
-                    );
-                }
-            }
-
-            // Re-read length each time for mutable iteration. Per spec
-            // 23.2.5.1.1 TypedArray iterators source [[ArrayLength]] from
-            // the internal slot, NOT the observable `length` property, so
-            // a defineProperty override on length cannot fake the
-            // iteration count.
-            if ($array instanceof \Phasis\Value\JsTypedArray) {
-                $len = $array->getLength();
-            } else {
-                $len = self::getLen($array);
-            }
-
+            $done = false;
+            $value = $this_->nextValue($done);
             $result = new JsObject();
-            if ($index < $len) {
-                $data->set('index', JsNumber::of((float) ($index + 1)));
-                $key = JsNumber::of((float) $index);
-                $value = $array->get((string) $index);
-                $result->set('done', new JsBoolean(false));
-                $result->set('value', match ($kind) {
-                    'key' => $key,
-                    'value' => $value,
-                    'key+value' => JsArray::fromArray([$key, $value]),
-                    default => $value,
-                });
-            } else {
-                // Mark as exhausted so subsequent calls stay done.
-                $data->set('exhausted', new JsBoolean(true));
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
-            }
+            $result->defineOwnDataPropertyFast('value', $value);
+            $result->defineOwnDataPropertyFast('done', JsBoolean::of($done));
             return $result;
         }, 0);
         $nextFn->setNonConstructable();
         $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+        $proto->setInternalProperty('ArrayIteratorNext', $nextFn);
 
         // Symbol.toStringTag = "Array Iterator" per spec 23.1.5.2.2.
         $proto->definePropertyBySymbol(
@@ -172,18 +94,10 @@ trait ArrayIterator
             }
             $proto = self::buildArrayIteratorPrototype($iteratorProto);
         }
-        $iterator = new JsObject($proto);
-
-        // Store iteration state as internal data.
-        $data = new JsObject();
-        $data->set('array', $array);
-        $data->set('kind', new JsString($kind));
-        $data->set('index', JsNumber::of(0.0));
-        $iterator->defineOwnProperty(
-            '[[ArrayIteratorData]]',
-            PropertyDescriptor::data($data, false, false, false),
-        );
-
-        return $iterator;
+        $intrinsicNext = $proto->getInternalProperty('ArrayIteratorNext');
+        if (!$intrinsicNext instanceof JsFunction) {
+            throw new \LogicException('Array iterator intrinsic is missing');
+        }
+        return new JsArrayIterator($array, $kind, $intrinsicNext, $proto);
     }
 }

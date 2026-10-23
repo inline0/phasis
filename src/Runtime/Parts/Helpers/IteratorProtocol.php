@@ -189,6 +189,15 @@ trait IteratorProtocol
         if ($done) {
             return JsUndefined::instance();
         }
+        if ($iterator instanceof \Phasis\Value\JsArrayIterator && $iterator->hasIntrinsicNext($nextMethod)) {
+            try {
+                $value = $iterator->nextValue($done);
+                return $readValue ? $value : JsUndefined::instance();
+            } catch (\Throwable $error) {
+                $done = true;
+                throw $error;
+            }
+        }
         if ($nextMethod instanceof \Phasis\Value\JsProxy && $nextMethod->isCallable()) {
             try {
                 $result = $nextMethod->apply($iterator, []);
