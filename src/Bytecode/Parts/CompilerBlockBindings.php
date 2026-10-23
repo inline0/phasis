@@ -19,16 +19,17 @@ use Phasis\Ast\Statement\BlockStatement;
 trait CompilerBlockBindings
 {
     /**
-     * Two uncaptured let bindings may share a slot when their blocks never
-     * overlap and every reference follows its own initialization. Keep all
+     * Uncaptured bindings of one declaration kind may share a slot when their
+     * blocks never overlap and every reference follows its own initialization. Keep all
      * shadowing, captures, pattern bindings and ambiguous lifetimes on the
      * interpreter path, which owns the general lexical-environment semantics.
      */
     private function collectReusableBlockBindings(BlockStatement $body): void
     {
         $declarations = [];
+        $declarationKinds = [];
         $disallowed = array_fill_keys(array_keys($this->localSlots), true);
-        $this->collectBlockBindingDeclarations($body, null, $body, $declarations, $disallowed);
+        $this->collectBlockBindingDeclarations($body, null, $body, $declarations, $declarationKinds, $disallowed);
         foreach ($declarations as $name => $blocks) {
             if (isset($disallowed[$name]) || count($blocks) < 2 || count(array_unique($blocks)) !== count($blocks)) {
                 continue;
@@ -42,6 +43,7 @@ trait CompilerBlockBindings
 
     /**
      * @param array<string, list<int>> $declarations
+     * @param array<string, string> $declarationKinds
      * @param array<string, true> $disallowed
      */
     private function collectBlockBindingDeclarations(
@@ -49,6 +51,7 @@ trait CompilerBlockBindings
         ?BlockStatement $directBlock,
         BlockStatement $functionBody,
         array &$declarations,
+        array &$declarationKinds,
         array &$disallowed,
     ): void {
         if ($node instanceof FunctionDeclaration || $node instanceof ClassDeclaration) {
@@ -62,7 +65,14 @@ trait CompilerBlockBindings
         }
         if ($node instanceof BlockStatement) {
             foreach ($node->body as $statement) {
-                $this->collectBlockBindingDeclarations($statement, $node, $functionBody, $declarations, $disallowed);
+                $this->collectBlockBindingDeclarations(
+                    $statement,
+                    $node,
+                    $functionBody,
+                    $declarations,
+                    $declarationKinds,
+                    $disallowed,
+                );
             }
             return;
         }
@@ -72,9 +82,15 @@ trait CompilerBlockBindings
                 $this->collectPatternBoundNames($declaration->id, $names);
                 foreach ($names as $name => $_) {
                     if (
-                        $node->kind === 'let' && $declaration->id instanceof Identifier
+                        ($node->kind === 'let' || $node->kind === 'const') && $declaration->id instanceof Identifier
                         && $directBlock !== null && $directBlock !== $functionBody
                     ) {
+                        // Readonly state is tracked per slot. Mixing let and
+                        // const would require that state to follow each scope.
+                        if (isset($declarationKinds[$name]) && $declarationKinds[$name] !== $node->kind) {
+                            $disallowed[$name] = true;
+                        }
+                        $declarationKinds[$name] ??= $node->kind;
                         $declarations[$name][] = spl_object_id($directBlock);
                     } else {
                         $disallowed[$name] = true;
@@ -85,7 +101,14 @@ trait CompilerBlockBindings
         foreach (get_object_vars($node) as $value) {
             foreach (is_array($value) ? $value : [$value] as $child) {
                 if ($child instanceof Node) {
-                    $this->collectBlockBindingDeclarations($child, null, $functionBody, $declarations, $disallowed);
+                    $this->collectBlockBindingDeclarations(
+                        $child,
+                        null,
+                        $functionBody,
+                        $declarations,
+                        $declarationKinds,
+                        $disallowed,
+                    );
                 }
             }
         }

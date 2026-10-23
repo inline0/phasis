@@ -104,7 +104,7 @@ final class Compiler
     /** @var array<string, string> Captured function-scope bindings and declaration kinds. */
     private array $capturedLocals = [];
 
-    /** @var array<string, true> Uncaptured let bindings with proven disjoint block lifetimes. */
+    /** @var array<string, true> Uncaptured lexical bindings with proven disjoint block lifetimes. */
     private array $reusableBlockLocals = [];
 
     /** @var list<\Phasis\Ast\Node> */
