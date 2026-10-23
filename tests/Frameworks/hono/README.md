@@ -32,9 +32,14 @@ runs both and compares every discovered case's identity and outcome. Each
 file runs in a separate process, sequentially, with a 1,800 second outer wall
 limit (`--timeout` overrides it). This lets large files finish hundreds of
 cases while retaining the original per-test and per-hook deadlines.
-The PHP worker uses `XDEBUG_MODE=off`, a 1 GiB memory limit and a one million
+The PHP worker uses `XDEBUG_MODE=off`, a 4 GiB memory limit and a one million
 iteration limit so the unchanged 100,000-entry parser and large-body stress
-cases fit. A timeout kills the process group, including compiler children.
+cases fit. Override memory with `--php-memory-limit 2G`; positive byte counts
+and integer K/M/G suffixes are accepted. The largest jsdom file retains pending
+Window initialization callbacks until a real host turn and measured a 2.83 GB
+peak. The cap accommodates this peak without inserting extra host turns or
+changing any test deadlines. The selected limit is recorded in the run manifest.
+A timeout kills the process group, including compiler children.
 The worker closes host resources after the suite completes, as Vitest does
 when terminating its worker. This also cleans up servers that upstream
 runtime tests intentionally leave open.

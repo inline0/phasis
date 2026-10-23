@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from inventory import inventory as upstream_inventory
 import os
+import re
 import signal
 from pathlib import Path
 import subprocess
@@ -92,14 +93,31 @@ def dependency_hash():
     return hashlib.sha256((DIRECTORY.parent / 'package-lock.json').read_bytes()).hexdigest()
 
 
-def main():
+def php_memory_limit(value):
+    match = re.fullmatch(r'([1-9][0-9]*)([KMG]?)', value, re.IGNORECASE)
+    if match is None:
+        raise argparse.ArgumentTypeError('Use a positive byte count or an integer with K, M or G, for example 4G')
+    suffix = match[2].upper()
+    multiplier = {'': 1, 'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3}[suffix]
+    if len(match[1]) > len(str(sys.maxsize)) or int(match[1]) * multiplier > sys.maxsize:
+        raise argparse.ArgumentTypeError('The memory limit exceeds the platform integer range')
+    return match[1] + suffix
+
+
+def parse_arguments(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('files', nargs='*')
     parser.add_argument('--timeout', type=float, default=1800)
     parser.add_argument('--project', choices=['main', 'jsx-runtime-default', 'jsx-runtime-dom', 'node'], default='main')
     parser.add_argument('--runtime', choices=['node', 'phasis', 'both'], default='both')
     parser.add_argument('--no-build', action='store_true')
-    args = parser.parse_args()
+    parser.add_argument('--php-memory-limit', type=php_memory_limit, default='4G',
+                        help='Bounded PHP worker memory, in bytes or K/M/G notation (default: 4G)')
+    return parser, parser.parse_args(arguments)
+
+
+def main():
+    parser, args = parse_arguments()
     all_projects = upstream_inventory()
     project = all_projects['projects'][args.project]
     inventory = project.get('runtimeFiles', project['files'])
@@ -119,7 +137,8 @@ def main():
     metadata = {'id': run_id, 'upstream': UPSTREAM_METADATA, 'project': args.project,
                 'inventory': inventory, 'upstreamProjects': all_projects,
                 'selected': files, 'runtimes': args.runtime,
-                'timeoutSeconds': args.timeout, 'runtimeSourceAtStart': source_hash(REPOSITORY / 'src'),
+                'timeoutSeconds': args.timeout, 'phpMemoryLimit': args.php_memory_limit,
+                'runtimeSourceAtStart': source_hash(REPOSITORY / 'src'),
                 'harnessSourceAtStart': harness_hash(), 'dependenciesAtStart': dependency_hash(),
                 'complete': False, 'files': manifest}
 
@@ -151,7 +170,8 @@ def main():
             if args.project != 'main':
                 generated /= args.project
             script = str(generated / (identifier + '.mjs'))
-            command = ['node', script] if runtime == 'node' else ['php', '-d', 'memory_limit=1G', str(DIRECTORY / 'run-php.php'), script]
+            command = ['node', script] if runtime == 'node' else [
+                'php', '-d', 'memory_limit=' + args.php_memory_limit, str(DIRECTORY / 'run-php.php'), script]
             started = time.monotonic()
             status, output = execute(command, args.timeout, args.project,
                                      archive / (identifier + '-' + runtime + '.log'))
