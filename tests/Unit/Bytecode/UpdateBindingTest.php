@@ -30,10 +30,11 @@ JS;
     public function testCompiledBindingUpdatesMatchTheNodeOracle(): void
     {
         $engine = $this->checkOracle(false);
-        foreach ([
+        $names = [
             'postIncrement', 'preIncrement', 'postDecrement', 'preDecrement', 'strictIncrement',
             'unknownIncrement', 'updateCaptured', 'updateConstant', 'updateDeadZone',
-        ] as $name) {
+        ];
+        foreach ($names as $name) {
             $function = $engine->getGlobalEnv()->get($name);
             self::assertInstanceOf(JsFunction::class, $function);
             self::assertNotNull($function->compiled, $name . ' must exercise the bytecode path.');
