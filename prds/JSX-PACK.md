@@ -613,7 +613,7 @@ jsx("div", { className: "card", children: jsxTemplate($$tpl_1, title) });
 - **Precompile (Layer 9)** removes most per-node work for static markup.
 - **Later: lazy function bodies.** Parsing function bodies on first call, as V8 does, would cut the load cost of large libraries further. It's a candidate after v1, to be measured in the CI bench first.
 - **Xdebug off.** Docs state that Xdebug must be off in production. In local tests Xdebug alone made Phasis about 5x slower, and its 512-frame nesting guard aborted a real-React render outright. The tracing JIT added another 1.2x to 1.4x on top of turning Xdebug off.
-- **CI bench.** `bench/ssr.jsx`, the 1,316-element page above, joins `bench.yml` (tracing JIT, per CLAUDE.md).
+- **CI bench.** `bench/ssr.jsx`, the 1,316-element page above, joins `bench.yml` (tracing JIT, per AGENTS.md).
   - The page imports a CommonJS package and a `lucide-react` icon, so module loading is part of the measurement.
   - It runs four variants: native React, real React in Phasis, components-only, and the HTML profile.
   - Targets are expressed as ratios, so they hold across machines.

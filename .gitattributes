@@ -23,6 +23,7 @@
 /phpunit.xml.dist       export-ignore
 /BENCH.md               export-ignore
 /COMPAT.md              export-ignore
+/AGENTS.md              export-ignore
 /CLAUDE.md              export-ignore
 /bench                  export-ignore
 /bench.json             export-ignore

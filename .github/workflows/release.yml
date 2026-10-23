@@ -34,7 +34,7 @@ jobs:
             --exclude='.compat-state' --exclude='.phpunit*' --exclude='.phpstan*' \
             --exclude='tests' --exclude='test262' --exclude='scenarios' \
             --exclude='bench' --exclude='docs' --exclude='prds' \
-            --exclude='CLAUDE.md' --exclude='BENCH.md' --exclude='bench.json' \
+            --exclude='AGENTS.md' --exclude='CLAUDE.md' --exclude='BENCH.md' --exclude='bench.json' \
             --exclude='compat.json' --exclude='phpunit.xml*' --exclude='phpcs.xml' \
             --exclude='phpstan.neon*' \
             --exclude='bin/compat-*' --exclude='bin/build-*' --exclude='bin/gen-*' \

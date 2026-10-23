@@ -93,7 +93,7 @@ class Test262Runner
      * TypedArray/ArrayBuffer, etc.). Set PHPJS_AUDIT_BYPASS_CROSSREALM=1
      * to skip the blocklist when re-auditing whether further engine
      * work has recovered any of them. Tracked under "structural gaps"
-     * in CLAUDE.md.
+     * in AGENTS.md.
      *
      * @var list<string>
      */
