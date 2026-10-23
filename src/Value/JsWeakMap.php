@@ -15,7 +15,7 @@ use Phasis\BuiltIn\SymbolConstructor;
  */
 class JsWeakMap extends JsObject
 {
-    /** @var \WeakMap<JsObject|JsSymbol, JsValue> */
+    /** @var \WeakMap<JsObject|JsSymbol, WeakMapValue> */
     private \WeakMap $values;
 
     public function __construct(?JsObject $prototype = null)
@@ -29,7 +29,7 @@ class JsWeakMap extends JsObject
         if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
             return JsUndefined::instance();
         }
-        return $this->values[$key] ?? JsUndefined::instance();
+        return $this->values[$key]->value ?? JsUndefined::instance();
     }
 
     public function weakMapSet(JsValue $key, JsValue $value): void
@@ -41,7 +41,7 @@ class JsWeakMap extends JsObject
         ) {
             throw new \Phasis\Exceptions\TypeError('Invalid value used as weak map key');
         }
-        $this->values[$key] = $value;
+        $this->values[$key] = new WeakMapValue($value);
     }
 
     public function weakMapHas(JsValue $key): bool

@@ -9,10 +9,44 @@ use Phasis\Value\JsObject;
 use Phasis\Value\JsSymbol;
 use Phasis\Value\JsUndefined;
 use Phasis\Value\JsWeakMap;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
 final class WeakMapLifetimeTest extends TestCase
 {
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDeepWeakKeyChainsReleaseWithoutNativeStackOverflow(): void
+    {
+        if (function_exists('posix_setrlimit')) {
+            posix_setrlimit(POSIX_RLIMIT_CORE, 0, 0);
+        }
+        $map = new JsWeakMap();
+        $head = new JsObject();
+        $key = $head;
+        $references = [\WeakReference::create($head)];
+        for ($index = 0; $index < 99999; $index++) {
+            $next = new JsObject();
+            $map->weakMapSet($key, $next);
+            $key = $next;
+            if ($index === 50000 || $index === 99998) {
+                $references[] = \WeakReference::create($key);
+            }
+        }
+        unset($key, $next);
+        gc_collect_cycles();
+        foreach ($references as $reference) {
+            self::assertTrue($reference->get() !== null, 'The live head must keep the complete chain reachable.');
+        }
+
+        unset($head);
+        foreach ($references as $reference) {
+            self::assertTrue($reference->get() === null, 'Releasing the head must release the complete chain.');
+        }
+        self::assertInstanceOf(JsUndefined::class, $map->weakMapGet(new JsObject()));
+    }
+
     public function testValuesAndKeysCanCollectTogetherWhileTheMapRemainsAlive(): void
     {
         $map = new JsWeakMap();
