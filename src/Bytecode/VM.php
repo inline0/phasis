@@ -7,6 +7,7 @@ namespace Phasis\Bytecode;
 use Phasis\Exceptions\InternalError;
 use Phasis\Exceptions\TypeError;
 use Phasis\Runtime\Interpreter;
+use Phasis\Runtime\TailCallThunk;
 use Phasis\Spec\AbstractOperations;
 use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsBoolean;
@@ -1657,8 +1658,7 @@ final class VM
                             // strict / arrow / sloppy callees.
                             $inlineable = $callee->vmInlineCallCache;
                             if ($inlineable === null) {
-                                $inlineable = $eligible && !$callee->compiled->hasTailCalls
-                                    && $callee->getBoundTarget() === null;
+                                $inlineable = $eligible && $callee->getBoundTarget() === null;
                                 if ($inlineable) {
                                     $callee->vmInlineCallCache = true;
                                 }
@@ -2197,9 +2197,7 @@ final class VM
                             }
                             $methodInlineable = $method->vmInlineCallCache;
                             if ($methodInlineable === null) {
-                                $methodInlineable = $methodEligible
-                                    && !$method->compiled->hasTailCalls
-                                    && $method->getBoundTarget() === null;
+                                $methodInlineable = $methodEligible && $method->getBoundTarget() === null;
                                 if ($methodInlineable) {
                                     $method->vmInlineCallCache = true;
                                 }
@@ -2737,6 +2735,19 @@ final class VM
                                 $hasHandlers = $sf->hasHandlers;
                                 $pc = $sf->returnPc;
                                 $sf->release();
+                                if ($finalResult instanceof TailCallThunk) {
+                                    // The returning activation is gone before the
+                                    // trampoline invokes its target. Keep the caller
+                                    // at the call instruction until that invocation
+                                    // completes so its catch/finally covers failures.
+                                    $pc -= 2;
+                                    $finalResult = $this->interp->callFunction(
+                                        $finalResult->function,
+                                        $finalResult->thisValue,
+                                        $finalResult->args,
+                                    );
+                                    $pc += 2;
+                                }
                                 $stack[$sp++] = $finalResult;
                                 break;
                             }
