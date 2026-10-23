@@ -99,6 +99,10 @@ trait CompilerStatement
             $this->compileFor($node);
             return;
         }
+        if ($node instanceof \Phasis\Ast\Statement\SwitchStatement) {
+            $this->compileSwitch($node);
+            return;
+        }
         if ($node instanceof \Phasis\Ast\Statement\ForOfStatement) {
             $this->compileForOf($node);
             return;
@@ -132,10 +136,13 @@ trait CompilerStatement
             if ($node->label !== null) {
                 throw new CompilerBailout('labeled continue');
             }
-            if ($this->loopStack === []) {
+            $loopDepth = count($this->loopStack);
+            while ($loopDepth > 0 && $this->loopStack[$loopDepth - 1]['continue'] === -2) {
+                $loopDepth--;
+            }
+            if ($loopDepth === 0) {
                 throw new CompilerBailout('continue outside loop');
             }
-            $loopDepth = count($this->loopStack);
             foreach ($this->finallyLoopBoundaries as $boundary) {
                 if ($boundary >= $loopDepth) {
                     throw new CompilerBailout('continue escaping try-with-finally');

@@ -357,6 +357,13 @@ trait CompilerScope
 
     private function collectStatementLocals(Node $stmt): void
     {
+        if ($stmt instanceof \Phasis\Ast\Statement\SwitchStatement) {
+            $this->validateSwitchBindings($stmt);
+            foreach ($stmt->cases as $case) {
+                $this->collectFunctionLocals($case->consequent);
+            }
+            return;
+        }
         if ($stmt instanceof \Phasis\Ast\Statement\ForOfStatement) {
             if ($this->forOfBody === null || !$stmt->left instanceof VariableDeclaration) {
                 throw new CompilerBailout('for-of assignment target');
@@ -653,6 +660,12 @@ trait CompilerScope
      */
     private function collectInnerDeclaredNamesNode(Node $node, array &$out): void
     {
+        if ($node instanceof \Phasis\Ast\Statement\SwitchStatement) {
+            foreach ($node->cases as $case) {
+                $this->collectInnerDeclaredNames($case->consequent, $out);
+            }
+            return;
+        }
         if ($node instanceof \Phasis\Ast\Statement\ForOfStatement) {
             if ($node->left instanceof VariableDeclaration) {
                 $this->collectInnerDeclaredNamesNode($node->left, $out);

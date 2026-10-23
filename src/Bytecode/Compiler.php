@@ -62,6 +62,7 @@ final class Compiler
 {
     use Parts\CompilerBailoutAnalysis;
     use Parts\CompilerForOf;
+    use Parts\CompilerSwitch;
     use Parts\CompilerBlockBindings;
     use Parts\CompilerScope;
     use Parts\CompilerEmit;
