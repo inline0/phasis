@@ -38,12 +38,12 @@ module.exports = function runExpressTests(files, options = {}) {
     });
     runner.on('pass', (test) => {
       output.pass++;
-      output.tests.push({ id: caseIds.get(test), title: test.fullTitle(), file: test.file, status: 'pass' });
+      output.tests.push({ id: caseIds.get(test), title: test.fullTitle(), file: test.file, status: 'pass', duration: test.duration });
       if (output.tests.length % 100 === 0) checkpoint();
     });
     runner.on('fail', (test, error) => {
       output.fail++;
-      output.tests.push({ id: caseIds.get(test), title: test.fullTitle(), file: test.file, status: 'fail', error: serializeError(error), responses });
+      output.tests.push({ id: caseIds.get(test), title: test.fullTitle(), file: test.file, status: 'fail', duration: test.duration, error: serializeError(error), responses });
       checkpoint();
     });
     runner.on('pending', (test) => {
