@@ -73,12 +73,9 @@ class JsArray extends JsObject
         if ($prototype === null) {
             $interp = \Phasis\Engine::getCurrentInterpreter();
             if ($interp !== null) {
-                $env = $interp->getGlobalEnv();
-                if ($env->has('__ArrayPrototype__')) {
-                    $realmProto = $env->get('__ArrayPrototype__');
-                    if ($realmProto instanceof JsObject) {
-                        $prototype = $realmProto;
-                    }
+                $realmProto = $interp->getGlobalEnv()->getIntrinsic('ArrayPrototype');
+                if ($realmProto instanceof JsObject) {
+                    $prototype = $realmProto;
                 }
             }
         }

@@ -14,6 +14,7 @@ final class ArrayIntrinsicPrototypeTest extends TestCase
         $engine = new Engine();
         self::assertSame([true, true, true, true, 0], $engine->eval(<<<'JS'
 const intrinsic = Array.prototype;
+globalThis.__ArrayPrototype__ = {};
 let reads = 0;
 Object.defineProperty(globalThis, 'Array', {
     configurable: true,

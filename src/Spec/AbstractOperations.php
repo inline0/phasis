@@ -115,11 +115,16 @@ final class AbstractOperations
         \Phasis\Runtime\Environment $globalEnv,
         string $constructorName,
     ): ?JsObject {
+        if ($constructorName === 'Array') {
+            $prototype = $globalEnv->getIntrinsic('ArrayPrototype');
+            if ($prototype instanceof JsObject) {
+                return $prototype;
+            }
+        }
         // Retained intrinsics must win over mutable constructor globals.
         // This also covers function constructors that have no named global.
         static $hiddenIntrinsics = [
             'Object' => '__ObjectPrototype__',
-            'Array' => '__ArrayPrototype__',
             'AsyncFunction' => '__AsyncFunctionPrototype__',
             'GeneratorFunction' => '__GeneratorFunctionPrototype__',
             'AsyncGeneratorFunction' => '__AsyncGeneratorFunctionPrototype__',
