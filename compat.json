@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-10-23T15:39:53+00:00",
-    "updatedAt": "2026-10-23T15:39:53+00:00",
+    "generatedAt": "2026-10-23T16:03:28+00:00",
+    "updatedAt": "2026-10-23T16:03:28+00:00",
     "complete": true,
     "git": {
         "branch": "fix/test262-compliance-20261023",
-        "commit": "f9956589",
+        "commit": "8f305b5c",
         "isDirty": true
     },
     "environment": {
@@ -19,8 +19,8 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "9a9dfdf2730be9475b759f70dd5dee30f3fabf25",
-        "runIdentity": "b273a76c95ecf2b991714aca189ffe58e23fc9859b4ba56b1181be4eedbc2c80"
+        "fingerprint": "b1febb17a2c362ebd13089d15b373dfb893ba458",
+        "runIdentity": "a86d7ea584bb57f1fbf242fcd625f2b237204ab14ddf6f9d6b624086bd9a4ef5"
     },
     "discovery": {
         "groupCount": 161,
@@ -199,8 +199,8 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 53612,
-            "fail": 4,
+            "pass": 53616,
+            "fail": 0,
             "skip": 0,
             "blocked": 0,
             "pending": 0,
@@ -269,9 +269,9 @@
             },
             {
                 "name": "language",
-                "status": "partial",
-                "pass": 23725,
-                "fail": 1,
+                "status": "pass",
+                "pass": 23726,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -283,9 +283,9 @@
             },
             {
                 "name": "staging",
-                "status": "partial",
-                "pass": 1480,
-                "fail": 3,
+                "status": "pass",
+                "pass": 1483,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -293,7 +293,7 @@
                 "attempted": 1483,
                 "known": 1483,
                 "total": 1483,
-                "passRate": 99.8
+                "passRate": 100
             }
         ],
         "groups": [
@@ -2280,9 +2280,9 @@
             {
                 "name": "language/expressions",
                 "area": "language",
-                "status": "partial",
-                "pass": 11101,
-                "fail": 1,
+                "status": "pass",
+                "pass": 11102,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2670,9 +2670,9 @@
             {
                 "name": "staging/sm",
                 "area": "staging",
-                "status": "partial",
-                "pass": 1403,
-                "fail": 3,
+                "status": "pass",
+                "pass": 1406,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2680,7 +2680,7 @@
                 "attempted": 1406,
                 "known": 1406,
                 "total": 1406,
-                "passRate": 99.8
+                "passRate": 100
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2713,57 +2713,13 @@
                 "passRate": 100
             }
         ],
-        "failures": [
-            {
-                "path": "test262/test/language/expressions/object/__proto__-permitted-dup-shorthand.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab[object Object]\u00bb, \u00ab2\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/staging/sm/expressions/object-literal-__proto__.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: nullProto, computedNull, shorthand Expected SameValue(\u00ab\"object\"\u00bb, \u00ab\"string\"\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/staging/sm/extensions/destructuring-__proto__-shorthand-assignment-before-var.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab[object Object]\u00bb, \u00ab17\u00bb) to be true"
-            },
-            {
-                "path": "test262/test/staging/sm/extensions/destructuring-__proto__-shorthand-assignment.js",
-                "message": "runtime: Phasis\\Exceptions\\JsThrowable: Expected SameValue(\u00ab[object Object]\u00bb, \u00ab42\u00bb) to be true"
-            }
-        ],
+        "failures": [],
         "blockedChunks": [],
         "slowChunks": [
             {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 287.161,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 264.513,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
-                ]
-            },
-            {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 260.558,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 259.095,
+                "durationSec": 270.309,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
@@ -2772,25 +2728,16 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 258.022,
+                "durationSec": 268.329,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
+                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
                 ]
             },
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 257.884,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 257.792,
+                "durationSec": 263.033,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
@@ -2799,25 +2746,61 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 227.676,
+                "durationSec": 261.889,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 259.048,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 228.625,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
                 ]
             },
             {
+                "group": "built-ins/decodeURIComponent",
+                "kind": "normal",
+                "durationSec": 225.385,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
+                ]
+            },
+            {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 214.355,
+                "durationSec": 213.468,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
                 ]
             },
             {
+                "group": "built-ins/decodeURI",
+                "kind": "normal",
+                "durationSec": 205.779,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
+                ]
+            },
+            {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 189.385,
+                "durationSec": 192.702,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
@@ -2826,7 +2809,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 165.955,
+                "durationSec": 165.142,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
@@ -2835,16 +2818,27 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 134.802,
+                "durationSec": 138.127,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
                 ]
             },
             {
+                "group": "built-ins/TypedArray",
+                "kind": "normal",
+                "durationSec": 78.193,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end.js"
+                ]
+            },
+            {
                 "group": "built-ins/decodeURI",
                 "kind": "normal",
-                "durationSec": 91.883,
+                "durationSec": 69.761,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
@@ -2857,7 +2851,7 @@
             {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 88.266,
+                "durationSec": 69.395,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
@@ -2868,75 +2862,56 @@
                 ]
             },
             {
-                "group": "language/literals",
-                "kind": "normal",
-                "durationSec": 68.154,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js",
-                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js",
-                    "...",
-                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js",
-                    "test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js"
-                ]
-            },
-            {
-                "group": "built-ins/TypedArray",
-                "kind": "normal",
-                "durationSec": 67.972,
-                "filesCount": 3,
-                "sampleFiles": [
-                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
-                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
-                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end.js"
-                ]
-            },
-            {
-                "group": "intl402",
-                "kind": "normal",
-                "durationSec": 67.271,
-                "filesCount": 22,
-                "sampleFiles": [
-                    "test262/test/intl402/constructors-string-and-single-element-array.js",
-                    "test262/test/intl402/constructors-taint-Object-prototype-2.js",
-                    "...",
-                    "test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js",
-                    "test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js"
-                ]
-            },
-            {
-                "group": "intl402/DateTimeFormat",
-                "kind": "normal",
-                "durationSec": 63.782,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plainmonthday-formatting-timezonename.js",
-                    "test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plaintime-formatting-timezonename.js",
-                    "...",
-                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/name.js",
-                    "test262/test/intl402/DateTimeFormat/prototype/formatToParts/offset-timezone-correct.js"
-                ]
-            },
-            {
-                "group": "annexB/built-ins/RegExp",
-                "kind": "normal",
-                "durationSec": 61.311,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js",
-                    "test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js",
-                    "...",
-                    "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js",
-                    "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js"
-                ]
-            },
-            {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 60.853,
+                "durationSec": 62.442,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Array/toSpliced-dense.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.976,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cuneiform.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypriot.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cypro_Minoan.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.944,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Linear_A.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Linear_B.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lisu.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.836,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Devanagari.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dives_Akuru.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dogra.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 59.263,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kirat_Rai.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lao.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js"
                 ]
             }
         ]
