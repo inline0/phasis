@@ -206,6 +206,7 @@ class Environment
      */
     public function defineImportBinding(string $name, \Closure $resolver): void
     {
+        self::$globalBindingsVersion++;
         $this->importBindings[$name] = $resolver;
         $this->lexical[$name] = true;
         $this->constants[$name] = true;
@@ -255,6 +256,7 @@ class Environment
      */
     public function defineGlobalVar(string $name, JsValue $value, bool $configurable = false): void
     {
+        self::$globalBindingsVersion++;
         $this->bindings[$name] = $value;
         if ($this->linkedObject !== null) {
             $existingProp = $this->linkedObject->getOwnPropertyDescriptor($name);
@@ -286,6 +288,7 @@ class Environment
     /** Define a binding that can be removed with `delete`. Used for built-in globals. */
     public function defineDeletable(string $name, JsValue $value): void
     {
+        self::$globalBindingsVersion++;
         $this->bindings[$name] = $value;
         $this->deletable[$name] = true;
     }
@@ -299,6 +302,7 @@ class Environment
     public function defineAnnexBVar(string $name, JsValue $value, bool $configurable = false): void
     {
         if (!array_key_exists($name, $this->bindings)) {
+            self::$globalBindingsVersion++;
             $this->bindings[$name] = $value;
             // For global scope (linked object), also create the property.
             // Per spec, scripts use CreateGlobalFunctionBinding(F, undefined, false)
@@ -879,6 +883,7 @@ class Environment
             }
             if (isset($this->deletable[$name])) {
                 unset($this->bindings[$name], $this->deletable[$name]);
+                self::$globalBindingsVersion++;
                 // Mirror the delete to the linked global object, if any, so
                 // typeof/has lookups don't see the property after delete.
                 if ($this->linkedObject !== null) {
