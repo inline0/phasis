@@ -890,16 +890,18 @@ trait CompilerExpression
                 throw new CompilerBailout('assignment to const');
             }
 
-            // Strict-mode write to a non-local identifier: bail so the
-            // tree-walker can pre-resolve the LHS reference per spec
-            // (12.15.4 step 1: lref is evaluated BEFORE the RHS).
-            // The VM's STORE_NAME runs after RHS, so a side-effecting
-            // RHS that creates the global property would mask the
-            // unresolvable LHS — strict mode must surface ReferenceError
-            // (test262 language/identifier-resolution/
-            // assign-to-global-undefined.js).
+            // The program environment owns its global bindings. Keep the
+            // complete assignment on the interpreter so a RHS that creates
+            // a missing global cannot change its already resolved reference.
             if (!$isLocal && $this->programIsStrict) {
-                throw new CompilerBailout('strict-mode non-local identifier assignment');
+                if ($op !== '=') {
+                    throw new CompilerBailout('strict-mode non-local compound assignment');
+                }
+                $this->checkInterpretedExpressionBindings($node);
+                $index = count($this->interpretedExpressions);
+                $this->interpretedExpressions[] = $node;
+                $this->emit(Op::EVAL_EXPRESSION, $index);
+                return;
             }
             if ($op === '=') {
                 if (self::initNeedsNamedEvaluation($node->right)) {
@@ -997,6 +999,27 @@ trait CompilerExpression
         }
 
         throw new CompilerBailout('unsupported assignment target');
+    }
+
+    /** AST evaluation cannot observe values stored only in compiled local slots. */
+    private function checkInterpretedExpressionBindings(Node $node): void
+    {
+        if (
+            $node instanceof Identifier && isset($this->localSlots[$node->name])
+            && !isset($this->capturedLocals[$node->name])
+        ) {
+            throw new CompilerBailout('interpreted expression depends on a local slot');
+        }
+        if ($node instanceof ThisExpression) {
+            $this->hasLoadThis = true;
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node) {
+                    $this->checkInterpretedExpressionBindings($child);
+                }
+            }
+        }
     }
 
     /** Keep each reference and write beside its iterator step, including abrupt closing. */

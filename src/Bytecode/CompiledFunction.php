@@ -136,6 +136,14 @@ final class CompiledFunction
     public array $classNodes = [];
 
     /**
+     * Expressions whose bindings all live in the frame environment. The
+     * interpreter preserves their complete reference and evaluation order.
+     *
+     * @var list<Node>
+     */
+    public array $interpretedExpressions = [];
+
+    /**
      * Source-style display strings for method-call sites, keyed by the
      * PC of the CALL_METHOD opcode. When the dispatched method turns
      * out not to be callable, the VM uses the stored display

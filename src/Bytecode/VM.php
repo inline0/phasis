@@ -2645,6 +2645,14 @@ final class VM
                             $pc += 2;
                             break;
 
+                        case Op::EVAL_EXPRESSION:
+                            $stack[$sp++] = $this->interp->evaluate(
+                                $cf->interpretedExpressions[$code[$pc + 1]],
+                                $env,
+                            );
+                            $pc += 2;
+                            break;
+
                         case Op::THROW:
                             $val = $stack[--$sp];
                             $this->interp->throwJsValue($val);

@@ -182,6 +182,7 @@ final class Op
     public const DELETE_NAME = 113; // N: delete an environment binding without reading its value.
     public const DELETE_PROPERTY = 114; // pop key and base, delete the property, push the Boolean result.
     public const UPDATE_NAME = 115; // N I I: resolve a binding once, update by +/-1, push prefix/postfix result.
+    public const EVAL_EXPRESSION = 116; // I: evaluate an environment-only expression through the interpreter.
 
     public const LOOP_INIT = 120;
     public const LOOP_TICK = 121;
@@ -257,6 +258,7 @@ final class Op
             case self::BIND_ARRAY:
             case self::TYPEOF_NAME:
             case self::DELETE_NAME:
+            case self::EVAL_EXPRESSION:
             case self::JUMP:
             case self::JUMP_IF_TRUE:
             case self::JUMP_IF_FALSE:

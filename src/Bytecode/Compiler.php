@@ -172,6 +172,9 @@ final class Compiler
      */
     private array $classNodes = [];
 
+    /** @var list<Node> Program expressions that need complete interpreter reference semantics. */
+    private array $interpretedExpressions = [];
+
     /**
      * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|array{target: Node, rest: bool}|null>}>
      */
@@ -235,8 +238,8 @@ final class Compiler
     /**
      * Whether the program currently being compiled has a `"use strict"`
      * directive in its prologue (or was wrapped with one by the host).
-     * Used by compileAssignment to bail when a non-local identifier is
-     * the LHS: per spec, the LHS reference resolves BEFORE the RHS, so
+     * Used by compileAssignment to retain interpreter reference semantics
+     * when a non-local identifier is the LHS: the reference resolves before the RHS, so
      * a strict-mode unresolvable LHS must throw ReferenceError even
      * when the RHS happens to add the property to the global object as
      * a side effect (test262 language/identifier-resolution/
@@ -579,6 +582,7 @@ final class Compiler
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
+        $cf->interpretedExpressions = $this->interpretedExpressions;
         $cf->arrayBindings = $this->arrayBindings;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
