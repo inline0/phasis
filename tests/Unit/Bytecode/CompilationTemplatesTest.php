@@ -9,10 +9,52 @@ use Phasis\Engine;
 use Phasis\Parser\Parser;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsNumber;
+use Phasis\Value\JsObject;
 use PHPUnit\Framework\TestCase;
 
 final class CompilationTemplatesTest extends TestCase
 {
+    public function testFirstCallsOfFreshClosuresKeepTheirCapturedBindingsAndReceivers(): void
+    {
+        $engine = new Engine();
+        self::assertSame([[4, 2, 3], [5, 7, 4], [10, 2, 1], [20, 7, 4]], $engine->eval(<<<'JS'
+'use strict';
+function make(offset) {
+    return function (amount) { return [this.base, offset, amount]; };
+}
+const first = make(2);
+const second = make(7);
+[first.call({base: 4}, 3), second.call({base: 5}, 4),
+ first.call({base: 10}, 1), second.call({base: 20}, 4)];
+JS));
+        foreach (['first', 'second'] as $name) {
+            $function = $engine->getGlobalEnv()->get($name);
+            self::assertInstanceOf(JsFunction::class, $function);
+            self::assertNotNull($function->compiled);
+            self::assertTrue($function->compiled->canSkipEnvAlloc);
+        }
+    }
+
+    public function testCachedLayoutsDoNotBypassWithObjectCallReceivers(): void
+    {
+        $engine = new Engine();
+        $program = (new Parser('function read() { return selected(); }'))->parse();
+        $declaration = $program->body[0];
+        self::assertInstanceOf(\Phasis\Ast\Declaration\FunctionDeclaration::class, $declaration);
+        $warm = new JsFunction('read', $declaration->params, $declaration->body, $engine->getGlobalEnv());
+        (new Compiler())->compile($warm);
+
+        $engine->eval('globalThis.receiver = {marker: "with receiver", selected() { return this.marker; }};');
+        $receiver = $engine->getGlobalEnv()->get('receiver');
+        self::assertInstanceOf(JsObject::class, $receiver);
+        $scope = $engine->getGlobalEnv()->createWithEnvironment($receiver);
+        $function = new JsFunction('read', $declaration->params, $declaration->body, $scope);
+        $engine->setGlobalJsValue('readFromWith', $function);
+
+        self::assertSame('with receiver', $engine->eval('with (receiver) { readFromWith(); }'));
+        self::assertNull($function->compiled);
+    }
+
     public function testRepeatedSyntaxSharesLayoutButNeverRuntimeInlineCaches(): void
     {
         $engine = new Engine();

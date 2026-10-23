@@ -4073,6 +4073,18 @@ trait ExpressionEvaluation
             $this->currentModulePath = $fn->definingModulePath;
         }
 
+        // Recover a factory callback's known layout before allocating and
+        // binding an activation that its bytecode does not need. With scopes
+        // and budgeted execution still require interpreter name resolution.
+        if (
+            $fn->compiled === null
+            && !$fn->compileFailed
+            && $this->budget === null
+            && !$fn->getClosure()->isUnderWithScope()
+        ) {
+            $fn->compiled = \Phasis\Bytecode\CompilationTemplates::get($fn);
+        }
+
         // Hot path for VM-compiled bodies with no env-binding needs:
         // bytecode never reads `this` via env (LOAD_THIS_FRAME reads
         // the frame; needsThis=false means no env binding required),
