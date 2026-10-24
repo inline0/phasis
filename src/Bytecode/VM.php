@@ -1020,7 +1020,10 @@ final class VM
                             $pc += 3;
                             break;
                         case Op::DEFINE_NAME:
-                            $env->defineVar($names[$code[$pc + 1]], $stack[--$sp]);
+                            --$sp;
+                            if (!isset($cf->omittedFunctionBindings[$pc])) {
+                                $env->defineVar($names[$code[$pc + 1]], $stack[$sp]);
+                            }
                             $pc += 2;
                             break;
                         case Op::INITIALIZE_NAME:

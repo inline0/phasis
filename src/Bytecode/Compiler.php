@@ -108,6 +108,9 @@ final class Compiler
     /** @var array<string, string> Captured function-scope bindings and declaration kinds. */
     private array $capturedLocals = [];
 
+    /** @var array<int, array{string, int}> Hoisted function definition sites and their frame slots. */
+    private array $functionDefinitionSites = [];
+
     /** @var array<string, true> Uncaptured lexical bindings with proven disjoint block lifetimes. */
     private array $reusableBlockLocals = [];
 
@@ -437,6 +440,7 @@ final class Compiler
         // canSkipEnvAlloc semantics under frame-based this.
         $needsEnvThis = $this->arrayAssignmentReferences || $this->hasLoadThis
             || $this->nestedFnsLexicallyReferenceThis();
+        $capturedBindings = $this->capturedEnvironmentBindings($fn);
         $cf = new CompiledFunction(
             code: $this->code,
             consts: $this->consts,
@@ -452,7 +456,8 @@ final class Compiler
                 && !$this->needsArguments,
             parametersFromEnvironment: $this->parametersFromEnvironment,
             hasTailCalls: $this->hasTailCalls,
-            capturedEnvironmentBindings: $this->capturedEnvironmentBindings($fn),
+            capturedEnvironmentBindings: $capturedBindings,
+            omittedFunctionBindings: $this->omittedFunctionBindings($fn, $capturedBindings),
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
@@ -522,6 +527,29 @@ final class Compiler
             }
         }
         return $bindings;
+    }
+
+    /**
+     * @param array<string, string>|null $capturedBindings
+     * @return array<int, true>
+     */
+    private function omittedFunctionBindings(JsFunction $fn, ?array $capturedBindings): array
+    {
+        if (
+            $capturedBindings === null || $fn->isClassConstructor() || $fn->isDerivedConstructor()
+            || $this->interpretedExpressions !== []
+        ) {
+            return [];
+        }
+        $omitted = [];
+        foreach ($this->functionDefinitionSites as $pc => [$name, $slot]) {
+            // Parameter bindings can remain observable through arguments even
+            // when nested functions do not capture their declaration name.
+            if (!isset($this->capturedLocals[$name]) && !in_array($slot, $this->paramSlots, true)) {
+                $omitted[$pc] = true;
+            }
+        }
+        return $omitted;
     }
 
     private function parameterInitializerCanCapture(Node $node): bool

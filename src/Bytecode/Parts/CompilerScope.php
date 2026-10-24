@@ -573,6 +573,7 @@ trait CompilerScope
             // up — which can happen when ramda-style libraries declare
             // many top-level `function r(t,n){...}` shapes whose tree-
             // walker hoist binding got eclipsed or never created.
+            $this->functionDefinitionSites[count($this->code)] = [$name, $slot];
             $this->emit(Op::DEFINE_NAME, $this->internName($name));
         }
     }

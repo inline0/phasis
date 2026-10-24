@@ -4112,6 +4112,15 @@ trait ExpressionEvaluation
             && !$fn->getClosure()->isUnderWithScope()
         ) {
             $fn->compiled = \Phasis\Bytecode\CompilationTemplates::get($fn);
+            // A cached syntax failure lets fresh closures use the VM prologue
+            // without constructing interpreter hoists it would discard.
+            if (
+                $fn->compiled !== null && $fn->compiled->omittedFunctionBindings !== []
+                && $fn->phpCompiled === null && !$fn->phpCompileFailed
+                && \Phasis\Bytecode\CompilationFailures::get($fn, 'php') !== null
+            ) {
+                $fn->phpCompileFailed = true;
+            }
         }
 
         // Hot path for VM-compiled bodies with no env-binding needs:

@@ -192,6 +192,8 @@ final class CompiledFunction
      * @param array<string, string>|null $capturedEnvironmentBindings Captured
      *        body var/let/const declarations. Null retains interpreter hoisting;
      *        parameters and function declarations have separate initialization.
+     * @param array<int, true> $omittedFunctionBindings DEFINE_NAME sites whose
+     *        hoisted functions are observable only through frame slots.
      */
     public function __construct(
         public readonly array $code,
@@ -207,6 +209,7 @@ final class CompiledFunction
         public readonly bool $parametersFromEnvironment = false,
         public readonly bool $hasTailCalls = false,
         public readonly ?array $capturedEnvironmentBindings = null,
+        public readonly array $omittedFunctionBindings = [],
     ) {
     }
 }
