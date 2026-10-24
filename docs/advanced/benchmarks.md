@@ -30,10 +30,10 @@ The right mental model: Phasis is a **glue layer** for JS-shaped logic embedded 
 ## What makes the engine fast (relative to a naïve tree-walker)
 
 - **Bytecode VM** — most hot dispatch runs through `VM::execute`'s opcode switch, not the AST.
-- **Custom callstack** — every JS call keeps state inside `VM::execute` and saves the caller's frame onto a pool; no new PHP frame per JS call. See [Bytecode VM § Custom callstack](/docs/advanced/bytecode-vm).
-- **Inline caches** — a per-PC monomorphic cache makes prototype-method-on-instance reads (the `c.method()` shape) skip the prototype-chain walk.
+- **Custom callstack** — eligible bytecode calls keep state inside `VM::execute` and save the caller's frame in a pool, without another PHP call frame. See [Bytecode VM § Custom callstack](/docs/advanced/bytecode-vm).
+- **Inline caches** — a per-PC cache retains up to four prototype shapes, allowing repeated method reads (the `c.method()` shape) to skip the prototype-chain walk while checking for mutations.
 - **Frame-snapshot generators** — simple generator bodies suspend by capturing the dispatch state into a heap object instead of crossing a PHP Fiber.
-- **JsToPhp transpiler** — numeric / locals-heavy bodies (including `obj.method()`, `new Ctor()`, and `this.member` reads) compile to PHP closures that PHP 8.5's tracing JIT lowers to native machine code.
+- **JsToPhp transpiler** — proven numeric bodies and string-scanning loops compile to PHP closures that PHP's tracing JIT can optimize. Entry checks validate assumptions before observable effects; calls that can expose their caller remain on tracked execution paths.
 - **JSON.stringify cache** — `JSON.stringify(o)` caches its output on the input object with transitive version invalidation, accelerating the deep-clone idiom `JSON.parse(JSON.stringify(o))`.
 
 ## Measuring your own workload
@@ -83,10 +83,9 @@ opcache.preload_user=www-data
 
 What would close more of the V8 gap, in rough order of tractability:
 
-- **Polymorphic inline caches** — let a single `LOAD_MEMBER` call site hold 2-4 cached shapes before falling back to slow dispatch. Helps code that processes heterogeneous receivers.
 - **`yield*` and try-with-yield on the frame-snapshot generator path** — these shapes currently route to the Fiber-backed tree-walker. Each needs explicit state-machine handling (delegate-iterator forwarding, handler stack preserved across suspend) before they're snapshot-safe.
 - **Async generators and `await` on snapshots** — the spec composes generator suspension with the microtask queue. Once the bytecode body supports both `yield` and `await`, async generators become snapshot-friendly too.
-- **Parameter type inference in JsToPhp** — function parameters default to numeric type, so `function (obj) { obj.method() }` bails the compiler. Inferring object-typed parameters from how they're used in the body would unlock method calls on function arguments without requiring the receiver to be locally constructed via `new`.
+- **Broader JsToPhp lowering** — support additional parameter types and calls while preserving observable caller records, coercion order and fallback before effects. Object-typed parameters alone are not sufficient to make `function (obj) { obj.method() }` safe to lower.
 - **Direct opcache emission** — skip JsToPhp's `eval()` step by writing opcache-format opcodes directly. Deepest item; the others can be done within the existing architecture.
 
 None of these are necessary for the embedding workloads Phasis targets.
