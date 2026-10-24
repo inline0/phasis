@@ -562,7 +562,10 @@ class Environment
 
     private static function ordinaryDataValue(\Phasis\Value\JsObject $object, string $name): ?JsValue
     {
-        if (get_class($object) !== \Phasis\Value\JsObject::class) {
+        if (
+            get_class($object) !== \Phasis\Value\JsObject::class
+            || get_class($object->properties) !== \Phasis\Object\PropertyMap::class
+        ) {
             return null;
         }
         $value = $object->properties->dataSlots[$name] ?? null;
@@ -570,7 +573,9 @@ class Environment
             return $value;
         }
         $descriptor = $object->properties->descriptors[$name] ?? null;
-        return $descriptor !== null && $descriptor->isDataDescriptor() ? $descriptor->value : null;
+        return $descriptor !== null
+            && get_class($descriptor) === \Phasis\Object\PropertyDescriptor::class
+            && $descriptor->isDataDescriptor() ? $descriptor->value : null;
     }
 
     public function get(
