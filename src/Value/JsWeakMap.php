@@ -9,26 +9,19 @@ use Phasis\BuiltIn\SymbolConstructor;
 /**
  * JavaScript WeakMap object.
  *
- * Backed by the same storage as JsMap, but is a distinct type so that
- * Map.prototype methods correctly reject it via instanceof checks.
- * PHP does not have weak references for arbitrary values, so entries
- * are stored strongly (no garbage collection of unreferenced keys).
- *
- * Keys must be JsObject or non-registered JsSymbol per spec; both are
- * PHP objects so spl_object_id provides O(1) lookup keyed by identity,
- * which matches the spec's reference equality requirement for WeakMap.
+ * Native weak keys preserve object identity without making a long-lived
+ * JavaScript collection keep every past key alive. Values remain strongly
+ * referenced while their keys are live.
  */
 class JsWeakMap extends JsObject
 {
-    /** @var array<int, JsValue> Map of spl_object_id(key) => value. */
-    private array $values = [];
-
-    /** @var array<int, JsValue> Map of spl_object_id(key) => key (keeps key alive). */
-    private array $keys = [];
+    /** @var \WeakMap<JsObject|JsSymbol, WeakMapValue> */
+    private \WeakMap $values;
 
     public function __construct(?JsObject $prototype = null)
     {
         parent::__construct($prototype);
+        $this->values = new \WeakMap();
     }
 
     public function weakMapGet(JsValue $key): JsValue
@@ -36,8 +29,7 @@ class JsWeakMap extends JsObject
         if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
             return JsUndefined::instance();
         }
-        $id = spl_object_id($key);
-        return $this->values[$id] ?? JsUndefined::instance();
+        return $this->values[$key]->value ?? JsUndefined::instance();
     }
 
     public function weakMapSet(JsValue $key, JsValue $value): void
@@ -49,9 +41,7 @@ class JsWeakMap extends JsObject
         ) {
             throw new \Phasis\Exceptions\TypeError('Invalid value used as weak map key');
         }
-        $id = spl_object_id($key);
-        $this->keys[$id] = $key;
-        $this->values[$id] = $value;
+        $this->values[$key] = new WeakMapValue($value);
     }
 
     public function weakMapHas(JsValue $key): bool
@@ -59,7 +49,7 @@ class JsWeakMap extends JsObject
         if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
             return false;
         }
-        return isset($this->values[spl_object_id($key)]) || array_key_exists(spl_object_id($key), $this->values);
+        return isset($this->values[$key]);
     }
 
     public function weakMapDelete(JsValue $key): bool
@@ -67,11 +57,10 @@ class JsWeakMap extends JsObject
         if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
             return false;
         }
-        $id = spl_object_id($key);
-        if (!array_key_exists($id, $this->values)) {
+        if (!isset($this->values[$key])) {
             return false;
         }
-        unset($this->values[$id], $this->keys[$id]);
+        unset($this->values[$key]);
         return true;
     }
 

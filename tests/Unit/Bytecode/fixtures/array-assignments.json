@@ -1,0 +1,1310 @@
+[
+  [
+    "first",
+    "normal",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "pair",
+    "normal",
+    null,
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "elided",
+    "hole",
+    null,
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "empty",
+    "normal",
+    null,
+    true,
+    [
+      "iterator",
+      "get next",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "rest",
+    "normal",
+    null,
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "duplicate",
+    "normal",
+    null,
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "captured",
+    "normal",
+    null,
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "observe:1:2",
+      "done:1",
+      "value:1",
+      "next:2",
+      "observe:10:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "changedBase",
+    "normal",
+    null,
+    [
+      10,
+      null
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "next",
+    null,
+    "next failure",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "done",
+    null,
+    "done failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1"
+    ]
+  ],
+  [
+    "first",
+    "value",
+    null,
+    "value failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1"
+    ]
+  ],
+  [
+    "first",
+    "primitive result",
+    null,
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "proxy next",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "proxy return",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "return getter",
+    null,
+    "return getter failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return"
+    ]
+  ],
+  [
+    "first",
+    "return value",
+    null,
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "normal",
+    [
+      1,
+      10
+    ],
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "expression",
+    "target failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "key",
+    "key failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "return throw",
+    "setter",
+    "setter failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "setter:10",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "restMember",
+    "normal",
+    "normal",
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3",
+      "key conversion"
+    ]
+  ],
+  [
+    "restMember",
+    "normal",
+    "expression",
+    "target failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "partial",
+    "normal",
+    "setter",
+    [
+      10,
+      "setter failure"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "next:2",
+      "done:2",
+      "value:2",
+      "key conversion",
+      "setter:20",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "partial",
+    "normal",
+    "expression",
+    [
+      10,
+      "target failure"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    null,
+    null
+  ],
+  [
+    "😀",
+    "x"
+  ],
+  [
+    1,
+    [
+      2,
+      3
+    ]
+  ],
+  5,
+  7,
+  "1",
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  [
+    "first",
+    "normal",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "pair",
+    "normal",
+    null,
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "elided",
+    "hole",
+    null,
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "empty",
+    "normal",
+    null,
+    true,
+    [
+      "iterator",
+      "get next",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "rest",
+    "normal",
+    null,
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "duplicate",
+    "normal",
+    null,
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "captured",
+    "normal",
+    null,
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "observe:1:2",
+      "done:1",
+      "value:1",
+      "next:2",
+      "observe:10:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "changedBase",
+    "normal",
+    null,
+    [
+      10,
+      null
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "next",
+    null,
+    "next failure",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "done",
+    null,
+    "done failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1"
+    ]
+  ],
+  [
+    "first",
+    "value",
+    null,
+    "value failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1"
+    ]
+  ],
+  [
+    "first",
+    "primitive result",
+    null,
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "proxy next",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "proxy return",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "return getter",
+    null,
+    "return getter failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return"
+    ]
+  ],
+  [
+    "first",
+    "return value",
+    null,
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "normal",
+    [
+      1,
+      10
+    ],
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "expression",
+    "target failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "key",
+    "key failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "return throw",
+    "setter",
+    "setter failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "setter:10",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "restMember",
+    "normal",
+    "normal",
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3",
+      "key conversion"
+    ]
+  ],
+  [
+    "restMember",
+    "normal",
+    "expression",
+    "target failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "partial",
+    "normal",
+    "setter",
+    [
+      10,
+      "setter failure"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "next:2",
+      "done:2",
+      "value:2",
+      "key conversion",
+      "setter:20",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "partial",
+    "normal",
+    "expression",
+    [
+      10,
+      "target failure"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    null,
+    null
+  ],
+  [
+    "😀",
+    "x"
+  ],
+  [
+    1,
+    [
+      2,
+      3
+    ]
+  ],
+  5,
+  7,
+  "1",
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  [
+    "first",
+    "normal",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "pair",
+    "normal",
+    null,
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "elided",
+    "hole",
+    null,
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "empty",
+    "normal",
+    null,
+    true,
+    [
+      "iterator",
+      "get next",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "rest",
+    "normal",
+    null,
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "duplicate",
+    "normal",
+    null,
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "captured",
+    "normal",
+    null,
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "observe:1:2",
+      "done:1",
+      "value:1",
+      "next:2",
+      "observe:10:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "changedBase",
+    "normal",
+    null,
+    [
+      10,
+      null
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "next",
+    null,
+    "next failure",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "done",
+    null,
+    "done failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1"
+    ]
+  ],
+  [
+    "first",
+    "value",
+    null,
+    "value failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1"
+    ]
+  ],
+  [
+    "first",
+    "primitive result",
+    null,
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "proxy next",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "proxy return",
+    null,
+    [
+      10,
+      true
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "return getter",
+    null,
+    "return getter failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return"
+    ]
+  ],
+  [
+    "first",
+    "return value",
+    null,
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "normal",
+    [
+      1,
+      10
+    ],
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "expression",
+    "target failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "normal",
+    "key",
+    "key failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "member",
+    "return throw",
+    "setter",
+    "setter failure",
+    [
+      "iterator",
+      "get next",
+      "target expression",
+      "next:1",
+      "done:1",
+      "value:1",
+      "key conversion",
+      "setter:10",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "restMember",
+    "normal",
+    "normal",
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3",
+      "key conversion"
+    ]
+  ],
+  [
+    "restMember",
+    "normal",
+    "expression",
+    "target failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "partial",
+    "normal",
+    "setter",
+    [
+      10,
+      "setter failure"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "next:2",
+      "done:2",
+      "value:2",
+      "key conversion",
+      "setter:20",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "partial",
+    "normal",
+    "expression",
+    [
+      10,
+      "target failure"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "target expression",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    null,
+    null
+  ],
+  [
+    "😀",
+    "x"
+  ],
+  [
+    1,
+    [
+      2,
+      3
+    ]
+  ],
+  5,
+  7,
+  "1",
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  "TypeError"
+]

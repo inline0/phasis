@@ -34,6 +34,7 @@ final class Op
     public const LOAD_TRUE = 13;   // push JsBoolean(true)
     public const LOAD_FALSE = 14;  // push JsBoolean(false)
     public const LOAD_THIS = 15;   // push this via env chain walk (arrow lexical-this, derived-ctor TDZ, generators)
+    public const NEW_REGEXP = 16;  // N N — create a fresh RegExp from pattern and flags strings.
     public const LOAD_THIS_FRAME = 111; // push frame->thisValue directly (ordinary fn bodies; receiver fixed per call)
 
     // ---- Locals ---------------------------------------------------------
@@ -62,6 +63,13 @@ final class Op
                                    // VM-instantiated JsFunction value so both
                                    // the frame slot and env binding stay in
                                    // sync (closure-capture safety).
+    public const INITIALIZE_NAME = 33; // N: initialize a captured lexical binding, leaving TDZ.
+    public const ARRAY_APPEND = 34; // Append a data element to the array below it on the stack.
+    public const ARRAY_SPREAD = 35; // Consume an iterable into the array below it on the stack.
+    public const ARRAY_HOLE = 36; // Extend the array's length without defining an element.
+    public const BIND_ARRAY = 37; // I: pop iterable, initialize the indexed flat binding pattern in order.
+    public const IN = 38; // Pop object and key, perform HasProperty after ToPropertyKey.
+    public const INSTANCEOF = 39; // Pop constructor and value, use InstanceofOperator.
 
     // ---- Arithmetic & comparison ----------------------------------------
     public const ADD = 40;
@@ -125,6 +133,8 @@ final class Op
     public const JUMP_IF_LOCAL_GT_CONST = 79; // for `i <= N` test
 
     // ---- Calls & returns -----------------------------------------------
+    // Each call opcode accepts argc=-1 for a compiler-owned dense argument
+    // array on top of the stack, allowing spread without changing call order.
     public const CALL = 80;          // I — argc; callee at stack[-argc-1]
     public const CALL_METHOD = 81;   // I — argc; stack: [obj, method, args...]
                                        // Pops method + args, peeks obj as receiver,
@@ -138,6 +148,8 @@ final class Op
                                        // return YieldResult to VM caller. Resume
                                        // re-enters at pc+1 with the resumed value
                                        // pushed onto the operand stack.
+    public const TAIL_CALL = 85;     // I — CALL layout, produce a trampoline thunk for RET
+    public const TAIL_CALL_METHOD = 86; // I — CALL_METHOD layout, preserve the receiver in the thunk
 
     // ---- Object / array literals & member access ----------------------
     public const NEW_OBJECT = 90;    // push new {} (with %ObjectPrototype%)
@@ -148,6 +160,8 @@ final class Op
     public const LOAD_COMPUTED = 95; // pop key, pop obj; push obj[key]
     public const STORE_MEMBER = 96;  // N — pop val, pop obj; obj.name = val (writes, no push)
     public const STORE_COMPUTED = 97;// pop val, key, obj; obj[key] = val
+    public const SET_LITERAL_PROTOTYPE = 98; // pop value; initialize the remaining object's prototype if object/null.
+    public const TO_PROPERTY_KEY = 99; // replace the top value with its string or Symbol property key.
 
     // ---- Function expressions & arrows ---------------------------------
     public const MAKE_FUNCTION = 100; // I — index into CompiledFunction::$nestedFns;
@@ -164,9 +178,21 @@ final class Op
 
     // ---- Throw -----------------------------------------------------------
     public const THROW = 110;          // pop value, raise as JsThrowable.
+    public const TYPEOF_NAME = 112; // N: typeof a binding, allowing unresolvable names but preserving TDZ.
+    public const DELETE_NAME = 113; // N: delete an environment binding without reading its value.
+    public const DELETE_PROPERTY = 114; // pop key and base, delete the property, push the Boolean result.
+    public const UPDATE_NAME = 115; // N I I: resolve a binding once, update by +/-1, push prefix/postfix result.
+    public const EVAL_EXPRESSION = 116; // I: evaluate an environment-only expression through the interpreter.
+    public const UPDATE_MEMBER = 117; // N I I: update a literal property, preserving its resolved base.
+    public const UPDATE_COMPUTED = 118; // I I: update a computed property, coercing its key once.
 
     public const LOOP_INIT = 120;
     public const LOOP_TICK = 121;
+    public const CHECK_BUDGET = 126; // Host deadline checkpoint, independent of the body iteration count.
+    public const STRING_LOOP_REGION = 125; // I: one-shot pure first segment; ordinary VM backedges bypass it.
+    public const ITERATOR_INIT = 122; // L: acquire an iterator and cached next in adjacent private slots.
+    public const ITERATOR_NEXT = 123; // L I J: check loop limits, push the next value or branch when done.
+    public const ITERATOR_CLOSE = 124; // L L L: close with the pending completion and value.
 
     // ---- Sentinel / bailout placeholder -------------------------------
     public const NOP = 0;
@@ -176,6 +202,7 @@ final class Op
     {
         switch ($op) {
             // 0-operand opcodes
+            case self::CHECK_BUDGET:
             case self::POP:
             case self::DUP:
             case self::LOAD_UNDEF:
@@ -200,8 +227,11 @@ final class Op
             case self::NEQ:
             case self::SEQ:
             case self::SNEQ:
+            case self::IN:
+            case self::INSTANCEOF:
             case self::NOT:
             case self::TYPEOF:
+            case self::TO_STRING:
             case self::BAND:
             case self::BOR:
             case self::BXOR:
@@ -212,10 +242,16 @@ final class Op
             case self::RET:
             case self::YIELD:
             case self::NEW_OBJECT:
+            case self::ARRAY_APPEND:
+            case self::ARRAY_SPREAD:
+            case self::ARRAY_HOLE:
+            case self::SET_LITERAL_PROTOTYPE:
+            case self::TO_PROPERTY_KEY:
             case self::SET_COMPUTED:
             case self::LOAD_COMPUTED:
             case self::STORE_COMPUTED:
             case self::THROW:
+            case self::DELETE_PROPERTY:
             case self::NOP:
                 return 0;
             // 1-operand opcodes
@@ -227,6 +263,11 @@ final class Op
             case self::LOAD_NAME:
             case self::STORE_NAME:
             case self::DEFINE_NAME:
+            case self::INITIALIZE_NAME:
+            case self::BIND_ARRAY:
+            case self::TYPEOF_NAME:
+            case self::DELETE_NAME:
+            case self::EVAL_EXPRESSION:
             case self::JUMP:
             case self::JUMP_IF_TRUE:
             case self::JUMP_IF_FALSE:
@@ -234,6 +275,8 @@ final class Op
             case self::JUMP_IF_TRUTHY_KEEP:
             case self::JUMP_IF_FALSY_KEEP:
             case self::CALL:
+            case self::TAIL_CALL:
+            case self::TAIL_CALL_METHOD:
             case self::NEW_CALL:
             case self::NEW_ARRAY:
             case self::SET_PROP:
@@ -244,8 +287,18 @@ final class Op
             case self::MAKE_CLASS:
             case self::LOOP_INIT:
             case self::LOOP_TICK:
+            case self::STRING_LOOP_REGION:
+            case self::ITERATOR_INIT:
                 return 1;
+            // 2-operand opcodes
+            case self::NEW_REGEXP:
+            case self::UPDATE_COMPUTED:
+                return 2;
             // 3-operand opcodes
+            case self::UPDATE_NAME:
+            case self::ITERATOR_NEXT:
+            case self::ITERATOR_CLOSE:
+            case self::UPDATE_MEMBER:
             case self::JUMP_IF_LOCAL_GE_CONST:
             case self::JUMP_IF_LOCAL_GE_LOCAL:
             case self::JUMP_IF_LOCAL_GT_LOCAL:

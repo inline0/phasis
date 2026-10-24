@@ -73,17 +73,7 @@ class ReflectObject
                 $propKey = TypeConversion::toPropertyKey($key);
 
                 if ($propKey instanceof JsSymbol) {
-                    // Proxy symbol-keyed [[Set]] runs through the proxy's set
-                    // trap (and its invariant validation). Falling through to
-                    // ordinarySetSymbol would bypass the trap and lose the
-                    // post-trap invariant checks (e.g. nw/nc data property).
-                    if ($target instanceof \Phasis\Value\JsProxy) {
-                        $target->setBySymbol($propKey, $value);
-                        return new JsBoolean(true);
-                    }
-                    return new JsBoolean(
-                        self::ordinarySetSymbol($target, $propKey, $value, $receiver)
-                    );
+                    return new JsBoolean($target->setBySymbolWithValueReceiver($propKey, $value, $receiver));
                 }
                 // Typed-array exotic [[Set]]: for a CanonicalNumericIndexString
                 // we delegate to the typed array's [[Set]] when the receiver is
@@ -699,67 +689,6 @@ class ReflectObject
         }
         if ($a instanceof JsBoolean && $b instanceof JsBoolean) {
             return $a->value === $b->value;
-        }
-        return false;
-    }
-
-    /**
-     * OrdinarySet for symbol-keyed properties with receiver support.
-     *
-     * Mirrors the OrdinarySetWithOwnDescriptor algorithm for symbol keys.
-     */
-    private static function ordinarySetSymbol(
-        JsObject $target,
-        JsSymbol $key,
-        JsValue $value,
-        JsValue $receiver,
-    ): bool {
-        $ownDesc = $target->getSymbolPropertyDescriptor($key);
-
-        if ($ownDesc === null) {
-            // Walk prototype chain.
-            $parent = $target->getPrototype();
-            if ($parent !== null) {
-                return self::ordinarySetSymbol($parent, $key, $value, $receiver);
-            }
-            // No own, no parent: create writable data descriptor on receiver.
-            $ownDesc = PropertyDescriptor::data(JsUndefined::instance());
-        }
-
-        if ($ownDesc->isDataDescriptor()) {
-            if ($ownDesc->writable === false) {
-                return false;
-            }
-            if (!$receiver instanceof JsObject) {
-                return false;
-            }
-            $existingDesc = $receiver->getSymbolPropertyDescriptor($key);
-            if ($existingDesc !== null) {
-                if ($existingDesc->isAccessorDescriptor()) {
-                    return false;
-                }
-                if ($existingDesc->writable === false) {
-                    return false;
-                }
-                $receiver->definePropertyBySymbol($key, new PropertyDescriptor(
-                    value: $value,
-                    writable: $existingDesc->writable,
-                    enumerable: $existingDesc->enumerable,
-                    configurable: $existingDesc->configurable,
-                ));
-                return true;
-            }
-            if (!$receiver->isExtensible()) {
-                return false;
-            }
-            $receiver->definePropertyBySymbol($key, PropertyDescriptor::data($value));
-            return true;
-        }
-
-        // Accessor descriptor.
-        if ($ownDesc->set !== null) {
-            $ownDesc->set->call($receiver instanceof JsObject ? $receiver : $target, [$value]);
-            return true;
         }
         return false;
     }

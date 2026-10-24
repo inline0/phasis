@@ -61,10 +61,14 @@ use Phasis\Value\JsValue;
 final class Compiler
 {
     use Parts\CompilerBailoutAnalysis;
+    use Parts\CompilerForOf;
+    use Parts\CompilerSwitch;
+    use Parts\CompilerBlockBindings;
     use Parts\CompilerScope;
     use Parts\CompilerEmit;
     use Parts\CompilerStatement;
     use Parts\CompilerExpression;
+    use Parts\CompilerStringLoopRegions;
 
     /** @var list<int> */
     private array $code = [];
@@ -89,6 +93,27 @@ final class Compiler
 
     /** @var list<int> */
     private array $paramSlots = [];
+
+    private bool $parametersFromEnvironment = false;
+
+    private bool $tailCallsEnabled = false;
+
+    private bool $hasTailCalls = false;
+
+    private bool $argumentsAllowed = false;
+
+    private bool $needsArguments = false;
+
+    private ?CallExpression $constructorSuperCall = null;
+
+    /** @var array<string, string> Captured function-scope bindings and declaration kinds. */
+    private array $capturedLocals = [];
+
+    /** @var array<int, array{string, int}> Hoisted function definition sites and their frame slots. */
+    private array $functionDefinitionSites = [];
+
+    /** @var array<string, true> Uncaptured lexical bindings with proven disjoint block lifetimes. */
+    private array $reusableBlockLocals = [];
 
     /** @var list<\Phasis\Ast\Node> */
     private array $nestedFns = [];
@@ -155,6 +180,17 @@ final class Compiler
      */
     private array $classNodes = [];
 
+    /** @var list<Node> Expressions whose live bindings remain in the frame environment. */
+    private array $interpretedExpressions = [];
+
+    /**
+     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|array{target: Node, rest: bool}|null>}>
+     */
+    private array $arrayBindings = [];
+
+    /** Interpreted assignment references need the activation's lexical this binding. */
+    private bool $arrayAssignmentReferences = false;
+
     /**
      * Source-like display string for each CALL_METHOD opcode emitted,
      * keyed by the PC of the opcode. The VM reads this on the
@@ -183,18 +219,21 @@ final class Compiler
     private int $tryEntryStackDepth = 0;
 
     /**
-     * Phase 2 finally guard: stack of loopStack sizes captured at
-     * each try-with-finally entry. Used to detect whether a
-     * break / continue inside the protected block targets a loop
-     * outside the try (bail) versus a nested loop entirely within
-     * the try (fine — finally still runs because the inner break
-     * doesn't escape the try). A non-empty stack also forces return
-     * inside the protected block to bail, since we'd have to inline
-     * the finally body before RET to preserve spec semantics.
+     * Loop depths at each active finalizer keep unsupported escaping loop
+     * completions on the interpreter path.
      *
      * @var list<int>
      */
     private array $finallyLoopBoundaries = [];
+
+    /**
+     * Return jumps target the innermost pending finalizer. A finalizer's
+     * body is compiled after removing its own context, so a return there
+     * overrides the saved completion and proceeds to any outer finalizer.
+     *
+     * @var list<array{valueSlot: int, completionSlot: int, jumps: list<int>}>
+     */
+    private array $finallyContexts = [];
 
     /**
      * THROW opcode operand: a single int that the VM uses to look
@@ -207,8 +246,8 @@ final class Compiler
     /**
      * Whether the program currently being compiled has a `"use strict"`
      * directive in its prologue (or was wrapped with one by the host).
-     * Used by compileAssignment to bail when a non-local identifier is
-     * the LHS: per spec, the LHS reference resolves BEFORE the RHS, so
+     * Used by compileAssignment to retain interpreter reference semantics
+     * when a non-local identifier is the LHS: the reference resolves before the RHS, so
      * a strict-mode unresolvable LHS must throw ReferenceError even
      * when the RHS happens to add the property to the global object as
      * a side effect (test262 language/identifier-resolution/
@@ -237,12 +276,37 @@ final class Compiler
      */
     private bool $thisFromFrame = false;
 
+    /** Operands can equal LOAD_THIS, so track actual instructions during emission. */
+    private bool $hasLoadThis = false;
+
     public function compile(JsFunction $fn): CompiledFunction
     {
-        if ($fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
+        $template = CompilationTemplates::get($fn);
+        if ($template !== null) {
+            return $template;
+        }
+        $reason = CompilationFailures::get($fn, 'bytecode');
+        if ($reason !== null) {
+            throw new CompilerBailout($reason);
+        }
+        try {
+            $compiled = $this->compileFunction($fn);
+            $this->finalizeStringLoopRegions($compiled);
+            CompilationTemplates::remember($fn, $compiled);
+            return $compiled;
+        } catch (CompilerBailout $error) {
+            CompilationFailures::remember($fn, 'bytecode', $error->getMessage());
+            throw $error;
+        }
+    }
+
+    private function compileFunction(JsFunction $fn): CompiledFunction
+    {
+        if ($fn->isAsync() || $fn->isNative()) {
             throw new CompilerBailout('non-ordinary function kind');
         }
-        $this->thisFromFrame = !$fn->isArrow() && !$fn->isGenerator();
+        $this->regionFunction = $this->ordinaryRegionFunction($fn);
+        $this->thisFromFrame = !$fn->isArrow() && !$fn->isGenerator() && !$fn->isDerivedConstructor();
         // Generators get a stricter bailout: only "simple" bodies
         // (no yield* delegation, no try/catch/finally containing
         // yield, not an async generator) can be lowered to the
@@ -256,17 +320,16 @@ final class Compiler
             }
             $this->inGenerator = true;
         }
-        // Strict-mode bodies that have a return-with-call shape need
-        // tail-call optimisation per spec. The bytecode VM emits
-        // CALL+RET which recurses normally and grows the PHP stack
-        // (test262 tco-* tests at $MAX_ITERATIONS=100000 hit
-        // maxCallDepth). Bail compile so the tree-walker (which
-        // returns TailCallThunk + callFunction trampolines) handles
-        // these. Mirrors the same bail in JsToPhp::compile.
-        if ($fn->isStrict() && self::bytecodeBailsForTailCall($fn->getBody())) {
-            throw new CompilerBailout('strict-mode tail-call body');
-        }
         $body = $fn->getBody();
+        $functionStrict = $fn->isStrict()
+            || ($body instanceof BlockStatement && self::programHasUseStrictDirective($body->body));
+        $this->tailCallsEnabled = $functionStrict && !$fn->isGenerator() && !$fn->isClassConstructor();
+        // Unmapped arguments and zero-parameter ordinary functions can use
+        // the interpreter's existing arguments object without slot aliases.
+        // Sloppy mapped parameter lists retain the interpreter path.
+        $this->argumentsAllowed = !$fn->isGenerator() && (
+            $fn->isArrow() || $functionStrict || $fn->getParams() === []
+        );
         $isExpressionBody = !$body instanceof BlockStatement;
         if ($isExpressionBody && !$body instanceof Node) {
             throw new CompilerBailout('non-AST body');
@@ -283,6 +346,17 @@ final class Compiler
         }
 
         foreach ($fn->getParams() as $param) {
+            if ($param instanceof RestElement && $param->argument instanceof Identifier && !$fn->isGenerator()) {
+                $this->parametersFromEnvironment = true;
+                $param = $param->argument;
+            }
+            if ($param instanceof AssignmentPattern && $param->left instanceof Identifier && !$fn->isGenerator()) {
+                if ($this->parameterInitializerCanCapture($param->right)) {
+                    throw new CompilerBailout('parameter initializer captures bindings');
+                }
+                $this->parametersFromEnvironment = true;
+                $param = $param->left;
+            }
             if (!$param instanceof Identifier) {
                 throw new CompilerBailout('non-simple parameter');
             }
@@ -290,18 +364,23 @@ final class Compiler
             $this->paramSlots[] = $slot;
         }
 
+        if ($fn->isDerivedConstructor()) {
+            $this->prepareConstructorSuperCall($body);
+        }
+
         if ($isExpressionBody) {
+            $this->collectCapturedLocals($body);
             // Arrow expression body: nothing to pre-walk (no var
             // decls allowed), no TDZ, no statements. Compile the
             // single expression directly.
-            $this->compileExpression($body);
+            $this->compileReturnExpression($body);
             $this->emit(Op::RET);
             // needsThis now means "the env must carry a `this` binding":
             // true when the body's own bytecode walks the env for this
             // (LOAD_THIS — arrows/generators) or when a nested arrow /
             // class outer-position lexically references this or super
             // and will resolve it through the env chain at run time.
-            $needsEnvThis = in_array(Op::LOAD_THIS, $this->code, true)
+            $needsEnvThis = $this->arrayAssignmentReferences || $this->hasLoadThis
                 || $this->nestedFnsLexicallyReferenceThis();
             $cf = new CompiledFunction(
                 code: $this->code,
@@ -312,16 +391,31 @@ final class Compiler
                 slotCount: max(1, count($this->localNames)),
                 nestedFns: $this->nestedFns,
                 needsThis: $needsEnvThis,
-                needsArgsBinding: false,
-                canSkipEnvAlloc: !$needsEnvThis,
+                needsArgsBinding: $this->capturedLocals !== [] || $this->needsArguments,
+                canSkipEnvAlloc: !$fn->isClassConstructor() && !$needsEnvThis && !$this->parametersFromEnvironment
+                    && $this->capturedLocals === [] && !$this->needsArguments,
+                parametersFromEnvironment: $this->parametersFromEnvironment,
+                hasTailCalls: $this->hasTailCalls,
             );
+            $cf->arrayBindings = $this->arrayBindings;
             $cf->callMethodDisplays = $this->callMethodDisplays;
             return $cf;
         }
 
         // Pre-walk: collect every var/let/const/function name in
         // the body so each is assigned a unique frame slot up front.
+        $this->forOfBody = $body;
+        $this->collectReusableBlockBindings($body);
         $this->collectFunctionLocals($body->body);
+        if ($this->needsArguments && isset($this->localSlots['arguments'])) {
+            throw new CompilerBailout('local arguments binding');
+        }
+        $this->collectCapturedLocals($body);
+        foreach ($this->constructorSuperCall->arguments ?? [] as $argument) {
+            if ($argument instanceof Identifier) {
+                $this->capturedLocals[$argument->name] ??= 'parameter';
+            }
+        }
 
         // TDZ guard: bail if any let/const name appears in source
         // BEFORE its declaration.
@@ -347,8 +441,9 @@ final class Compiler
 
         // See the expression-body site above for the needsThis /
         // canSkipEnvAlloc semantics under frame-based this.
-        $needsEnvThis = in_array(Op::LOAD_THIS, $this->code, true)
+        $needsEnvThis = $this->arrayAssignmentReferences || $this->hasLoadThis
             || $this->nestedFnsLexicallyReferenceThis();
+        $capturedBindings = $this->capturedEnvironmentBindings($fn);
         $cf = new CompiledFunction(
             code: $this->code,
             consts: $this->consts,
@@ -358,13 +453,126 @@ final class Compiler
             slotCount: max(1, count($this->localNames)),
             nestedFns: $this->nestedFns,
             needsThis: $needsEnvThis,
-            needsArgsBinding: false,
-            canSkipEnvAlloc: !$needsEnvThis,
+            needsArgsBinding: $this->capturedLocals !== [] || $this->needsArguments,
+            canSkipEnvAlloc: !$fn->isClassConstructor() && !$needsEnvThis && !$this->parametersFromEnvironment
+                && $this->capturedLocals === [] && $this->nestedFns === []
+                && !$this->needsArguments,
+            parametersFromEnvironment: $this->parametersFromEnvironment,
+            hasTailCalls: $this->hasTailCalls,
+            capturedEnvironmentBindings: $capturedBindings,
+            omittedFunctionBindings: $this->omittedFunctionBindings($fn, $capturedBindings),
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
+        $cf->interpretedExpressions = $this->interpretedExpressions;
+        $cf->arrayBindings = $this->arrayBindings;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
+    }
+
+    private function prepareConstructorSuperCall(Node $body): void
+    {
+        $statement = $body instanceof BlockStatement ? ($body->body[0] ?? null) : null;
+        $call = $statement instanceof ExpressionStatement ? $statement->expression : null;
+        if (
+            !$call instanceof CallExpression || $call->optional
+            || !$call->callee instanceof Identifier || $call->callee->name !== 'super'
+        ) {
+            throw new CompilerBailout('derived constructor needs a leading super call');
+        }
+        $parameters = [];
+        foreach ($this->paramSlots as $slot) {
+            $parameters[$this->localNames[$slot]] = true;
+        }
+        foreach ($call->arguments as $argument) {
+            if ($argument instanceof Identifier && isset($parameters[$argument->name])) {
+                continue;
+            }
+            if (
+                $argument instanceof Literal
+                && ($argument->value === null || is_scalar($argument->value))
+            ) {
+                continue;
+            }
+            throw new CompilerBailout('super argument needs additional environment bindings');
+        }
+        // The unchanged interpreter owns super lookup, argument evaluation,
+        // field initialization and BindThisValue. Its parameter reads must
+        // share the same live bindings used by subsequent bytecode.
+        $this->constructorSuperCall = $call;
+    }
+
+    /** @return array<string, string>|null */
+    private function capturedEnvironmentBindings(JsFunction $fn): ?array
+    {
+        if (
+            $fn->isArrow() || $fn->isGenerator()
+            || $this->needsArguments || $this->classNodes !== [] || $this->arrayAssignmentReferences
+        ) {
+            return null;
+        }
+        // Plain and rest parameters are already bound in the body environment.
+        // Parameter expressions need the interpreter's separate body scope.
+        foreach ($fn->getParams() as $parameter) {
+            if (
+                !$parameter instanceof Identifier
+                && !($parameter instanceof RestElement && $parameter->argument instanceof Identifier)
+            ) {
+                return null;
+            }
+        }
+        $bindings = [];
+        foreach ($this->capturedLocals as $name => $kind) {
+            if ($kind === 'var' || $kind === 'let' || $kind === 'const') {
+                $bindings[$name] = $kind;
+            } elseif ($kind !== 'parameter' && $kind !== 'function') {
+                return null;
+            }
+        }
+        return $bindings;
+    }
+
+    /**
+     * @param array<string, string>|null $capturedBindings
+     * @return array<int, true>
+     */
+    private function omittedFunctionBindings(JsFunction $fn, ?array $capturedBindings): array
+    {
+        if (
+            $capturedBindings === null || $fn->isClassConstructor() || $fn->isDerivedConstructor()
+            || $this->interpretedExpressions !== []
+        ) {
+            return [];
+        }
+        $omitted = [];
+        foreach ($this->functionDefinitionSites as $pc => [$name, $slot]) {
+            // Parameter bindings can remain observable through arguments even
+            // when nested functions do not capture their declaration name.
+            if (!isset($this->capturedLocals[$name]) && !in_array($slot, $this->paramSlots, true)) {
+                $omitted[$pc] = true;
+            }
+        }
+        return $omitted;
+    }
+
+    private function parameterInitializerCanCapture(Node $node): bool
+    {
+        if (
+            $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+            || $node instanceof \Phasis\Ast\Expression\ClassExpression
+            || ($node instanceof Identifier && $node->name === 'eval')
+        ) {
+            return true;
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node && $this->parameterInitializerCanCapture($child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -468,7 +676,7 @@ final class Compiler
         $this->emit(Op::LOAD_LOCAL, $resultSlot);
         $this->emit(Op::RET);
 
-        $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
+        $needsThis = $this->hasLoadThis;
         $cf = new CompiledFunction(
             code: $this->code,
             consts: $this->consts,
@@ -487,6 +695,8 @@ final class Compiler
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
+        $cf->interpretedExpressions = $this->interpretedExpressions;
+        $cf->arrayBindings = $this->arrayBindings;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
     }

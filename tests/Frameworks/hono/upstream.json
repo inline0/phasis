@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/honojs/hono",
+  "version": "4.13.13",
+  "tag": "v4.13.13",
+  "commit": "08a023cbfde55b434fb0fb30fae35d42e4bf20aa",
+  "source": "https://codeload.github.com/honojs/hono/tar.gz/08a023cbfde55b434fb0fb30fae35d42e4bf20aa",
+  "directory": "upstream/hono-4.13.13",
+  "upstreamConfiguration": "vitest.config.ts",
+  "sha256": "e5d8bf83f9afe4d89d4a4aa7f99574d0e0b5ce2ddb3e23f3213fae2779d1ebad"
+}

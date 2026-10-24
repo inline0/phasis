@@ -46,48 +46,21 @@ trait StringIteration
         $proto = new JsObject($iteratorPrototype);
 
         $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsObject) {
+            if (!$this_ instanceof \Phasis\Value\JsStringIterator) {
                 throw new \Phasis\Exceptions\TypeError(
                     'Method String Iterator.prototype.next called on incompatible receiver',
                 );
             }
-            $slotDesc = $this_->getOwnPropertyDescriptor('[[StringIteratorData]]');
-            if ($slotDesc === null) {
-                throw new \Phasis\Exceptions\TypeError(
-                    'Method String Iterator.prototype.next called on incompatible receiver',
-                );
-            }
-            $data = $slotDesc->value;
-            if (!$data instanceof JsObject) {
-                $result = new JsObject();
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
-                return $result;
-            }
-            $charsVal = $data->get('chars');
-            $indexVal = $data->get('index');
-            $totalVal = $data->get('total');
-            $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
-            $total = ($totalVal instanceof JsNumber) ? (int) $totalVal->value : 0;
-
-            $result = new JsObject();
-            if ($index < $total) {
-                $char = $charsVal instanceof JsObject ? $charsVal->get((string) $index) : JsUndefined::instance();
-                $data->set('index', JsNumber::of((float) ($index + 1)));
-                $result->set('value', $char);
-                $result->set('done', new JsBoolean(false));
-            } else {
-                $this_->defineOwnProperty(
-                    '[[StringIteratorData]]',
-                    PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
-                );
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
-            }
+            $done = false;
+            $value = $this_->nextValue($done);
+            $result = \Phasis\Engine::getCurrentInterpreter()?->vmNewObject() ?? new JsObject();
+            $result->defineOwnDataPropertyFast('value', $value);
+            $result->defineOwnDataPropertyFast('done', JsBoolean::of($done));
             return $result;
         }, 0);
         $nextFn->setNonConstructable();
         $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+        $proto->setInternalProperty('StringIteratorNext', $nextFn);
 
         // Symbol.toStringTag = "String Iterator".
         $proto->definePropertyBySymbol(
@@ -105,64 +78,31 @@ trait StringIteration
      * Per spec 22.1.5.2.1: iteration yields code points (combining surrogate
      * pairs), but lone surrogates are yielded individually.
      */
-    public static function createStringIterator(JsString $str): JsObject
+    public static function createStringIterator(JsString $str, ?JsObject $prototype = null): JsObject
     {
-        $proto = self::$stringIteratorPrototype;
-        $iterator = new JsObject($proto);
-
-        // Build character list using UTF-16 code units, combining valid
-        // surrogate pairs into single code points.
-        $chars = [];
-        $u16 = JsString::utf8ToUtf16LE($str->value);
-        $u16Len = (int) (strlen($u16) / 2);
-        $i = 0;
-        while ($i < $u16Len) {
-            $cu = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
-            if ($cu >= 0xD800 && $cu <= 0xDBFF && $i + 1 < $u16Len) {
-                $next = ord($u16[($i + 1) * 2]) | (ord($u16[($i + 1) * 2 + 1]) << 8);
-                if ($next >= 0xDC00 && $next <= 0xDFFF) {
-                    // Valid surrogate pair: combine into a single code point.
-                    $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
-                    $chars[] = new JsString(mb_chr($cp, 'UTF-8'));
-                    $i += 2;
-                    continue;
-                }
-            }
-            // Lone surrogate or BMP character.
-            $chars[] = new JsString(JsString::utf16CodeUnitToUtf8($cu));
-            $i++;
+        if ($prototype === null) {
+            $intrinsic = \Phasis\Engine::getCurrentInterpreter()?->getGlobalEnv()->getIntrinsic('StringIteratorPrototype');
+            $prototype = $intrinsic instanceof JsObject ? $intrinsic : self::$stringIteratorPrototype;
         }
-        $charsArr = JsArray::fromArray($chars);
-
-        $data = new JsObject();
-        $data->set('chars', $charsArr);
-        $data->set('index', JsNumber::of(0.0));
-        $data->set('total', JsNumber::of((float) count($chars)));
-        $iterator->defineOwnProperty(
-            '[[StringIteratorData]]',
-            PropertyDescriptor::data($data, false, false, false),
-        );
-
-        return $iterator;
+        $next = $prototype?->getInternalProperty('StringIteratorNext');
+        if (!$prototype instanceof JsObject || !$next instanceof JsFunction) {
+            throw new \LogicException('String iterator intrinsic is missing');
+        }
+        return new \Phasis\Value\JsStringIterator($str, $next, $prototype);
     }
 
     private static function charAt(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            // ToInteger(pos): call ToNumber first (may throw TypeError for
-            // objects without valueOf/toString, e.g. Object.create(null)).
-            $posNum = isset($args[0]) ? TypeConversion::toNumber($args[0]) : 0.0;
-            $index = (int) $posNum;
-            if (is_nan($posNum)) {
-                $index = 0;
-            }
+            $position = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
             // Per spec charAt uses UTF-16 code unit indices.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
-            if ($index < 0 || $index >= $len) {
+            if ($position < 0 || $position >= $len) {
                 return new JsString('');
             }
+            $index = (int) $position;
             $codeUnit = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
             return new JsString(JsString::utf16CodeUnitToUtf8($codeUnit));
         };
@@ -172,13 +112,14 @@ trait StringIteration
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $position = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
             // Index by UTF-16 code units, not Unicode codepoints.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
-            if ($index < 0 || $index >= $len) {
+            if ($position < 0 || $position >= $len) {
                 return JsNumber::of(NAN);
             }
+            $index = (int) $position;
             $cu = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
             return JsNumber::of((float) $cu);
         };
@@ -190,8 +131,9 @@ trait StringIteration
             $str = self::extractString($this_);
             // Per spec, String.prototype.slice indices are UTF-16 code unit
             // offsets, not code point offsets, so work on the UTF-16LE form.
-            $u16 = JsString::utf8ToUtf16LE($str);
-            $len = (int) (strlen($u16) / 2);
+            $ascii = $this_ instanceof JsString && get_class($this_) === JsString::class && $this_->isAscii();
+            $u16 = $ascii ? '' : ($this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str));
+            $len = $ascii ? strlen($str) : (int) (strlen($u16) / 2);
 
             // Per spec 22.1.3.22: intStart = ToIntegerOrInfinity(start).
             $startArg = $args[0] ?? JsUndefined::instance();
@@ -224,6 +166,9 @@ trait StringIteration
             if ($from >= $to) {
                 return new JsString('');
             }
+            if ($ascii) {
+                return new JsString(substr($str, $from, $to - $from));
+            }
 
             $sliceBytes = substr($u16, $from * 2, ($to - $from) * 2);
             return new JsString(JsString::utf16LEToUtf8($sliceBytes));
@@ -236,7 +181,7 @@ trait StringIteration
             $str = self::extractString($this_);
             // Per spec, substring operates on UTF-16 code unit offsets, not
             // code point offsets.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
 
             // Per spec: ToIntegerOrInfinity(start). NaN -> 0.
@@ -308,7 +253,7 @@ trait StringIteration
             $relative = isset($args[0])
                 ? TypeConversion::toIntegerOrInfinity($args[0])
                 : 0.0;
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
             $k = $relative >= 0 ? $relative : $len + $relative;
             if ($k < 0 || $k >= $len) {
@@ -327,7 +272,7 @@ trait StringIteration
             $pos = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
 
             // Convert UTF-8 string to UTF-16 code units to match JS semantics.
-            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
             $size = (int) (strlen($u16) / 2);
 
             if ($pos < 0 || $pos >= $size) {

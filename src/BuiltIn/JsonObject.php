@@ -318,10 +318,7 @@ class JsonObject
             $integerKeys = [];
             $stringKeys = [];
             foreach (array_keys($value->properties->dataSlots) as $name) {
-                if (
-                    isset($name[0])
-                    && ($name[0] === '[' || ($name[0] === '_' && isset($name[1]) && $name[1] === '_'))
-                ) {
+                if (str_starts_with((string) $name, '[[') && str_ends_with((string) $name, ']]')) {
                     continue;
                 }
                 // PHP stdClass treats NUL bytes / non-printable chars as
@@ -891,7 +888,7 @@ class JsonObject
                     }
                     $encoded = json_encode(
                         $php,
-                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS,
                     );
                     if ($encoded !== false) {
                         if ($value instanceof JsObject) {
@@ -1157,10 +1154,7 @@ class JsonObject
         foreach ($keys as $key) {
             $strP = self::serializeProperty($key, $value, $replacerFn, $propertyList, $gap, $indent, $stack);
             if ($strP !== null) {
-                $encodedKey = json_encode($key, JSON_UNESCAPED_UNICODE);
-                if ($encodedKey === false) {
-                    $encodedKey = '"' . $key . '"';
-                }
+                $encodedKey = self::quoteJsonString($key);
                 $member = $encodedKey . ':';
                 if ($gap !== '') {
                     $member .= ' ';

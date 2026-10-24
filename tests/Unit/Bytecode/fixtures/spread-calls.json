@@ -1,0 +1,295 @@
+[
+  [
+    [
+      12,
+      [
+        3
+      ]
+    ],
+    [
+      true,
+      [
+        1,
+        4,
+        5,
+        9
+      ]
+    ],
+    [
+      12,
+      [
+        4,
+        5
+      ]
+    ],
+    [
+      12,
+      [
+        8
+      ]
+    ],
+    [
+      "number",
+      7
+    ],
+    [
+      true,
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      true,
+      [
+        1,
+        2,
+        null,
+        4,
+        5
+      ]
+    ],
+    9,
+    11,
+    [
+      "throw-next",
+      "Error",
+      "next"
+    ],
+    [
+      "throw-done",
+      "Error",
+      "done"
+    ],
+    [
+      "throw-value",
+      "Error",
+      "value"
+    ],
+    [
+      "primitive",
+      "TypeError",
+      "invalid"
+    ],
+    [
+      "not callable",
+      "TypeError"
+    ],
+    [
+      "not iterable",
+      "TypeError"
+    ],
+    [
+      "null receiver",
+      "TypeError"
+    ],
+    [
+      12,
+      [
+        3
+      ]
+    ],
+    [
+      true,
+      [
+        1,
+        4,
+        5,
+        9
+      ]
+    ],
+    [
+      12,
+      [
+        4,
+        5
+      ]
+    ],
+    [
+      12,
+      [
+        8
+      ]
+    ],
+    [
+      "number",
+      7
+    ],
+    [
+      true,
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      true,
+      [
+        1,
+        2,
+        null,
+        4,
+        5
+      ]
+    ],
+    9,
+    11,
+    [
+      "throw-next",
+      "Error",
+      "next"
+    ],
+    [
+      "throw-done",
+      "Error",
+      "done"
+    ],
+    [
+      "throw-value",
+      "Error",
+      "value"
+    ],
+    [
+      "primitive",
+      "TypeError",
+      "invalid"
+    ],
+    [
+      "not callable",
+      "TypeError"
+    ],
+    [
+      "not iterable",
+      "TypeError"
+    ],
+    [
+      "null receiver",
+      "TypeError"
+    ],
+    5000
+  ],
+  [
+    "key string",
+    "get method",
+    "arg",
+    "first",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "next 1",
+    "done 1",
+    "value 1",
+    "next 2",
+    "done 2",
+    "last",
+    "key string",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "next 1",
+    "done 1",
+    "value 1",
+    "next 2",
+    "done 2",
+    "get method",
+    "apply",
+    "construct",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "next 1",
+    "done 1",
+    "value 1",
+    "next 2",
+    "done 2",
+    "get method",
+    "key string",
+    "get method",
+    "arg",
+    "first",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "next 1",
+    "done 1",
+    "value 1",
+    "next 2",
+    "done 2",
+    "last",
+    "key string",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "next 1",
+    "done 1",
+    "value 1",
+    "next 2",
+    "done 2",
+    "get method",
+    "apply",
+    "construct",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "get method",
+    "iterator",
+    "get next",
+    "next 0",
+    "iterator",
+    "get next",
+    "next 0",
+    "done 0",
+    "value 0",
+    "next 1",
+    "done 1",
+    "value 1",
+    "next 2",
+    "done 2",
+    "get method"
+  ]
+]

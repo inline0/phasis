@@ -66,17 +66,17 @@ final class WritableStream
 
     public static function getPrototype(): ?JsObject
     {
-        return self::$prototype;
+        return StreamHelpers::intrinsicPrototype('WritableStream');
     }
 
     public static function getControllerPrototype(): ?JsObject
     {
-        return self::$controllerPrototype;
+        return StreamHelpers::intrinsicPrototype('WritableStreamDefaultController');
     }
 
     public static function getWriterPrototype(): ?JsObject
     {
-        return self::$writerPrototype;
+        return StreamHelpers::intrinsicPrototype('WritableStreamDefaultWriter');
     }
 
     public static function install(Environment $env): JsFunction
@@ -98,7 +98,7 @@ final class WritableStream
                 $newTarget = $this_->get('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::$prototype;
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::getPrototype();
                     $this_->setPrototype($useProto);
                 }
                 $underlyingSink = $args[0] ?? JsUndefined::instance();
@@ -168,7 +168,7 @@ final class WritableStream
                 $newTarget = $this_->get('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::$writerPrototype;
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::getWriterPrototype();
                     $this_->setPrototype($useProto);
                 }
                 self::setUpDefaultWriter($this_, $stream);
@@ -509,7 +509,7 @@ final class WritableStream
         float $highWaterMark,
         ?JsFunction $sizeAlgorithm
     ): void {
-        $controller = new JsObject(self::$controllerPrototype);
+        $controller = new JsObject(self::getControllerPrototype());
         $controller->setInternalProperty('[[IsWritableStreamDefaultController]]', true);
         $controller->setInternalProperty('[[Stream]]', $stream);
         StreamHelpers::resetQueue($controller);
@@ -598,7 +598,7 @@ final class WritableStream
         if (self::isLocked($stream)) {
             throw new TypeError('WritableStream is locked');
         }
-        $writer = new JsObject(self::$writerPrototype);
+        $writer = new JsObject(self::getWriterPrototype());
         self::setUpDefaultWriter($writer, $stream);
         return $writer;
     }

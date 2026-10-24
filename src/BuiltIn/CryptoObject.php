@@ -38,6 +38,7 @@ final class CryptoObject
 
     public static function install(Environment $env): void
     {
+        CryptoKeyConstructor::install($env);
         $crypto = new JsObject();
 
         $crypto->defineOwnProperty(

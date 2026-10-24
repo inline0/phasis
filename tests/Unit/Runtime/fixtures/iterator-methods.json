@@ -1,0 +1,277 @@
+[
+  [
+    "normal",
+    "none",
+    [
+      "return",
+      [
+        1,
+        2
+      ]
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1",
+      "next receiver:true:0",
+      "body:2",
+      "next receiver:true:0"
+    ]
+  ],
+  [
+    "normal",
+    "next",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator receiver:true:0"
+    ]
+  ],
+  [
+    "normal",
+    "return",
+    [
+      "return",
+      [
+        1,
+        2
+      ]
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1",
+      "next receiver:true:0",
+      "body:2",
+      "next receiver:true:0"
+    ]
+  ],
+  [
+    "break",
+    "none",
+    [
+      "return",
+      [
+        1
+      ]
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1",
+      "return receiver:true:0"
+    ]
+  ],
+  [
+    "break",
+    "next",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator receiver:true:0"
+    ]
+  ],
+  [
+    "break",
+    "return",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1"
+    ]
+  ],
+  [
+    "return",
+    "none",
+    [
+      "return",
+      1
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1",
+      "return receiver:true:0"
+    ]
+  ],
+  [
+    "return",
+    "next",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator receiver:true:0"
+    ]
+  ],
+  [
+    "return",
+    "return",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1"
+    ]
+  ],
+  [
+    "throw",
+    "none",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1",
+      "return receiver:true:0"
+    ]
+  ],
+  [
+    "throw",
+    "next",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator receiver:true:0"
+    ]
+  ],
+  [
+    "throw",
+    "return",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator receiver:true:0",
+      "next receiver:true:0",
+      "body:1"
+    ]
+  ],
+  [
+    "string",
+    [
+      "return",
+      [
+        9
+      ]
+    ],
+    [
+      "getter receiver:string:true",
+      "method receiver:string:true",
+      "body:9"
+    ]
+  ],
+  [
+    "string",
+    "missing",
+    [
+      "throw",
+      "TypeError"
+    ]
+  ],
+  [
+    "number",
+    [
+      "return",
+      [
+        9
+      ]
+    ],
+    [
+      "getter receiver:number:true",
+      "method receiver:number:true",
+      "body:9"
+    ]
+  ],
+  [
+    "number",
+    "missing",
+    [
+      "throw",
+      "TypeError"
+    ]
+  ],
+  [
+    "boolean",
+    [
+      "return",
+      [
+        9
+      ]
+    ],
+    [
+      "getter receiver:boolean:true",
+      "method receiver:boolean:true",
+      "body:9"
+    ]
+  ],
+  [
+    "boolean",
+    "missing",
+    [
+      "throw",
+      "TypeError"
+    ]
+  ],
+  [
+    "bigint",
+    [
+      "return",
+      [
+        9
+      ]
+    ],
+    [
+      "getter receiver:bigint:true",
+      "method receiver:bigint:true",
+      "body:9"
+    ]
+  ],
+  [
+    "bigint",
+    "missing",
+    [
+      "throw",
+      "TypeError"
+    ]
+  ],
+  [
+    "symbol",
+    [
+      "return",
+      [
+        9
+      ]
+    ],
+    [
+      "getter receiver:symbol:true",
+      "method receiver:symbol:true",
+      "body:9"
+    ]
+  ],
+  [
+    "symbol",
+    "missing",
+    [
+      "throw",
+      "TypeError"
+    ]
+  ]
+]

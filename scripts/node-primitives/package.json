@@ -1,0 +1,18 @@
+{
+  "name": "phasis-node-primitives-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "brotli": "1.3.3",
+    "buffer": "6.0.3",
+    "events": "3.3.0",
+    "readable-stream": "4.8.0",
+    "string_decoder": "1.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

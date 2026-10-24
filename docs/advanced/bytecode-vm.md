@@ -101,7 +101,7 @@ Each fast path is gated by a "shape check" — if the receiver doesn't match the
 
 ## What this doesn't do
 
-The bytecode VM is **not a JIT** in the V8 sense. It doesn't generate native machine code per-function and doesn't speculate based on observed types beyond the IC's monomorphic prototype-identity check. Function-boundary inlining is approximated by the custom callstack (no extra PHP frame per JS call) rather than by lowering the callee's body into the caller's bytecode.
+The bytecode VM is **not a JIT** in the V8 sense. It doesn't generate native machine code per-function. Its property inline cache checks up to four prototype identities and their mutation versions. Eligible bytecode calls share the VM dispatch loop through the custom callstack, without lowering the callee's body into the caller's bytecode.
 
 The JsToPhp transpiler is the closest the engine has to a JIT: it generates PHP source for hot function bodies that PHP 8.5's tracing JIT then compiles to native. JsToPhp goes through `eval()`, so it pays a one-time compile tax and the tracing JIT has to discover the function as if it were user code. Skipping the `eval()` step by emitting opcache opcodes directly would close more of the gap — see [Benchmarks § Roadmap](/docs/advanced/benchmarks#roadmap).
 

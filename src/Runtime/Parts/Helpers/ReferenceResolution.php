@@ -417,7 +417,7 @@ trait ReferenceResolution
                     }
                     if ($elem === null) {
                         // Elision: advance iterator but discard value.
-                        $this->iteratorNext($iterator, $nextMethod, $done);
+                        $this->iteratorNext($iterator, $nextMethod, $done, false);
                         continue;
                     }
                     // Per spec 13.15.5.3 IteratorDestructuringAssignmentEvaluation:

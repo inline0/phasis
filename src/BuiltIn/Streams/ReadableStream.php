@@ -67,17 +67,17 @@ final class ReadableStream
 
     public static function getPrototype(): ?JsObject
     {
-        return self::$prototype;
+        return StreamHelpers::intrinsicPrototype('ReadableStream');
     }
 
     public static function getControllerPrototype(): ?JsObject
     {
-        return self::$controllerPrototype;
+        return StreamHelpers::intrinsicPrototype('ReadableStreamDefaultController');
     }
 
     public static function getReaderPrototype(): ?JsObject
     {
-        return self::$readerPrototype;
+        return StreamHelpers::intrinsicPrototype('ReadableStreamDefaultReader');
     }
 
     public static function install(Environment $env): JsFunction
@@ -99,7 +99,7 @@ final class ReadableStream
                 $newTarget = $this_->get('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::$prototype;
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::getPrototype();
                     $this_->setPrototype($useProto);
                 }
 
@@ -211,7 +211,7 @@ final class ReadableStream
                 $newTarget = $this_->get('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::$readerPrototype;
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::getReaderPrototype();
                     $this_->setPrototype($useProto);
                 }
                 self::setUpDefaultReader($this_, $stream);
@@ -605,7 +605,7 @@ final class ReadableStream
         float $highWaterMark,
         ?JsFunction $sizeAlgorithm
     ): void {
-        $controller = new JsObject(self::$controllerPrototype);
+        $controller = new JsObject(self::getControllerPrototype());
         $controller->setInternalProperty('[[IsReadableStreamDefaultController]]', true);
         $controller->setInternalProperty('[[Stream]]', $stream);
         StreamHelpers::resetQueue($controller);
@@ -657,29 +657,16 @@ final class ReadableStream
             }
         }
         $startPromise = StreamHelpers::toPromise($startResult);
-        // Per WHATWG Streams §SetUpReadableStreamDefaultController step 14
-        // ("Upon fulfillment of startPromise..."): the reaction runs as a
-        // microtask even when the start algorithm returned synchronously.
-        // Our addFulfillHandler invokes immediately on already-fulfilled
-        // promises, so wrap the [[Started]]/pullIfNeeded transition in
-        // scheduleCallback to preserve spec ordering. Without this defer,
-        // a stream constructed without a start algorithm fires pull
-        // synchronously during construction, which (a) lets pull observe
-        // the source closure in TDZ for `const stream = new ReadableStream`
-        // patterns, and (b) loses the race against a synchronous cancel
-        // that should preempt the first pull (async-iterator return() →
-        // ReadableStreamCancel sets state to closed).
-        $startPromise->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            JsPromise::scheduleCallback(static function () use ($controller): void {
+        StreamHelpers::uponPromise(
+            $startPromise,
+            static function (JsValue $_) use ($controller): void {
                 $controller->setInternalProperty('[[Started]]', true);
                 self::defaultControllerCallPullIfNeeded($controller);
-            });
-        });
-        $startPromise->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            JsPromise::scheduleCallback(static function () use ($controller, $reason): void {
+            },
+            static function (JsValue $reason) use ($controller): void {
                 self::defaultControllerError($controller, $reason);
-            });
-        });
+            },
+        );
     }
 
     /**
@@ -700,16 +687,19 @@ final class ReadableStream
             return;
         }
         $promise = $pullAlgorithm();
-        $promise->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            $controller->setInternalProperty('[[Pulling]]', false);
-            if ($controller->getInternalProperty('[[PullAgain]]') === true) {
-                $controller->setInternalProperty('[[PullAgain]]', false);
-                self::defaultControllerCallPullIfNeeded($controller);
-            }
-        });
-        $promise->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            self::defaultControllerError($controller, $reason);
-        });
+        StreamHelpers::uponPromise(
+            $promise,
+            static function (JsValue $_) use ($controller): void {
+                $controller->setInternalProperty('[[Pulling]]', false);
+                if ($controller->getInternalProperty('[[PullAgain]]') === true) {
+                    $controller->setInternalProperty('[[PullAgain]]', false);
+                    self::defaultControllerCallPullIfNeeded($controller);
+                }
+            },
+            static function (JsValue $reason) use ($controller): void {
+                self::defaultControllerError($controller, $reason);
+            },
+        );
     }
 
     /**
@@ -971,7 +961,7 @@ final class ReadableStream
         if (self::isReadableStreamLocked($stream)) {
             throw new TypeError('ReadableStream is locked');
         }
-        $reader = new JsObject(self::$readerPrototype);
+        $reader = new JsObject(self::getReaderPrototype());
         self::setUpDefaultReader($reader, $stream);
         return $reader;
     }
@@ -1361,7 +1351,7 @@ final class ReadableStream
         }
         $iteratorRecord = self::getIteratorFlattenable($iterable);
 
-        $stream = new JsObject(self::$prototype);
+        $stream = new JsObject(self::getPrototype());
         self::initializeStream($stream);
 
         $pullAlgorithm = function () use ($stream, $iteratorRecord): JsPromise {
@@ -1413,7 +1403,7 @@ final class ReadableStream
             return StreamHelpers::toPromise($result);
         };
 
-        $controller = new JsObject(self::$controllerPrototype);
+        $controller = new JsObject(self::getControllerPrototype());
         $controller->setInternalProperty('[[IsReadableStreamDefaultController]]', true);
         $controller->setInternalProperty('[[Stream]]', $stream);
         StreamHelpers::resetQueue($controller);

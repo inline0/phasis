@@ -115,11 +115,16 @@ final class AbstractOperations
         \Phasis\Runtime\Environment $globalEnv,
         string $constructorName,
     ): ?JsObject {
-        // Map well-known constructor names that are not exposed as
-        // globals to their per-realm prototype slot. Each entry maps the
-        // constructor's [[Name]] to the reserved env binding holding
-        // realm's %ConstructorName.prototype% intrinsic.
+        if ($constructorName === 'Array') {
+            $prototype = $globalEnv->getIntrinsic('ArrayPrototype');
+            if ($prototype instanceof JsObject) {
+                return $prototype;
+            }
+        }
+        // Retained intrinsics must win over mutable constructor globals.
+        // This also covers function constructors that have no named global.
         static $hiddenIntrinsics = [
+            'Object' => '__ObjectPrototype__',
             'AsyncFunction' => '__AsyncFunctionPrototype__',
             'GeneratorFunction' => '__GeneratorFunctionPrototype__',
             'AsyncGeneratorFunction' => '__AsyncGeneratorFunctionPrototype__',
@@ -498,6 +503,47 @@ final class AbstractOperations
     }
 
     /**
+     * Delete an evaluated property reference, preserving strict failures and key coercion.
+     *
+     * The key expression has already run; nullish bases fail before ToPropertyKey.
+     */
+    public static function deletePropertyReference(JsValue $object, JsValue $key, bool $strict): bool
+    {
+        if ($object instanceof JsNull || $object instanceof JsUndefined) {
+            throw new TypeError('Cannot delete a property of ' . $object->toJsString());
+        }
+        $key = TypeConversion::toPropertyKey($key);
+        $deleted = true;
+        if ($object instanceof JsObject) {
+            $deleted = $key instanceof JsSymbol
+                ? $object->deleteBySymbol($key)
+                : $object->delete($key->toJsString(), $strict);
+        } elseif ($object instanceof JsString && $key instanceof JsString) {
+            $name = $key->value;
+            $index = (int) $name;
+            $deleted = $name !== 'length' && !(ctype_digit($name) && (string) $index === $name
+                && $index < $object->length());
+        }
+        if (!$deleted && $strict) {
+            $name = $key instanceof JsSymbol ? $key->toString() : $key->toJsString();
+            throw new TypeError("Cannot delete property '{$name}'");
+        }
+        return $deleted;
+    }
+
+    /** Check the right-hand type before coercing the key, as required by `in`. */
+    public static function inOperator(JsValue $left, JsValue $right): bool
+    {
+        if (!$right instanceof JsObject) {
+            throw new TypeError('Right-hand side of in is not an object');
+        }
+        $key = TypeConversion::toPropertyKey($left);
+        return $key instanceof JsSymbol
+            ? $right->hasBySymbol($key)
+            : $right->has($key->toJsString());
+    }
+
+    /**
      * 13.10.2 InstanceofOperator(V, target).
      *
      * target must be an object. Checks target[Symbol.hasInstance], then falls
@@ -518,10 +564,15 @@ final class AbstractOperations
         // GetMethod returns undefined for both undefined and null property values.
         // Step 4: if instOfHandler is defined, return ToBoolean(Call(instOfHandler, C, [O])).
         if (!$instOfHandler instanceof JsUndefined && !$instOfHandler instanceof JsNull) {
-            if (!$instOfHandler instanceof JsFunction) {
+            if (
+                !$instOfHandler instanceof JsFunction
+                && !($instOfHandler instanceof \Phasis\Value\JsProxy && $instOfHandler->isCallable())
+            ) {
                 throw new TypeError('Right-hand side of instanceof is not callable');
             }
-            $result = $instOfHandler->call($right, [$left]);
+            $result = $instOfHandler instanceof \Phasis\Value\JsProxy
+                ? $instOfHandler->apply($right, [$left])
+                : $instOfHandler->call($right, [$left]);
             return TypeConversion::toBoolean($result);
         }
 

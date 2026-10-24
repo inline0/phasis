@@ -76,16 +76,40 @@ trait PrototypeMethods
                     $source->validateNotDetached();
                     $srcLen = $source->getLength();
                     $targetLen = $this_->getLength();
-                    // Per spec: if one is BigInt and the other is not, throw TypeError.
                     $isBigSrc = $source->isBigIntArray();
+                    // Per spec: if srcLength + targetOffset > targetLength, throw RangeError.
+                    if ($srcLen + $offset > $targetLen) {
+                        throw new RangeError('Source is too large');
+                    }
+                    // Bounds errors precede a Number/BigInt content-type mismatch.
                     if ($isBigSrc !== $isBigTarget) {
                         throw new \Phasis\Exceptions\TypeError(
                             'Cannot mix BigInt and other types, use explicit conversions'
                         );
                     }
-                    // Per spec: if srcLength + targetOffset > targetLength, throw RangeError.
-                    if ($srcLen + $offset > $targetLen) {
-                        throw new RangeError('Source is too large');
+                    // Matching element types preserve stored bits, including NaN payloads.
+                    if (
+                        get_class($this_) === JsTypedArray::class && get_class($source) === JsTypedArray::class
+                        && $source->getTypeName() === $this_->getTypeName()
+                    ) {
+                        $sourceBuffer = $source->getBuffer();
+                        $targetBuffer = $this_->getBuffer();
+                        if (
+                            get_class($sourceBuffer) === JsArrayBuffer::class
+                            && get_class($targetBuffer) === JsArrayBuffer::class
+                            && !$sourceBuffer->isResizable() && !$targetBuffer->isResizable()
+                            && !$sourceBuffer->isDetached() && !$targetBuffer->isDetached()
+                            && !$source->isOutOfBounds() && !$this_->isOutOfBounds()
+                        ) {
+                            $width = $source->getBytesPerElement();
+                            $byteLength = $srcLen * $width;
+                            // Snapshot first so overlapping views preserve set's source bytes.
+                            $bytes = $sourceBuffer->readBytes($source->getByteOffset(), $byteLength);
+                            if (strlen($bytes) === $byteLength) {
+                                $targetBuffer->writeBytes($this_->getByteOffset() + $offset * $width, $bytes);
+                                return JsUndefined::instance();
+                            }
+                        }
                     }
                     // Per spec: if same buffer, clone srcBuffer first.
                     if ($source->getBuffer() === $this_->getBuffer()) {
@@ -113,7 +137,7 @@ trait PrototypeMethods
                         $srcLen = $source->getLength();
                         $srcObj = $source;
                     } elseif ($source instanceof JsObject) {
-                        $srcLen = (int) TypeConversion::toNumber($source->get('length'));
+                        $srcLen = TypeConversion::toLength($source->get('length'));
                         $srcObj = $source;
                     } elseif ($source instanceof JsString) {
                         $str = $source->value;
@@ -132,10 +156,7 @@ trait PrototypeMethods
                         // wrapper whose prototype may carry length/indexed
                         // properties (test262 monkey-patches Number.prototype).
                         $srcObj = TypeConversion::toObject($source);
-                        $srcLen = (int) TypeConversion::toNumber($srcObj->get('length'));
-                        if ($srcLen < 0) {
-                            $srcLen = 0;
-                        }
+                        $srcLen = TypeConversion::toLength($srcObj->get('length'));
                     }
 
                     // Per current spec, the size check uses the target length

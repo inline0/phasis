@@ -28,6 +28,9 @@ final class ModuleResolver
     /** @var array<string, ?string> */
     private array $importMap = [];
 
+    /** @var array<string, string> Aliases sharing one built-in module identity. */
+    private array $builtinAliases = [];
+
     /** @var array<string, string> */
     private array $cache = [];
 
@@ -75,6 +78,13 @@ final class ModuleResolver
         $this->packageJson = [];
         $this->aliasConfig = [];
         $this->sideEffectFree = [];
+    }
+
+    /** Register an alternate spelling of a built-in module. */
+    public function registerBuiltinAlias(string $alias, string $canonical): void
+    {
+        $this->builtinAliases[$alias] = $canonical;
+        $this->clearCache();
     }
 
     /**
@@ -161,6 +171,9 @@ final class ModuleResolver
      */
     private function resolveUncached(string $specifier, ?string $referrer, string $kind): string
     {
+        if (isset($this->builtinAliases[$specifier])) {
+            return self::BUILTIN . $this->builtinAliases[$specifier];
+        }
         $mapped = $this->resolveImportMap($specifier);
         if ($mapped !== false) {
             if ($mapped === null) {
@@ -199,7 +212,7 @@ final class ModuleResolver
             } else {
                 $path = $specifier;
             }
-            return $this->resolveFile(self::normalize($path)) ?? throw $this->notFound($specifier, $referrer);
+            return $this->resolveFile($path) ?? throw $this->notFound($specifier, $referrer);
         }
 
         $alias = $this->resolveAlias($specifier, $referrer);
@@ -251,15 +264,38 @@ final class ModuleResolver
      */
     public function resolveFile(string $path): ?string
     {
-        if (is_file($path)) {
+        return $this->resolvePath($path, []);
+    }
+
+    /** @param array<string, true> $visited */
+    private function resolvePath(string $path, array $visited): ?string
+    {
+        $directoryOnly = str_ends_with($path, '/') || preg_match('~(?:^|/)\.{1,2}$~', $path) === 1;
+        $path = self::normalize($path);
+        if (isset($visited[$path])) {
+            return null;
+        }
+        $visited[$path] = true;
+        if (!$directoryOnly && is_file($path)) {
             return realpath($path) ?: $path;
         }
         foreach ($this->options->extensions as $extension) {
-            if (is_file($path . $extension)) {
+            if (!$directoryOnly && is_file($path . $extension)) {
                 return realpath($path . $extension) ?: $path . $extension;
             }
         }
         if (is_dir($path)) {
+            $json = $this->readPackageJson($path);
+            $fields = $this->options->nodeCompatible ? ['main'] : ['module', 'main'];
+            foreach ($fields as $field) {
+                $main = $json[$field] ?? null;
+                if (is_string($main) && $main !== '') {
+                    $resolved = $this->resolvePath($path . '/' . self::stripDotSlash($main), $visited);
+                    if ($resolved !== null) {
+                        return $resolved;
+                    }
+                }
+            }
             foreach ($this->options->extensions as $extension) {
                 $index = $path . '/index' . $extension;
                 if (is_file($index)) {
@@ -316,8 +352,9 @@ final class ModuleResolver
             }
             return realpath($file) ?: $file;
         }
-        if ($subpath === '.') {
-            foreach (['module', 'main'] as $field) {
+        if ($subpath === '.' || $subpath === './') {
+            $fields = $this->options->nodeCompatible ? ['main'] : ['module', 'main'];
+            foreach ($fields as $field) {
                 if (isset($json[$field]) && is_string($json[$field]) && $json[$field] !== '') {
                     $resolved = $this->resolveFile($packageDir . '/' . self::stripDotSlash($json[$field]));
                     if ($resolved !== null) {

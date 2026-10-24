@@ -22,6 +22,7 @@ use Phasis\Value\JsNull;
 use Phasis\Value\JsObject;
 use Phasis\Value\JsPromise;
 use Phasis\Value\JsString;
+use Phasis\Value\JsTypedArray;
 use Phasis\Value\JsUndefined;
 use Phasis\Value\JsValue;
 
@@ -40,11 +41,8 @@ use Phasis\Value\JsValue;
  *                                    by the `body` getter on first read
  *   - [[BodyContentType]]  ?string — from extract-body; used by `blob()`
  *
- * Spec deviation: Phasis fully buffers bodies. The `body` getter returns
- * a real `ReadableStream` whose single chunk is the buffered bytes,
- * created on first access and cached so subsequent `.body` reads return
- * the same instance (matches the spec's "associated stream" requirement
- * even though the underlying source differs).
+ * Byte-backed bodies materialize a stream on first access. Stream-backed
+ * bodies retain the original stream, and consumption awaits every chunk.
  */
 final class BodyMixin
 {
@@ -99,13 +97,15 @@ final class BodyMixin
         ?string $bytes,
         ?string $contentType,
         ?array $chunks = null,
+        ?JsObject $stream = null,
     ): void {
         $instance->setInternalProperty('[[HasBody]]', true);
         $instance->setInternalProperty('[[BodyBytes]]', $bytes);
         $instance->setInternalProperty('[[BodyChunks]]', $chunks);
         $instance->setInternalProperty('[[BodyUsed]]', false);
-        $instance->setInternalProperty('[[BodyStream]]', null);
+        $instance->setInternalProperty('[[BodyStream]]', $stream);
         $instance->setInternalProperty('[[BodyContentType]]', $contentType);
+        $instance->setInternalProperty('[[BodyReplayable]]', $stream === null);
     }
 
     /** Read the buffered body bytes; null when no body. */
@@ -242,12 +242,13 @@ final class BodyMixin
                 if ($err !== null) {
                     return $err;
                 }
-                $bytes = self::consume($instance);
-                $ab = new JsArrayBuffer(strlen($bytes));
-                if ($bytes !== '') {
-                    $ab->writeBytes(0, $bytes);
-                }
-                return JsPromise::resolved($ab);
+                return self::consumeConverted($instance, static function (string $bytes): JsValue {
+                    $ab = new JsArrayBuffer(strlen($bytes));
+                    if ($bytes !== '') {
+                        $ab->writeBytes(0, $bytes);
+                    }
+                    return $ab;
+                });
             },
             0,
         );
@@ -269,15 +270,11 @@ final class BodyMixin
                 if ($err !== null) {
                     return $err;
                 }
-                $bytes = self::consume($instance);
-                // Per spec, blob.type comes from the LIVE Content-Type
-                // header on the body host — not the extract-time MIME.
-                // A caller that deletes the header before calling blob()
-                // expects an untyped blob, even when extraction set an
-                // implicit Content-Type.
                 $ct = self::contentTypeFromHeaders($instance) ?? '';
-                $blob = BlobConstructor::createBlob($bytes, $ct);
-                return JsPromise::resolved($blob);
+                return self::consumeConverted(
+                    $instance,
+                    static fn (string $bytes): JsValue => BlobConstructor::createBlob($bytes, $ct),
+                );
             },
             0,
         );
@@ -299,8 +296,10 @@ final class BodyMixin
                 if ($err !== null) {
                     return $err;
                 }
-                $bytes = self::consume($instance);
-                return JsPromise::resolved(TextEncoderConstructor::makeUint8Array($bytes));
+                return self::consumeConverted(
+                    $instance,
+                    static fn (string $bytes): JsValue => TextEncoderConstructor::makeUint8Array($bytes),
+                );
             },
             0,
         );
@@ -322,12 +321,10 @@ final class BodyMixin
                 if ($err !== null) {
                     return $err;
                 }
-                $bytes = self::consume($instance);
-                // UTF-8 decoding with replacement-on-error per spec. PHP
-                // strings carry arbitrary bytes; for v1 we pass through
-                // since invalid sequences are rare in fetch responses
-                // and the TextDecoder fallback below covers JSON callers.
-                return JsPromise::resolved(new JsString($bytes));
+                return self::consumeConverted(
+                    $instance,
+                    static fn (string $bytes): JsValue => new JsString($bytes),
+                );
             },
             0,
         );
@@ -349,15 +346,15 @@ final class BodyMixin
                 if ($err !== null) {
                     return $err;
                 }
-                $bytes = self::consume($instance);
-                try {
-                    $parsed = \Phasis\BuiltIn\JsonObject::parseSource($bytes);
-                } catch (\Throwable $e) {
-                    return JsPromise::rejected(
-                        StreamHelpers::createTypeError('Failed to parse JSON: ' . $e->getMessage())
-                    );
-                }
-                return JsPromise::resolved($parsed);
+                return self::consumeConverted($instance, static function (string $bytes): JsValue {
+                    try {
+                        return \Phasis\BuiltIn\JsonObject::parseSource($bytes);
+                    } catch (\Throwable $e) {
+                        return JsPromise::rejected(
+                            StreamHelpers::createTypeError('Failed to parse JSON: ' . $e->getMessage()),
+                        );
+                    }
+                });
             },
             0,
         );
@@ -390,16 +387,15 @@ final class BodyMixin
                         StreamHelpers::createTypeError('Failed to parse FormData: no body')
                     );
                 }
-                $bytes = self::consume($instance);
-
-                try {
-                    $fd = self::parseFormDataFromBytes($bytes, $ct, $env);
-                } catch (\Throwable $e) {
-                    return JsPromise::rejected(
-                        StreamHelpers::createTypeError('Failed to parse FormData: ' . $e->getMessage())
-                    );
-                }
-                return JsPromise::resolved($fd);
+                return self::consumeConverted($instance, static function (string $bytes) use ($ct, $env): JsValue {
+                    try {
+                        return self::parseFormDataFromBytes($bytes, $ct, $env);
+                    } catch (\Throwable $e) {
+                        return JsPromise::rejected(
+                            StreamHelpers::createTypeError('Failed to parse FormData: ' . $e->getMessage()),
+                        );
+                    }
+                });
             },
             0,
         );
@@ -462,20 +458,118 @@ final class BodyMixin
     }
 
     /**
-     * Drain + mark used. Returns the body bytes (empty string when no body).
-     *
-     * Per spec, a Response/Request with a null body (no body stream)
-     * does NOT flip bodyUsed when consumed — there's nothing to
-     * drain. Only flip the bit when a real body is present.
+     * Consume the associated stream, preserving asynchronous production,
+     * backpressure and rejection. Resolves with its complete byte string.
      */
-    private static function consume(JsObject $instance): string
+    public static function consumeBytes(JsObject $instance): JsPromise
     {
-        $bytes = self::bodyBytes($instance);
-        if ($bytes !== null) {
-            self::markUsed($instance);
-            return $bytes;
+        $error = self::checkConsumable($instance);
+        if ($error !== null) {
+            return $error;
         }
-        return '';
+        $stream = self::getOrCreateBodyStream($instance);
+        if ($stream === null) {
+            return JsPromise::resolved(new JsString(''));
+        }
+        self::markUsed($instance);
+        $reader = ReadableStream::acquireDefaultReader($stream);
+        $result = new JsPromise();
+        $bytes = '';
+        $pump = null;
+        $pump = static function () use ($reader, $result, $instance, &$bytes, &$pump): void {
+            $read = ReadableStream::defaultReaderRead($reader);
+            $read->addFulfillHandler(static function (JsValue $value) use ($result, $instance, &$bytes, &$pump): void {
+                if (!$value instanceof JsObject) {
+                    $result->reject(StreamHelpers::createTypeError('Invalid body stream read result'));
+                    return;
+                }
+                if (TypeConversion::toBoolean($value->get('done'))) {
+                    $instance->setInternalProperty('[[BodyBytes]]', $bytes);
+                    $result->resolve(new JsString($bytes));
+                    return;
+                }
+                $chunk = $value->get('value');
+                if (!$chunk instanceof JsTypedArray || $chunk->getTypeName() !== 'Uint8Array') {
+                    $result->reject(StreamHelpers::createTypeError('Body stream chunks must be Uint8Array values'));
+                    return;
+                }
+                $bytes .= $chunk->getBuffer()->readBytes($chunk->getByteOffset(), $chunk->getLength());
+                JsPromise::scheduleCallback($pump);
+            });
+            $read->addRejectHandler(static function (JsValue $reason) use ($result): void {
+                $result->reject($reason);
+            });
+        };
+        $pump();
+        return $result;
+    }
+
+    /** @param \Closure(string): JsValue $convert */
+    private static function consumeConverted(JsObject $instance, \Closure $convert): JsPromise
+    {
+        return self::consumeBytes($instance)->then([JsFunction::fromCallable(
+            '',
+            static function (JsValue $_this, array $args) use ($convert): JsValue {
+                $bytes = $args[0] ?? JsUndefined::instance();
+                return $convert($bytes instanceof JsString ? $bytes->value : '');
+            },
+            1,
+        )]);
+    }
+
+    /** Clone a body by teeing its live stream, cloning chunks on the second branch. */
+    public static function cloneBody(JsObject $source, JsObject $target): void
+    {
+        $stream = self::getOrCreateBodyStream($source);
+        self::markAsBodyHost($target, self::bodyBytes($source), self::bodyContentType($source));
+        $target->setInternalProperty('[[BodyReplayable]]', $source->getInternalProperty('[[BodyReplayable]]'));
+        if ($stream === null) {
+            return;
+        }
+        $branches = \Phasis\BuiltIn\Streams\PipeOperations::tee($stream, true);
+        $source->setInternalProperty('[[BodyStream]]', $branches->get('0'));
+        $target->setInternalProperty('[[BodyStream]]', $branches->get('1'));
+    }
+
+    /** Transfer a request body through a proxy stream while retaining its reader lock. */
+    public static function transferBodyStream(JsObject $source, Environment $env): JsObject
+    {
+        $stream = self::getOrCreateBodyStream($source);
+        if ($stream === null) {
+            throw new \LogicException('Cannot transfer a null body');
+        }
+        $reader = ReadableStream::acquireDefaultReader($stream);
+        self::markUsed($source);
+        $underlying = new JsObject();
+        $underlying->set('pull', JsFunction::fromCallable('', static function (JsValue $_this, array $args) use ($reader): JsValue {
+            $controller = $args[0] ?? JsUndefined::instance();
+            return ReadableStream::defaultReaderRead($reader)->then([JsFunction::fromCallable(
+                '',
+                static function (JsValue $_this, array $args) use ($controller): JsValue {
+                    $result = $args[0] ?? JsUndefined::instance();
+                    if ($controller instanceof JsObject && $result instanceof JsObject) {
+                        if (TypeConversion::toBoolean($result->get('done'))) {
+                            ReadableStream::defaultControllerClose($controller);
+                        } else {
+                            ReadableStream::defaultControllerEnqueue($controller, $result->get('value'));
+                        }
+                    }
+                    return JsUndefined::instance();
+                },
+            )]);
+        }));
+        $underlying->set('cancel', JsFunction::fromCallable('', static function (JsValue $_this, array $args) use ($stream): JsValue {
+            return ReadableStream::readableStreamCancel($stream, $args[0] ?? JsUndefined::instance());
+        }));
+        $constructor = $env->get('ReadableStream');
+        if (!$constructor instanceof JsFunction) {
+            throw new \LogicException('ReadableStream is unavailable');
+        }
+        $proxy = $constructor->construct([$underlying]);
+        if (!$proxy instanceof JsObject) {
+            throw new \LogicException('ReadableStream constructor returned a non-object');
+        }
+        return $proxy;
     }
 
     /**

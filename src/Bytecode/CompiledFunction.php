@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Phasis\Bytecode;
 
+use Phasis\Ast\Node;
 use Phasis\Value\JsValue;
 
 /**
@@ -20,6 +21,17 @@ use Phasis\Value\JsValue;
  */
 final class CompiledFunction
 {
+    /** @var list<StringLoopRegion|null> Immutable native code with exact ordinary-bytecode exits. */
+    public array $loopRegions = [];
+
+    /**
+     * Ordered flat array bindings reuse the interpreter's iterator protocol.
+     * Captured identifiers retain their live Environment binding.
+     *
+     * @var list<array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|array{target: Node, rest: bool}|null>}>
+     */
+    public array $arrayBindings = [];
+
     /**
      * Inline cache for LOAD_NAME, indexed by PC. Stores the resolved
      * JsValue at first dispatch; subsequent LOAD_NAMEs at the same PC
@@ -28,8 +40,12 @@ final class CompiledFunction
      * Only declarative bindings are cached. Object-backed globals,
      * getters, imports and with bindings are resolved on every read.
      * Environment::set invalidates cached values through a global counter.
+     * The originating environment must also match: recursive activations of
+     * one function share bytecode but have distinct captured local bindings.
+     * Weak references to environments and object values keep the cache from
+     * retaining a completed activation through a returned closure or object.
      *
-     * @var array<int, array{0: JsValue, 1: int}>
+     * @var array<int, array{0: JsValue|\WeakReference<\Phasis\Value\JsObject>, 1: int, 2: \WeakReference<\Phasis\Runtime\Environment>}>
      */
     public array $loadNameIc = [];
 
@@ -123,6 +139,14 @@ final class CompiledFunction
     public array $classNodes = [];
 
     /**
+     * Expressions whose bindings all live in the frame environment. The
+     * interpreter preserves their complete reference and evaluation order.
+     *
+     * @var list<Node>
+     */
+    public array $interpretedExpressions = [];
+
+    /**
      * Source-style display strings for method-call sites, keyed by the
      * PC of the CALL_METHOD opcode. When the dispatched method turns
      * out not to be callable, the VM uses the stored display
@@ -166,6 +190,13 @@ final class CompiledFunction
      *        executeFunction can hand the closure environment to the
      *        Frame directly and skip the per-call createChild
      *        allocation.
+     * @param bool $parametersFromEnvironment Read initialized parameter
+     *        bindings after the interpreter applies defaults, rest arrays and parameter TDZ.
+     * @param array<string, string>|null $capturedEnvironmentBindings Captured
+     *        body var/let/const declarations. Null retains interpreter hoisting;
+     *        parameters and function declarations have separate initialization.
+     * @param array<int, true> $omittedFunctionBindings DEFINE_NAME sites whose
+     *        hoisted functions are observable only through frame slots.
      */
     public function __construct(
         public readonly array $code,
@@ -178,6 +209,10 @@ final class CompiledFunction
         public readonly bool $needsThis = true,
         public readonly bool $needsArgsBinding = true,
         public readonly bool $canSkipEnvAlloc = false,
+        public readonly bool $parametersFromEnvironment = false,
+        public readonly bool $hasTailCalls = false,
+        public readonly ?array $capturedEnvironmentBindings = null,
+        public readonly array $omittedFunctionBindings = [],
     ) {
     }
 }

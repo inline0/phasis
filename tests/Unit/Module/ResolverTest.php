@@ -35,6 +35,22 @@ final class ResolverTest extends TestCase
         $this->assertSame($root . '/src/data.json', $resolver->resolve('./data', $from));
     }
 
+    public function testRelativeDirectoriesUsePackageMainWithoutProbingSiblingJson(): void
+    {
+        $root = $this->project([
+            'package.json' => '{"main":"lib/entry.js"}',
+            'lib/entry.js' => '',
+            'test/case.js' => '',
+            'test.json' => '{}',
+            'nested/package.json' => '{"main":"."}',
+            'nested/index.js' => '',
+        ]);
+        $resolver = new ModuleResolver((new ModuleOptions(projectRoot: $root))->forNode(), static fn (string $s): bool => false);
+        self::assertSame($root . '/lib/entry.js', $resolver->resolve('..', $root . '/test/case.js', 'require'));
+        self::assertSame($root . '/lib/entry.js', $resolver->resolve('../', $root . '/test/case.js', 'require'));
+        self::assertSame($root . '/nested/index.js', $resolver->resolve('./nested/', $root . '/entry.js', 'require'));
+    }
+
     public function testJsconfigAliasWithComments(): void
     {
         $root = $this->project([
@@ -62,6 +78,35 @@ final class ResolverTest extends TestCase
         $this->expectException(TypeError::class);
         $this->expectExceptionMessage("Cannot load Node built-in module 'node:fs'");
         $this->resolver($root)->resolve('node:fs', $root . '/main.mjs');
+    }
+
+    public function testLegacyPackageTrailingSlashResolvesMainWithoutUsingBundlerModuleField(): void
+    {
+        $root = $this->project([
+            'main.cjs' => '',
+            'node_modules/legacy/package.json' => '{"main":"entry.cjs","module":"bundle.mjs"}',
+            'node_modules/legacy/entry.cjs' => '',
+            'node_modules/legacy/bundle.mjs' => '',
+        ]);
+        $resolver = new ModuleResolver(
+            (new ModuleOptions(projectRoot: $root))->forNode(),
+            static fn (string $specifier): bool => false,
+        );
+        self::assertSame($root . '/node_modules/legacy/entry.cjs', $resolver->resolve('legacy/', $root . '/main.cjs', 'require'));
+        self::assertSame($root . '/node_modules/legacy/entry.cjs', $resolver->resolve('legacy', $root . '/main.cjs', 'import'));
+        self::assertSame($root . '/node_modules/legacy/bundle.mjs', $this->resolver($root)->resolve('legacy', $root . '/main.cjs'));
+    }
+
+    public function testTrailingPackageSlashDoesNotBypassExports(): void
+    {
+        $root = $this->project([
+            'main.cjs' => '',
+            'node_modules/closed/package.json' => '{"exports":"./entry.cjs","main":"entry.cjs"}',
+            'node_modules/closed/entry.cjs' => '',
+        ]);
+        $this->expectException(TypeError::class);
+        $this->expectExceptionMessage("Package subpath './' is not defined");
+        $this->resolver($root)->resolve('closed/', $root . '/main.cjs', 'require');
     }
 
     public function testPackageImportsField(): void

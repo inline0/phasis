@@ -2,11 +2,30 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-24
+
 ### Added
+- Opt-in Node-compatible realms and `phasis --node`, with CommonJS package loading, Buffer and streams, filesystem and process I/O, HTTP/HTTPS/HTTP2, TLS, compression, timers, async context, and isolated VM realms.
+- Experimental Express and Hono support with pinned upstream runners, original assertions, case inventories, source hashes, bounded workers and real network interoperability checks.
+- Ed25519 WebCrypto keys, MessageEvent and in-process BroadcastChannel support.
 - Keyed Promise combinators, iterator chunk/window/zip helpers, and immutable ArrayBuffers with protected typed-array, DataView, and Atomics writes.
 - Locale variants and locale-specific calendar, collation, hour-cycle, text-direction, and week information.
 
 ### Fixed
+- Live Fetch request and response bodies retain streaming, cancellation and clone behavior; Node fetch can communicate with servers in the same engine.
+- Promise reactions preserve registration-time async context; cross-realm generators preserve their realm prototypes; global-property deletion and CommonJS cache behavior remain observable.
+- JSON property names and Unicode separators, callable proxies, and UTF-16 string indexing preserve JavaScript behavior across framework workloads.
+- Recursive compiled calls keep captured bindings separate, completed VM frames release their references, and WeakMap entries release unreachable keys without overflowing the host stack on deep chains.
+- Symbol property writes preserve Proxy traps and receivers; typed-array copies clamp array-like lengths before checking destination bounds.
+- Array literals and built-in array results retain their realm's intrinsic prototype when the global Array constructor is replaced.
+- Compiled identifier updates and strict program assignments retain their original references through coercion and right-hand-side effects.
+- Generated PHP preserves numeric truthiness and literal precision, evaluates operands once, and falls back before observable effects.
+- Generated binding and string-method preflight checks do not invoke host property-map or descriptor overrides.
+- Template strings outside pure loops no longer prevent those loops from using verified compiled code.
+- Calls, getters and constructors retain caller and argument records; non-callable errors do not invoke object conversion hooks.
+- Same-type typed-array copies preserve byte payloads and prototype-validation order; host byte views and inlined callbacks retain their defining realms.
+- Typed-array `set` checks bounds before content-type mismatches and copies matching native element types without changing stored bits.
+- Stream controllers, readers and writers retain their originating realm after VM context creation; pending Promise finalizers retain their registered async context.
 - Temporal calendar fields, arithmetic, rounding, parsing, timezone boundaries, and Intl formatting use consistent calendar data and option validation.
 - Module evaluation, source and typed imports, resource disposal, cross-realm intrinsics, numeric serialization, and compiled global bindings follow current language semantics.
 - Array callbacks observe mutations and holes, and global declarations create own properties without invoking inherited accessors.
@@ -15,8 +34,15 @@
 - Intl option precedence, legacy constructors, plural notation, numbering systems, and plain date/time formatting.
 
 ### Changed
+- Framework runners accept an explicit timeout scale and record original and effective limits. Experimental Express/Hono CI uses a scale of 10 while performance work is deferred; test262 limits and engine budgets are unchanged.
+- Bytecode compilation handles captured bindings, default initializers, array bindings and assignments, optional chains, spread calls, computed methods, object prototypes, regular-expression literals and strict tail calls; reusable syntax templates keep closure state separate.
+- Proven disjoint lexical scopes reuse frame slots, ordinary function prototypes materialize when observed, and numeric typed-array writes avoid redundant conversions while retaining buffer-resize and detachment behavior.
+- Completed frames clear their local slots in one allocation while releasing activation references.
+- Fresh functions initialize their name and length descriptors without redundant allocation while preserving host subclass hooks.
+- Protected returns preserve finalizer completion order in bytecode, and logical assignments and object relational operators use the shared JavaScript semantics.
+- Bounded regular-expression preparation and cached UTF-16 searches reduce repeated work while preserving fresh objects and observable coercions.
 - The test262 runner executes both variants of unflagged scripts, preserves raw sources and module parse goals, requires async completion, and checks negative-test error types and phases.
-- Compatibility shards retain full file manifests; merging rejects overlapping or stale results and keeps missing coverage visible. Incomplete or failing coverage cannot round up to 100%.
+- Compatibility shards retain full file manifests; merging rejects overlapping or stale results and keeps missing coverage visible. Incomplete or failing coverage cannot round up to 100%; the canonical workflow fails on nonpassing results after preserving the report.
 
 ## [0.8.0] - 2026-10-16
 

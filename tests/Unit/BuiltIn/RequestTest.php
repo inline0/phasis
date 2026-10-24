@@ -36,6 +36,21 @@ JS);
         $this->assertSame('TypeError', $result);
     }
 
+    public function testReferrerIsParsedAndSerializedAsAUrl(): void
+    {
+        $engine = new Engine();
+        self::assertSame(
+            ['https://example.com/', 'about:client', '', 'TypeError', 'TypeError'],
+            $engine->eval(<<<'JS'
+const values = ['HTTPS://EXAMPLE.COM:443', 'about:client', '', 'not a url', 'no-referrer'];
+values.map(referrer => {
+    try { return new Request('https://target.test/', {referrer}).clone().referrer; }
+    catch (error) { return error.name; }
+});
+JS),
+        );
+    }
+
     public function testConstructorFromAnotherRequestCopiesHeaders(): void
     {
         $engine = new Engine();
@@ -347,7 +362,7 @@ const req = new Request("https://x/", {
   credentials: "include",
   cache: "no-store",
   redirect: "manual",
-  referrer: "no-referrer",
+  referrer: "",
   referrerPolicy: "no-referrer",
   integrity: "sha256-abc",
   keepalive: true,
@@ -356,7 +371,7 @@ const req = new Request("https://x/", {
 [req.mode, req.credentials, req.cache, req.redirect, req.referrer, req.referrerPolicy, req.integrity, req.keepalive, req.priority];
 JS);
         $this->assertSame(
-            ['cors', 'include', 'no-store', 'manual', 'no-referrer', 'no-referrer', 'sha256-abc', true, 'high'],
+            ['cors', 'include', 'no-store', 'manual', '', 'no-referrer', 'sha256-abc', true, 'high'],
             $result,
         );
     }

@@ -430,6 +430,7 @@ trait BufferTypes
             PropertyDescriptor::accessor($speciesGetter, null, false, true),
         );
 
+        $env->setIntrinsic('ArrayBuffer.prototype', $proto);
         $env->defineVar('ArrayBuffer', $constructor);
     }
 

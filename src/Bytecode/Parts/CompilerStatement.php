@@ -62,16 +62,17 @@ trait CompilerStatement
 {
     private function compileStatement(Node $node): void
     {
+        $this->recordRegionStatement($node);
         if ($node instanceof ReturnStatement) {
-            if ($this->finallyLoopBoundaries !== []) {
-                throw new CompilerBailout('return inside try-with-finally');
+            if ($this->inGenerator && $this->finallyLoopBoundaries !== []) {
+                throw new CompilerBailout('generator return inside try-with-finally');
             }
             if ($node->argument === null) {
                 $this->emit(Op::LOAD_UNDEF);
             } else {
-                $this->compileExpression($node->argument);
+                $this->compileReturnExpression($node->argument);
             }
-            $this->emit(Op::RET);
+            $this->emitReturnCompletion();
             return;
         }
         if ($node instanceof ExpressionStatement) {
@@ -97,6 +98,14 @@ trait CompilerStatement
         }
         if ($node instanceof ForStatement) {
             $this->compileFor($node);
+            return;
+        }
+        if ($node instanceof \Phasis\Ast\Statement\SwitchStatement) {
+            $this->compileSwitch($node);
+            return;
+        }
+        if ($node instanceof \Phasis\Ast\Statement\ForOfStatement) {
+            $this->compileForOf($node);
             return;
         }
         if ($node instanceof WhileStatement) {
@@ -128,10 +137,13 @@ trait CompilerStatement
             if ($node->label !== null) {
                 throw new CompilerBailout('labeled continue');
             }
-            if ($this->loopStack === []) {
+            $loopDepth = count($this->loopStack);
+            while ($loopDepth > 0 && $this->loopStack[$loopDepth - 1]['continue'] === -2) {
+                $loopDepth--;
+            }
+            if ($loopDepth === 0) {
                 throw new CompilerBailout('continue outside loop');
             }
-            $loopDepth = count($this->loopStack);
             foreach ($this->finallyLoopBoundaries as $boundary) {
                 if ($boundary >= $loopDepth) {
                     throw new CompilerBailout('continue escaping try-with-finally');
@@ -176,50 +188,107 @@ trait CompilerStatement
         throw new CompilerBailout('unsupported statement: ' . $node->type());
     }
 
+    /** Compile a return value, preserving strict tail positions recursively. */
+    private function compileReturnExpression(Node $expression): void
+    {
+        if ($this->tailCallsEnabled && $expression instanceof CallExpression && $this->chainHasOptionalLink($expression)) {
+            $this->compileOptionalChain($expression, tail: true);
+            return;
+        }
+        if ($this->tailCallsEnabled && $expression instanceof ConditionalExpression) {
+            $this->compileExpression($expression->test);
+            $alternate = $this->emitJump(Op::JUMP_IF_FALSE);
+            $this->compileReturnExpression($expression->consequent);
+            $end = $this->emitJump(Op::JUMP);
+            $this->patchJumpToHere($alternate);
+            $this->compileReturnExpression($expression->alternate);
+            $this->patchJumpToHere($end);
+            return;
+        }
+        if ($this->tailCallsEnabled && $expression instanceof LogicalExpression) {
+            // The left call is not in tail position: its result is tested
+            // before deciding whether to evaluate the right operand.
+            $this->compileExpression($expression->left);
+            if ($expression->operator === '??') {
+                $right = $this->emitJump(Op::JUMP_IF_NULLISH);
+                $end = $this->emitJump(Op::JUMP);
+                $this->patchJumpToHere($right);
+            } else {
+                $end = $this->emitJump($expression->operator === '&&'
+                    ? Op::JUMP_IF_FALSY_KEEP
+                    : Op::JUMP_IF_TRUTHY_KEEP);
+            }
+            $this->compileReturnExpression($expression->right);
+            $this->patchJumpToHere($end);
+            return;
+        }
+        if ($this->tailCallsEnabled && $expression instanceof SequenceExpression) {
+            $last = count($expression->expressions) - 1;
+            foreach ($expression->expressions as $index => $part) {
+                if ($index === $last) {
+                    $this->compileReturnExpression($part);
+                } else {
+                    $this->compileExpression($part);
+                    $this->emit(Op::POP);
+                }
+            }
+            return;
+        }
+        $this->compileExpression($expression);
+        if (!$this->tailCallsEnabled || !$expression instanceof CallExpression) {
+            return;
+        }
+        // compileCall preserves lookup/argument order and ends in a two-word
+        // CALL instruction. Return a thunk through the interpreter's existing
+        // trampoline instead of growing either the PHP or VM call stack.
+        $pc = count($this->code) - 2;
+        $this->code[$pc] = match ($this->code[$pc]) {
+            Op::CALL => Op::TAIL_CALL,
+            Op::CALL_METHOD => Op::TAIL_CALL_METHOD,
+            default => throw new CompilerBailout('unsupported tail call lowering'),
+        };
+        $this->hasTailCalls = true;
+    }
+
+    /** Consume a return value, routing it through each pending finalizer. */
+    private function emitReturnCompletion(): void
+    {
+        if ($this->finallyContexts === []) {
+            $this->emit(Op::RET);
+            return;
+        }
+        $index = count($this->finallyContexts) - 1;
+        $context = $this->finallyContexts[$index];
+        $this->emit(Op::STORE_LOCAL, $context['valueSlot']);
+        $this->emit(Op::LOAD_TRUE);
+        $this->emit(Op::STORE_LOCAL, $context['completionSlot']);
+        $this->finallyContexts[$index]['jumps'][] = $this->emitJump(Op::JUMP);
+    }
+
     /**
-     * Lower a TryStatement to a bytecode block plus handler-table
-     * entries. Three shapes are supported:
-     *
-     *  - try / catch (Phase 1): one handler protecting the try body;
-     *    on throw, the VM stores the value in the catch param slot
-     *    and jumps to the catch body. Normal exit JUMPs past catch.
-     *
-     *  - try / finally (Phase 2): the finally body is inlined twice —
-     *    once on the normal exit path, once on the exception-rethrow
-     *    path that runs after the handler captures the thrown value.
-     *
-     *  - try / catch / finally (Phase 2): both handlers are emitted.
-     *    Handler1 covers the try body and routes the exception
-     *    through the catch body, then to the normal-finally inline
-     *    (the catch already swallowed the original exception).
-     *    Handler2 covers the catch body and routes any catch-body
-     *    exception to the rethrow-finally inline so the catch's
-     *    exception still surfaces after finally runs.
-     *
-     * Phase 2 enforces (via finallyLoopBoundaries / finallyDepth) that
-     * no return / break / continue escapes the protected blocks; those
-     * cases bail to the tree-walker because the inlined-finally
-     * approach would otherwise need to inline at every exit point.
+     * Keep finalizers outside their protected ranges so their abrupt
+     * completions override, rather than re-enter, the pending completion.
      */
     private function compileTryCatch(\Phasis\Ast\Statement\TryStatement $node): void
     {
-        $hasFinally = $node->finalizer !== null;
-        $hasCatch = $node->handler !== null;
         $stackBase = $this->tryEntryStackDepth;
-        $finallyBoundary = count($this->loopStack);
+        $tailCallsWereEnabled = $this->tailCallsEnabled;
+        $this->tailCallsEnabled = false;
 
-        // Phase 1 fast path: try / catch with no finalizer. The
-        // implementation is the original Phase 1 layout.
-        if (!$hasFinally) {
+        if ($node->finalizer === null) {
             $tryStart = count($this->code);
-            foreach ($node->block->body as $stmt) {
-                $this->compileStatement($stmt);
+            try {
+                foreach ($node->block->body as $stmt) {
+                    $this->compileStatement($stmt);
+                }
+            } finally {
+                $this->tailCallsEnabled = $tailCallsWereEnabled;
             }
             $tryEnd = count($this->code);
             $jmpPastCatch = $this->emitJump(Op::JUMP);
             $catchPc = count($this->code);
             $exceptionSlot = -1;
-            if ($node->handler->param instanceof \Phasis\Ast\Expression\Identifier) {
+            if ($node->handler->param instanceof Identifier) {
                 $name = $node->handler->param->name;
                 $exceptionSlot = $this->localSlots[$name]
                     ?? $this->declareLocal($name);
@@ -238,131 +307,85 @@ trait CompilerStatement
             return;
         }
 
-        // Phase 2: finalizer present (with or without catch).
-        // Layout (annotated PCs):
-        //   [tryStart..tryEnd)          : try body
-        //   tryEnd                      : JUMP -> finallyNormalPc
-        //   tryHandlerCatchPc           : (catch present) catch param
-        //                                 mirror + catch body, then
-        //                                 JUMP -> finallyNormalPc
-        //                                 (no catch) JUMP -> finallyRethrowPc
-        //   catchHandlerCatchPc         : JUMP -> finallyRethrowPc
-        //   finallyNormalPc             : finally body, JUMP -> afterTryPc
-        //   finallyRethrowPc            : finally body, LOAD rethrowSlot, THROW
-        //   afterTryPc                  : continuation
-        $rethrowSlot = count($this->localNames);
-        $this->localNames[] = '[[finallyRethrow]]';
+        // undefined, false and true distinguish normal, throw and return.
+        // The pending value stays in its own slot across nested finalizers.
+        $valueSlot = count($this->localNames);
+        $this->localNames[] = '[[finallyValue]]';
+        $completionSlot = count($this->localNames);
+        $this->localNames[] = '[[finallyCompletion]]';
+        $this->finallyContexts[] = [
+            'valueSlot' => $valueSlot,
+            'completionSlot' => $completionSlot,
+            'jumps' => [],
+        ];
+        $this->finallyLoopBoundaries[] = count($this->loopStack);
 
         $tryStart = count($this->code);
-        $this->finallyLoopBoundaries[] = $finallyBoundary;
         foreach ($node->block->body as $stmt) {
             $this->compileStatement($stmt);
         }
-        array_pop($this->finallyLoopBoundaries);
         $tryEnd = count($this->code);
-        $jmpFromTry = $this->emitJump(Op::JUMP);
+        $this->emit(Op::LOAD_UNDEF);
+        $this->emit(Op::STORE_LOCAL, $completionSlot);
+        $normalJumps = [$this->emitJump(Op::JUMP)];
+        $catchPc = count($this->code);
+        $exceptionSlot = $valueSlot;
 
-        $tryHandlerCatchPc = count($this->code);
-        $tryHandlerExceptionSlot = -1;
-        $catchStart = -1;
-        $catchEnd = -1;
-        $jmpFromCatch = -1;
-        $jmpFromTryHandlerNoCatch = -1;
-
-        if ($hasCatch) {
-            // Handler1 stores the thrown value in the catch param
-            // slot. Mirror it into rethrowSlot so a catch-body throw
-            // can later observe its OWN exception, not the original.
-            if ($node->handler->param instanceof \Phasis\Ast\Expression\Identifier) {
+        if ($node->handler !== null) {
+            if ($node->handler->param instanceof Identifier) {
                 $name = $node->handler->param->name;
-                $tryHandlerExceptionSlot = $this->localSlots[$name]
+                $exceptionSlot = $this->localSlots[$name]
                     ?? $this->declareLocal($name);
-                $this->emit(Op::LOAD_LOCAL, $tryHandlerExceptionSlot);
-                $this->emit(Op::STORE_LOCAL, $rethrowSlot);
-            } else {
-                // No catch param: still need to seed rethrowSlot from
-                // the param slot so handler2 can re-throw on
-                // catch-body exceptions. Allocate a temp.
-                $tryHandlerExceptionSlot = count($this->localNames);
-                $this->localNames[] = '[[catchTmp]]';
-                $this->emit(Op::LOAD_LOCAL, $tryHandlerExceptionSlot);
-                $this->emit(Op::STORE_LOCAL, $rethrowSlot);
             }
             $catchStart = count($this->code);
-            $this->finallyLoopBoundaries[] = $finallyBoundary;
             foreach ($node->handler->body->body as $stmt) {
                 $this->compileStatement($stmt);
             }
-            array_pop($this->finallyLoopBoundaries);
             $catchEnd = count($this->code);
-            $jmpFromCatch = $this->emitJump(Op::JUMP);
-        } else {
-            // No catch: handler1 stores the thrown value directly in
-            // rethrowSlot, then jumps to the rethrow-finally inline.
-            $tryHandlerExceptionSlot = $rethrowSlot;
-            $jmpFromTryHandlerNoCatch = $this->emitJump(Op::JUMP);
+            $this->emit(Op::LOAD_UNDEF);
+            $this->emit(Op::STORE_LOCAL, $completionSlot);
+            $normalJumps[] = $this->emitJump(Op::JUMP);
+            $this->handlers[] = new HandlerEntry(
+                tryStart: $catchStart,
+                tryEnd: $catchEnd,
+                catchPc: count($this->code),
+                exceptionSlot: $valueSlot,
+                stackBase: $stackBase,
+            );
         }
+        $this->emit(Op::LOAD_FALSE);
+        $this->emit(Op::STORE_LOCAL, $completionSlot);
 
-        // Handler2 (only meaningful if there's a catch): catches
-        // exceptions thrown inside the catch body and routes them
-        // through finally before re-raising.
-        $catchHandlerCatchPc = $hasCatch ? count($this->code) : -1;
-        $jmpFromHandler2 = -1;
-        if ($hasCatch) {
-            $jmpFromHandler2 = $this->emitJump(Op::JUMP);
+        $context = array_pop($this->finallyContexts);
+        foreach ([...$normalJumps, ...$context['jumps']] as $jump) {
+            $this->patchJumpToHere($jump);
         }
-
-        // Finally inlines.
-        $finallyNormalPc = count($this->code);
-        $this->finallyLoopBoundaries[] = $finallyBoundary;
+        $this->tailCallsEnabled = $tailCallsWereEnabled;
         foreach ($node->finalizer->body as $stmt) {
             $this->compileStatement($stmt);
         }
         array_pop($this->finallyLoopBoundaries);
-        $jmpAfterTry = $this->emitJump(Op::JUMP);
 
-        $finallyRethrowPc = count($this->code);
-        $this->finallyLoopBoundaries[] = $finallyBoundary;
-        foreach ($node->finalizer->body as $stmt) {
-            $this->compileStatement($stmt);
-        }
-        array_pop($this->finallyLoopBoundaries);
-        $this->emit(Op::LOAD_LOCAL, $rethrowSlot);
+        $this->emit(Op::LOAD_LOCAL, $completionSlot);
+        $this->emit(Op::LOAD_FALSE);
+        $this->emit(Op::SEQ);
+        $notThrow = $this->emitJump(Op::JUMP_IF_FALSE);
+        $this->emit(Op::LOAD_LOCAL, $valueSlot);
         $this->emit(Op::THROW);
-
-        // afterTry. patchJumpToHere targets the current PC; the
-        // jmpAfterTry was emitted right before this comment so it
-        // already lines up.
-        $this->patchJumpToHere($jmpAfterTry);
-        $this->code[$jmpFromTry] = $finallyNormalPc - ($jmpFromTry - 1);
-        if ($jmpFromCatch !== -1) {
-            $this->code[$jmpFromCatch] = $finallyNormalPc - ($jmpFromCatch - 1);
-        }
-        if ($jmpFromTryHandlerNoCatch !== -1) {
-            $this->code[$jmpFromTryHandlerNoCatch] =
-                $finallyRethrowPc - ($jmpFromTryHandlerNoCatch - 1);
-        }
-        if ($jmpFromHandler2 !== -1) {
-            $this->code[$jmpFromHandler2] =
-                $finallyRethrowPc - ($jmpFromHandler2 - 1);
-        }
+        $this->patchJumpToHere($notThrow);
+        $this->emit(Op::LOAD_LOCAL, $completionSlot);
+        $normal = $this->emitJump(Op::JUMP_IF_FALSE);
+        $this->emit(Op::LOAD_LOCAL, $valueSlot);
+        $this->emitReturnCompletion();
+        $this->patchJumpToHere($normal);
 
         $this->handlers[] = new HandlerEntry(
             tryStart: $tryStart,
             tryEnd: $tryEnd,
-            catchPc: $tryHandlerCatchPc,
-            exceptionSlot: $tryHandlerExceptionSlot,
+            catchPc: $catchPc,
+            exceptionSlot: $exceptionSlot,
             stackBase: $stackBase,
         );
-        if ($hasCatch) {
-            $this->handlers[] = new HandlerEntry(
-                tryStart: $catchStart,
-                tryEnd: $catchEnd,
-                catchPc: $catchHandlerCatchPc,
-                exceptionSlot: $rethrowSlot,
-                stackBase: $stackBase,
-            );
-        }
     }
 
     private function compileIf(IfStatement $node): void
@@ -401,7 +424,7 @@ trait CompilerStatement
         }
         $left = $test->left;
         $right = $test->right;
-        if (!$left instanceof Identifier || !isset($this->localSlots[$left->name])) {
+        if (!$left instanceof Identifier || !isset($this->localSlots[$left->name]) || isset($this->capturedLocals[$left->name])) {
             return -1;
         }
         $localSlot = $this->localSlots[$left->name];
@@ -422,7 +445,7 @@ trait CompilerStatement
             $this->code[] = 0; // placeholder offset
             return $opcodePc;
         }
-        if ($right instanceof Identifier && isset($this->localSlots[$right->name])) {
+        if ($right instanceof Identifier && isset($this->localSlots[$right->name]) && !isset($this->capturedLocals[$right->name])) {
             $rightSlot = $this->localSlots[$right->name];
             $opcodePc = count($this->code);
             $this->code[] = $op === '<' ? Op::JUMP_IF_LOCAL_GE_LOCAL : Op::JUMP_IF_LOCAL_GT_LOCAL;
@@ -448,6 +471,7 @@ trait CompilerStatement
         $loopId = $this->loopCount++;
         $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
+        $this->emit(Op::CHECK_BUDGET);
         // Test. Try the fused JUMP_IF_LOCAL_GE_CONST shortcut first
         // for the canonical `for (let i = 0; i < N; i++)` pattern.
         $jmpExit = -1;
@@ -509,7 +533,9 @@ trait CompilerStatement
     {
         $loopId = $this->loopCount++;
         $this->emit(Op::LOOP_INIT, $loopId);
+        $region = $this->beginStringLoopRegion($node, $loopId);
         $loopStart = count($this->code);
+        $this->emit(Op::CHECK_BUDGET);
         $this->compileExpression($node->test);
         $jmpExit = $this->emitJump(Op::JUMP_IF_FALSE);
         $this->emit(Op::LOOP_TICK, $loopId);
@@ -520,6 +546,7 @@ trait CompilerStatement
         $jumpOpcodePc = count($this->code) - 2;
         $this->code[$jumpOpcodePc + 1] = $loopStart - $jumpOpcodePc;
         $loopExit = count($this->code);
+        $this->finishStringLoopRegion($region, $loopStart, $loopExit);
         $this->patchJumpToHere($jmpExit);
         $frame = array_pop($this->loopStack);
         foreach ($frame['continues'] as $idx) {
@@ -537,6 +564,7 @@ trait CompilerStatement
         $loopId = $this->loopCount++;
         $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
+        $this->emit(Op::CHECK_BUDGET);
         $this->emit(Op::LOOP_TICK, $loopId);
         $this->loopStack[] = ['continue' => -1, 'breaks' => [], 'continues' => []];
         $this->compileStatement($node->body);
@@ -567,6 +595,36 @@ trait CompilerStatement
             throw new CompilerBailout('using declaration');
         }
         foreach ($node->declarations as $decl) {
+            if ($decl->id instanceof ArrayPattern) {
+                if ($decl->init === null) {
+                    throw new CompilerBailout('destructure without init');
+                }
+                $elements = [];
+                foreach ($decl->id->elements as $element) {
+                    if ($element === null) {
+                        $elements[] = null;
+                        continue;
+                    }
+                    $target = $element instanceof RestElement ? $element->argument : $element;
+                    if (!$target instanceof Identifier) {
+                        throw new CompilerBailout('complex array pattern');
+                    }
+                    $slot = $this->localSlots[$target->name];
+                    $elements[] = [
+                        'slot' => $slot,
+                        'capturedName' => isset($this->capturedLocals[$target->name]) ? $target->name : null,
+                        'rest' => $element instanceof RestElement,
+                    ];
+                    if ($node->kind === 'const') {
+                        $this->constSlots[$slot] = true;
+                    }
+                }
+                $this->compileExpression($decl->init);
+                $index = count($this->arrayBindings);
+                $this->arrayBindings[] = ['kind' => $node->kind, 'elements' => $elements];
+                $this->emit(Op::BIND_ARRAY, $index);
+                continue;
+            }
             if ($decl->id instanceof ObjectPattern) {
                 if ($decl->init === null) {
                     throw new CompilerBailout('destructure without init');
@@ -588,7 +646,8 @@ trait CompilerStatement
                     if ($prop->computed) {
                         throw new CompilerBailout('computed key in pattern');
                     }
-                    if (!($prop->value instanceof Identifier)) {
+                    $target = $prop->value instanceof AssignmentPattern ? $prop->value->left : $prop->value;
+                    if (!$target instanceof Identifier) {
                         throw new CompilerBailout('non-identifier pattern target');
                     }
                     $keyName = $prop->key instanceof Identifier
@@ -600,8 +659,20 @@ trait CompilerStatement
                         $this->emit(Op::DUP);
                     }
                     $this->emit(Op::LOAD_MEMBER, $this->internName($keyName));
-                    $slot = $this->localSlots[$prop->value->name] ?? $this->declareLocal($prop->value->name);
-                    $this->emitStoreLocal($slot);
+                    if ($prop->value instanceof AssignmentPattern) {
+                        if (self::initNeedsNamedEvaluation($prop->value->right)) {
+                            throw new CompilerBailout('pattern initializer needs named evaluation');
+                        }
+                        $this->emit(Op::DUP);
+                        $this->emit(Op::LOAD_UNDEF);
+                        $this->emit(Op::SEQ);
+                        $provided = $this->emitJump(Op::JUMP_IF_FALSE);
+                        $this->emit(Op::POP);
+                        $this->compileExpression($prop->value->right);
+                        $this->patchJumpToHere($provided);
+                    }
+                    $slot = $this->localSlots[$target->name] ?? $this->declareLocal($target->name);
+                    $this->emitInitializeLocal($slot, $node->kind);
                     if ($node->kind === 'const') {
                         $this->constSlots[$slot] = true;
                     }
@@ -636,10 +707,17 @@ trait CompilerStatement
                     throw new CompilerBailout('var init needs named evaluation');
                 }
                 $this->compileExpression($decl->init);
-                $this->emitStoreLocal($slot);
+                $this->emitInitializeLocal($slot, $node->kind);
             } else {
                 if ($node->kind === 'const') {
                     throw new CompilerBailout('const without initializer');
+                }
+                if (
+                    $node->kind === 'let'
+                    && ($this->forOfBodyDepth > 0 || isset($this->capturedLocals[$name]) || isset($this->reusableBlockLocals[$name]))
+                ) {
+                    $this->emit(Op::LOAD_UNDEF);
+                    $this->emitInitializeLocal($slot, $node->kind);
                 }
             }
             if ($node->kind === 'const') {

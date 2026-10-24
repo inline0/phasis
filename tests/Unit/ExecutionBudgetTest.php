@@ -99,4 +99,36 @@ final class ExecutionBudgetTest extends TestCase
 
         self::assertSame('microtask', $engine->eval('log.join()'));
     }
+
+    public function testEnablingABudgetPreservesWarmFunctionBindings(): void
+    {
+        $engine = new Engine();
+        $engine->eval(<<<'JS'
+'use strict';
+function initialize(value) { this.value = value; }
+function Container(value) { initialize.call(this, value); }
+function read(value) { return value.name; }
+function arithmetic(value) { return value + 2; }
+new Container('warm');
+read({ name: 'warm' });
+arithmetic(1);
+JS);
+        $engine->setExecutionBudget(5);
+
+        self::assertSame(
+            ['budgeted', 'bound', 5],
+            $engine->eval('[new Container("budgeted").value, read({name: "bound"}), arithmetic(3)]'),
+        );
+    }
+
+    public function testEnablingABudgetStopsAnAlreadyCompiledNumericLoop(): void
+    {
+        $engine = new Engine();
+        $engine->setLimit('maxLoopIterations', PHP_INT_MAX);
+        $engine->eval('function count(n) { var value = 0; while (value < n) value++; return value; } count(1);');
+        $engine->setExecutionBudget(0.01);
+
+        $this->expectException(BudgetExceeded::class);
+        $engine->eval('count(Infinity);');
+    }
 }

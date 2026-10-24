@@ -388,16 +388,7 @@ class JsProxy extends JsObject
             $this->validateSetInvariants($name, $value, $target);
             return true;
         }
-        // No trap: forward to target.[[Set]](P, V, Receiver). Target is
-        // a JsObject which only accepts JsObject receivers; coerce the
-        // (potentially primitive) receiver to itself by using the target
-        // as the receiver when it's not an Object — the underlying spec
-        // semantics for OrdinarySet then return false for primitive
-        // receivers on data descriptors.
-        if ($receiver instanceof JsObject) {
-            return $target->internalSet($name, $value, $receiver);
-        }
-        return $target->internalSet($name, $value, $target);
+        return $target->setWithValueReceiver($name, $value, $receiver);
     }
 
     /**
@@ -1424,20 +1415,28 @@ class JsProxy extends JsObject
 
     public function setBySymbol(JsSymbol $symbol, JsValue $value, bool $strict = false): void
     {
+        if (!$this->setBySymbolWithValueReceiver($symbol, $value, $this) && $strict) {
+            $key = self::formatKeyForError($symbol);
+            throw new TypeError("'set' on proxy: trap returned falsish for property {$key}");
+        }
+    }
+
+    /** Symbol [[Set]] preserves the receiver through the trap and target fallback. */
+    public function setBySymbolWithValueReceiver(JsSymbol $symbol, JsValue $value, JsValue $receiver): bool
+    {
         $this->assertNotRevoked('set');
         $target = $this->target;
         $handler = $this->handler;
         $trap = $this->getTrap('set');
         if ($trap !== null) {
-            $result = $trap->call($handler, [$target, $symbol, $value, $this]);
-            $boolean = \Phasis\Spec\TypeConversion::toBoolean($result);
-            if ($boolean) {
-                // Validate invariants per spec 10.5.9 step 14.
-                $this->validateSetInvariants($symbol, $value, $target);
+            $result = $trap->call($handler, [$target, $symbol, $value, $receiver]);
+            if (!\Phasis\Spec\TypeConversion::toBoolean($result)) {
+                return false;
             }
-            return;
+            $this->validateSetInvariants($symbol, $value, $target);
+            return true;
         }
-        $target->setBySymbol($symbol, $value);
+        return $target->setBySymbolWithValueReceiver($symbol, $value, $receiver);
     }
 
     public function hasBySymbol(JsSymbol $symbol): bool

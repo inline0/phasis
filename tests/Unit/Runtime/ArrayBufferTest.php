@@ -30,6 +30,48 @@ class ArrayBufferTest extends TestCase
         $engine->eval('new ArrayBuffer(Infinity);');
     }
 
+    public function testTypedArraySetClampsArrayLikeLengthsBeforeTheSizeCheck(): void
+    {
+        $engine = new Engine();
+        $result = $engine->eval(<<<'JS'
+            const outcomes = [];
+            for (const length of [NaN, -Infinity, -3, 1.9, Infinity, 1e30]) {
+                for (const primitive of [false, true]) {
+                    const effects = [];
+                    const descriptors = {
+                        length: {configurable: true, get() {
+                            effects.push('length');
+                            return {valueOf() {effects.push('value'); return length;}};
+                        }},
+                        0: {configurable: true, get() {effects.push('index'); return 7;}}
+                    };
+                    const source = primitive ? 42 : Object.defineProperties({}, descriptors);
+                    if (primitive) Object.defineProperties(Number.prototype, descriptors);
+                    const target = new Uint8Array(2);
+                    let error = null;
+                    try { target.set(source); } catch (caught) {error = caught.name;}
+                    finally {
+                        if (primitive) {
+                            delete Number.prototype.length;
+                            delete Number.prototype[0];
+                        }
+                    }
+                    outcomes.push([error, Array.from(target), effects]);
+                }
+            }
+            JSON.stringify(outcomes);
+            JS);
+
+        $empty = [null, [0, 0], ['length', 'value']];
+        $copied = [null, [7, 0], ['length', 'value', 'index']];
+        $large = ['RangeError', [0, 0], ['length', 'value']];
+        self::assertSame(
+            json_encode([$empty, $empty, $empty, $empty, $empty, $empty, $copied, $copied,
+                $large, $large, $large, $large]),
+            $result,
+        );
+    }
+
     public function testImmutableSnapshotsKeepIndependentStorageAndRejectWritesBeforeCoercion(): void
     {
         $engine = new Engine();

@@ -310,11 +310,9 @@ trait TypedArrayHelpers
                         "Constructor {$typeName} requires 'new'"
                     );
                 }
-                // Per §23.2.5.1 TypedArray ( ...args ): the argument validation
-                // (e.g. Symbol/BigInt argument TypeError for `new T(sym)`) must
-                // happen BEFORE GetPrototypeFromConstructor is called. Pass a
-                // deferred proto resolver so constructTypedArray performs proto
-                // access only after args are validated.
+                // Primitive lengths are coerced before prototype lookup. Buffer
+                // and TypedArray sources resolve it before source validation.
+                // Defer the lookup so constructTypedArray preserves that order.
                 $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
                 $nt = ($ntDesc->value instanceof JsFunction)
                     ? $ntDesc->value
@@ -330,7 +328,13 @@ trait TypedArrayHelpers
                     }
                     return $defaultProto;
                 };
-                return self::constructTypedArray($typeName, $bpe, $protoResolver, $args);
+                return self::constructTypedArray(
+                    $typeName,
+                    $bpe,
+                    $protoResolver,
+                    $args,
+                    $nt !== null && $nt === $ctorBox->ref,
+                );
             },
             3,
         );
@@ -372,6 +376,7 @@ trait TypedArrayHelpers
             PropertyDescriptor::data($proto, false, false, false),
         );
 
+        $env->setIntrinsic($typeName . '.prototype', $proto);
         $env->defineVar($typeName, $constructor);
     }
 
@@ -583,6 +588,7 @@ trait TypedArrayHelpers
         int $bpe,
         JsObject|\Closure $protoOrResolver,
         array $args,
+        bool $intrinsicNewTarget,
     ): JsTypedArray {
         $getProto = static function () use (&$protoOrResolver): JsObject {
             if ($protoOrResolver instanceof \Closure) {
@@ -688,6 +694,9 @@ trait TypedArrayHelpers
 
         // new TypedArray(typedArray): copy elements.
         if ($arg0 instanceof JsTypedArray) {
+            // AllocateTypedArray reads newTarget.prototype before source validation.
+            // The getter may detach, resize or repair the source view.
+            $resolvedProto = $getProto();
             // Per spec InitializeTypedArrayFromTypedArray, validate the
             // source: throw TypeError if its buffer is detached or the
             // view is now out of bounds.
@@ -702,7 +711,28 @@ trait TypedArrayHelpers
                 );
             }
             $srcLen = $arg0->getLength();
-            $result = JsTypedArray::fromLength($typeName, $srcLen, $getProto());
+            $result = JsTypedArray::fromLength($typeName, $srcLen, $resolvedProto);
+            // Same-type copies preserve the stored bits, including NaN payloads.
+            if (
+                $intrinsicNewTarget && get_class($arg0) === JsTypedArray::class
+                && $arg0->getTypeName() === $typeName
+            ) {
+                $sourceBuffer = $arg0->getBuffer();
+                $resultBuffer = $result->getBuffer();
+                if (
+                    get_class($sourceBuffer) === JsArrayBuffer::class
+                    && get_class($resultBuffer) === JsArrayBuffer::class
+                    && !$sourceBuffer->isResizable() && !$sourceBuffer->isDetached()
+                    && !$arg0->isOutOfBounds() && $arg0->getLength() === $srcLen
+                ) {
+                    $byteLength = $srcLen * $bpe;
+                    $bytes = substr($sourceBuffer->getData(), $arg0->getByteOffset(), $byteLength);
+                    if (strlen($bytes) === $byteLength) {
+                        $resultBuffer->setData($bytes);
+                        return $result;
+                    }
+                }
+            }
             for ($i = 0; $i < $srcLen; $i++) {
                 $result->setIndex($i, $arg0->getIndex($i));
             }

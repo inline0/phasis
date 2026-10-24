@@ -103,6 +103,79 @@ use Phasis\Runtime\Reference;
  */
 trait IteratorProtocol
 {
+    /** @return array{JsObject, JsValue} Iterator and cached next method for a compiled for-of loop. */
+    public function vmGetIterator(JsValue $value): array
+    {
+        return $this->getIteratorOrThrow($value);
+    }
+
+    /** Advance a compiled for-of loop with the shared IteratorStepValue semantics. */
+    public function vmIteratorNext(JsObject $iterator, JsValue $nextMethod, bool &$done): JsValue
+    {
+        return $this->iteratorNext($iterator, $nextMethod, $done);
+    }
+
+    /** Close a compiled loop; a pending throw takes precedence over close failures. */
+    public function vmIteratorClose(JsObject $iterator, JsValue $completion, JsValue $value): void
+    {
+        $this->iteratorClose(
+            $iterator,
+            $completion instanceof JsBoolean && !$completion->value ? new \Phasis\Exceptions\JsThrowable($value) : null,
+        );
+    }
+
+    /**
+     * Bind or assign a compiled flat array pattern without reading ahead.
+     * Iterator methods can observe each earlier write through captured closures.
+     *
+     * @param array{kind: string, elements: list<array{slot: int, capturedName: ?string, rest: bool}|array{target: Node, rest: bool}|null>} $binding
+     * @param list<JsValue> $locals
+     */
+    public function vmBindArray(JsValue $value, array $binding, array &$locals, Environment $env): void
+    {
+        [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
+        $done = false;
+        try {
+            foreach ($binding['elements'] as $element) {
+                if ($element === null) {
+                    $this->iteratorNext($iterator, $nextMethod, $done, false);
+                    continue;
+                }
+                $reference = isset($element['target']) ? $this->resolveReference($element['target'], $env) : null;
+                $item = $element['rest']
+                    ? $this->iteratorRest($iterator, $nextMethod, $done)
+                    : $this->iteratorNext($iterator, $nextMethod, $done);
+                if ($reference !== null) {
+                    $reference->setValue($item);
+                    continue;
+                }
+                if (isset($element['target'])) {
+                    throw new \LogicException('Array assignment reference was not resolved');
+                }
+                $name = $element['capturedName'];
+                if ($name === null) {
+                    $slot = $element['slot'];
+                    if (!isset($locals[$slot])) {
+                        throw new \LogicException('Array binding references an unallocated local slot');
+                    }
+                    $locals[$slot] = $item;
+                } elseif ($binding['kind'] === 'var' || $binding['kind'] === 'assignment') {
+                    $env->set($name, $item);
+                } else {
+                    $env->initialize($name, $item);
+                }
+            }
+        } catch (\Throwable $error) {
+            if (!$done) {
+                $this->iteratorClose($iterator, $error);
+            }
+            throw $error;
+        }
+        if (!$done) {
+            $this->iteratorClose($iterator);
+        }
+    }
+
     /**
      * Get the iterator for a value; throw TypeError if not iterable.
      * Returns [iterator, nextMethod]. The next-method may be any JsValue;
@@ -132,10 +205,23 @@ trait IteratorProtocol
      * Advance an iterator one step. Returns the value, or undefined when done.
      * Sets $done to true once the iterator reports done.
      */
-    private function iteratorNext(JsObject $iterator, JsValue $nextMethod, bool &$done): JsValue
+    private function iteratorNext(JsObject $iterator, JsValue $nextMethod, bool &$done, bool $readValue = true): JsValue
     {
         if ($done) {
             return JsUndefined::instance();
+        }
+        if (
+            ($iterator instanceof \Phasis\Value\JsArrayIterator
+                || ($iterator instanceof \Phasis\Value\JsStringIterator && $this->budget === null))
+            && $iterator->hasIntrinsicNext($nextMethod)
+        ) {
+            try {
+                $value = $iterator->nextValue($done);
+                return $readValue ? $value : JsUndefined::instance();
+            } catch (\Throwable $error) {
+                $done = true;
+                throw $error;
+            }
         }
         if ($nextMethod instanceof \Phasis\Value\JsProxy && $nextMethod->isCallable()) {
             try {
@@ -161,11 +247,16 @@ trait IteratorProtocol
             $done = true;
             throw new \Phasis\Exceptions\TypeError('Iterator result is not an object');
         }
-        if (TypeConversion::toBoolean($result->get('done'))) {
+        try {
+            if (!TypeConversion::toBoolean($result->get('done'))) {
+                return $readValue ? $result->get('value') : JsUndefined::instance();
+            }
+        } catch (\Throwable $error) {
             $done = true;
-            return JsUndefined::instance();
+            throw $error;
         }
-        return $result->get('value');
+        $done = true;
+        return JsUndefined::instance();
     }
 
     /**
@@ -217,7 +308,7 @@ trait IteratorProtocol
                 }
                 return;
             }
-            if (!$returnMethod instanceof JsFunction) {
+            if (!$returnMethod instanceof JsFunction && !($returnMethod instanceof JsProxy && $returnMethod->isCallable())) {
                 if ($completionIsThrow) {
                     throw $completion;
                 }
@@ -231,7 +322,9 @@ trait IteratorProtocol
         $innerResult = null;
         if ($innerException === null) {
             try {
-                $innerResult = $this->callFunction($returnMethod, $iterator, []);
+                $innerResult = $returnMethod instanceof JsProxy
+                    ? $returnMethod->apply($iterator, [])
+                    : $this->callFunction($returnMethod, $iterator, []);
             } catch (\Throwable $e) {
                 $innerException = $e;
             }

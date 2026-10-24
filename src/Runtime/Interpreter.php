@@ -181,6 +181,7 @@ class Interpreter
     {
         if ($this->framePoolDepth > 0) {
             $this->framePoolDepth--;
+            $this->framePool[$this->framePoolDepth]->release(JsUndefined::instance());
         }
     }
 
@@ -217,7 +218,7 @@ class Interpreter
         \Phasis\Value\JsValue $thisValue,
         array $args,
     ): array {
-        $this->callStack->push($fn->name, 0);
+        $this->callStack->push($fn->name, 0, $fn);
         $this->callerStack[] = $fn;
 
         if ($fn->setCallerPropCache === null) {
@@ -550,6 +551,27 @@ class Interpreter
     public function hasExecutionBudget(): bool
     {
         return $this->budget !== null;
+    }
+
+    /** Temporarily tighten a child execution deadline without extending its inherited host budget. */
+    public function tightenExecutionBudget(float $seconds): void
+    {
+        $deadline = hrtime(true) + (int) ($seconds * 1_000_000_000);
+        if ($this->budget === null || $deadline < $this->budget->deadline) {
+            $this->budget = new ExecutionBudget($deadline);
+        }
+    }
+
+    /** Capture a host deadline when a nested evaluation adds its own shorter timeout. */
+    public function executionBudgetState(): ?ExecutionBudget
+    {
+        return $this->budget;
+    }
+
+    /** Restore the exact shared host deadline after a nested evaluation. */
+    public function restoreExecutionBudgetState(?ExecutionBudget $budget): void
+    {
+        $this->budget = $budget;
     }
 
     /**

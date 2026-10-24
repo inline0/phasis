@@ -145,6 +145,7 @@ class ArrayConstructor
         );
         JsArray::setGlobalPrototype($proto);
 
+        $env->setIntrinsic('ArrayPrototype', $proto);
         $env->defineVar('Array', $constructor);
     }
 

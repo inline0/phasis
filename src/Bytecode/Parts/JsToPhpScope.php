@@ -35,6 +35,23 @@ use Phasis\Bytecode\Bailout;
  */
 trait JsToPhpScope
 {
+    /** @var array<string, true> Lexical bindings cannot alias another PHP local. */
+    private array $lexicalLocalNames = [];
+
+    private function registerLocalBinding(string $name, string $kind): void
+    {
+        if (
+            isset($this->lexicalLocalNames[$name])
+            || ($kind !== 'var' && isset($this->declaredLocals[$name]))
+        ) {
+            throw new Bailout('lexical binding shadows another local');
+        }
+        if ($kind !== 'var') {
+            $this->lexicalLocalNames[$name] = true;
+        }
+        $this->declaredLocals[$name] = true;
+    }
+
     /**
      * @param Node[] $statements
      */
@@ -54,7 +71,7 @@ trait JsToPhpScope
                 throw new Bailout('anonymous function declaration');
             }
             $name = $node->id->name;
-            $this->declaredLocals[$name] = true;
+            $this->registerLocalBinding($name, 'var');
             $this->markLocalAsFunction($name);
             return;
         }
@@ -82,7 +99,7 @@ trait JsToPhpScope
                         if (!$prop->value instanceof Identifier) {
                             throw new Bailout('non-identifier pattern target');
                         }
-                        $this->declaredLocals[$prop->value->name] = true;
+                        $this->registerLocalBinding($prop->value->name, $node->kind);
                     }
                     continue;
                 }
@@ -90,7 +107,7 @@ trait JsToPhpScope
                     throw new Bailout('non-identifier var');
                 }
                 $name = $decl->id->name;
-                $this->declaredLocals[$name] = true;
+                $this->registerLocalBinding($name, $node->kind);
                 if ($node->kind === 'const') {
                     $this->constLocals[$name] = true;
                 }
@@ -215,8 +232,9 @@ trait JsToPhpScope
 
     /**
      * Build the initial set of names defined in a nested function's
-     * own scope: its parameters, plus its own name (FunctionExpression
-     * / FunctionDeclaration). Names in this set shadow outer locals
+     * own scope: its parameters, plus a named FunctionExpression's name.
+     * A FunctionDeclaration's name resolves through its enclosing scope.
+     * Names in this set shadow outer locals
      * and are NOT considered captures.
      *
      * @return array<string, true>
@@ -224,9 +242,6 @@ trait JsToPhpScope
     private function initialNestedScope(Node $fnNode): array
     {
         $blocked = [];
-        if ($fnNode instanceof FunctionDeclaration && $fnNode->id !== null) {
-            $blocked[$fnNode->id->name] = true;
-        }
         if (
             $fnNode instanceof \Phasis\Ast\Expression\FunctionExpression
             && $fnNode->name !== null

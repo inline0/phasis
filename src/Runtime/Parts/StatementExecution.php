@@ -236,7 +236,7 @@ trait StatementExecution
                         $done = true;
                         break;
                     }
-                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done, $element !== null);
                     if ($element === null) {
                         continue;
                     }
@@ -1605,7 +1605,7 @@ trait StatementExecution
 
         if ($iterator !== null) {
             $nextMethod = $iterator->get('next');
-            if (!$nextMethod instanceof JsFunction) {
+            if (!$nextMethod instanceof JsFunction && !($nextMethod instanceof \Phasis\Value\JsProxy && $nextMethod->isCallable())) {
                 throw new TypeError('Iterator result next is not a function');
             }
 
@@ -1637,7 +1637,7 @@ trait StatementExecution
                 }
 
                 // Per spec GetMethod: non-callable → TypeError.
-                if (!$returnMethod instanceof JsFunction) {
+                if (!$returnMethod instanceof JsFunction && !($returnMethod instanceof \Phasis\Value\JsProxy && $returnMethod->isCallable())) {
                     if ($isOriginalThrow) {
                         return null;
                     }
@@ -1648,7 +1648,9 @@ trait StatementExecution
 
                 // Step 3c: innerResult = Call(return, iterator).
                 try {
-                    $innerResult = $this->callFunction($returnMethod, $iterator, []);
+                    $innerResult = $returnMethod instanceof \Phasis\Value\JsProxy
+                        ? $returnMethod->apply($iterator, [])
+                        : $this->callFunction($returnMethod, $iterator, []);
                     // Step 5: if original was throw, return it (ignore return() result).
                     if ($isOriginalThrow) {
                         return null;
@@ -1682,7 +1684,9 @@ trait StatementExecution
                     throw new InternalError('Maximum loop iterations exceeded');
                 }
 
-                $result = $this->callFunction($nextMethod, $iterator, []);
+                $result = $nextMethod instanceof \Phasis\Value\JsProxy
+                    ? $nextMethod->apply($iterator, [])
+                    : $this->callFunction($nextMethod, $iterator, []);
                 // For for-await-of, unwrap the promise returned by the async iterator.
                 if ($node->await) {
                     $result = $this->forAwaitUnwrap($result, $env);
@@ -2163,77 +2167,14 @@ trait StatementExecution
 
     private function getIterator(JsValue $iterable): ?JsObject
     {
-        // String iteration: produce a code-point iterator that correctly
-        // handles surrogate pairs and lone surrogates per spec 22.1.5.2.1.
-        if ($iterable instanceof JsString) {
-            $chars = [];
-            $u16 = JsString::utf8ToUtf16LE($iterable->value);
-            $u16Len = (int) (strlen($u16) / 2);
-            $si = 0;
-            while ($si < $u16Len) {
-                $cu = ord($u16[$si * 2]) | (ord($u16[$si * 2 + 1]) << 8);
-                if ($cu >= 0xD800 && $cu <= 0xDBFF && $si + 1 < $u16Len) {
-                    $next = ord($u16[($si + 1) * 2]) | (ord($u16[($si + 1) * 2 + 1]) << 8);
-                    if ($next >= 0xDC00 && $next <= 0xDFFF) {
-                        // Valid surrogate pair: combine into a single code point.
-                        $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
-                        $chars[] = mb_chr($cp, 'UTF-8');
-                        $si += 2;
-                        continue;
-                    }
-                }
-                // Lone surrogate or BMP character.
-                $chars[] = JsString::utf16CodeUnitToUtf8($cu);
-                $si++;
-            }
-            $index = 0;
-            $total = count($chars);
-
-            $iterator = new JsObject();
-            $nextFn = function () use (&$index, $total, &$chars): JsValue {
-                $result = new JsObject();
-                if ($index < $total) {
-                    $result->set('value', new JsString($chars[$index]));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            return $iterator;
-        }
-
-        // For non-string primitives, GetMethod(V, @@iterator) looks up on the
-        // wrapper prototype; an installed Symbol.iterator there must be called
-        // with the primitive as its receiver.
-        if (
-            $iterable instanceof JsNumber
-            || $iterable instanceof JsBoolean
-            || $iterable instanceof \Phasis\Value\JsBigInt
-            || $iterable instanceof JsSymbol
-        ) {
-            $wrapper = TypeConversion::toObject($iterable);
-            $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
-            $method = $wrapper->getBySymbol($iterSym);
-            if (!$method instanceof JsFunction) {
-                return null;
-            }
-            $result = $this->callFunction($method, $iterable, []);
-            if (!$result instanceof JsObject) {
-                throw new TypeError('Iterator method did not return an object');
-            }
-            return $result;
-        }
-        if (!$iterable instanceof JsObject) {
+        if ($iterable instanceof JsNull || $iterable instanceof JsUndefined) {
             return null;
         }
-
-        // Check for Symbol.iterator method.
+        // GetV boxes primitives for lookup but retains the original receiver
+        // for accessors and calls, including overridden string iterators.
+        $wrapper = $iterable instanceof JsObject ? $iterable : TypeConversion::toObject($iterable);
         $iterSym = \Phasis\BuiltIn\SymbolConstructor::iterator();
-        $iteratorMethod = $iterable->getBySymbol($iterSym);
+        $iteratorMethod = $wrapper->getBySymbolWithReceiver($iterSym, $iterable);
 
         $isCallable = $iteratorMethod instanceof JsFunction
             || ($iteratorMethod instanceof \Phasis\Value\JsProxy && $iteratorMethod->isCallable());
@@ -2303,7 +2244,7 @@ trait StatementExecution
                         $done = true;
                         break;
                     }
-                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done, $element !== null);
                     if ($element === null) {
                         continue;
                     }
@@ -2393,13 +2334,12 @@ trait StatementExecution
             if ($this->budget !== null) {
                 $this->checkBudget();
             }
-            if (++$iterations > $this->maxLoopIterations) {
-                throw new InternalError('Maximum loop iterations exceeded');
-            }
-
             $test = $this->evaluate($node->test, $env);
             if (!TypeConversion::toBoolean($test)) {
                 break;
+            }
+            if (++$iterations > $this->maxLoopIterations) {
+                throw new InternalError('Maximum loop iterations exceeded');
             }
 
             $completion = $this->executeStatement($node->body, $env);
@@ -2575,8 +2515,15 @@ trait StatementExecution
         // TailCallThunk instead of evaluating the call immediately. The
         // helper returns either a TailCallThunk or a JsValue (when the
         // tail branch could be evaluated directly with its side-effecting
-        // prefix); we wrap accordingly.
-        if ($this->strictMode && $node->argument !== null && $this->inTailPosition) {
+        // prefix); we wrap accordingly. Async and generator bodies have no
+        // proper tail positions: their return values still need their own
+        // promise or iterator completion processing.
+        if (
+            $this->strictMode
+            && $node->argument !== null
+            && $this->inTailPosition
+            && !in_array($env->getEnclosingFunctionKind(), ['async', 'generator', 'async-generator'], true)
+        ) {
             $result = $this->evalTailPositionExpr($node->argument, $env);
             if ($result !== null) {
                 return Completion::return($result);
@@ -2773,137 +2720,13 @@ trait StatementExecution
         return new TailCallThunk($tag, $thisValue, $args);
     }
 
-    private function evalTailCall(CallExpression $node, Environment $env): TailCallThunk|JsValue|null
+    private function evalTailCall(CallExpression $node, Environment $env): TailCallThunk|JsValue
     {
-        // Resolve the callee and its this-binding.
-        $callee = null;
-        $thisValue = JsUndefined::instance();
-
-        if ($node->callee instanceof MemberExpression) {
-            // super.method() needs special resolution via HomeObject; bail to the
-            // regular call path which knows how to handle it.
-            if (
-                $node->callee->object instanceof Identifier
-                && $node->callee->object->name === 'super'
-            ) {
-                return null;
-            }
-            // Private method calls (obj.#method()) resolve via the receiver's
-            // private-name slots; the regular call path handles this, so bail.
-            if ($node->callee->property instanceof PrivateIdentifier) {
-                return null;
-            }
-            // The receiver of a method call is usually side-effecting; if we
-            // evaluated it here and then bailed because the callee turned out
-            // to be a native method, execReturnStatement would re-evaluate
-            // the same expression and double-run side effects (observable via
-            // `return foo().then(a).then(b)` where `.then` is native). To
-            // avoid that, only attempt TCO when the receiver is statically
-            // proven side-effect-free (Identifier, ThisExpression, Literal,
-            // or recursively a side-effect-free MemberExpression).
-            if (!self::isSideEffectFreeAst($node->callee->object)) {
-                return null;
-            }
-            $obj = $this->evaluate($node->callee->object, $env);
-            // Computed member with a Symbol key must not be stringified; fall back to
-            // the regular call path (returning null) so getBySymbol is used correctly.
-            if ($node->callee->computed) {
-                $propVal = $this->evaluate($node->callee->property, $env);
-                if ($propVal instanceof \Phasis\Value\JsSymbol) {
-                    return null;
-                }
-                $propName = TypeConversion::toString($propVal);
-            } else {
-                $propName = $node->callee->property instanceof Identifier
-                    ? $node->callee->property->name
-                    : TypeConversion::toString($this->evaluate($node->callee->property, $env));
-            }
-            $callee = $obj instanceof JsObject ? $obj->get($propName) : null;
-            $thisValue = $obj;
-        } elseif ($node->callee instanceof Identifier) {
-            // super() is not eligible for TCO.
-            if ($node->callee->name === 'super') {
-                return null;
-            }
-            if ($env->has($node->callee->name)) {
-                $callee = $env->get($node->callee->name);
-            }
-            // Direct eval (identifier 'eval' resolving to native %eval%) is
-            // not eligible; a user-shadowed 'eval' bound to a regular
-            // function still is (it's just a function call).
-            if (
-                $node->callee->name === 'eval'
-                && $callee instanceof JsFunction
-                && $callee->isNative()
-                && $callee->getName() === 'eval'
-            ) {
-                return null;
-            }
-        } else {
-            // CallExpression / NewExpression / SequenceExpression / etc.
-            // The classic `return getF()(n-1)` TCO shape lives here. We
-            // evaluate the callee once and then *finish the call inline*
-            // when the result turns out ineligible for a tail-call thunk
-            // (callable proxy, native, generator, async, non-callable).
-            // Bailing-to-null after a side-effecting evaluate would make
-            // execReturnStatement re-evaluate the whole expression and
-            // run the inner call twice — the precise pitfall that the
-            // MemberExpression branch above guards against with
-            // isSideEffectFreeAst. Here we can't statically prove
-            // side-effect-freedom (it's a call), so we commit to
-            // performing the call ourselves.
-            $callee = $this->evaluate($node->callee, $env);
-            $args = [];
-            foreach ($node->arguments as $arg) {
-                if ($arg instanceof SpreadElement) {
-                    $spread = $this->evaluate($arg->argument, $env);
-                    $this->spreadInto($spread, $args);
-                } else {
-                    $args[] = $this->evaluate($arg, $env);
-                }
-            }
-            // Callable Proxy — forward through its apply trap. Not a tail
-            // call (proxy semantics need their handler dispatched on each
-            // hop), but spec-correctly invoked.
-            if ($callee instanceof \Phasis\Value\JsProxy) {
-                return $callee->apply(JsUndefined::instance(), $args);
-            }
-            if (!$callee instanceof JsFunction) {
-                $desc = $this->formatCalleeForError($node->callee, $callee);
-                throw new TypeError("{$desc} is not a function");
-            }
-            // Native / generator / async: ineligible for TCO; call inline.
-            if (
-                $callee->getNativeCallable() !== null
-                || $callee->isGenerator()
-                || $callee->isAsync()
-            ) {
-                return $this->callFunction($callee, JsUndefined::instance(), $args);
-            }
-            return new TailCallThunk($callee, JsUndefined::instance(), $args);
-        }
-
-        if (!$callee instanceof JsFunction) {
-            return null; // Not a function, fall back to normal evaluation
-        }
-
-        // Cannot TCO native functions, generators, async functions, or constructors
-        if ($callee->getNativeCallable() !== null || $callee->isGenerator() || $callee->isAsync()) {
-            return null;
-        }
-
-        // Evaluate arguments
-        $args = [];
-        foreach ($node->arguments as $arg) {
-            if ($arg instanceof SpreadElement) {
-                $spread = $this->evaluate($arg->argument, $env);
-                $this->spreadInto($spread, $args);
-            } else {
-                $args[] = $this->evaluate($arg, $env);
-            }
-        }
-
-        return new TailCallThunk($callee, $thisValue, $args);
+        // Resolve every reference, getter and argument exactly once through
+        // the ordinary call path. Probing and then falling back would repeat
+        // observable effects when a getter returns a native or missing method.
+        $result = $this->evalCallExpression($node, $env, true);
+        return $result instanceof JsOptionalUndefined ? JsUndefined::instance() : $result;
     }
 
     /**

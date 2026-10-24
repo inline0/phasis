@@ -1,0 +1,1632 @@
+[
+  [
+    "collectLoop",
+    "normal",
+    [
+      "return",
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:3",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "collectLoop",
+    "next throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "collectLoop",
+    "next primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "collectLoop",
+    "done throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0"
+    ]
+  ],
+  [
+    "collectLoop",
+    "value throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0"
+    ]
+  ],
+  [
+    "collectLoop",
+    "return missing",
+    [
+      "return",
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:3",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "collectLoop",
+    "return null",
+    [
+      "return",
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:3",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "collectLoop",
+    "return noncallable",
+    [
+      "return",
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:3",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "collectLoop",
+    "return getter throws",
+    [
+      "return",
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:3",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "collectLoop",
+    "return throws",
+    [
+      "return",
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:3",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "collectLoop",
+    "return primitive",
+    [
+      "return",
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:3",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "stopLoop",
+    "normal",
+    [
+      "return",
+      [
+        1,
+        2
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "stopLoop",
+    "next throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "stopLoop",
+    "next primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "stopLoop",
+    "done throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0"
+    ]
+  ],
+  [
+    "stopLoop",
+    "value throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0"
+    ]
+  ],
+  [
+    "stopLoop",
+    "return missing",
+    [
+      "return",
+      [
+        1,
+        2
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "get return"
+    ]
+  ],
+  [
+    "stopLoop",
+    "return null",
+    [
+      "return",
+      [
+        1,
+        2
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "get return"
+    ]
+  ],
+  [
+    "stopLoop",
+    "return noncallable",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "get return"
+    ]
+  ],
+  [
+    "stopLoop",
+    "return getter throws",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "get return"
+    ]
+  ],
+  [
+    "stopLoop",
+    "return throws",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "stopLoop",
+    "return primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "next:1",
+      "done:1",
+      "value:1",
+      "body:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "continueLoop",
+    "normal",
+    [
+      "return",
+      [
+        11,
+        13
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:11",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:13",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "continueLoop",
+    "next throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "continueLoop",
+    "next primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "continueLoop",
+    "done throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0"
+    ]
+  ],
+  [
+    "continueLoop",
+    "value throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0"
+    ]
+  ],
+  [
+    "continueLoop",
+    "return missing",
+    [
+      "return",
+      [
+        11,
+        13
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:11",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:13",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "continueLoop",
+    "return null",
+    [
+      "return",
+      [
+        11,
+        13
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:11",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:13",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "continueLoop",
+    "return noncallable",
+    [
+      "return",
+      [
+        11,
+        13
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:11",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:13",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "continueLoop",
+    "return getter throws",
+    [
+      "return",
+      [
+        11,
+        13
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:11",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:13",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "continueLoop",
+    "return throws",
+    [
+      "return",
+      [
+        11,
+        13
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:11",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:13",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "continueLoop",
+    "return primitive",
+    [
+      "return",
+      [
+        11,
+        13
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:11",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "body:13",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "returnLoop",
+    "normal",
+    [
+      "return",
+      1
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "returnLoop",
+    "next throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "returnLoop",
+    "next primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "returnLoop",
+    "done throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0"
+    ]
+  ],
+  [
+    "returnLoop",
+    "value throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0"
+    ]
+  ],
+  [
+    "returnLoop",
+    "return missing",
+    [
+      "return",
+      1
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "returnLoop",
+    "return null",
+    [
+      "return",
+      1
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "returnLoop",
+    "return noncallable",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "returnLoop",
+    "return getter throws",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "returnLoop",
+    "return throws",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "returnLoop",
+    "return primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "throwLoop",
+    "normal",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "throwLoop",
+    "next throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "throwLoop",
+    "next primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0"
+    ]
+  ],
+  [
+    "throwLoop",
+    "done throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0"
+    ]
+  ],
+  [
+    "throwLoop",
+    "value throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0"
+    ]
+  ],
+  [
+    "throwLoop",
+    "return missing",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "throwLoop",
+    "return null",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "throwLoop",
+    "return noncallable",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "throwLoop",
+    "return getter throws",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return"
+    ]
+  ],
+  [
+    "throwLoop",
+    "return throws",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "throwLoop",
+    "return primitive",
+    [
+      "throw",
+      "RangeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "body:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "normal",
+    [
+      "return",
+      1
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner finally",
+      "get return",
+      "return",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "next throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "next primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "done throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "value throws",
+    [
+      "throw",
+      "SyntaxError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "return missing",
+    [
+      "return",
+      1
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner finally",
+      "get return",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "return null",
+    [
+      "return",
+      1
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner finally",
+      "get return",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "return noncallable",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner finally",
+      "get return",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "return getter throws",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner finally",
+      "get return",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "return throws",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner finally",
+      "get return",
+      "return",
+      "outer finally"
+    ]
+  ],
+  [
+    "finalizerLoop",
+    "return primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner finally",
+      "get return",
+      "return",
+      "outer finally"
+    ]
+  ],
+  [
+    "catchLoop",
+    "normal",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner:Error",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return",
+      "outer:RangeError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "next throws",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "outer:SyntaxError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "next primitive",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "outer:TypeError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "done throws",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "outer:SyntaxError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "value throws",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "outer:SyntaxError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "return missing",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner:Error",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "outer:RangeError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "return null",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner:Error",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "outer:RangeError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "return noncallable",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner:Error",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "outer:RangeError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "return getter throws",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner:Error",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "outer:RangeError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "return throws",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner:Error",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return",
+      "outer:RangeError"
+    ]
+  ],
+  [
+    "catchLoop",
+    "return primitive",
+    [
+      "return",
+      "finished"
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:0",
+      "done:0",
+      "value:0",
+      "inner:Error",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return",
+      "outer:RangeError"
+    ]
+  ],
+  [
+    "nested",
+    "normal",
+    [
+      "return",
+      2
+    ],
+    [
+      "outer iterator",
+      "outer get next",
+      "outer next:0",
+      "outer done:0",
+      "outer value:0",
+      "inner iterator",
+      "inner get next",
+      "inner next:0",
+      "inner done:0",
+      "inner value:0",
+      "body:1:1",
+      "inner get return",
+      "inner return",
+      "outer get return",
+      "outer return"
+    ]
+  ],
+  [
+    "nested",
+    "return getter throws",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "outer iterator",
+      "outer get next",
+      "outer next:0",
+      "outer done:0",
+      "outer value:0",
+      "inner iterator",
+      "inner get next",
+      "inner next:0",
+      "inner done:0",
+      "inner value:0",
+      "body:1:1",
+      "inner get return",
+      "outer get return",
+      "outer return"
+    ]
+  ],
+  [
+    "nested",
+    "return primitive",
+    [
+      "throw",
+      "TypeError"
+    ],
+    [
+      "outer iterator",
+      "outer get next",
+      "outer next:0",
+      "outer done:0",
+      "outer value:0",
+      "inner iterator",
+      "inner get next",
+      "inner next:0",
+      "inner done:0",
+      "inner value:0",
+      "body:1:1",
+      "inner get return",
+      "inner return",
+      "outer get return",
+      "outer return"
+    ]
+  ],
+  [
+    [
+      3,
+      3,
+      3
+    ],
+    3
+  ],
+  [
+    1,
+    2,
+    3
+  ],
+  "undefined",
+  [
+    "throw",
+    "ReferenceError"
+  ],
+  9,
+  "undefined",
+  [
+    7,
+    null
+  ],
+  [
+    1,
+    2
+  ],
+  "undefined",
+  [
+    [
+      1,
+      97,
+      null
+    ],
+    [
+      2,
+      55357,
+      56832
+    ],
+    [
+      1,
+      55296,
+      null
+    ]
+  ],
+  [
+    1,
+    2
+  ],
+  [
+    "original throw identity",
+    true
+  ],
+  [
+    "close throw identity",
+    true
+  ],
+  [
+    "reentrant",
+    41,
+    [
+      "body:41",
+      "outer return",
+      "inner iterator",
+      "inner get next",
+      "inner next:0",
+      "inner done:0",
+      "inner value:0",
+      "body:1",
+      "inner get return",
+      "inner return",
+      "inner result:1"
+    ]
+  ]
+]

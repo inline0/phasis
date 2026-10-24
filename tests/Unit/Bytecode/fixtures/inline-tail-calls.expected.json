@@ -1,0 +1,32 @@
+[
+  40,
+  8,
+  9,
+  "catch",
+  "finally",
+  "cleanup",
+  "range:-1",
+  "range:-2",
+  "finally",
+  40,
+  true,
+  true,
+  true,
+  true,
+  13,
+  [
+    "lexical",
+    17,
+    17
+  ],
+  19,
+  23,
+  true,
+  true,
+  true,
+  true,
+  [
+    30,
+    31
+  ]
+]

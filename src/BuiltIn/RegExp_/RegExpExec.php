@@ -44,6 +44,11 @@ trait RegExpExec
         $current = $obj;
         $guard = 0;
         while ($current !== null && $guard++ < 32) {
+            // Descriptor inspection must not introduce Proxy traps or other
+            // exotic operations before the ordinary RegExpExec lookup.
+            if (get_class($current) !== JsObject::class) {
+                return false;
+            }
             $desc = $current->getOwnPropertyDescriptor('exec');
             if ($desc !== null) {
                 if ($desc->isAccessorDescriptor()) {
@@ -73,6 +78,52 @@ trait RegExpExec
         self::$legacyRightContext = $rightContext;
         self::$legacyLastParen = $lastParen;
         self::$legacyGroups = $groups;
+    }
+
+    /** @param list<string> $groups */
+    private static function recordLegacyCaptureValues(
+        string $input,
+        string $matched,
+        string $left,
+        string $right,
+        array $groups,
+    ): void {
+        self::recordLegacyMatch(
+            $input,
+            $matched,
+            $left,
+            $right,
+            $groups === [] ? '' : $groups[array_key_last($groups)],
+            $groups,
+        );
+    }
+
+    /** @return \Closure(string, string, string, list<string>): void */
+    private static function legacyMatchRecorder(string $input): \Closure
+    {
+        return static function (string $matched, string $left, string $right, array $groups) use ($input): void {
+            self::recordLegacyCaptureValues($input, $matched, $left, $right, $groups);
+        };
+    }
+
+    /** @param array<mixed> $matches */
+    private static function recordLegacyPcreMatch(string $input, array $matches): void
+    {
+        $matched = (string) $matches[0][0];
+        $start = (int) $matches[0][1];
+        $groups = [];
+        foreach ($matches as $key => $match) {
+            if (is_int($key) && $key > 0) {
+                $groups[] = ($match[1] === -1 || $match[0] === null) ? '' : (string) $match[0];
+            }
+        }
+        self::recordLegacyCaptureValues(
+            $input,
+            $matched,
+            substr($input, 0, $start),
+            substr($input, $start + strlen($matched)),
+            $groups,
+        );
     }
 
     /**
@@ -439,28 +490,7 @@ trait RegExpExec
                 }
 
                 // Annex B legacy: record state for RegExp.lastMatch / $1..$9 etc.
-                $matchByteEnd = $matches[0][1] + strlen((string) $matches[0][0]);
-                $leftCtxBytes = substr($str, 0, $matches[0][1]);
-                $rightCtxBytes = (string) substr($str, $matchByteEnd);
-                $groupStrings = [];
-                $lastNonEmpty = '';
-                foreach ($matches as $key => $match) {
-                    if (is_int($key) && $key > 0) {
-                        $g = ($match[1] === -1 || $match[0] === null) ? '' : (string) $match[0];
-                        $groupStrings[] = $g;
-                        if ($g !== '') {
-                            $lastNonEmpty = $g;
-                        }
-                    }
-                }
-                self::recordLegacyMatch(
-                    $str,
-                    (string) $matches[0][0],
-                    $leftCtxBytes,
-                    $rightCtxBytes,
-                    $lastNonEmpty,
-                    $groupStrings,
-                );
+                self::recordLegacyPcreMatch($str, $matches);
 
                 return $result;
             }
@@ -639,6 +669,20 @@ trait RegExpExec
             ));
         }
 
+        $legacyGroups = [];
+        foreach ($match['captures'] as $index => $capture) {
+            if ($index > 0) {
+                $legacyGroups[] = $capture[2] ?? '';
+            }
+        }
+        $wholeInput = $matchCharPos === 0 && $matchStr === $str;
+        self::recordLegacyCaptureValues(
+            $str,
+            $matchStr,
+            $matchCharPos === 0 ? '' : self::sliceUtf16Range($str, 0, $matchCharPos),
+            $wholeInput ? '' : self::sliceUtf16Range($str, $matchCharEnd, PHP_INT_MAX),
+            $legacyGroups,
+        );
         return $result;
     }
 
@@ -710,23 +754,22 @@ trait RegExpExec
 
     /**
      * Predicate fast path for `RegExp.prototype.test`. Returns true /
-     * false when the receiver still has the intrinsic exec and a
-     * [[CustomRegexAst]] internal slot, so we can decide the boolean
-     * without materialising the JsObject result (capture slicing,
-     * indices array, named groups). Returns null to signal the caller
-     * should fall back to the spec-shaped slow path — anything with
-     * a custom exec override, sticky/global lastIndex side effects,
-     * or only-PCRE2 routing where Annex B legacy recording is still
-     * required.
+     * false when the receiver still has intrinsic exec and a custom matcher.
+     * Match strings and captures still update legacy state, while result
+     * objects, indices arrays and named-group objects are not exposed.
+     * Custom exec, observable lastIndex coercion and global/sticky updates
+     * keep the full RegExpExec path.
      *
      * For a 1.1M-codepoint input matched by `/^\D+$/u`, the slow path
-     * would call internalIndexToUtf16 twice (start + end) and slice
-     * the entire input — three O(N) walks that don't influence the
-     * boolean. This path skips them.
+     * would convert both indices and slice the entire input. The streaming
+     * predicate can report that whole-input match without those extra walks.
      */
     private static function regExpTestFast(JsObject $rx, string $S): ?bool
     {
-        if (!self::isIntrinsicExec($rx)) {
+        if (
+            !self::isIntrinsicExec($rx)
+            || !$rx->getOwnPropertyDescriptor('lastIndex')?->value instanceof JsNumber
+        ) {
             return null;
         }
         $pcreDesc = $rx->getOwnPropertyDescriptor('[[PCREPattern]]');
@@ -738,22 +781,15 @@ trait RegExpExec
             ? $origFlagsDesc->value->value
             : '';
         // Sticky / global write to lastIndex on every call (and on no
-        // match, reset to 0). Annex B legacy state recording on a
-        // successful match is also observable. Both are intentional
-        // side effects of the spec's RegExpExec abstract op; defer to
-        // the slow path so those observable effects stay correct.
+        // match, reset to 0), so they keep the full RegExpExec path.
         if (
             str_contains($origFlags, 'g')
             || str_contains($origFlags, 'y')
         ) {
             return null;
         }
-        // Custom matcher path: this is the only branch in the slow
-        // path that already skips Annex B legacy state recording, so
-        // bypassing the JsObject build here matches existing
-        // observable behaviour exactly. Short-circuiting the PCRE2
-        // branch would also have to update the legacy slots after a
-        // successful match, so that case stays on the slow path.
+        // Predicate matching retains the same legacy captures and contexts as
+        // exec without allocating a JavaScript match-result array.
         $customAstDesc = $rx->getOwnPropertyDescriptor('[[CustomRegexAst]]');
         $customFlagsDesc = $rx->getOwnPropertyDescriptor('[[CustomRegexFlags]]');
         if (
@@ -767,7 +803,7 @@ trait RegExpExec
                     $customAstDesc->value->value,
                     $customFlagsDesc->value->value,
                 );
-                return $matcher->matchTest($S, 0);
+                return $matcher->matchTest($S, 0, self::legacyMatchRecorder($S));
             } catch (\Phasis\Regex\MatcherBudgetExceeded) {
                 // Pattern triggered catastrophic backtracking in the
                 // tree-walker; let the slow path try PCRE2 instead.
@@ -824,7 +860,7 @@ trait RegExpExec
                     ),
                 );
                 $matcher = new \Phasis\Regex\Matcher($regexAst, $patFlags);
-                return $matcher->matchTest($S, 0);
+                return $matcher->matchTest($S, 0, self::legacyMatchRecorder($S));
             } catch (\Phasis\Regex\MatcherBudgetExceeded) {
                 return null;
             } catch (\Throwable) {

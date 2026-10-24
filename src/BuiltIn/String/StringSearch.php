@@ -93,15 +93,19 @@ trait StringSearch
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            $ascii = $this_ instanceof JsString && get_class($this_) === JsString::class
+                && isset($args[0]) && $args[0] instanceof JsString && get_class($args[0]) === JsString::class
+                && $this_->isAscii() && $args[0]->isAscii();
 
             // Per §22.1.3.9 String.prototype.indexOf: positions are UTF-16
             // code unit offsets. Convert both haystack and needle to UTF-16LE
             // byte strings and search by byte, then divide by 2. Using
             // mb_strpos with UTF-8 counts codepoints which misaligns for
             // strings that contain surrogate pairs (chars above U+FFFF).
-            $hayU16 = JsString::utf8ToUtf16LE($str);
-            $needleU16 = JsString::utf8ToUtf16LE($search);
-            $hayLen = strlen($hayU16) / 2;
+            $hayU16 = $ascii ? '' : ($this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str));
+            $needle = $args[0] ?? null;
+            $needleU16 = $ascii ? '' : ($needle instanceof JsString ? $needle->utf16LE() : JsString::utf8ToUtf16LE($search));
+            $hayLen = $ascii ? strlen($str) : strlen($hayU16) / 2;
 
             $posFloat = isset($args[1])
                 ? TypeConversion::toIntegerOrInfinity($args[1])
@@ -116,6 +120,10 @@ trait StringSearch
                     return JsNumber::of((float) $hayLen);
                 }
                 return JsNumber::of(-1.0);
+            }
+            if ($ascii) {
+                $offset = strpos($str, $search, $fromIndex);
+                return JsNumber::of($offset === false ? -1.0 : (float) $offset);
             }
 
             // strpos over UTF-16LE bytes could in principle match at an
@@ -453,13 +461,35 @@ trait StringSearch
             $sep = $separatorString ?? TypeConversion::toString($separator);
 
             if ($sep === '') {
-                // Split into individual characters.
+                $units = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
                 $chars = [];
-                $len = mb_strlen($str, 'UTF-8');
+                $len = (int) (strlen($units) / 2);
                 for ($i = 0; $i < $len && $i < $lim; $i++) {
-                    $chars[] = new JsString(mb_substr($str, $i, 1, 'UTF-8'));
+                    $chars[] = new JsString(JsString::utf16LEToUtf8(substr($units, $i * 2, 2)));
                 }
                 return JsArray::fromArray($chars);
+            }
+
+            if (!mb_check_encoding($str, 'UTF-8') || !mb_check_encoding($sep, 'UTF-8')) {
+                $units = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
+                $separatorUnits = JsString::utf8ToUtf16LE($sep);
+                $parts = [];
+                $cursor = 0;
+                $search = 0;
+                while (count($parts) < $lim && ($index = strpos($units, $separatorUnits, $search)) !== false) {
+                    // UTF-16 substrings must start at a code-unit boundary.
+                    if (($index & 1) !== 0) {
+                        $search = $index + 1;
+                        continue;
+                    }
+                    $parts[] = new JsString(JsString::utf16LEToUtf8(substr($units, $cursor, $index - $cursor)));
+                    $cursor = $index + strlen($separatorUnits);
+                    $search = $cursor;
+                }
+                if (count($parts) < $lim) {
+                    $parts[] = new JsString(JsString::utf16LEToUtf8(substr($units, $cursor)));
+                }
+                return JsArray::fromArray($parts);
             }
 
             $parts = explode($sep, $str);

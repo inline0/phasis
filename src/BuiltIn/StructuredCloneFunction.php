@@ -525,12 +525,7 @@ final class StructuredCloneFunction
                     // `new RegExp(source, flags)` runs the full
                     // construction path and yields a JsObject with all
                     // internal slots wired.
-                    $newTargetMarker = new JsObject();
-                    $newTargetMarker->defineOwnProperty(
-                        '[[NewTarget]]',
-                        PropertyDescriptor::data($ctor, false, false, false),
-                    );
-                    $result = $ctor->call($newTargetMarker, [
+                    $result = $ctor->construct([
                         new JsString($source),
                         new JsString($flags),
                     ]);
@@ -725,12 +720,7 @@ final class StructuredCloneFunction
             $ctor = $env->get('DOMException');
             if ($ctor instanceof JsFunction && $ctor->isConstructable()) {
                 try {
-                    $newTargetMarker = new JsObject();
-                    $newTargetMarker->defineOwnProperty(
-                        '[[NewTarget]]',
-                        PropertyDescriptor::data($ctor, false, false, false),
-                    );
-                    $result = $ctor->call($newTargetMarker, [
+                    $result = $ctor->construct([
                         new JsString($message),
                         new JsString('DataCloneError'),
                     ]);

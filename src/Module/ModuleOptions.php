@@ -35,7 +35,24 @@ final readonly class ModuleOptions
         ],
         public ?string $parseCacheDir = null,
         public bool $deferSideEffectFreeModules = false,
+        public bool $nodeCompatible = false,
     ) {
+    }
+
+    /** Preserve host resolution settings while selecting Node package semantics. */
+    public function forNode(): self
+    {
+        return new self(
+            projectRoot: $this->projectRoot,
+            extensions: ['.js', '.json', '.cjs', '.mjs'],
+            conditions: ['node'],
+            nodeEnv: $this->nodeEnv,
+            styleExtensions: [],
+            assetExtensions: [],
+            parseCacheDir: $this->parseCacheDir,
+            deferSideEffectFreeModules: false,
+            nodeCompatible: true,
+        );
     }
 
     /**

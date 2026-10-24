@@ -7,6 +7,7 @@ namespace Phasis\Bytecode;
 use Phasis\Exceptions\InternalError;
 use Phasis\Exceptions\TypeError;
 use Phasis\Runtime\Interpreter;
+use Phasis\Runtime\TailCallThunk;
 use Phasis\Spec\AbstractOperations;
 use Phasis\Spec\TypeConversion;
 use Phasis\Value\JsBoolean;
@@ -29,6 +30,19 @@ final class VM
 {
     public function __construct(private readonly Interpreter $interp)
     {
+    }
+
+    /** @return list<JsValue> */
+    private function unpackArgumentList(JsValue $value): array
+    {
+        if (!$value instanceof \Phasis\Value\JsArray || !$value->isDenseMode()) {
+            throw new \LogicException('Compiled argument list must be a dense array');
+        }
+        // The compiler creates this array and only appends data properties.
+        // It cannot contain holes or be exposed to a user-defined accessor.
+        /** @var list<JsValue> $arguments */
+        $arguments = $value->getDenseElements();
+        return $arguments;
     }
 
     /**
@@ -401,6 +415,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
@@ -469,6 +485,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
@@ -547,6 +565,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
@@ -593,6 +613,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
@@ -632,6 +654,20 @@ final class VM
         return null;
     }
 
+    /** Primitive numeric positions cannot invoke user coercion or realm-specific errors. */
+    private function inlineStringCharCodeAt(JsString $receiver, JsNumber $position): JsNumber
+    {
+        $index = $position->value;
+        $index = is_nan($index) ? 0.0 : ($index < 0 ? ceil($index) : floor($index));
+        $utf16 = $receiver->utf16LE();
+        $length = (int) (strlen($utf16) / 2);
+        if ($index < 0 || $index >= $length) {
+            return JsNumber::of(NAN);
+        }
+        $offset = (int) $index * 2;
+        return JsNumber::of((float) (ord($utf16[$offset]) | (ord($utf16[$offset + 1]) << 8)));
+    }
+
     /**
      * String.prototype.split inline: receiver is a JsString, single
      * non-empty JsString separator. Lowers to PHP's native explode +
@@ -656,6 +692,9 @@ final class VM
             return null;
         }
         if ($sepArg->value === '') {
+            return null;
+        }
+        if (!mb_check_encoding($receiver->value, 'UTF-8') || !mb_check_encoding($sepArg->value, 'UTF-8')) {
             return null;
         }
         $parts = explode($sepArg->value, $receiver->value);
@@ -688,6 +727,7 @@ final class VM
         ?JsValue $resumeValue = null,
         bool $resumeThrow = false,
     ): JsValue|YieldResult {
+        $executionRealm = (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm();
         $loopCounts = $resumeFrom->loopCounts ?? [];
         $code = $cf->code;
         $consts = $cf->consts;
@@ -784,11 +824,64 @@ final class VM
                             $loopCounts[$code[$pc + 1]] = 0;
                             $pc += 2;
                             break;
+                        case Op::STRING_LOOP_REGION:
+                            $region = $cf->loopRegions[$code[$pc + 1]] ?? null;
+                            if ($sp === 0 && $region !== null) {
+                                $exit = ($region->execute)($locals, $this->interp, $loopCounts);
+                                if ($exit !== null) {
+                                    $token = (int) $exit;
+                                    if (!isset($region->exitPcs[$token])) {
+                                        throw new \LogicException('Pure loop returned an invalid exit');
+                                    }
+                                    $pc = $region->exitPcs[$token];
+                                    break;
+                                }
+                            }
+                            $pc += 2;
+                            break;
+                        case Op::CHECK_BUDGET:
+                            if ($this->interp->hasExecutionBudget()) {
+                                $this->interp->checkBudget();
+                            }
+                            $pc++;
+                            break;
                         case Op::LOOP_TICK:
                             if (++$loopCounts[$code[$pc + 1]] > $this->interp->getMaxLoopIterations()) {
                                 throw new InternalError('Maximum loop iterations exceeded');
                             }
                             $pc += 2;
+                            break;
+                        case Op::ITERATOR_INIT:
+                            $iteratorSlot = $code[$pc + 1];
+                            [$locals[$iteratorSlot], $locals[$iteratorSlot + 1]] = $this->interp->vmGetIterator($stack[--$sp]);
+                            $pc += 2;
+                            break;
+                        case Op::ITERATOR_NEXT:
+                            // Match the interpreter's host-budget checkpoint
+                            // before its iteration limit and iterator effects.
+                            if ($this->interp->hasExecutionBudget()) {
+                                $this->interp->checkBudget();
+                            }
+                            if (++$loopCounts[$code[$pc + 2]] > $this->interp->getMaxLoopIterations()) {
+                                throw new InternalError('Maximum loop iterations exceeded');
+                            }
+                            $iteratorSlot = $code[$pc + 1];
+                            $iterator = $locals[$iteratorSlot];
+                            assert($iterator instanceof JsObject);
+                            $done = false;
+                            $value = $this->interp->vmIteratorNext($iterator, $locals[$iteratorSlot + 1], $done);
+                            if ($done) {
+                                $pc += $code[$pc + 3];
+                            } else {
+                                $stack[$sp++] = $value;
+                                $pc += 4;
+                            }
+                            break;
+                        case Op::ITERATOR_CLOSE:
+                            $iterator = $locals[$code[$pc + 1]];
+                            assert($iterator instanceof JsObject);
+                            $this->interp->vmIteratorClose($iterator, $locals[$code[$pc + 2]], $locals[$code[$pc + 3]]);
+                            $pc += 4;
                             break;
                         case Op::POP:
                             $sp--;
@@ -803,6 +896,13 @@ final class VM
                         case Op::LOAD_CONST:
                             $stack[$sp++] = $consts[$code[$pc + 1]];
                             $pc += 2;
+                            break;
+                        case Op::NEW_REGEXP:
+                            $stack[$sp++] = $this->interp->createRegExpFromConstructor(
+                                $names[$code[$pc + 1]],
+                                $names[$code[$pc + 2]],
+                            );
+                            $pc += 3;
                             break;
                         case Op::LOAD_UNDEF:
                             $stack[$sp++] = $undef;
@@ -870,20 +970,28 @@ final class VM
                             // `fib` inside fib's body otherwise burns ~10 hash
                             // ops per call, repeated on every recursive entry.
                             $ic = $cf->loadNameIc[$pc] ?? null;
-                            if ($ic !== null && $ic[1] === \Phasis\Runtime\Environment::$globalBindingsVersion) {
-                                $stack[$sp++] = $ic[0];
+                            if (
+                                $ic !== null
+                                && $ic[1] === \Phasis\Runtime\Environment::$globalBindingsVersion
+                                && $ic[2]->get() === $env
+                                && ($cachedNameValue = $ic[0] instanceof \WeakReference ? $ic[0]->get() : $ic[0]) !== null
+                            ) {
+                                $stack[$sp++] = $cachedNameValue;
                             } else {
                                 $name = $names[$code[$pc + 1]];
-                                $resolved = $env->get($name, $strict);
-                                // Object-backed globals and accessors can change
-                                // without an Environment mutation. Only cache
-                                // declarative bindings covered by its version.
-                                if ($env->findBindingDepth($name) !== null) {
+                                // A declarative lookup already returns its value.
+                                // Repeating the same walk through get() would only
+                                // add work. Dynamic bindings retain their full read.
+                                $binding = $env->findBindingDepth($name);
+                                if ($binding !== null) {
+                                    $resolved = $binding[0];
                                     $cf->loadNameIc[$pc] = [
-                                        $resolved,
+                                        $resolved instanceof JsObject ? \WeakReference::create($resolved) : $resolved,
                                         \Phasis\Runtime\Environment::$globalBindingsVersion,
+                                        \WeakReference::create($env),
                                     ];
                                 } else {
+                                    $resolved = $env->get($name, $strict);
                                     unset($cf->loadNameIc[$pc]);
                                 }
                                 $stack[$sp++] = $resolved;
@@ -894,8 +1002,55 @@ final class VM
                             $env->set($names[$code[$pc + 1]], $stack[--$sp], $strict);
                             $pc += 2;
                             break;
+                        case Op::UPDATE_NAME:
+                            $stack[$sp++] = $this->interp->vmUpdateName(
+                                $env,
+                                $names[$code[$pc + 1]],
+                                (bool) $code[$pc + 2],
+                                (bool) $code[$pc + 3],
+                            );
+                            $pc += 4;
+                            break;
+                        case Op::UPDATE_MEMBER:
+                            $obj = $stack[--$sp];
+                            $name = $names[$code[$pc + 1]];
+                            $increment = (bool) $code[$pc + 2];
+                            $prefix = (bool) $code[$pc + 3];
+                            if (
+                                $obj instanceof JsObject && get_class($obj) === JsObject::class
+                                && ($old = $obj->properties->dataSlots[$name] ?? null) instanceof JsNumber
+                            ) {
+                                // Plain own data slots have no getter, setter, or
+                                // coercion hooks. Preserve the same mutation barriers
+                                // as an ordinary writable-property assignment.
+                                $updated = JsNumber::of($old->value + ($increment ? 1.0 : -1.0));
+                                $obj->properties->setDataSlot($name, $updated);
+                                $stack[$sp++] = $prefix ? $updated : $old;
+                            } else {
+                                $stack[$sp++] = $this->interp->vmUpdateMember($obj, $name, $increment, $prefix);
+                            }
+                            $pc += 4;
+                            break;
+                        case Op::UPDATE_COMPUTED:
+                            $key = $stack[--$sp];
+                            $obj = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->vmUpdateMember(
+                                $obj,
+                                $key,
+                                (bool) $code[$pc + 1],
+                                (bool) $code[$pc + 2],
+                            );
+                            $pc += 3;
+                            break;
                         case Op::DEFINE_NAME:
-                            $env->defineVar($names[$code[$pc + 1]], $stack[--$sp]);
+                            --$sp;
+                            if (!isset($cf->omittedFunctionBindings[$pc])) {
+                                $env->defineVar($names[$code[$pc + 1]], $stack[$sp]);
+                            }
+                            $pc += 2;
+                            break;
+                        case Op::INITIALIZE_NAME:
+                            $env->initialize($names[$code[$pc + 1]], $stack[--$sp]);
                             $pc += 2;
                             break;
 
@@ -1087,6 +1242,17 @@ final class VM
                             $pc++;
                             break;
 
+                        case Op::IN:
+                        case Op::INSTANCEOF:
+                            $right = $stack[--$sp];
+                            $left = $stack[--$sp];
+                            $result = $op === Op::IN
+                                ? AbstractOperations::inOperator($left, $right)
+                                : AbstractOperations::instanceofOperator($left, $right);
+                            $stack[$sp++] = $result ? $true : $false;
+                            $pc++;
+                            break;
+
                 // ---- Bitwise --------------------------------------------
                 // Fast path: both operands are JsNumber with int-valued
                 // doubles in int32 range. ToInt32 is the identity here, so
@@ -1206,6 +1372,30 @@ final class VM
                         case Op::NOT:
                             $v = $stack[--$sp];
                             $stack[$sp++] = TypeConversion::toBoolean($v) ? $false : $true;
+                            $pc++;
+                            break;
+                        case Op::TYPEOF:
+                            $stack[$sp - 1] = AbstractOperations::typeofOperator($stack[$sp - 1]);
+                            $pc++;
+                            break;
+                        case Op::TYPEOF_NAME:
+                            $name = $names[$code[$pc + 1]];
+                            $stack[$sp++] = $env->has($name)
+                                ? AbstractOperations::typeofOperator($env->get($name))
+                                : new JsString('undefined');
+                            $pc += 2;
+                            break;
+                        case Op::DELETE_NAME:
+                            if ($strict) {
+                                throw new \Phasis\Exceptions\SyntaxError('Delete of an unqualified identifier in strict mode.');
+                            }
+                            $stack[$sp++] = $env->deleteBinding($names[$code[$pc + 1]]) ? $true : $false;
+                            $pc += 2;
+                            break;
+                        case Op::DELETE_PROPERTY:
+                            $key = $stack[--$sp];
+                            $object = $stack[--$sp];
+                            $stack[$sp++] = AbstractOperations::deletePropertyReference($object, $key, $strict) ? $true : $false;
                             $pc++;
                             break;
                         case Op::NEG:
@@ -1402,6 +1592,27 @@ final class VM
                             break;
 
                 // ---- Calls / return -------------------------------------
+                        case Op::TAIL_CALL:
+                        case Op::TAIL_CALL_METHOD:
+                            $argc = $code[$pc + 1];
+                            $base = $sp - ($argc === -1 ? 1 : $argc);
+                            $args = $argc === -1 ? $this->unpackArgumentList($stack[$base])
+                                : ($argc === 0 ? [] : array_slice($stack, $base, $argc));
+                            $callee = $stack[$base - 1];
+                            $methodCall = $code[$pc] === Op::TAIL_CALL_METHOD;
+                            $receiver = $methodCall ? $stack[$base - 2] : $undef;
+                            $sp = $base - ($methodCall ? 2 : 1);
+                            if ($callee instanceof JsFunction) {
+                                $stack[$sp++] = new \Phasis\Runtime\TailCallThunk($callee, $receiver, $args);
+                            } elseif ($callee instanceof \Phasis\Value\JsProxy && $callee->isCallable()) {
+                                $stack[$sp++] = $callee->apply($receiver, $args);
+                            } else {
+                                $display = $cf->callMethodDisplays[$pc]
+                                    ?? ($callee instanceof JsObject ? 'value' : (TypeConversion::toString($callee) ?: 'value'));
+                                throw new TypeError($display . ' is not a function');
+                            }
+                            $pc += 2;
+                            break;
                         case Op::CALL:
                             $argc = $code[$pc + 1];
                             $base = $sp - $argc;
@@ -1415,6 +1626,10 @@ final class VM
                                 $args = [$stack[$base]];
                             } elseif ($argc === 2) {
                                 $args = [$stack[$base], $stack[$base + 1]];
+                            } elseif ($argc === -1) {
+                                $base = $sp - 1;
+                                $args = $this->unpackArgumentList($stack[$base]);
+                                $argc = count($args);
                             } else {
                                 $args = array_slice($stack, $base, $argc);
                             }
@@ -1440,9 +1655,15 @@ final class VM
                                     $pc += 2;
                                     break;
                                 }
-                                throw new TypeError(
-                                    (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
-                                );
+                                $display = $callee instanceof JsObject ? 'value' : (TypeConversion::toString($callee) ?: 'value');
+                                throw new TypeError($display . ' is not a function');
+                            }
+                            // Cross-realm calls need the ordinary realm switch;
+                            // cached eligibility describes only function shape.
+                            if ($callee->realm !== null && $callee->realm !== $executionRealm) {
+                                $stack[$sp++] = $this->interp->callFunction($callee, $undef, $args);
+                                $pc += 2;
+                                break;
                             }
                             // Fast path for the global URI built-ins (encodeURI,
                             // decodeURI, encodeURIComponent, decodeURIComponent).
@@ -1641,6 +1862,18 @@ final class VM
                             $stack[$sp++] = $this->interp->vmNewObject();
                             $pc++;
                             break;
+                        case Op::SET_LITERAL_PROTOTYPE:
+                            $prototype = $stack[--$sp];
+                            $object = $stack[$sp - 1];
+                            if ($object instanceof JsObject && ($prototype instanceof JsObject || $prototype instanceof JsNull)) {
+                                $object->setPrototype($prototype instanceof JsObject ? $prototype : null);
+                            }
+                            $pc++;
+                            break;
+                        case Op::TO_PROPERTY_KEY:
+                            $stack[$sp - 1] = TypeConversion::toPropertyKey($stack[$sp - 1]);
+                            $pc++;
+                            break;
                         case Op::NEW_ARRAY:
                             $count = $code[$pc + 1];
                             $base = $sp - $count;
@@ -1662,6 +1895,40 @@ final class VM
                             $stack[$sp++] = \Phasis\Value\JsArray::fromArray($items);
                             $pc += 2;
                             break;
+                        case Op::ARRAY_APPEND:
+                        case Op::ARRAY_SPREAD:
+                            $value = $stack[--$sp];
+                            $array = $stack[$sp - 1];
+                            if (!$array instanceof \Phasis\Value\JsArray) {
+                                throw new \LogicException('Array literal stack invariant violated');
+                            }
+                            if ($op === Op::ARRAY_SPREAD) {
+                                $this->interp->vmArraySpread($array, $value);
+                            } else {
+                                $array->defineOwnProperty(
+                                    (string) $array->getLength(),
+                                    \Phasis\Object\PropertyDescriptor::data($value, true, true, true),
+                                );
+                            }
+                            $pc++;
+                            break;
+                        case Op::ARRAY_HOLE:
+                            $array = $stack[$sp - 1];
+                            if (!$array instanceof \Phasis\Value\JsArray) {
+                                throw new \LogicException('Array literal stack invariant violated');
+                            }
+                            $array->setLength($array->getLength() + 1);
+                            $pc++;
+                            break;
+                        case Op::BIND_ARRAY:
+                            $this->interp->vmBindArray(
+                                $stack[--$sp],
+                                $cf->arrayBindings[$code[$pc + 1]],
+                                $locals,
+                                $env,
+                            );
+                            $pc += 2;
+                            break;
                         case Op::SET_PROP:
                             // Stack: [obj, val] -> [obj]; effect: obj.name = val.
                             $val = $stack[--$sp];
@@ -1680,7 +1947,7 @@ final class VM
                             if ($obj instanceof JsObject) {
                                 $resolved = TypeConversion::toPropertyKey($key);
                                 if ($resolved instanceof \Phasis\Value\JsSymbol) {
-                                    $obj->setBySymbol($resolved, $val);
+                                    $obj->defineOwnSymbolProperty($resolved, \Phasis\Object\PropertyDescriptor::data($val));
                                 } else {
                                     $name = $resolved instanceof JsString
                                         ? $resolved->value
@@ -1703,6 +1970,10 @@ final class VM
                                 $args = [$stack[$base]];
                             } elseif ($argc === 2) {
                                 $args = [$stack[$base], $stack[$base + 1]];
+                            } elseif ($argc === -1) {
+                                $base = $sp - 1;
+                                $args = $this->unpackArgumentList($stack[$base]);
+                                $argc = count($args);
                             } else {
                                 $args = array_slice($stack, $base, $argc);
                             }
@@ -1747,6 +2018,7 @@ final class VM
                                 if ($newInlineable === null) {
                                     $newInlineable = $callee->compiled !== null
                                         && $callee->compiled->canSkipEnvAlloc
+                                        && !$callee->compiled->hasTailCalls
                                         && $callee->isConstructable()
                                         && !$callee->isDerivedConstructor()
                                         && $callee->getBoundTarget() === null
@@ -1760,17 +2032,19 @@ final class VM
                                     }
                                 }
                                 if ($newInlineable) {
-                                    // Inline the dataSlots-fast-path of
-                                    // $callee->get('prototype'): regular
-                                    // function instances always carry
-                                    // `prototype` as an own data slot,
-                                    // so the hit lands in one array
-                                    // lookup with no method dispatch.
-                                    // Fall back to the spec getter only
-                                    // if the slot was deleted (rare).
+                                    // Default-attribute slots can be read directly.
+                                    // Other descriptors go through [[Get]], including
+                                    // deferred ordinary function prototypes.
                                     $proto = $callee->properties->dataSlots['prototype']
                                         ?? $callee->get('prototype');
-                                    $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+                                    if (!$proto instanceof JsObject) {
+                                        $realm = AbstractOperations::getFunctionRealm($callee);
+                                        $proto = $realm === null ? null : AbstractOperations::realmIntrinsicPrototype(
+                                            $realm->getGlobalEnv(),
+                                            'Object',
+                                        );
+                                    }
+                                    $newObj = new JsObject($proto);
                                     // Skip the [[NewTarget]] install
                                     // for function bodies that don't
                                     // read new.target / super(). The
@@ -1872,6 +2146,10 @@ final class VM
                                 $args = [$stack[$base]];
                             } elseif ($argc === 2) {
                                 $args = [$stack[$base], $stack[$base + 1]];
+                            } elseif ($argc === -1) {
+                                $base = $sp - 1;
+                                $args = $this->unpackArgumentList($stack[$base]);
+                                $argc = count($args);
                             } else {
                                 $args = array_slice($stack, $base, $argc);
                             }
@@ -1890,14 +2168,18 @@ final class VM
                                 // Prefer the compiler-rendered call-site
                                 // source (e.g. `[].__proto__`) so the
                                 // TypeError matches V8 / SpiderMonkey
-                                // wording. Fall back to the value's
-                                // toString and finally a generic 'value'
-                                // when no display was recorded.
+                                // wording. Object coercion while formatting
+                                // an error must not invoke user code.
                                 $display = $cf->callMethodDisplays[$pc] ?? null;
                                 if ($display === null) {
-                                    $display = TypeConversion::toString($method) ?: 'value';
+                                    $display = $method instanceof JsObject ? 'value' : (TypeConversion::toString($method) ?: 'value');
                                 }
                                 throw new TypeError($display . ' is not a function');
+                            }
+                            if ($method->realm !== null && $method->realm !== $executionRealm) {
+                                $stack[$sp++] = $this->interp->callFunction($method, $receiver, $args);
+                                $pc += 2;
+                                break;
                             }
                             // Inline path for tagged hot built-ins: when the
                             // receiver shape matches what the built-in's spec
@@ -1957,13 +2239,22 @@ final class VM
                                         }
                                     }
                                 }
-                            // String.prototype.split inline lives in
-                            // a helper so the dispatch-loop body stays
+                            // String intrinsics live in helpers so
+                            // the dispatch-loop body stays
                             // small enough for PHP 8.5's tracing JIT
                             // to compile (otherwise the trace exceeds
                             // jit_max_trace_length and the entire
                             // VM->execute() runs uncompiled — way
                             // worse than the spec path).
+                                if (
+                                    $kind === 'string.charCodeAt' && $receiver instanceof JsString
+                                    && $argc === 1 && $args[0] instanceof JsNumber
+                                    && !$this->interp->hasExecutionBudget()
+                                ) {
+                                    $stack[$sp++] = $this->inlineStringCharCodeAt($receiver, $args[0]);
+                                    $pc += 2;
+                                    break;
+                                }
                                 if ($kind === 'string.split' && $receiver instanceof JsString) {
                                     $inlined = $this->inlineStringSplit($receiver, $args, $argc);
                                     if ($inlined !== null) {
@@ -2038,8 +2329,7 @@ final class VM
                             }
                             $methodInlineable = $method->vmInlineCallCache;
                             if ($methodInlineable === null) {
-                                $methodInlineable = $methodEligible
-                                    && $method->getBoundTarget() === null;
+                                $methodInlineable = $methodEligible && $method->getBoundTarget() === null;
                                 if ($methodInlineable) {
                                     $method->vmInlineCallCache = true;
                                 }
@@ -2282,6 +2572,7 @@ final class VM
                             if (
                                 $obj instanceof \Phasis\Value\JsArray
                                 && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
                                 && $obj->isDenseMode()
                             ) {
                                 $kv = $key->value;
@@ -2297,6 +2588,38 @@ final class VM
                                         $pc++;
                                         break;
                                     }
+                                }
+                            }
+                            if (
+                                $obj instanceof \Phasis\Value\JsTypedArray && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
+                            ) {
+                                $index = (int) $key->value;
+                                if ((float) $index === $key->value) {
+                                    // Numeric integer keys need no property-key coercion.
+                                    // Keep detached and resizable checks in the getter.
+                                    $stack[$sp++] = $obj->getIndex($index);
+                                    $pc++;
+                                    break;
+                                }
+                            }
+                            // Primitive keys require no coercion. Read live own
+                            // data only; accessors, prototypes and exotic receivers
+                            // retain the ordinary computed-property path.
+                            if (get_class($obj) === JsObject::class) {
+                                $value = null;
+                                if (get_class($key) === JsString::class) {
+                                    $value = $obj->properties->dataSlots[$key->value] ?? null;
+                                } elseif (get_class($key) === \Phasis\Value\JsSymbol::class) {
+                                    $descriptor = $obj->getSymbolPropertyDescriptor($key);
+                                    if ($descriptor !== null && $descriptor->isDataDescriptor()) {
+                                        $value = $descriptor->value;
+                                    }
+                                }
+                                if ($value !== null) {
+                                    $stack[$sp++] = $value;
+                                    $pc++;
+                                    break;
                                 }
                             }
                             $stack[$sp++] = $this->lookupComputed($obj, $key);
@@ -2451,6 +2774,7 @@ final class VM
                             if (
                                 $obj instanceof \Phasis\Value\JsArray
                                 && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
                             ) {
                                 $kv = $key->value;
                                 $kvi = (int) $kv;
@@ -2459,6 +2783,23 @@ final class VM
                                     && (float) $kvi === $kv
                                     && $obj->tryDenseWrite($kvi, $val)
                                 ) {
+                                    $stack[$sp++] = $val;
+                                    $pc++;
+                                    break;
+                                }
+                            }
+                            if (
+                                $obj instanceof \Phasis\Value\JsTypedArray && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
+                            ) {
+                                $index = (int) $key->value;
+                                if ((float) $index === $key->value) {
+                                    // Number keys have no observable coercion. Keep value
+                                    // conversion and detached/resizable checks in [[Set]].
+                                    $ok = $obj->setIntegerIndex($index, $val);
+                                    if (!$ok && $this->interp->isStrictMode()) {
+                                        throw new TypeError('Cannot assign to an immutable TypedArray index');
+                                    }
                                     $stack[$sp++] = $val;
                                     $pc++;
                                     break;
@@ -2480,6 +2821,14 @@ final class VM
                         case Op::MAKE_CLASS:
                             $stack[$sp++] = $this->interp->vmMakeClass(
                                 $cf->classNodes[$code[$pc + 1]],
+                                $env,
+                            );
+                            $pc += 2;
+                            break;
+
+                        case Op::EVAL_EXPRESSION:
+                            $stack[$sp++] = $this->interp->evaluate(
+                                $cf->interpretedExpressions[$code[$pc + 1]],
                                 $env,
                             );
                             $pc += 2;
@@ -2551,6 +2900,20 @@ final class VM
                                 $strict = $sf->strict;
                                 $hasHandlers = $sf->hasHandlers;
                                 $pc = $sf->returnPc;
+                                $sf->release();
+                                if ($finalResult instanceof TailCallThunk) {
+                                    // The returning activation is gone before the
+                                    // trampoline invokes its target. Keep the caller
+                                    // at the call instruction until that invocation
+                                    // completes so its catch/finally covers failures.
+                                    $pc -= 2;
+                                    $finalResult = $this->interp->callFunction(
+                                        $finalResult->function,
+                                        $finalResult->thisValue,
+                                        $finalResult->args,
+                                    );
+                                    $pc += 2;
+                                }
                                 $stack[$sp++] = $finalResult;
                                 break;
                             }
@@ -2607,6 +2970,19 @@ final class VM
                             throw new InternalError('VM: unknown opcode ' . $op);
                     }
                 } // end inner while (dispatch loop)
+            } catch (\Phasis\Exceptions\BudgetExceeded $e) {
+                // A host deadline bypasses JS handlers, but still owns the
+                // same inline activations that an ordinary throw unwinds.
+                while ($savedFramesDepth > 0) {
+                    $sf = $savedFrames[--$savedFramesDepth];
+                    if ($sf->isConstruct && $sf->newObject !== null) {
+                        $sf->newObject->forceDelete('[[NewTarget]]');
+                    }
+                    $this->interp->teardownInlineVmCall($sf->callee, $sf->restore);
+                    $this->interp->releaseInlineVmFrame();
+                    $sf->release();
+                }
+                throw $e;
             } catch (\Phasis\Exceptions\RuntimeError | \Phasis\Exceptions\SyntaxError $e) {
                 // Handler search — first in the current frame, then
                 // unwinding through `$savedFrames` if necessary (the
@@ -2665,6 +3041,7 @@ final class VM
                     $strict = $sf->strict;
                     $hasHandlers = $sf->hasHandlers;
                     $pc = $sf->returnPc - 2;
+                    $sf->release();
                 }
                 // Convert the PHP exception to a JsValue for the catch
                 // parameter. JsThrowable wraps a user-thrown JS value;

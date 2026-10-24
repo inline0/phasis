@@ -261,7 +261,7 @@ final class PipeOperations
      *
      * Returns a JsArray holding two ReadableStreams.
      */
-    public static function tee(JsObject $stream): JsArray
+    public static function tee(JsObject $stream, bool $cloneForBranch2 = false): JsArray
     {
         $reader = \Phasis\BuiltIn\Streams\ReadableStream::acquireDefaultReader($stream);
         $closedOrErrored = new class () {
@@ -292,14 +292,21 @@ final class PipeOperations
             public bool $value = false;
         };
 
-        $pullAlgorithm = function () use ($branches, $reader, $canceled1, $canceled2, $pulling): JsPromise {
+        $pullAlgorithm = function () use ($branches, $reader, $canceled1, $canceled2, $pulling, $cloneForBranch2): JsPromise {
             if ($pulling->value) {
                 return StreamHelpers::promiseResolved(JsUndefined::instance());
             }
             $pulling->value = true;
             $readPromise = \Phasis\BuiltIn\Streams\ReadableStream::defaultReaderRead($reader);
             $outer = new JsPromise();
-            $readPromise->addFulfillHandler(function (JsValue $result) use ($branches, $canceled1, $canceled2, $outer, $pulling): void {
+            $readPromise->addFulfillHandler(function (JsValue $result) use (
+                $branches,
+                $canceled1,
+                $canceled2,
+                $outer,
+                $pulling,
+                $cloneForBranch2,
+            ): void {
                 if (!$result instanceof JsObject) {
                     $outer->reject(StreamHelpers::createTypeError('Read result not object'));
                     $pulling->value = false;
@@ -324,6 +331,25 @@ final class PipeOperations
                     $pulling->value = false;
                     return;
                 }
+                $secondValue = $value;
+                if ($cloneForBranch2 && !$canceled2->value) {
+                    try {
+                        $secondValue = \Phasis\BuiltIn\StructuredCloneFunction::cloneJsValue($value);
+                    } catch (\Throwable $error) {
+                        $reason = $error instanceof \Phasis\Exceptions\JsThrowable
+                            ? $error->jsValue
+                            : StreamHelpers::createTypeError($error->getMessage());
+                        foreach ([$branches->b1, $branches->b2] as $branch) {
+                            $controller = $branch?->getInternalProperty('[[Controller]]');
+                            if ($controller instanceof JsObject) {
+                                \Phasis\BuiltIn\Streams\ReadableStream::defaultControllerError($controller, $reason);
+                            }
+                        }
+                        $outer->reject($reason);
+                        $pulling->value = false;
+                        return;
+                    }
+                }
                 if (!$canceled1->value && $branches->b1 instanceof JsObject) {
                     $c1 = $branches->b1->getInternalProperty('[[Controller]]');
                     if ($c1 instanceof JsObject && \Phasis\BuiltIn\Streams\ReadableStream::canCloseOrEnqueue($c1)) {
@@ -333,7 +359,7 @@ final class PipeOperations
                 if (!$canceled2->value && $branches->b2 instanceof JsObject) {
                     $c2 = $branches->b2->getInternalProperty('[[Controller]]');
                     if ($c2 instanceof JsObject && \Phasis\BuiltIn\Streams\ReadableStream::canCloseOrEnqueue($c2)) {
-                        \Phasis\BuiltIn\Streams\ReadableStream::defaultControllerEnqueue($c2, $value);
+                        \Phasis\BuiltIn\Streams\ReadableStream::defaultControllerEnqueue($c2, $secondValue);
                     }
                 }
                 $outer->resolve(JsUndefined::instance());

@@ -32,12 +32,8 @@ use Phasis\Value\JsValue;
  * default and length, then populates the supplied Headers object's
  * `Content-Type` header if it is not already set.
  *
- * Phasis buffers all bodies up front. The `stream` returned by the spec's
- * extract-body algorithm is materialized on demand from the buffered
- * bytes by `BodyMixin::installBodyMixin()` (via
- * `StreamHelpers::createReadableStreamFromBytes`). Carrying the raw
- * bytes through the value type avoids re-encoding round trips on every
- * body method call and lets `clone()` be a cheap reference copy.
+ * Byte-backed sources retain their bytes until a stream is needed.
+ * ReadableStream sources remain live and are consumed only by body readers.
  *
  * Supported body sources, in spec order:
  *   - Blob / File         → bytes, Content-Type defaults to blob.type
@@ -46,13 +42,12 @@ use Phasis\Value\JsValue;
  *   - FormData            → multipart/form-data with a fresh boundary
  *   - URLSearchParams     → form-urlencoded, charset=UTF-8
  *   - String              → UTF-8 bytes, text/plain;charset=UTF-8
- *   - ReadableStream      → consumed eagerly into bytes (Phasis-only
- *                           limitation; spec keeps the stream live)
+ *   - ReadableStream      → retained as the associated body stream
  */
 final class BodyExtraction
 {
     /**
-     * @return array{bytes:string,contentType:?string,length:?int,sourceKind:string}
+     * @return array{bytes:string,contentType:?string,length:?int,sourceKind:string,stream?:JsObject}
      */
     public static function extractBody(
         JsValue $source,
@@ -60,7 +55,7 @@ final class BodyExtraction
         Environment $env,
         bool $keepalive = false,
     ): array {
-        unset($env, $keepalive);
+        unset($env);
 
         if ($source instanceof JsUndefined || $source instanceof JsNull) {
             throw new \LogicException('extractBody called with null/undefined source');
@@ -153,30 +148,25 @@ final class BodyExtraction
             ];
         }
 
-        // ----- ReadableStream ---------------------------------------------
-        // Phasis fully buffers bodies; we drain the stream synchronously
-        // by walking its default-controller queue. Streams that have not
-        // already enqueued all of their chunks are consumed lazily in
-        // text()/json()/etc. — but for extract-body we materialize what
-        // is currently available so Content-Length can be computed for
-        // the request descriptor that fetch() builds.
+        // The body retains its associated stream. Reading the current queue
+        // loses chunks produced asynchronously and bypasses backpressure.
         if (ReadableStream::isReadableStream($source)) {
             /** @var JsObject $source */
-            if (ReadableStream::isReadableStreamLocked($source)) {
-                throw new TypeError('Failed to construct: body stream is locked');
+            if ($keepalive) {
+                throw new TypeError('A streaming body cannot be used with keepalive');
             }
-            $chunks = self::snapshotStreamChunks($source);
-            $bytes = self::drainStream($source);
+            if (
+                ReadableStream::isReadableStreamLocked($source)
+                || $source->getInternalProperty('[[Disturbed]]') === true
+            ) {
+                throw new TypeError('Failed to construct: body stream is locked or disturbed');
+            }
             return [
-                'bytes' => $bytes,
+                'bytes' => '',
                 'contentType' => null,
-                'length' => null, // streams have indeterminate length per spec
+                'length' => null,
                 'sourceKind' => 'stream',
-                // Preserve the original JS-side chunks so the host's
-                // `body` stream can replay them with identity
-                // preserved (response.clone() then structured-clones
-                // them for the cloned half).
-                'chunks' => $chunks,
+                'stream' => $source,
             ];
         }
 

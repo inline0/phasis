@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace Phasis\Value;
 
 use Phasis\Object\PropertyDescriptor;
+use Phasis\Runtime\AsyncContextStorage;
 
 /**
  * Represents a JavaScript Promise.
  *
- * Since PHP is single-threaded, this is a synchronous implementation.
- * The executor runs immediately, and then/catch/finally handlers run
- * synchronously when called. This passes basic Promise tests while
- * maintaining correct value propagation semantics.
+ * Executors run immediately. Promise reactions run in the microtask queue
+ * and retain the async context where they were registered.
  */
 class JsPromise extends JsObject
 {
@@ -25,11 +24,12 @@ class JsPromise extends JsObject
 
     /**
      * Pending handlers queued while this promise is unresolved.
-     * Each entry is [onFulfilled|null, onRejected|null, childPromise|null].
+     * Each entry holds fulfillment/rejection handlers, an optional child promise,
+     * and the async context captured when the reaction was registered.
      * The child promise is null for subscription-only handlers attached
      * via Promise resolution (see resolveValue's thenable adoption path).
      *
-     * @var list<array{0: JsFunction|null, 1: JsFunction|null, 2: self|null}>
+     * @var list<array{JsFunction|null, JsFunction|null, self|null, array{array<int, JsObject>, array<int, JsValue>}}>
      */
     private array $pendingHandlers = [];
 
@@ -60,6 +60,9 @@ class JsPromise extends JsObject
      */
     private static ?\Closure $postDrainHook = null;
 
+    /** @var ?\Closure(): bool Host jobs run at turn boundaries before Promise jobs. */
+    private static ?\Closure $turnBoundaryHook = null;
+
     /**
      * Schedule a callback to run in the microtask queue.
      * Used to defer promise handler execution so that handlers fire in
@@ -73,13 +76,13 @@ class JsPromise extends JsObject
      * AsyncContext proposal).
      *
      * @param \Closure(): void $cb
+     * @param array{array<int, JsObject>, array<int, JsValue>}|null $context
      */
-    public static function scheduleCallback(\Closure $cb): void
+    public static function scheduleCallback(\Closure $cb, ?array $context = null): void
     {
-        $storage = \Phasis\Runtime\AsyncContextStorage::active();
-        $captured = $storage->snapshot();
+        $captured = $context ?? AsyncContextStorage::active()->snapshot();
         self::$microtaskQueue[] = static function () use ($cb, $captured): void {
-            $storage = \Phasis\Runtime\AsyncContextStorage::active();
+            $storage = AsyncContextStorage::active();
             $previous = $storage->snapshot();
             $storage->restore($captured);
             try {
@@ -101,6 +104,24 @@ class JsPromise extends JsObject
         self::$postDrainHook = $hook;
     }
 
+    /** Install host jobs, such as Node nextTick, outside a Promise job batch. */
+    public static function setTurnBoundaryHook(?\Closure $hook): void
+    {
+        self::$turnBoundaryHook = $hook;
+    }
+
+    /** Preserve the event-loop driver while constructing or entering a child realm. */
+    public static function getPostDrainHook(): ?\Closure
+    {
+        return self::$postDrainHook;
+    }
+
+    /** Preserve Node host jobs while constructing or entering a child realm. */
+    public static function getTurnBoundaryHook(): ?\Closure
+    {
+        return self::$turnBoundaryHook;
+    }
+
     /**
      * Drain the microtask queue, running all scheduled callbacks.
      * Callbacks added during draining are also processed. When a
@@ -115,9 +136,16 @@ class JsPromise extends JsObject
         self::$drainingMicrotasks = true;
         try {
             do {
+                if (self::$turnBoundaryHook !== null) {
+                    (self::$turnBoundaryHook)();
+                }
                 while (self::$microtaskQueue !== []) {
                     $cb = array_shift(self::$microtaskQueue);
                     $cb();
+                }
+                if (self::$turnBoundaryHook !== null && (self::$turnBoundaryHook)()) {
+                    $progressed = true;
+                    continue;
                 }
                 $hook = self::$postDrainHook;
                 if ($hook === null) {
@@ -138,6 +166,7 @@ class JsPromise extends JsObject
         self::$microtaskQueue = [];
         self::$drainingMicrotasks = false;
         self::$postDrainHook = null;
+        self::$turnBoundaryHook = null;
     }
 
     /** Promise.prototype: the shared prototype for all JsPromise instances. */
@@ -157,6 +186,18 @@ class JsPromise extends JsObject
         // Promise.prototype.then is observable via our shortcut check.
         $descriptor = $proto->getOwnPropertyDescriptor('then');
         self::$intrinsicThen = $descriptor?->value;
+    }
+
+    /** @return array{?JsObject, ?JsValue} The realm's native Promise defaults, including the original then method. */
+    public static function captureIntrinsicState(): array
+    {
+        return [self::$promisePrototype, self::$intrinsicThen];
+    }
+
+    /** @param array{?JsObject, ?JsValue} $state */
+    public static function restoreIntrinsicState(array $state): void
+    {
+        [self::$promisePrototype, self::$intrinsicThen] = $state;
     }
 
     public function __construct(?JsObject $prototype = null)
@@ -225,7 +266,6 @@ class JsPromise extends JsObject
             } else {
                 // Still pending: subscribe to it so we settle when it does.
                 $outer = $this;
-                $value->pendingHandlers[] = [null, null, null];
                 // Use a direct subscription via the inner promise's pending handler list.
                 $resolved = false;
                 $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use ($outer, &$resolved): JsValue {
@@ -245,8 +285,7 @@ class JsPromise extends JsObject
                     return JsUndefined::instance();
                 }, 1);
                 // Register directly on the inner promise's handler list.
-                array_pop($value->pendingHandlers); // remove the placeholder we added above
-                $value->pendingHandlers[] = [$resolveFn, $rejectFn, null];
+                $value->pendingHandlers[] = [$resolveFn, $rejectFn, null, AsyncContextStorage::active()->snapshot()];
             }
             return;
         }
@@ -337,7 +376,7 @@ class JsPromise extends JsObject
         $handlers = $this->pendingHandlers;
         $this->pendingHandlers = [];
         $self = $this;
-        foreach ($handlers as [$onFulfilled, $onRejected, $child]) {
+        foreach ($handlers as [$onFulfilled, $onRejected, $child, $context]) {
             if ($child === null) {
                 // Subscription-only handler (no child promise). Still runs as
                 // a microtask so handler order matches spec PromiseReactions.
@@ -350,7 +389,7 @@ class JsPromise extends JsObject
                         } catch (\Throwable) {
                             // Ignore errors in subscription handlers.
                         }
-                    });
+                    }, $context);
                 }
                 continue;
             }
@@ -358,7 +397,7 @@ class JsPromise extends JsObject
             // interleave with siblings per spec PromiseReactions enqueue order.
             self::scheduleCallback(static function () use ($self, $onFulfilled, $onRejected, $child): void {
                 $self->runHandler($onFulfilled, $onRejected, $child);
-            });
+            }, $context);
         }
     }
 
@@ -417,7 +456,7 @@ class JsPromise extends JsObject
                 $cb($args[0] ?? JsUndefined::instance());
                 return JsUndefined::instance();
             }, 1);
-            $this->pendingHandlers[] = [$fn, null, null];
+            $this->pendingHandlers[] = [$fn, null, null, AsyncContextStorage::active()->snapshot()];
         }
     }
 
@@ -438,7 +477,7 @@ class JsPromise extends JsObject
                 $cb($args[0] ?? JsUndefined::instance());
                 return JsUndefined::instance();
             }, 1);
-            $this->pendingHandlers[] = [null, $fn, null];
+            $this->pendingHandlers[] = [null, $fn, null, AsyncContextStorage::active()->snapshot()];
         }
     }
 
@@ -480,7 +519,7 @@ class JsPromise extends JsObject
 
         if ($this->state === self::STATE_PENDING) {
             // Queue the handler to run when this promise settles.
-            $this->pendingHandlers[] = [$fulfillFn, $rejectFn, $child];
+            $this->pendingHandlers[] = [$fulfillFn, $rejectFn, $child, AsyncContextStorage::active()->snapshot()];
             return $child;
         }
 
@@ -554,7 +593,7 @@ class JsPromise extends JsObject
                 }
                 return JsUndefined::instance();
             }, 1);
-            $this->pendingHandlers[] = [$fulfilled, $rejected, null];
+            $this->pendingHandlers[] = [$fulfilled, $rejected, null, AsyncContextStorage::active()->snapshot()];
             return $child;
         }
 

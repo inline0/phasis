@@ -98,4 +98,20 @@ final class SavedFrame
      * or unwinds.
      */
     public ?JsObject $newObject = null;
+
+    /** Release a restored caller so an inactive pooled entry cannot retain its realm. */
+    public function release(): void
+    {
+        unset($this->cf, $this->env, $this->thisValue, $this->callee);
+        $this->code = [];
+        $this->consts = [];
+        $this->names = [];
+        $this->nestedFns = [];
+        $this->stack = [];
+        $this->locals = [];
+        $this->loopCounts = [];
+        $this->restore = [];
+        $this->newObject = null;
+        $this->isConstruct = false;
+    }
 }

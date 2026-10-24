@@ -304,6 +304,28 @@ class JsObject implements JsValue
         }
     }
 
+    /** Ordinary [[Set]] with a receiver that may be a primitive. */
+    public function setWithValueReceiver(string $name, JsValue $value, JsValue $receiver): bool
+    {
+        if ($receiver instanceof JsObject) {
+            return $this->internalSet($name, $value, $receiver);
+        }
+        if ($this->isModuleNamespace && !self::isInternalSlot($name)) {
+            return false;
+        }
+        $descriptor = $this->getOwnPropertyDescriptor($name);
+        if ($descriptor === null) {
+            $prototype = $this->getPrototype();
+            return $prototype !== null && $prototype->setWithValueReceiver($name, $value, $receiver);
+        }
+        if ($descriptor->isDataDescriptor() || $descriptor->set === null) {
+            // OrdinarySet cannot create an own data property on a primitive.
+            return false;
+        }
+        $descriptor->set->call($receiver, [$value]);
+        return true;
+    }
+
     /**
      * ES spec: OrdinarySet ( O, P, V, Receiver ).
      *
@@ -513,55 +535,40 @@ class JsObject implements JsValue
      */
     public function internalSetBySymbol(JsSymbol $symbol, JsValue $value, JsObject $receiver): bool
     {
-        $id = $symbol->getId();
-        if (isset($this->symbolProperties[$id])) {
-            $desc = $this->symbolProperties[$id];
-            if ($desc->set !== null) {
-                $desc->set->call($receiver, [$value]);
-                return true;
+        return $this->setBySymbolWithValueReceiver($symbol, $value, $receiver);
+    }
+
+    /** Ordinary [[Set]] for a symbol key, preserving receiver exotic operations. */
+    public function setBySymbolWithValueReceiver(JsSymbol $symbol, JsValue $value, JsValue $receiver): bool
+    {
+        $descriptor = $this->getSymbolPropertyDescriptor($symbol);
+        if ($descriptor === null) {
+            $prototype = $this->getPrototype();
+            if ($prototype !== null) {
+                return $prototype->setBySymbolWithValueReceiver($symbol, $value, $receiver);
             }
-            if ($desc->isAccessorDescriptor()) {
+            $descriptor = PropertyDescriptor::data(JsUndefined::instance());
+        }
+        if ($descriptor->isDataDescriptor()) {
+            if ($descriptor->writable === false || !$receiver instanceof JsObject) {
                 return false;
             }
-            if ($desc->writable === false) {
-                return false;
-            }
-            // Per OrdinarySet: if the property is found on the receiver itself,
-            // update it in place. If found on a prototype, create a new own
-            // property on the receiver (do not mutate the prototype descriptor).
-            if ($this === $receiver) {
-                $desc->value = $value;
-                return true;
-            }
-            // Found writable data on prototype: create own property on receiver.
-            if (!$receiver->extensible) {
-                return false;
-            }
-            // Check if receiver already has its own symbol property.
-            if (isset($receiver->symbolProperties[$id])) {
-                $receiverDesc = $receiver->symbolProperties[$id];
-                if ($receiverDesc->isAccessorDescriptor()) {
+            // The receiver may be a Proxy. Read its own descriptor and define
+            // the value through its internal methods instead of writing into
+            // the proxy object's otherwise invisible symbol storage.
+            $existing = $receiver->getSymbolPropertyDescriptor($symbol);
+            if ($existing !== null) {
+                if ($existing->isAccessorDescriptor() || $existing->writable === false) {
                     return false;
                 }
-                if ($receiverDesc->writable === false) {
-                    return false;
-                }
-                $receiverDesc->value = $value;
-                return true;
+                return $receiver->definePropertyBySymbol($symbol, new PropertyDescriptor(value: $value));
             }
-            $receiver->symbolProperties[$id] = PropertyDescriptor::data($value);
-            $receiver->symbolOrder[$id] = $symbol;
-            return true;
+            return $receiver->definePropertyBySymbol($symbol, PropertyDescriptor::data($value));
         }
-        $proto = $this->getPrototype();
-        if ($proto !== null) {
-            return $proto->internalSetBySymbol($symbol, $value, $receiver);
-        }
-        if (!$receiver->extensible) {
+        if ($descriptor->set === null) {
             return false;
         }
-        $receiver->symbolProperties[$id] = PropertyDescriptor::data($value);
-        $receiver->symbolOrder[$id] = $symbol;
+        $descriptor->set->call($receiver, [$value]);
         return true;
     }
 

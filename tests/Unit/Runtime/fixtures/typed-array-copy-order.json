@@ -1,0 +1,21 @@
+[
+    ["Uint8Array intrinsic copy", 2, ["1", "2"], true],
+    ["Uint8Array detached throw", ["prototype"], "sentinel"],
+    ["Uint8Array detached read", ["prototype"], "TypeError"],
+    ["Uint8Array detach in getter", ["prototype"], "TypeError"],
+    ["Uint8Array out of bounds throw", ["prototype"], "sentinel"],
+    ["Uint8Array out of bounds read", ["prototype"], "TypeError"],
+    ["Float64Array intrinsic copy", 2, ["1", "2"], true],
+    ["Float64Array detached throw", ["prototype"], "sentinel"],
+    ["Float64Array detached read", ["prototype"], "TypeError"],
+    ["Float64Array detach in getter", ["prototype"], "TypeError"],
+    ["Float64Array out of bounds throw", ["prototype"], "sentinel"],
+    ["Float64Array out of bounds read", ["prototype"], "TypeError"],
+    ["BigInt64Array intrinsic copy", 2, ["1", "2"], true],
+    ["BigInt64Array detached throw", ["prototype"], "sentinel"],
+    ["BigInt64Array detached read", ["prototype"], "TypeError"],
+    ["BigInt64Array detach in getter", ["prototype"], "TypeError"],
+    ["BigInt64Array out of bounds throw", ["prototype"], "sentinel"],
+    ["BigInt64Array out of bounds read", ["prototype"], "TypeError"],
+    ["fixed shrink", ["prototype"], "TypeError"]
+]

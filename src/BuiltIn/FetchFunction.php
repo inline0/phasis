@@ -87,8 +87,21 @@ final class FetchFunction
                 return self::rejectedWithAbortReason($signal, $env);
             }
 
+            $realm = Engine::getCurrentRealm();
+            $node = $realm?->getNodeRuntime();
+            if ($node !== null && $realm->getFetchTransport() === null) {
+                return self::performNodeTransport($node, $request, $env);
+            }
+
             // ---------- Steps 4-8: transport + redirect loop ----------
-            return self::performTransport($request, $env);
+            return \Phasis\BuiltIn\Fetch\BodyMixin::consumeBytes($request)->then([JsFunction::fromCallable(
+                '',
+                static function (JsValue $this_, array $args) use ($request, $env): JsValue {
+                    $bytes = $args[0] ?? JsUndefined::instance();
+                    $request->setInternalProperty('[[BodyBytes]]', $bytes instanceof JsString ? $bytes->value : '');
+                    return self::performTransport($request, $env);
+                },
+            )]);
         } catch (\Phasis\Exceptions\JsThrowable $e) {
             // A JS-throwing operation during normalization → reject.
             return JsPromise::rejected($e->jsValue);
@@ -99,6 +112,46 @@ final class FetchFunction
         }
     }
 
+    private static function performNodeTransport(\Phasis\Node\NodeRuntime $runtime, JsObject $request, Environment $env): JsPromise
+    {
+        $jar = Engine::getCurrentRealm()?->getCookieJar();
+        $get = JsFunction::fromCallable('', static fn (JsValue $this_, array $args): JsValue => new JsString(
+            $jar === null ? '' : self::cookieJarGet($jar, ($args[0] ?? JsUndefined::instance())->toJsString()),
+        ));
+        $set = JsFunction::fromCallable('', static function (JsValue $this_, array $args) use ($jar): JsValue {
+            if ($jar !== null) {
+                self::cookieJarSet($jar, ($args[0] ?? JsUndefined::instance())->toJsString(), ($args[1] ?? JsUndefined::instance())->toJsString());
+            }
+            return JsUndefined::instance();
+        });
+        $finish = JsFunction::fromCallable('', static function (JsValue $this_, array $args): JsValue {
+            $response = $args[0] ?? JsUndefined::instance();
+            if (!$response instanceof JsObject || !ResponseConstructor::isResponse($response)) {
+                throw new TypeError('The HTTP transport returned an invalid response');
+            }
+            $response->setInternalProperty('[[Url]]', ($args[1] ?? JsUndefined::instance())->toJsString());
+            $response->setInternalProperty('[[Redirected]]', ($args[2] ?? JsUndefined::instance())->toBoolean());
+            $response->setInternalProperty('[[Type]]', 'basic');
+            $headers = $response->getInternalProperty('[[Headers]]');
+            if ($headers instanceof JsObject) {
+                HeadersConstructor::setGuard($headers, 'immutable');
+            }
+            return $response;
+        });
+        $raw = \Phasis\BuiltIn\Fetch\BodyMixin::bodyBytes($request);
+        $bytes = \Phasis\Value\JsNull::instance();
+        if ($raw !== null && $request->getInternalProperty('[[BodyReplayable]]') === true) {
+            $buffer = new \Phasis\Value\JsArrayBuffer(strlen($raw));
+            $buffer->setData($raw);
+            $bytes = new \Phasis\Value\JsTypedArray('Uint8Array', $buffer, 0, strlen($raw));
+        }
+        $responseConstructor = $env->getIntrinsic('Response');
+        if (!$responseConstructor instanceof JsFunction) {
+            throw new \LogicException('Response intrinsic is not installed');
+        }
+        return $runtime->fetch($request, $bytes, $get, $set, $finish, $responseConstructor);
+    }
+
     /**
      * Reuse RequestConstructor to build a Request from `(input, init)`.
      * Always returns a fresh Request — passing through a Request the
@@ -107,12 +160,9 @@ final class FetchFunction
      */
     private static function buildRequest(JsValue $input, JsValue $init, Environment $env): JsObject
     {
-        if (!$env->has('Request')) {
-            throw new TypeError('Request constructor is not installed');
-        }
-        $ctor = $env->get('Request');
+        $ctor = $env->getIntrinsic('Request');
         if (!$ctor instanceof JsFunction) {
-            throw new TypeError('Request constructor is not callable');
+            throw new TypeError('Request intrinsic is not installed');
         }
         $constructed = $ctor->construct([$input, $init]);
         if (!$constructed instanceof JsObject) {

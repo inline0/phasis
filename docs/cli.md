@@ -16,15 +16,15 @@ Phasis ships three main executables in `bin/`:
 - **`bin/test262`** — run the official ECMAScript conformance suite against Phasis.
 - **`bin/wpt`** — run the Web Platform Tests fixtures against Phasis (URL, encoding, fetch, headers, Blob, AbortSignal, streams, …).
 
-After `composer require phasis/phasis`, `bin/phasis` and `bin/test262` are linked from `vendor/bin/`. Only `bin/phasis` works from there: `bin/test262` needs the `test262` git submodule and the test classes, which the Composer package does not include, and `bin/wpt` is not shipped at all. Run both from a clone of the Phasis repository.
+After `composer require phasis/phasis`, the runtime CLI is linked at `vendor/bin/phasis`. The development runners need a source checkout and are excluded from the Composer archive.
 
 ## bin/phasis
 
 ```
-phasis <file.js|file.mjs|file.jsx> | phasis -e '<source>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']
+phasis [--node] <file.js|file.mjs|file.jsx> [args] | phasis [--node] -e '<source>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']
 ```
 
-These four forms are the whole interface. There is no REPL, no stdin input and no module flag: the file extension decides.
+The `--node` flag enables Node-compatible packages and host I/O. There is no REPL or source-code input from stdin.
 
 ### Run a file
 
@@ -44,6 +44,22 @@ Executes `script.js` as a classic script. When it finishes, everything the scrip
 ```
 
 The argument is evaluated as a complete script. Only `console` output is printed; the value of the last expression is not, so `phasis -e '1 + 2'` prints nothing.
+
+### Run a Node-compatible server
+
+```bash
+./vendor/bin/phasis --node server.cjs --port 3000
+./vendor/bin/phasis --node -e 'console.log(require("node:path").basename(process.cwd()))'
+```
+
+Node mode resolves packages from `node_modules`, exposes `process.argv` and a
+copy of the host environment, and runs the real event loop while referenced
+handles remain active. `console.log`/`info`/`debug` write immediately to stdout;
+`console.warn`/`error` write immediately to stderr. `process.stdout` and
+`process.stderr` accept raw bytes. The CLI closes owned resources on completion
+or failure. `process.exitCode` and `process.exit(code)` select the process exit
+status. See [Node compatibility](/docs/modules#node-compatibility) for module
+coverage and host limitations.
 
 ### Dump the AST
 
@@ -139,7 +155,7 @@ Machine-readable pass/fail summary for CI pipelines or scripted analysis.
 
 ## Exit codes
 
-`bin/phasis` exits with one of two codes:
+In default mode, `bin/phasis` exits with one of two codes:
 
 | Code | Meaning |
 |---|---|
@@ -147,6 +163,9 @@ Machine-readable pass/fail summary for CI pipelines or scripted analysis.
 | `1` | anything else: an uncaught JS exception, a syntax error, a missing file or invalid arguments |
 
 Errors from the script print their message to stderr. Invalid arguments and missing files print the usage line to stderr.
+
+Node mode additionally returns the program's explicit `process.exitCode` or
+`process.exit(code)` status.
 
 ## Resource limits
 

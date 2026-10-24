@@ -32,29 +32,19 @@ use Phasis\Value\JsFunction;
  * JS-to-PHP source compiler. Emits a PHP closure that runs the JS
  * function body directly, bypassing the VM dispatch loop entirely.
  *
- * Phase 2 scope: tight numeric subset where every value flow can be
- * statically proven to use raw PHP doubles for numbers and bools for
- * booleans. The compiler now supports:
- *   - Free-variable reads (resolved via $env->get + unbox-on-entry).
- *   - Function calls with Identifier callee, when args / return are
- *     numeric. Recursive call into another phpCompiled closure goes
- *     direct, skipping executeFunction's setup; otherwise we route
- *     through Interpreter::callFunction so the spec-y bookkeeping
- *     still runs.
- *   - All Phase 1 features: arithmetic, comparisons, locals, simple
- *     control flow.
+ * Frameless specialization admits call-free scalar arithmetic, locals,
+ * control flow and guarded ordinary data reads. Fresh private object and
+ * array operations can share that tier without exposing their allocations.
+ * Reads that could invoke getters or host overrides decline before effects.
  *
- * Bails (returns null) on:
- *   - Member access (would need shape-aware property reads).
- *   - String / object / array operations.
- *   - Closures that write to free variables.
- *   - Any node not enumerated in emitStatement / emitExpression.
+ * Ordinary calls and construction remain on the tracked VM/AST paths.
+ * Their transitive callbacks can observe caller/arguments even when a callee
+ * has a numeric return entry. Only complete scanner/region proofs may inline
+ * closed scalar predicates and guarded primitive intrinsics without a frame.
  *
- * Calls inside expressions are lifted to temporary statements by a
- * pendingStatements buffer so each call result lands in its own
- * named PHP variable; the enclosing expression then references that
- * variable. Avoids closure-per-expression patterns that would blow
- * up PHP JIT traces.
+ * A pendingStatements buffer preserves evaluation order where scalar
+ * expressions need temporaries. Unsupported syntax and writes to free
+ * variables decline compilation rather than weakening these contracts.
  */
 final class JsToPhp
 {
@@ -62,6 +52,9 @@ final class JsToPhp
     use Parts\JsToPhpScope;
     use Parts\JsToPhpEmitStatement;
     use Parts\JsToPhpEmitExpression;
+    use Parts\JsToPhpStringScanners;
+    use Parts\JsToPhpLoopRegions;
+    use Parts\JsToPhpBailoutSafety;
 
     /** @var array<string, true> */
     private array $declaredLocals = [];
@@ -131,29 +124,6 @@ final class JsToPhp
     private array $freeVars = [];
 
     /**
-     * Per-safe-name set of free vars whose `static $_fvenv_…, $_fvver_…,
-     * $_fv_… = ...;` declaration has already been hoisted into the
-     * closure prologue. Survives captureBranch (which intentionally
-     * resets `freeVars` so each conditional arm re-emits the lazy
-     * init check), so the same `static` declaration isn't emitted
-     * twice and tripped by PHP's "Duplicate declaration of static
-     * variable" compile-time error.
-     *
-     * @var array<string, true>
-     */
-    private array $freeVarStatics = [];
-
-    /**
-     * `static $_fvenv_$safe = null, $_fvver_$safe = -1, $_fv_$safe = 0.0;`
-     * lines hoisted to the top of the closure. Each safe-name appears
-     * at most once, regardless of how many branches resolve the same
-     * free var.
-     *
-     * @var list<string>
-     */
-    private array $freeVarStaticDecls = [];
-
-    /**
      * AST nodes the eval'd closure references at run time, indexed
      * positionally. Currently only nested FunctionDeclaration nodes
      * that the closure materialises into JsFunctions via vmMakeFunction.
@@ -204,6 +174,24 @@ final class JsToPhp
 
     public static function compile(JsFunction $fn): ?\Closure
     {
+        if (
+            get_class($fn) !== JsFunction::class || !$fn->getClosure()->hasPlainChain()
+            || $fn->getBoundTarget() !== null
+        ) {
+            return null;
+        }
+        if (CompilationFailures::get($fn, 'php') !== null) {
+            return null;
+        }
+        $compiled = self::compileFunction($fn);
+        if ($compiled === null && !StringScannerPlan::maySpecialize($fn)) {
+            CompilationFailures::remember($fn, 'php', 'unsupported syntax');
+        }
+        return $compiled;
+    }
+
+    private static function compileFunction(JsFunction $fn): ?\Closure
+    {
         // Class / derived constructors and method-bound functions
         // (homeObject != null) carry spec semantics — `this`, `super`,
         // [[NewTarget]], MakeSuperPropertyKey — that the JsToPhp emit
@@ -213,7 +201,9 @@ final class JsToPhp
         // derived ctor was leaking through as `$env->get("super")`
         // which then ReferenceError-ed at runtime.
         if (
-            $fn->isClassConstructor()
+            $fn->isAsync()
+            || $fn->isGenerator()
+            || $fn->isClassConstructor()
             || $fn->isDerivedConstructor()
             || $fn->getHomeObject() !== null
         ) {
@@ -240,7 +230,7 @@ final class JsToPhp
         // the per-invocation environment that defines those bindings,
         // so emitting `$env->get('arguments')` would either throw
         // ReferenceError or read a stale binding from an outer scope.
-        if (self::bodyReferencesPerCallBindings($body)) {
+        if (self::bodyReferencesPerCallBindings($body, $fn->isArrow())) {
             return null;
         }
         // Refuse to compile bodies that contain nested block-scoped
@@ -254,9 +244,10 @@ final class JsToPhp
         if (self::bodyHasNestedLexical($body)) {
             return null;
         }
-        $standard = self::compileWith($fn, false);
+        $standard = self::bodyHasUntrackedCall($body) ? null : self::compileWith($fn, false);
         if ($standard === null) {
-            return null;
+            $scanner = StringScannerPlan::analyze($fn);
+            return $scanner !== null ? self::compileWith($fn, false, $scanner) : null;
         }
         // Try to also compile a numeric-mode variant for the hot
         // JsToPhp-to-JsToPhp dispatch path. Eligibility is the same
@@ -277,15 +268,23 @@ final class JsToPhp
      * or null on bailout. Sets $fn->phpCompiledNodes when the
      * standard pass succeeds.
      */
-    private static function compileWith(JsFunction $fn, bool $numeric): ?\Closure
+    private static function compileWith(JsFunction $fn, bool $numeric, ?StringScannerPlan $scanner = null): ?\Closure
     {
         $body = $fn->getBody();
         $isExpressionBody = !$body instanceof BlockStatement;
         if ($isExpressionBody && !$body instanceof Node) {
             return null;
         }
+        // A raw entry must have an explicit final return before any body can run.
+        if ($numeric && !$isExpressionBody && !self::numericModeEligible($fn)) {
+            return null;
+        }
         $compiler = new self();
         $compiler->numericMode = $numeric;
+        $compiler->scannerPlan = $scanner;
+        foreach ($scanner->stringParameters ?? [] as $name => $_) {
+            $compiler->localTypes[$name] = 'string';
+        }
         try {
             $params = $fn->getParams();
             foreach ($params as $p) {
@@ -316,6 +315,7 @@ final class JsToPhp
                     return null;
                 }
             } else {
+                $compiler->prepareLocalFunctionDeclarations($body);
                 $compiler->collectLocals($body->body);
                 $compiler->checkNestedCaptures($body->body);
                 // Bail if any declared local has no init AND no
@@ -358,18 +358,7 @@ final class JsToPhp
                 foreach ($body->body as $stmt) {
                     $compiler->emitStatement($stmt);
                 }
-                if ($numeric) {
-                    // Numeric-mode bodies must end with an explicit
-                    // ReturnStatement (handled by emitStatement). A
-                    // function that falls through has no numeric value
-                    // to surface — bail at runtime so the standard
-                    // entry's undefined return takes over. NAN serves
-                    // as a "fell off body" sentinel here, but better
-                    // is to emit a Bailout so the caller falls back.
-                    $compiler->emitLine(
-                        'throw new \\Phasis\\Bytecode\\Bailout("numeric body fall-off");'
-                    );
-                } else {
+                if (!$numeric) {
                     $compiler->emitLine('return \\Phasis\\Value\\JsUndefined::instance();');
                 }
             }
@@ -384,6 +373,9 @@ final class JsToPhp
         $signature = $numeric
             ? 'function (array $rawArgs, $thisValue, $env, $interp, $nestedFns)'
             : 'function ($args, $thisValue, $env, $interp, $nestedFns)';
+        if ($scanner !== null) {
+            $signature .= ' use ($scannerGuards, $scannerRealm)';
+        }
         // Guard against unbounded recursion. The interpreter's
         // CallStack enforces its own (much larger) limit, but a
         // JsToPhp closure dispatching through phpCompiled bypasses
@@ -396,12 +388,7 @@ final class JsToPhp
         // overflow thresholds while leaving headroom below
         // typical PHP defaults. Use a static counter local to the
         // closure so we don't depend on private CallStack APIs.
-        $freeVarStatics = '';
-        foreach ($compiler->freeVarStaticDecls as $decl) {
-            $freeVarStatics .= $decl . "\n";
-        }
-        $bodyPrologue = $freeVarStatics
-            . "static \$_jstophp_depth = 0;\n"
+        $bodyPrologue = "static \$_jstophp_depth = 0;\n"
             . "if (\$_jstophp_depth >= 8192) { throw new \\Phasis\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
             . "\$_jstophp_depth++;\n"
             . "try {\n";
@@ -410,9 +397,24 @@ final class JsToPhp
             . $bodyPrologue . $compiler->out . $bodyEpilogue
             . "};";
         try {
-            /** @var \Closure $closure */
-            $closure = eval($php);
+            if ($scanner !== null) {
+                $factory = self::scannerClosureFactory($body, $php);
+                if ($factory === null) {
+                    return null;
+                }
+                $realm = $fn->realm;
+                if ($realm === null) {
+                    return null;
+                }
+                $guards = array_column($scanner->predicates, 'reference');
+                $closure = $factory($guards, \WeakReference::create($realm));
+            } else {
+                $closure = eval($php);
+            }
         } catch (\Throwable) {
+            return null;
+        }
+        if (!$closure instanceof \Closure) {
             return null;
         }
         if (!$numeric) {

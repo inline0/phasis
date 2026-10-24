@@ -1,0 +1,42 @@
+{
+  "responses": [
+    {
+      "id": 0,
+      "status": 201,
+      "echo": "header compression across requests",
+      "cookies": [
+        "a=1",
+        "b=2"
+      ],
+      "trailer": "yes",
+      "length": 100000,
+      "hash": "e6631225e83d23bf67657e85109ad5deb3570e1405d7aaa23a2485ae8582c143"
+    },
+    {
+      "id": 1,
+      "status": 201,
+      "echo": "header compression across requests",
+      "cookies": [
+        "a=1",
+        "b=2"
+      ],
+      "trailer": "yes",
+      "length": 100111,
+      "hash": "d9aeb094db48c0daa051c9ba00cd149d7cc4309711b8823743fd162609107697"
+    },
+    {
+      "id": 2,
+      "status": 201,
+      "echo": "header compression across requests",
+      "cookies": [
+        "a=1",
+        "b=2"
+      ],
+      "trailer": "yes",
+      "length": 100222,
+      "hash": "f3165a334614e6059997db00e529a5bedc2c742f46a8611a821e3ad35da0fc14"
+    }
+  ],
+  "ping": true,
+  "errors": []
+}

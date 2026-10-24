@@ -1,0 +1,1 @@
+import './stream-web.cjs';

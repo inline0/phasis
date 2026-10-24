@@ -1,0 +1,436 @@
+[
+  [
+    "first",
+    "normal",
+    10,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "pair",
+    "normal",
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "elided",
+    "hole",
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "empty",
+    "normal",
+    "empty",
+    [
+      "iterator",
+      "get next",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "rest",
+    "normal",
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "duplicate",
+    "normal",
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "captured",
+    "normal",
+    [
+      10,
+      20,
+      10
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "observe:ReferenceError",
+      "done:1",
+      "value:1",
+      "next:2",
+      "observe:10",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "next",
+    "next failure",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "done",
+    "done failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1"
+    ]
+  ],
+  [
+    "first",
+    "value",
+    "value failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1"
+    ]
+  ],
+  [
+    "first",
+    "proxy",
+    10,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "proxy return"
+    ]
+  ],
+  [
+    "first",
+    "return getter",
+    "return getter failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return"
+    ]
+  ],
+  [
+    "first",
+    "return value",
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    null,
+    null
+  ],
+  [
+    "😀",
+    "x"
+  ],
+  [
+    1,
+    [
+      2,
+      3
+    ]
+  ],
+  5,
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  [
+    "first",
+    "normal",
+    10,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "pair",
+    "normal",
+    [
+      10,
+      20
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "elided",
+    "hole",
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "empty",
+    "normal",
+    "empty",
+    [
+      "iterator",
+      "get next",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "rest",
+    "normal",
+    [
+      10,
+      [
+        20
+      ]
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "next:3",
+      "done:3"
+    ]
+  ],
+  [
+    "duplicate",
+    "normal",
+    20,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "next:2",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "captured",
+    "normal",
+    [
+      10,
+      20,
+      10
+    ],
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "observe:ReferenceError",
+      "done:1",
+      "value:1",
+      "next:2",
+      "observe:10",
+      "done:2",
+      "value:2",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    "first",
+    "next",
+    "next failure",
+    [
+      "iterator",
+      "get next",
+      "next:1"
+    ]
+  ],
+  [
+    "first",
+    "done",
+    "done failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1"
+    ]
+  ],
+  [
+    "first",
+    "value",
+    "value failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1"
+    ]
+  ],
+  [
+    "first",
+    "proxy",
+    10,
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "proxy return"
+    ]
+  ],
+  [
+    "first",
+    "return getter",
+    "return getter failure",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return"
+    ]
+  ],
+  [
+    "first",
+    "return value",
+    "TypeError",
+    [
+      "iterator",
+      "get next",
+      "next:1",
+      "done:1",
+      "value:1",
+      "get return",
+      "return"
+    ]
+  ],
+  [
+    null,
+    null
+  ],
+  [
+    "😀",
+    "x"
+  ],
+  [
+    1,
+    [
+      2,
+      3
+    ]
+  ],
+  5,
+  "TypeError",
+  "TypeError",
+  "TypeError",
+  "TypeError"
+]

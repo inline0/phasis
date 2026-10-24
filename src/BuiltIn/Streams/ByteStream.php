@@ -114,7 +114,7 @@ final class ByteStream
                 $newTarget = $this_->get('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::$byobReaderPrototype;
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::getByobReaderPrototype();
                     $this_->setPrototype($useProto);
                 }
                 self::setUpBYOBReader($this_, $stream);
@@ -154,12 +154,12 @@ final class ByteStream
 
     public static function getControllerPrototype(): ?JsObject
     {
-        return self::$controllerPrototype;
+        return StreamHelpers::intrinsicPrototype('ReadableByteStreamController');
     }
 
     public static function getByobReaderPrototype(): ?JsObject
     {
-        return self::$byobReaderPrototype;
+        return StreamHelpers::intrinsicPrototype('ReadableStreamBYOBReader');
     }
 
     public static function isReadableByteStreamController(JsValue $v): bool
@@ -436,7 +436,7 @@ final class ByteStream
         JsValue $underlyingSource,
         float $highWaterMark
     ): void {
-        $controller = new JsObject(self::$controllerPrototype);
+        $controller = new JsObject(self::getControllerPrototype());
         $controller->setInternalProperty('[[IsReadableByteStreamController]]', true);
         $controller->setInternalProperty('[[Stream]]', $stream);
         StreamHelpers::resetQueue($controller);
@@ -497,13 +497,16 @@ final class ByteStream
             }
         }
         $startPromise = StreamHelpers::toPromise($startResult);
-        $startPromise->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            $controller->setInternalProperty('[[Started]]', true);
-            self::byteControllerCallPullIfNeeded($controller);
-        });
-        $startPromise->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            self::byteControllerError($controller, $reason);
-        });
+        StreamHelpers::uponPromise(
+            $startPromise,
+            static function (JsValue $_) use ($controller): void {
+                $controller->setInternalProperty('[[Started]]', true);
+                self::byteControllerCallPullIfNeeded($controller);
+            },
+            static function (JsValue $reason) use ($controller): void {
+                self::byteControllerError($controller, $reason);
+            },
+        );
     }
 
     public static function byteControllerDesiredSize(JsObject $controller): ?float
@@ -573,16 +576,19 @@ final class ByteStream
             return;
         }
         $p = $pullAlgo();
-        $p->addFulfillHandler(static function (JsValue $_) use ($controller): void {
-            $controller->setInternalProperty('[[Pulling]]', false);
-            if ($controller->getInternalProperty('[[PullAgain]]') === true) {
-                $controller->setInternalProperty('[[PullAgain]]', false);
-                self::byteControllerCallPullIfNeeded($controller);
-            }
-        });
-        $p->addRejectHandler(static function (JsValue $reason) use ($controller): void {
-            self::byteControllerError($controller, $reason);
-        });
+        StreamHelpers::uponPromise(
+            $p,
+            static function (JsValue $_) use ($controller): void {
+                $controller->setInternalProperty('[[Pulling]]', false);
+                if ($controller->getInternalProperty('[[PullAgain]]') === true) {
+                    $controller->setInternalProperty('[[PullAgain]]', false);
+                    self::byteControllerCallPullIfNeeded($controller);
+                }
+            },
+            static function (JsValue $reason) use ($controller): void {
+                self::byteControllerError($controller, $reason);
+            },
+        );
     }
 
     /**
@@ -606,7 +612,7 @@ final class ByteStream
             $firstDesc['byteOffset'] + $firstDesc['bytesFilled'],
             $remaining
         );
-        $req = new JsObject(self::$byobRequestPrototype);
+        $req = new JsObject(StreamHelpers::intrinsicPrototype('ReadableStreamBYOBRequest'));
         $req->setInternalProperty('[[IsReadableStreamBYOBRequest]]', true);
         $req->setInternalProperty('[[Controller]]', $controller);
         $req->setInternalProperty('[[View]]', $view);
@@ -778,7 +784,7 @@ final class ByteStream
         if (\Phasis\BuiltIn\Streams\ReadableStream::isReadableStreamLocked($stream)) {
             throw new TypeError('Stream is locked');
         }
-        $reader = new JsObject(self::$byobReaderPrototype);
+        $reader = new JsObject(self::getByobReaderPrototype());
         self::setUpBYOBReader($reader, $stream);
         return $reader;
     }

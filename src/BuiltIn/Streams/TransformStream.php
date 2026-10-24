@@ -51,7 +51,7 @@ final class TransformStream
 
     public static function getPrototype(): ?JsObject
     {
-        return self::$prototype;
+        return StreamHelpers::intrinsicPrototype('TransformStream');
     }
 
     public static function install(Environment $env): JsFunction
@@ -71,7 +71,7 @@ final class TransformStream
                 $newTarget = $this_->get('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::$prototype;
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : self::getPrototype();
                     $this_->setPrototype($useProto);
                 }
                 $transformer = $args[0] ?? JsUndefined::instance();
@@ -298,7 +298,7 @@ final class TransformStream
         }
 
         // Build controller.
-        $controller = new JsObject(self::$controllerPrototype);
+        $controller = new JsObject(StreamHelpers::intrinsicPrototype('TransformStreamDefaultController'));
         $controller->setInternalProperty('[[IsTransformStreamDefaultController]]', true);
         $controller->setInternalProperty('[[Stream]]', $ts);
         $controller->setInternalProperty('[[Finished]]', false);

@@ -39,6 +39,21 @@ use Phasis\Value\JsValue;
  */
 final class StreamHelpers
 {
+    /** Resolve the executing method's intrinsic, independently of replaced globals or other realms. */
+    public static function intrinsicPrototype(string $name): ?JsObject
+    {
+        $env = \Phasis\Engine::getCurrentRealm()?->getGlobalEnv();
+        if ($env === null) {
+            return null;
+        }
+        $prototype = $env->getIntrinsic($name . '.prototype');
+        if ($prototype === null) {
+            $env->get($name);
+            $prototype = $env->getIntrinsic($name . '.prototype');
+        }
+        return $prototype instanceof JsObject ? $prototype : null;
+    }
+
     /** Stream states. */
     public const STATE_READABLE = 'readable';
     public const STATE_CLOSED = 'closed';
@@ -108,6 +123,26 @@ final class StreamHelpers
         });
         $p->addRejectHandler(static function (JsValue $_): void {
         });
+    }
+
+    /**
+     * Run a stream algorithm's promise reactions in their own microtasks.
+     *
+     * @param \Closure(JsValue): void $fulfilled
+     * @param \Closure(JsValue): void $rejected
+     */
+    public static function uponPromise(JsPromise $promise, \Closure $fulfilled, \Closure $rejected): void
+    {
+        $promise->then([
+            JsFunction::fromCallable('', static function (JsValue $_, array $args) use ($fulfilled): JsValue {
+                $fulfilled($args[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1),
+            JsFunction::fromCallable('', static function (JsValue $_, array $args) use ($rejected): JsValue {
+                $rejected($args[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1),
+        ]);
     }
 
     /**

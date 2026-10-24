@@ -415,37 +415,26 @@ class TextDecoderConstructor
                 continue;
             }
 
-            // Check we have enough bytes left.
-            if ($i + $needed >= $len) {
-                // Incomplete tail.
-                if ($stream) {
-                    // Hold over for next chunk.
-                    $pendingOut = \substr($bytes, $i);
-                    return $out;
-                }
-                if ($fatal) {
-                    throw new TypeError('TextDecoder.decode: incomplete UTF-8 byte sequence');
-                }
-                $out .= "\xEF\xBF\xBD";
-                return $out;
-            }
-
-            // Validate continuation bytes.
             $ok = true;
-            $secondByte = \ord($bytes[$i + 1]);
-            if ($secondByte < $lower || $secondByte > $upper) {
-                $ok = false;
-            }
-            if ($ok) {
-                $cp = ($cp << 6) | ($secondByte & 0x3F);
-                for ($k = 2; $k <= $needed; $k++) {
-                    $nb = \ord($bytes[$i + $k]);
-                    if ($nb < 0x80 || $nb > 0xBF) {
-                        $ok = false;
-                        break;
+            for ($consumed = 1; $consumed <= $needed; $consumed++) {
+                if ($i + $consumed >= $len) {
+                    if ($stream) {
+                        $pendingOut = \substr($bytes, $i);
+                        return $out;
                     }
-                    $cp = ($cp << 6) | ($nb & 0x3F);
+                    if ($fatal) {
+                        throw new TypeError('TextDecoder.decode: incomplete UTF-8 byte sequence');
+                    }
+                    return $out . "\xEF\xBF\xBD";
                 }
+                $next = \ord($bytes[$i + $consumed]);
+                $minimum = $consumed === 1 ? $lower : 0x80;
+                $maximum = $consumed === 1 ? $upper : 0xBF;
+                if ($next < $minimum || $next > $maximum) {
+                    $ok = false;
+                    break;
+                }
+                $cp = ($cp << 6) | ($next & 0x3F);
             }
 
             if (!$ok) {
@@ -453,9 +442,8 @@ class TextDecoderConstructor
                     throw new TypeError('TextDecoder.decode: invalid UTF-8 byte sequence');
                 }
                 $out .= "\xEF\xBF\xBD";
-                // WHATWG: advance only past the invalid leading byte;
-                // resume from the bad continuation.
-                $i += 1;
+                // Consumed continuation bytes belong to this error; reprocess the offending byte.
+                $i += $consumed;
                 continue;
             }
 

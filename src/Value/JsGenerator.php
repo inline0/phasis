@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Phasis\Value;
 
+use Phasis\Engine;
 use Phasis\Exceptions\JsThrowable;
 use Phasis\Exceptions\RuntimeError;
 use Phasis\Object\PropertyDescriptor;
@@ -67,30 +68,8 @@ class JsGenerator extends JsObject
         // Per spec §27.5.1 via OrdinaryCreateFromConstructor:
         // The [[Prototype]] is generatorFn.prototype if it's an Object,
         // otherwise falls back to the intrinsic %GeneratorPrototype%.
-        $instanceProto = null;
-        $fnProto = $generatorFn->get('prototype');
-        if ($fnProto instanceof JsObject) {
-            $instanceProto = $fnProto;
-        } else {
-            $instanceProto = self::$generatorPrototype;
-        }
+        $instanceProto = self::instancePrototype($generatorFn);
         parent::__construct($instanceProto);
-
-        // Ensure the prototype chain is properly wired to Object.prototype.
-        // %IteratorPrototype% may have been created before Object.prototype was
-        // set as the global prototype. Walk up and fix any broken link.
-        if ($instanceProto !== null) {
-            $tail = $instanceProto;
-            while ($tail->getPrototype() !== null) {
-                $tail = $tail->getPrototype();
-            }
-            // If the tail is not Object.prototype itself (Object.prototype has
-            // null [[Prototype]]), wire it up so toString, etc. are reachable.
-            $globalProto = JsObject::getGlobalPrototype();
-            if ($globalProto !== null && $tail !== $globalProto) {
-                $tail->setPrototype($globalProto);
-            }
-        }
 
         $fn = $generatorFn;
         $thisVal = $thisValue;
@@ -133,26 +112,20 @@ class JsGenerator extends JsObject
         $g = (new \ReflectionClass(self::class))->newInstanceWithoutConstructor();
         // Wire up the prototype chain manually, mirroring
         // __construct's setup.
-        $instanceProto = null;
-        $fnProto = $generatorFn->get('prototype');
-        if ($fnProto instanceof JsObject) {
-            $instanceProto = $fnProto;
-        } else {
-            $instanceProto = self::$generatorPrototype;
-        }
+        $instanceProto = self::instancePrototype($generatorFn);
         $g->properties = new \Phasis\Object\PropertyMap();
         $g->setPrototype($instanceProto);
-        if ($instanceProto !== null) {
-            $tail = $instanceProto;
-            while ($tail->getPrototype() !== null) {
-                $tail = $tail->getPrototype();
-            }
-            $globalProto = JsObject::getGlobalPrototype();
-            if ($globalProto !== null && $tail !== $globalProto) {
-                $tail->setPrototype($globalProto);
-            }
-        }
         return $g;
+    }
+
+    private static function instancePrototype(JsFunction $function): ?JsObject
+    {
+        $prototype = $function->get('prototype');
+        if ($prototype instanceof JsObject) {
+            return $prototype;
+        }
+        $intrinsic = $function->realm?->getGlobalEnv()->get('__GeneratorPrototype__');
+        return $intrinsic instanceof JsObject ? $intrinsic : self::$generatorPrototype;
     }
 
     /**
@@ -506,9 +479,10 @@ class JsGenerator extends JsObject
      */
     private function makeResult(JsValue $value, bool $done): JsObject
     {
-        $result = new JsObject();
-        $result->set('value', $value);
-        $result->set('done', new JsBoolean($done));
+        $prototype = Engine::getCurrentRealm()?->getGlobalEnv()->get('__ObjectPrototype__');
+        $result = new JsObject($prototype instanceof JsObject ? $prototype : null);
+        $result->defineOwnProperty('value', PropertyDescriptor::data($value, true, true, true));
+        $result->defineOwnProperty('done', PropertyDescriptor::data(new JsBoolean($done), true, true, true));
         return $result;
     }
 

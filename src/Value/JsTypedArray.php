@@ -138,6 +138,9 @@ class JsTypedArray extends JsObject
     /**
      * Whether this TypedArray's view is out of bounds for its buffer.
      * Only relevant for fixed-length views on resizable buffers.
+     * Buffer resize or detachment through an alias can change this between reads.
+     *
+     * @phpstan-impure
      */
     public function isOutOfBounds(): bool
     {
@@ -216,6 +219,9 @@ class JsTypedArray extends JsObject
     {
         if ($this->isBigInt) {
             return \Phasis\Spec\TypeConversion::toBigInt($value);
+        }
+        if ($value instanceof JsNumber) {
+            return $value;
         }
         $num = \Phasis\Spec\TypeConversion::toNumber($value);
         return new \Phasis\Value\JsNumber($num);
@@ -578,6 +584,37 @@ class JsTypedArray extends JsObject
         return parent::get($name);
     }
 
+    /**
+     * Set a numeric property whose key is already known to be an integer.
+     * Conversion must precede the bounds check because it can resize or
+     * detach the view. The result is the exotic [[Set]] success flag.
+     *
+     * @internal
+     */
+    public function setIntegerIndex(int $index, JsValue $value): bool
+    {
+        if ($this->buffer->isImmutable()) {
+            return false;
+        }
+        // Primitive numbers cannot run user conversion between the validity check and write.
+        if (
+            $this->typeName === 'Uint8Array' && $value instanceof JsNumber
+            && get_class($this) === self::class && get_class($this->buffer) === JsArrayBuffer::class
+        ) {
+            if ($index >= 0 && $index < $this->getLength()) {
+                $number = $value->value;
+                $integer = is_nan($number) || is_infinite($number) ? 0 : (int) $number;
+                $this->buffer->writeBytes($this->byteOffset + $index, pack('C', $integer));
+            }
+            return true;
+        }
+        $coerced = $this->coerceTypedArrayValue($value);
+        if ($index >= 0 && $index < $this->getLength()) {
+            $this->setIndex($index, $coerced);
+        }
+        return true;
+    }
+
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
         if ($this->buffer->isImmutable() && self::isCanonicalNumericIndex($name)) {
@@ -596,11 +633,7 @@ class JsTypedArray extends JsObject
             $nameLen !== 0 && $nameLen <= 15 && ctype_digit($name)
             && ($name === '0' || $name[0] !== '0')
         ) {
-            $coerced = $this->coerceTypedArrayValue($value);
-            $index = (int) $name;
-            if ($index >= 0 && $index < $this->getLength()) {
-                $this->setIndex($index, $coerced);
-            }
+            $this->setIntegerIndex((int) $name, $value);
             return;
         }
 
@@ -642,12 +675,7 @@ class JsTypedArray extends JsObject
             && ($name === '0' || $name[0] !== '0')
             && $receiver === $this
         ) {
-            $coerced = $this->coerceTypedArrayValue($value);
-            $index = (int) $name;
-            if ($index >= 0 && $index < $this->getLength()) {
-                $this->setIndex($index, $coerced);
-            }
-            return true;
+            return $this->setIntegerIndex((int) $name, $value);
         }
 
         if (self::isCanonicalNumericIndex($name)) {

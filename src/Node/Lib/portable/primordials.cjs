@@ -1,0 +1,33 @@
+'use strict';
+
+// Capture intrinsics before user code can replace their prototype methods.
+module.exports = {
+  Array: Array,
+  ArrayIsArray: Array.isArray,
+  ArrayPrototypeIncludes: Function.call.bind(Array.prototype.includes),
+  ArrayPrototypeJoin: Function.call.bind(Array.prototype.join),
+  ArrayPrototypePush: Function.call.bind(Array.prototype.push),
+  ArrayPrototypeSlice: Function.call.bind(Array.prototype.slice),
+  Boolean: Boolean,
+  FunctionPrototypeBind: Function.call.bind(Function.prototype.bind),
+  Int8Array: Int8Array,
+  MathAbs: Math.abs,
+  NumberIsFinite: Number.isFinite,
+  NumberPrototypeToString: Function.call.bind(Number.prototype.toString),
+  ObjectAssign: Object.assign,
+  ObjectKeys: Object.keys,
+  String: String,
+  StringPrototypeAt: Function.call.bind(String.prototype.at),
+  StringPrototypeCharCodeAt: Function.call.bind(String.prototype.charCodeAt),
+  StringPrototypeIncludes: Function.call.bind(String.prototype.includes),
+  StringPrototypeIndexOf: Function.call.bind(String.prototype.indexOf),
+  StringPrototypeLastIndexOf: Function.call.bind(String.prototype.lastIndexOf),
+  StringPrototypeRepeat: Function.call.bind(String.prototype.repeat),
+  StringPrototypeReplace: Function.call.bind(String.prototype.replace),
+  StringPrototypeReplaceAll: Function.call.bind(String.prototype.replaceAll),
+  StringPrototypeSlice: Function.call.bind(String.prototype.slice),
+  StringPrototypeSplit: Function.call.bind(String.prototype.split),
+  StringPrototypeToLowerCase: Function.call.bind(String.prototype.toLowerCase),
+  StringPrototypeToUpperCase: Function.call.bind(String.prototype.toUpperCase),
+  decodeURIComponent: decodeURIComponent,
+};

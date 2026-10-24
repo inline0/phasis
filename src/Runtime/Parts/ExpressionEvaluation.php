@@ -103,6 +103,9 @@ use Phasis\Runtime\TailCallThunk;
  */
 trait ExpressionEvaluation
 {
+    /** @var ?\WeakMap<Node, bool> */
+    private ?\WeakMap $argumentsUsage = null;
+
     // -------------------------------------------------------------------------
     // Expression evaluation
     // -------------------------------------------------------------------------
@@ -118,9 +121,6 @@ trait ExpressionEvaluation
         // node types. Literals never produce the sentinel.
         if ($node instanceof Identifier) {
             $name = $node->name;
-            if ($name === 'undefined') {
-                return JsUndefined::instance();
-            }
             // Identifier scope-depth cache: if we have already
             // resolved this Identifier in a structurally identical
             // env chain, jump directly to the owning env. Safe only
@@ -332,7 +332,7 @@ trait ExpressionEvaluation
             '&' => $this->bitwiseBinaryOp($left, $right, '&'),
             '|' => $this->bitwiseBinaryOp($left, $right, '|'),
             '^' => $this->bitwiseBinaryOp($left, $right, '^'),
-            'in' => $this->evalInOperator($left, $right),
+            'in' => new JsBoolean(AbstractOperations::inOperator($left, $right)),
             'instanceof' => new JsBoolean(AbstractOperations::instanceofOperator($left, $right)),
             default => throw new InternalError("Unknown binary operator: {$node->operator}"),
         };
@@ -741,29 +741,6 @@ trait ExpressionEvaluation
         return $value;
     }
 
-    private function evalInOperator(JsValue $left, JsValue $right): JsValue
-    {
-        if (!$right instanceof JsObject) {
-            throw new TypeError(
-                'Cannot use "in" operator to search for "'
-                . (
-                    $left instanceof JsSymbol
-                        ? $left->toString()
-                        : TypeConversion::toString($left)
-                )
-                . '" in ' . TypeConversion::toString($right)
-            );
-        }
-        // Spec §13.10.2 step 5: the key goes through ToPropertyKey, which
-        // returns the unboxed Symbol for a Symbol wrapper instead of
-        // attempting ToString on it.
-        $propKey = TypeConversion::toPropertyKey($left);
-        if ($propKey instanceof JsSymbol) {
-            return new JsBoolean($right->hasBySymbol($propKey));
-        }
-        return new JsBoolean($right->has(TypeConversion::toString($propKey)));
-    }
-
     private function evalLogicalExpression(LogicalExpression $node, Environment $env): JsValue
     {
         $left = $this->evaluate($node->left, $env);
@@ -875,62 +852,10 @@ trait ExpressionEvaluation
             if ($obj instanceof JsOptionalUndefined) {
                 return new JsBoolean(true);
             }
-            if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
-                throw new TypeError(
-                    'Cannot read properties of ' . ($obj instanceof JsNull ? 'null' : 'undefined') . ' (deleting)',
-                );
-            }
-            if ($obj instanceof JsObject) {
-                $rawKey = null;
-                if ($argument->computed) {
-                    // ToPropertyKey on the computed key so a Symbol returned
-                    // by a custom toString stays a Symbol key.
-                    $rawKey = TypeConversion::toPropertyKey($this->evaluate($argument->property, $env));
-                    if ($rawKey instanceof JsSymbol) {
-                        // Delete symbol-keyed property.
-                        $deleted = $obj->deleteBySymbol($rawKey);
-                        if (!$deleted && $this->strictMode) {
-                            throw new TypeError(
-                                "Cannot delete property '" . $rawKey->toString() . "' of #<Object>"
-                            );
-                        }
-                        return new JsBoolean($deleted);
-                    }
-                    $key = $rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey);
-                } else {
-                    $key = $argument->property instanceof Identifier ? $argument->property->name : '';
-                }
-                return new JsBoolean($obj->delete($key, $this->strictMode));
-            }
-            // Deleting a property on a primitive base: per spec [[Delete]] on
-            // an Object Reference Record uses ToObject(GetBase) then attempts
-            // delete. For string-indexed properties (non-configurable), this
-            // returns false in sloppy mode and throws TypeError in strict.
-            if ($obj instanceof JsString) {
-                $rawKey = null;
-                if ($argument->computed) {
-                    $rawKey = TypeConversion::toPropertyKey($this->evaluate($argument->property, $env));
-                    $key = $rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey);
-                } else {
-                    $key = $argument->property instanceof Identifier ? $argument->property->name : '';
-                }
-                // String indices and length are non-configurable on the
-                // exotic String object — deletion fails.
-                $u16 = JsString::utf8ToUtf16LE($obj->value);
-                $u16Len = (int) (strlen($u16) / 2);
-                if ($key === 'length' || (ctype_digit($key) && (int) $key < $u16Len)) {
-                    if ($this->strictMode) {
-                        throw new TypeError("Cannot delete property '{$key}' of '{$obj->value}'");
-                    }
-                    return new JsBoolean(false);
-                }
-                // Other properties (those on String.prototype etc.) cannot
-                // be deleted via the exotic — also non-configurable on the
-                // wrapper, so always true (no own slot to remove).
-                return new JsBoolean(true);
-            }
-            // Other primitives: no own properties, delete is a no-op.
-            return new JsBoolean(true);
+            $key = $argument->computed
+                ? $this->evaluate($argument->property, $env)
+                : new JsString($argument->property instanceof Identifier ? $argument->property->name : '');
+            return new JsBoolean(AbstractOperations::deletePropertyReference($obj, $key, $this->strictMode));
         }
 
         // Delete on an identifier reference.
@@ -979,28 +904,8 @@ trait ExpressionEvaluation
             }
         }
 
-        // Fast path: `i++` / `++i` / `i--` / `--i` on a plain Identifier
-        // when there is no with-environment reachable from the current
-        // chain (covers both currently-active with statements and
-        // with-envs captured by an enclosing closure). Skips the
-        // Reference allocation, the deferred-key path, and the with-
-        // trap dance for the case that dominates loop counters.
-        if (
-            $node->argument instanceof Identifier
-            && $this->withEnvObjects === []
-            && $node->argument->name !== 'undefined'
-            && !$env->hasAnyWithObjectInChain()
-        ) {
-            $name = $node->argument->name;
-            $current = $env->get($name, $this->strictMode);
-            if ($current instanceof JsNumber) {
-                $delta = $node->operator === '++' ? 1.0 : -1.0;
-                $newValue = JsNumber::of($current->value + $delta);
-                $env->set($name, $newValue, $this->strictMode);
-                return $node->prefix ? $newValue : $current;
-            }
-            // Non-number paths (BigInt, ToNumeric coercion) fall through
-            // to the spec path below.
+        if ($node->argument instanceof Identifier) {
+            return $this->vmUpdateName($env, $node->argument->name, $node->operator === '++', $node->prefix);
         }
 
         $ref = $this->resolveReference($node->argument, $env);
@@ -1018,31 +923,71 @@ trait ExpressionEvaluation
             );
         }
 
-        // Use ToNumeric (not ToNumber) so BigInt values are preserved.
-        // Use withGetBindingValue for spec-correct HasProperty trap order.
-        $oldNumeric = TypeConversion::toNumeric($this->withGetBindingValue($ref));
+        return $this->updateReferenceValue($ref, $node->operator === '++', $node->prefix, false);
+    }
+
+    /** Update an identifier through its original reference, shared by the VM and interpreter. */
+    public function vmUpdateName(Environment $env, string $name, bool $increment, bool $prefix): JsValue
+    {
+        return $this->updateReferenceValue($this->resolveIdentifierReference($env, $name), $increment, $prefix);
+    }
+
+    /** Update a property through one Reference, including computed-key and numeric coercion. */
+    public function vmUpdateMember(JsValue $base, string|JsValue $key, bool $increment, bool $prefix): JsValue
+    {
+        $name = is_string($key) ? $key
+            : ($key instanceof JsObject || $key instanceof JsSymbol ? '' : TypeConversion::toString($key));
+        // RequireObjectCoercible precedes object-key coercion for updates.
+        if ($base instanceof JsNull || $base instanceof JsUndefined) {
+            $type = $base instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError("Cannot read properties of {$type} (reading '{$name}')");
+        }
+        $ref = new Reference(
+            $base,
+            $name,
+            $this->strictMode,
+            symbolKey: $key instanceof JsSymbol ? $key : null,
+            rawKey: $key instanceof JsObject ? $key : null,
+        );
+        return $this->updateReferenceValue($ref, $increment, $prefix, false);
+    }
+
+    private function updateReferenceValue(Reference $ref, bool $increment, bool $prefix, bool $bindingReference = true): JsValue
+    {
+        // GetValue must run exactly once, before any user-defined numeric
+        // conversion, while PutValue retains the originally resolved base.
+        $current = $bindingReference ? $this->withGetBindingValue($ref) : $ref->getValue();
+        $oldNumeric = $current instanceof JsNumber ? $current : TypeConversion::toNumeric($current);
 
         if ($oldNumeric instanceof JsBigInt) {
             // BigInt::add(oldValue, BigInt::unit) per spec.
             $decVal = $this->bigIntToDecimal($oldNumeric->value);
-            $delta = $node->operator === '++' ? '1' : '-1';
+            $delta = $increment ? '1' : '-1';
             $raw = self::bigStrBcAdd($decVal, $delta);
             if ($raw === '-0') {
                 $raw = '0';
             }
             $newValue = new JsBigInt($raw);
-            $this->withSetMutableBindingCheck($ref, $newValue);
-            return $node->prefix ? $newValue : $oldNumeric;
+            if ($bindingReference) {
+                $this->withSetMutableBindingCheck($ref, $newValue);
+            } else {
+                $ref->setValue($newValue);
+            }
+            return $prefix ? $newValue : $oldNumeric;
         }
 
-        $oldValue = JsNumber::of(
-            $oldNumeric instanceof JsNumber ? $oldNumeric->value : TypeConversion::toNumber($oldNumeric),
-        );
-        $delta = $node->operator === '++' ? 1.0 : -1.0;
+        $oldValue = $oldNumeric instanceof JsNumber
+            ? $oldNumeric
+            : JsNumber::of(TypeConversion::toNumber($oldNumeric));
+        $delta = $increment ? 1.0 : -1.0;
         $newValue = JsNumber::of($oldValue->value + $delta);
-        $this->withSetMutableBindingCheck($ref, $newValue);
+        if ($bindingReference) {
+            $this->withSetMutableBindingCheck($ref, $newValue);
+        } else {
+            $ref->setValue($newValue);
+        }
 
-        return $node->prefix ? $newValue : $oldValue;
+        return $prefix ? $newValue : $oldValue;
     }
 
     private function evalAssignment(AssignmentExpression $node, Environment $env): JsValue
@@ -1320,7 +1265,8 @@ trait ExpressionEvaluation
             : $this->evaluate($node->alternate, $env);
     }
 
-    private function evalCallExpression(CallExpression $node, Environment $env): JsValue
+    /** @return ($tail is true ? JsValue|TailCallThunk : JsValue) */
+    private function evalCallExpression(CallExpression $node, Environment $env, bool $tail = false): JsValue|TailCallThunk
     {
         // Super call: super(args) inside a class constructor.
         // Calls the super class constructor with the current this and args.
@@ -1540,7 +1486,7 @@ trait ExpressionEvaluation
             $shortCircuits = $rawObj instanceof JsOptionalUndefined
                 || ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined));
             if ($shortCircuits) {
-                if ($node->callee->parenthesized) {
+                if ($node->callee->parenthesized && !$node->optional) {
                     // `(a?.b)()`: the parentheses end the chain, so the callee
                     // is undefined and the call itself fails, after its
                     // arguments are evaluated.
@@ -1563,7 +1509,7 @@ trait ExpressionEvaluation
                 $args = $this->evaluateArguments($node->arguments, $env);
                 if (!($callee instanceof JsFunction)) {
                     throw new TypeError(
-                        TypeConversion::toString($callee) . ' is not a function',
+                        ($callee instanceof JsObject ? 'value' : TypeConversion::toString($callee)) . ' is not a function',
                     );
                 }
                 return $this->callFunction($callee, $rawObj, $args);
@@ -1572,6 +1518,13 @@ trait ExpressionEvaluation
             $rawCallKey = null;
             if ($node->callee->computed) {
                 $rawCallKey = $this->evaluate($node->callee->property, $env);
+                // RequireObjectCoercible precedes ToPropertyKey, so a null
+                // receiver must not invoke the computed key's coercion hook.
+                if ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined) {
+                    throw new TypeError('Cannot read properties of '
+                        . ($rawObj instanceof JsNull ? 'null' : 'undefined'));
+                }
+                $rawCallKey = TypeConversion::toPropertyKey($rawCallKey);
             }
             $isSymbolCallKey = $rawCallKey instanceof JsSymbol;
             $key = $isSymbolCallKey ? '' : ($node->callee->computed
@@ -1581,7 +1534,8 @@ trait ExpressionEvaluation
 
             // String method calls: look up on __StringPrototype__
             if ($rawObj instanceof JsString && !$isSymbolCallKey) {
-                $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+                $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+                $proto = $realmInterpreter->cachedStringPrototype ??= $realmInterpreter->resolveCachedPrototype('__StringPrototype__');
                 if ($proto instanceof JsObject) {
                     $method = $proto->get($key);
                     if ($method instanceof JsFunction) {
@@ -1663,7 +1617,7 @@ trait ExpressionEvaluation
             }
             $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
             $callee = $isSymbolCallKey ? $obj->getBySymbol($rawCallKey) : $obj->get($key);
-            $thisValue = $obj;
+            $thisValue = $rawObj;
             $isMethodCall = true;
         } else {
             // Per spec 12.3.4.1 step 4.b: if the callee is an identifier resolved
@@ -1714,6 +1668,9 @@ trait ExpressionEvaluation
         // We do NOT set thisValue = globalObject here so that explicit apply(globalObject)
         // calls pass the global object through without being cleared by executeFunction.
 
+        if ($tail && !$callee->isNative() && !$callee->isGenerator() && !$callee->isAsync()) {
+            return new TailCallThunk($callee, $thisValue, $args);
+        }
         return $this->callFunction($callee, $thisValue, $args);
     }
 
@@ -3355,12 +3312,16 @@ trait ExpressionEvaluation
         }
 
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
-            throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
+            throw new TypeError(($callee instanceof JsObject ? 'value' : TypeConversion::toString($callee)) . ' is not a constructor');
         }
 
         // Create a new object with the constructor's prototype
         $proto = $callee->get('prototype');
-        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        if (!$proto instanceof JsObject) {
+            $realm = AbstractOperations::getFunctionRealm($callee);
+            $proto = $realm === null ? null : AbstractOperations::realmIntrinsicPrototype($realm->getGlobalEnv(), 'Object');
+        }
+        $newObj = new JsObject($proto);
         // Mark as new.target so constructors can detect new vs call.
         // Use a non-enumerable, non-configurable property so it does not leak into iteration.
         $newObj->defineOwnProperty(
@@ -3738,7 +3699,7 @@ trait ExpressionEvaluation
      * Format the call expression's callee for "X is not a function" errors.
      * Mirrors V8/SpiderMonkey error messages by serialising MemberExpression
      * and Identifier callees rather than using the value's toString. Falls
-     * back to the value's stringification for opaque/computed callees.
+     * back to primitive formatting or a generic object label without invoking hooks.
      */
     private function formatCalleeForError(Node $node, JsValue $value): string
     {
@@ -3746,7 +3707,7 @@ trait ExpressionEvaluation
         if ($text !== null) {
             return $text;
         }
-        return TypeConversion::toString($value);
+        return $value instanceof JsObject ? 'value' : TypeConversion::toString($value);
     }
 
     /** Recursively render a MemberExpression / Identifier / ArrayExpression
@@ -3824,39 +3785,26 @@ trait ExpressionEvaluation
      */
     private function spreadInto(JsValue $iterable, array &$target): void
     {
-        $iterator = $this->getIterator($iterable);
-        if ($iterator !== null) {
-            $nextMethod = $iterator->get('next');
-            if ($nextMethod instanceof JsFunction) {
-                while (true) {
-                    $result = $this->callFunction($nextMethod, $iterator, []);
-                    // Spec IteratorStep: if next() does not return an Object,
-                    // throw TypeError instead of treating it as iteration end.
-                    if (!$result instanceof JsObject) {
-                        throw new TypeError('iterator.next() returned a non-object value');
-                    }
-                    if (TypeConversion::toBoolean($result->get('done'))) {
-                        break;
-                    }
-                    $target[] = $result->get('value');
-                }
-                return;
+        [$iterator, $nextMethod] = $this->getIteratorOrThrow($iterable);
+        $done = false;
+        while (!$done) {
+            $value = $this->iteratorNext($iterator, $nextMethod, $done);
+            if (!$done) {
+                $target[] = $value;
             }
         }
+    }
 
-        // Fallback for plain JsArray without Symbol.iterator.
-        if ($iterable instanceof JsArray) {
-            $len = $iterable->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                $target[] = $iterable->get((string) $i);
-            }
-            return;
+    /** @param list<JsValue> $args */
+    public function vmCallValue(JsValue $callee, JsValue $thisValue, array $args, string $display = 'value'): JsValue
+    {
+        if ($callee instanceof JsFunction) {
+            return $this->callFunction($callee, $thisValue, $args);
         }
-
-        // Per spec, if the value is not iterable, throw TypeError.
-        throw new TypeError(
-            TypeConversion::toString($iterable) . ' is not iterable',
-        );
+        if ($callee instanceof \Phasis\Value\JsProxy && $callee->isCallable()) {
+            return $callee->apply($thisValue, $args);
+        }
+        throw new TypeError($display . ' is not a function');
     }
 
     /** @param JsValue[] $args */
@@ -4010,6 +3958,7 @@ trait ExpressionEvaluation
         // standard executeFunction path so spec semantics are preserved.
         if (
             $fn->phpCompiled !== null
+            && $this->budget === null
             && !$fn->isClassConstructor()
             && !$fn->isDerivedConstructor()
             && $fn->getHomeObject() === null
@@ -4028,7 +3977,7 @@ trait ExpressionEvaluation
     /**
      * Install the .prototype property on a newly created function.
      *
-     * For normal functions: creates {constructor: fn} with Object.prototype as prototype.
+     * Normal functions defer their {constructor: fn} object until its value is read.
      * For generator functions: creates a plain object with %GeneratorPrototype% as prototype,
      * NO constructor property (per spec §27.3.4).
      */
@@ -4054,6 +4003,7 @@ trait ExpressionEvaluation
             $proto = new JsObject($generatorProto);
             // Non-constructable: generators can't be called with new.
             $fn->setNonConstructable();
+            $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
         } else {
             // Resolve %Object.prototype% for THIS realm so a sibling
             // Engine cannot leak its Object.prototype through the
@@ -4069,13 +4019,8 @@ trait ExpressionEvaluation
                     $objProto = $candidate;
                 }
             }
-            $proto = new JsObject($objProto);
-            // Per spec, constructor is writable, non-enumerable, configurable.
-            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
+            $fn->installOrdinaryPrototype($objProto);
         }
-        // Per spec §27.3.4 / §10.2.4: .prototype is writable, non-enumerable, non-configurable for generators;
-        // writable, non-enumerable, non-configurable for regular functions too.
-        $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
 
         // Annex B legacy `function.caller` / `function.arguments`: install
         // own slots (default null) on non-strict, non-arrow, non-async,
@@ -4122,7 +4067,7 @@ trait ExpressionEvaluation
         JsValue $thisValue,
         array $args,
     ): JsValue|TailCallThunk {
-        $this->callStack->push($fn->getName(), 0);
+        $this->callStack->push($fn->getName(), 0, $fn);
         $this->callerStack[] = $fn;
         $fnBody = $fn->getBody();
         // Only ordinary constructable functions (e.g. 'function f(){}') track
@@ -4169,6 +4114,27 @@ trait ExpressionEvaluation
             $this->currentModulePath = $fn->definingModulePath;
         }
 
+        // Recover a factory callback's known layout before allocating and
+        // binding an activation that its bytecode does not need. With scopes
+        // and budgeted execution still require interpreter name resolution.
+        if (
+            $fn->compiled === null
+            && !$fn->compileFailed
+            && $this->budget === null
+            && !$fn->getClosure()->isUnderWithScope()
+        ) {
+            $fn->compiled = \Phasis\Bytecode\CompilationTemplates::get($fn);
+            // A cached syntax failure lets fresh closures use the VM prologue
+            // without constructing interpreter hoists it would discard.
+            if (
+                $fn->compiled !== null && $fn->compiled->omittedFunctionBindings !== []
+                && $fn->phpCompiled === null && !$fn->phpCompileFailed
+                && \Phasis\Bytecode\CompilationFailures::get($fn, 'php') !== null
+            ) {
+                $fn->phpCompileFailed = true;
+            }
+        }
+
         // Hot path for VM-compiled bodies with no env-binding needs:
         // bytecode never reads `this` via env (LOAD_THIS_FRAME reads
         // the frame; needsThis=false means no env binding required),
@@ -4183,6 +4149,7 @@ trait ExpressionEvaluation
         // the lexical-this scan.
         if (
             $fn->compiled !== null
+            && $this->budget === null
             && $fn->compiled->canSkipEnvAlloc
             && !$fn->isClassConstructor()
             && !$fn->isDerivedConstructor()
@@ -4350,7 +4317,7 @@ trait ExpressionEvaluation
                 // compiler never emits LOAD_NEW_TARGET (no MetaProperty
                 // support yet, so any new.target use bails). Frame
                 // params come from $args directly via paramSlots.
-                $vmCanSkipEnvBindings = $fn->compiled !== null;
+                $vmCanSkipEnvBindings = $fn->compiled !== null && !$fn->compiled->parametersFromEnvironment && $this->budget === null;
                 if (!$vmCanSkipEnvBindings || $fn->compiled->needsThis) {
                     $fnEnv->defineVar('this', $thisValue);
                 }
@@ -4430,7 +4397,7 @@ trait ExpressionEvaluation
             // directly via tryRunOnVm; their nested closures are
             // forbidden from observing outer locals via the env
             // (capture-detection bails). Skip the env bindings then.
-            if ($fn->compiled === null) {
+            if ($fn->compiled === null || $fn->compiled->parametersFromEnvironment || $fn->compiled->needsArgsBinding || $this->budget !== null) {
                 $this->bindParameters($params, $args, $fnEnv, $hasDefaultParams);
             }
 
@@ -4439,6 +4406,14 @@ trait ExpressionEvaluation
             // corresponding parameter name share a live binding.
             if ($argsObj !== null && !$unmapped) {
                 $this->setupMappedArguments($argsObj, $params, $args, $fnEnv);
+            }
+
+            $compiledBindings = $fn->compiled?->capturedEnvironmentBindings;
+            if (
+                $compiledBindings !== null
+                && ($hasDefaultParams || $argsObj !== null || !$this->vmOwnsFunctionHoists($fn))
+            ) {
+                $compiledBindings = null;
             }
 
             // Collect parameter names for Annex B hoisting checks.
@@ -4455,6 +4430,7 @@ trait ExpressionEvaluation
             // (cached on JsFunction for BlockStatement bodies), the
             // swap is pure overhead — skip it.
             $needsParamNames = $body instanceof BlockStatement
+                && $compiledBindings === null
                 && $fn->bodyNeedsHoistingCache !== false;
             $savedParamNames = $this->currentParamNames;
             if ($needsParamNames) {
@@ -4499,25 +4475,31 @@ trait ExpressionEvaluation
             // the parameter list do not see body-scoped var declarations.
             if ($hasDefaultParams && $body instanceof BlockStatement) {
                 $bodyEnv = $fnEnv->createChild();
-                // Copy parameter bindings to the body environment as vars.
+                $this->forceHoistVarNames($body->body, $bodyEnv);
+                // Only var-redeclared parameters get a separate body binding.
+                // Other assignments must remain visible to parameter closures.
                 foreach ($params as $p) {
                     $this->copyParamBindings($p, $fnEnv, $bodyEnv);
                 }
                 // arguments in body env should still be available, but only
                 // when we actually built the arguments object on entry.
-                if (!$fn->isArrow() && $argsObj !== null) {
+                if (!$fn->isArrow() && $argsObj !== null && $bodyEnv->hasOwnBinding('arguments')) {
                     $bodyEnv->defineVar('arguments', $argsObj);
                 }
                 // Force-hoist var names into bodyEnv so they shadow parent bindings.
                 // This is necessary because the body environment is separate from
                 // the parameter environment, and var declarations must create
                 // bindings in the body scope, not update parent scope bindings.
-                $this->forceHoistVarNames($body->body, $bodyEnv);
-                $this->hoistDeclarations($body->body, $bodyEnv);
+                $this->hoistDeclarations($body->body, $bodyEnv, $this->vmOwnsFunctionHoists($fn));
                 $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $savedTailPos = $this->inTailPosition;
                 $this->inTailPosition = $this->strictMode;
+                $vmReturn = $this->tryRunOnVm($fn, $bodyEnv, $thisValue, $args);
+                if ($vmReturn !== null) {
+                    $this->inTailPosition = $savedTailPos;
+                    return $this->derivedConstructorReturn($fn, $fnEnv, $vmReturn);
+                }
                 $completion = $this->executeDisposableBody($body->body, $bodyEnv);
                 $this->inTailPosition = $savedTailPos;
                 $completion = $this->applyDisposals($bodyEnv, $completion);
@@ -4544,13 +4526,30 @@ trait ExpressionEvaluation
                 // var/let/const/function/class declarations and no nested
                 // control flow that could contain them) trip none of the
                 // three hoist passes. Skip them on subsequent calls.
-                if ($fn->bodyNeedsHoistingCache === null) {
-                    $fn->bodyNeedsHoistingCache = $this->bodyNeedsHoisting($body->body);
-                }
-                if ($fn->bodyNeedsHoistingCache) {
-                    $this->forceHoistVarNames($body->body, $fnEnv);
-                    $this->hoistDeclarations($body->body, $fnEnv);
-                    $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
+                if ($compiledBindings !== null) {
+                    // The compiler keeps uncaptured locals in frame slots.
+                    // Only captured declarations need an Environment binding;
+                    // parameters are already bound and the VM hoists functions.
+                    foreach ($compiledBindings as $name => $kind) {
+                        if ($kind === 'var') {
+                            if (!$fnEnv->hasOwnBinding($name)) {
+                                $fnEnv->defineVar($name, JsUndefined::instance());
+                            }
+                        } elseif ($kind === 'let') {
+                            $fnEnv->declareLet($name);
+                        } else {
+                            $fnEnv->declareConst($name);
+                        }
+                    }
+                } else {
+                    if ($fn->bodyNeedsHoistingCache === null) {
+                        $fn->bodyNeedsHoistingCache = $this->bodyNeedsHoisting($body->body);
+                    }
+                    if ($fn->bodyNeedsHoistingCache) {
+                        $this->forceHoistVarNames($body->body, $fnEnv);
+                        $this->hoistDeclarations($body->body, $fnEnv, $this->vmOwnsFunctionHoists($fn));
+                        $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
+                    }
                 }
                 $this->currentParamNames = $savedParamNames;
                 $savedTailPos = $this->inTailPosition;
@@ -4640,7 +4639,7 @@ trait ExpressionEvaluation
         // each one method dispatch per call. The hot-path field reads
         // collapse to plain property fetches now that JsFunction
         // exposes these as public.
-        $this->callStack->push($fn->name, 0);
+        $this->callStack->push($fn->name, 0, $fn);
         $this->callerStack[] = $fn;
 
         if ($fn->setCallerPropCache === null) {
@@ -4910,62 +4909,70 @@ trait ExpressionEvaluation
         ?JsValue $throwValue = null,
         ?string $modulePath = null,
     ): void {
-        // Swap currentModulePath to the async function's defining
-        // module for the duration of the resume so that import() and
-        // import.meta inside the body see the right referrer.
-        $previousModulePath = $this->currentModulePath;
-        if ($modulePath !== null) {
-            $this->currentModulePath = $modulePath;
-        }
+        $storage = \Phasis\Runtime\AsyncContextStorage::active();
+        $previousContext = $storage->snapshot();
         try {
-            if ($start) {
-                $suspended = $fiber->start();
-            } elseif ($resumeAsThrow) {
-                $suspended = $fiber->throw(
-                    new \Phasis\Exceptions\JsThrowable($throwValue ?? JsUndefined::instance()),
-                );
-            } else {
-                $suspended = $fiber->resume($resumeValue);
+            // Swap currentModulePath to the async function's defining
+            // module for the duration of the resume so that import() and
+            // import.meta inside the body see the right referrer.
+            $previousModulePath = $this->currentModulePath;
+            if ($modulePath !== null) {
+                $this->currentModulePath = $modulePath;
             }
-        } catch (\Phasis\Exceptions\JsThrowable $e) {
-            $this->currentModulePath = $previousModulePath;
-            $promise->reject($e->jsValue);
-            return;
-        } catch (\Phasis\Exceptions\RuntimeError $e) {
-            $this->currentModulePath = $previousModulePath;
-            $promise->reject($this->phpExceptionToJsValue($e));
-            return;
-        } catch (\Throwable $e) {
-            $this->currentModulePath = $previousModulePath;
-            $promise->reject($this->phpExceptionToJsValue($e));
-            return;
-        }
-        // Restore on the normal-completion path too. If the fiber
-        // suspended again we've already taken its module path off
-        // the saved trail, and the next resume will reinstate it.
-        $this->currentModulePath = $previousModulePath;
-
-        if ($fiber->isTerminated()) {
-            $returnValue = $fiber->getReturn();
-            if (!$returnValue instanceof JsValue) {
-                $returnValue = JsUndefined::instance();
+            try {
+                if ($start) {
+                    $suspended = $fiber->start();
+                } elseif ($resumeAsThrow) {
+                    $suspended = $fiber->throw(
+                        new \Phasis\Exceptions\JsThrowable($throwValue ?? JsUndefined::instance()),
+                    );
+                } else {
+                    $suspended = $fiber->resume($resumeValue);
+                }
+            } catch (\Phasis\Exceptions\JsThrowable $e) {
+                $this->currentModulePath = $previousModulePath;
+                $promise->reject($e->jsValue);
+                return;
+            } catch (\Phasis\Exceptions\RuntimeError $e) {
+                $this->currentModulePath = $previousModulePath;
+                $promise->reject($this->phpExceptionToJsValue($e));
+                return;
+            } catch (\Throwable $e) {
+                $this->currentModulePath = $previousModulePath;
+                $promise->reject($this->phpExceptionToJsValue($e));
+                return;
             }
-            $promise->resolve($returnValue);
-            return;
-        }
+            // Restore on the normal-completion path too. If the fiber
+            // suspended again we've already taken its module path off
+            // the saved trail, and the next resume will reinstate it.
+            $this->currentModulePath = $previousModulePath;
 
-        if ($suspended instanceof \Phasis\Value\AwaitSuspension) {
-            // Per spec Await(value): synchronously do PromiseResolve and
-            // PerformPromiseThen, then suspend. The .then path itself queues
-            // the resumption as a microtask, so we attach handlers
-            // synchronously here. Wrapping in scheduleCallback would add
-            // an extra tick that breaks await/microtask interleaving.
-            $this->settleAwaitedAndResume($fiber, $promise, $suspended->value, $modulePath);
-            return;
-        }
+            if ($fiber->isTerminated()) {
+                $returnValue = $fiber->getReturn();
+                if (!$returnValue instanceof JsValue) {
+                    $returnValue = JsUndefined::instance();
+                }
+                $promise->resolve($returnValue);
+                return;
+            }
 
-        // Unknown suspension shape: treat as resolved with undefined.
-        $promise->resolve(JsUndefined::instance());
+            if ($suspended instanceof \Phasis\Value\AwaitSuspension) {
+                // Per spec Await(value): synchronously do PromiseResolve and
+                // PerformPromiseThen, then suspend. The .then path itself queues
+                // the resumption as a microtask, so we attach handlers
+                // synchronously here. Wrapping in scheduleCallback would add
+                // an extra tick that breaks await/microtask interleaving.
+                $this->settleAwaitedAndResume($fiber, $promise, $suspended->value, $modulePath);
+                return;
+            }
+
+            // Unknown suspension shape: treat as resolved with undefined.
+            $promise->resolve(JsUndefined::instance());
+        } finally {
+            // A suspended Fiber can still be inside AsyncLocalStorage.run.
+            // Capture its continuation first, then restore the caller's map.
+            $storage->restore($previousContext);
+        }
     }
 
     /**
@@ -5342,7 +5349,7 @@ trait ExpressionEvaluation
         array $args,
         ?Environment $prebuiltEnv = null,
     ): JsValue {
-        $this->callStack->push($fn->getName(), 0);
+        $this->callStack->push($fn->getName(), 0, $fn);
 
         try {
             // Use pre-built environment if provided (parameters already bound).
@@ -5371,11 +5378,13 @@ trait ExpressionEvaluation
 
             if ($hasDefaultParams && $body instanceof BlockStatement) {
                 $bodyEnv = $fnEnv->createChild();
+                $this->forceHoistVarNames($body->body, $bodyEnv);
                 foreach ($params as $p) {
                     $this->copyParamBindings($p, $fnEnv, $bodyEnv);
                 }
-                $bodyEnv->defineVar('arguments', $fnEnv->get('arguments'));
-                $this->forceHoistVarNames($body->body, $bodyEnv);
+                if ($bodyEnv->hasOwnBinding('arguments')) {
+                    $bodyEnv->defineVar('arguments', $fnEnv->get('arguments'));
+                }
                 $this->hoistDeclarations($body->body, $bodyEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $completion = $this->executeDisposableBody($body->body, $bodyEnv);
@@ -5855,22 +5864,11 @@ trait ExpressionEvaluation
     /**
      * Slow-path member read used by the bytecode VM when the receiver
      * is a primitive (string / number / boolean / bigint / symbol) or
-     * a Symbol-wrapper object: just synthesise a MemberExpression
-     * dispatch by calling the existing tree-walker helper rather than
-     * duplicating the auto-box / prototype-walk logic.
+     * a Symbol-wrapper object. Reuse the interpreter's boxing and
+     * prototype lookup while preserving the primitive receiver.
      */
     public function vmLookupPrimitiveMember(JsValue $obj, string $name): JsValue
     {
-        $synth = new MemberExpression(
-            location: new \Phasis\Lexer\SourceLocation(0, 0, 0),
-            object: new ThisExpression(new \Phasis\Lexer\SourceLocation(0, 0, 0)),
-            property: new Identifier(new \Phasis\Lexer\SourceLocation(0, 0, 0), $name),
-            computed: false,
-            optional: false,
-        );
-        // Re-use evalMemberExpression's full path by stashing $obj as
-        // the value of `this` for a one-shot scope. Cheaper to inline
-        // the relevant branches here:
         if ($obj instanceof JsString) {
             if ($name === 'length') {
                 return JsNumber::of((float) $obj->length());
@@ -5885,7 +5883,8 @@ trait ExpressionEvaluation
                 }
                 return JsUndefined::instance();
             }
-            $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+            $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+            $proto = $realmInterpreter->cachedStringPrototype ??= $realmInterpreter->resolveCachedPrototype('__StringPrototype__');
             if ($proto instanceof JsObject) {
                 $val = $proto->getWithValueReceiver($name, $obj);
                 if (!$val instanceof JsUndefined) {
@@ -5909,6 +5908,38 @@ trait ExpressionEvaluation
         // the auto-box helper that the tree-walker uses.
         $boxed = TypeConversion::toObject($obj);
         return $this->getPropertyWithPrimitiveReceiver($boxed, $name, false, null, $obj);
+    }
+
+    /** Check a pure inlined predicate before entering a body that cannot change call depth. */
+    public function hasPureCallCapacity(int $frames): bool
+    {
+        return $this->callStack->hasCapacity($frames);
+    }
+
+    /** Inspect an already realized primitive method without getters or cache initialization. */
+    public function hasCachedStringIntrinsic(string $name, string $kind): bool
+    {
+        $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+        $prototype = $realmInterpreter->cachedStringPrototype;
+        if (
+            $prototype === null || get_class($prototype) !== JsObject::class
+            || get_class($prototype->properties) !== \Phasis\Object\PropertyMap::class
+        ) {
+            return false;
+        }
+        $value = $prototype->properties->dataSlots[$name] ?? null;
+        if ($value === null) {
+            $descriptor = $prototype->properties->descriptors[$name] ?? null;
+            if (
+                $descriptor === null || get_class($descriptor) !== PropertyDescriptor::class
+                || !$descriptor->isDataDescriptor()
+            ) {
+                return false;
+            }
+            $value = $descriptor->value;
+        }
+        return $value instanceof JsFunction && get_class($value) === JsFunction::class
+            && $value->builtinKind === $kind && $value->getNativeCallable() !== null;
     }
 
     /**
@@ -6069,15 +6100,10 @@ trait ExpressionEvaluation
      */
     public function vmNewObject(): JsObject
     {
-        if ($this->cachedObjectPrototype === null) {
-            if ($this->globalEnv->has('__ObjectPrototype__')) {
-                $p = $this->globalEnv->get('__ObjectPrototype__');
-                if ($p instanceof JsObject) {
-                    $this->cachedObjectPrototype = $p;
-                }
-            }
-        }
-        return new JsObject($this->cachedObjectPrototype);
+        $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+        return new JsObject(
+            $realmInterpreter->cachedObjectPrototype ??= $realmInterpreter->resolveCachedPrototype('__ObjectPrototype__'),
+        );
     }
 
     /**
@@ -6089,13 +6115,17 @@ trait ExpressionEvaluation
             return $callee->construct($args, $callee);
         }
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
-            throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
+            throw new TypeError(($callee instanceof JsObject ? 'value' : TypeConversion::toString($callee)) . ' is not a constructor');
         }
         // Mirror evalNewExpression's full setup so class field
         // initializers, derived-constructor checks, and the
         // [[NewTarget]] cleanup all match the tree-walker exactly.
         $proto = $callee->get('prototype');
-        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        if (!$proto instanceof JsObject) {
+            $realm = AbstractOperations::getFunctionRealm($callee);
+            $proto = $realm === null ? null : AbstractOperations::realmIntrinsicPrototype($realm->getGlobalEnv(), 'Object');
+        }
+        $newObj = new JsObject($proto);
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
             \Phasis\Object\PropertyDescriptor::data($callee, false, false, false),
@@ -6145,6 +6175,15 @@ trait ExpressionEvaluation
         }
         $name = $resolved instanceof JsString ? $resolved->value : TypeConversion::toString($resolved);
         return $this->vmLookupPrimitiveMember($obj, $name);
+    }
+
+    private function vmOwnsFunctionHoists(JsFunction $fn): bool
+    {
+        // A known bytecode body creates its own top-level functions before
+        // executing statements. Keep var and lexical setup, but avoid
+        // creating a second set of closures that the VM immediately replaces.
+        return $fn->compiled !== null && !$fn->compileFailed && $fn->phpCompileFailed
+            && $this->budget === null && !$fn->getClosure()->isUnderWithScope();
     }
 
     /**
@@ -6248,8 +6287,8 @@ trait ExpressionEvaluation
         // Pool a Frame per active call depth: at depth N, reuse
         // framePool[N] if it exists, else allocate one and stash it.
         // Reset clears non-param slots only; param slots are about
-        // to be overwritten by the param-binding loop. Stack is left
-        // in place since sp = 0 makes prior entries unreachable.
+        // to be overwritten by the param-binding loop. Released frames
+        // retain their slot layout but no values from completed calls.
         $depth = $this->framePoolDepth;
         if ($depth < count($this->framePool)) {
             $frame = $this->framePool[$depth];
@@ -6269,7 +6308,10 @@ trait ExpressionEvaluation
         // into those slots without going through env->defineVar.
         $argCount = count($args);
         for ($i = 0; $i < $paramCount; $i++) {
-            $frame->locals[$paramSlots[$i]] = $i < $argCount ? $args[$i] : $undef;
+            $slot = $paramSlots[$i];
+            $frame->locals[$slot] = $cf->parametersFromEnvironment
+                ? $fnEnv->get($cf->localNames[$slot])
+                : ($i < $argCount ? $args[$i] : $undef);
         }
         if ($this->vm === null) {
             $this->vm = new \Phasis\Bytecode\VM($this);
@@ -6277,7 +6319,9 @@ trait ExpressionEvaluation
         try {
             return $this->vm->execute($cf, $frame);
         } finally {
-            $this->framePoolDepth = $depth;
+            while ($this->framePoolDepth > $depth) {
+                $this->framePool[--$this->framePoolDepth]->release($undef);
+            }
         }
     }
 
@@ -6478,6 +6522,15 @@ trait ExpressionEvaluation
 
     private function nodeReferencesArguments(Node $node): bool
     {
+        $cache = $this->argumentsUsage ??= new \WeakMap();
+        if (isset($cache[$node])) {
+            return $cache[$node];
+        }
+        return $cache[$node] = $this->scanNodeReferencesArguments($node);
+    }
+
+    private function scanNodeReferencesArguments(Node $node): bool
+    {
         if ($node instanceof Identifier) {
             // Direct eval can introspect arguments, so any `eval` reference
             // is treated as a use. Identifier `arguments` is the obvious case.
@@ -6664,7 +6717,9 @@ trait ExpressionEvaluation
     private function copyParamBindings(Node $param, Environment $source, Environment $target): void
     {
         if ($param instanceof Identifier) {
-            $target->defineVar($param->name, $source->get($param->name));
+            if ($target->hasOwnBinding($param->name)) {
+                $target->defineVar($param->name, $source->get($param->name));
+            }
         } elseif ($param instanceof AssignmentPattern) {
             $this->copyParamBindings($param->left, $source, $target);
         } elseif ($param instanceof ArrayPattern) {
@@ -6749,7 +6804,7 @@ trait ExpressionEvaluation
                     $done = true; // rest consumes remaining elements
                     break;
                 }
-                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done, $element !== null);
                 if ($element === null) {
                     // Elision: advance iterator but discard value.
                     continue;
@@ -7004,7 +7059,8 @@ trait ExpressionEvaluation
             // primitive string as their `this` (per spec OrdinaryGet for a
             // primitive receiver). Method-call this-binding is handled by
             // the CallExpression evaluator, not here.
-            $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+            $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+            $proto = $realmInterpreter->cachedStringPrototype ??= $realmInterpreter->resolveCachedPrototype('__StringPrototype__');
             if ($proto instanceof JsObject) {
                 $val = $proto->getWithValueReceiver($key, $obj);
                 if (!$val instanceof JsUndefined) {
@@ -7174,6 +7230,19 @@ trait ExpressionEvaluation
         return JsFunction::fromCallable('[Symbol.iterator]', $iteratorFactory);
     }
 
+    /** Consume a compiled array spread with the interpreter's iterator protocol. */
+    public function vmArraySpread(JsArray $array, JsValue $iterable): void
+    {
+        $items = [];
+        $this->spreadInto($iterable, $items);
+        foreach ($items as $item) {
+            $array->defineOwnProperty(
+                (string) $array->getLength(),
+                PropertyDescriptor::data($item, true, true, true),
+            );
+        }
+    }
+
     private function evalArrayExpression(ArrayExpression $node, Environment $env): JsValue
     {
         $arr = new JsArray();
@@ -7235,12 +7304,7 @@ trait ExpressionEvaluation
 
     private function evalObjectExpression(ObjectExpression $node, Environment $env): JsValue
     {
-        // Cache the global Object.prototype lookup. The binding is in
-        // globalEnv and doesn't change across an Engine instance, so
-        // looking it up via env-walk on every literal is wasted work.
-        $obj = new JsObject(
-            $this->cachedObjectPrototype ??= $this->resolveCachedPrototype('__ObjectPrototype__'),
-        );
+        $obj = $this->vmNewObject();
 
         foreach ($node->properties as $prop) {
             if ($prop instanceof SpreadElement) {

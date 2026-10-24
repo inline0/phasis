@@ -1,0 +1,30 @@
+{
+  "node": "v26.12.0",
+  "sources": {
+    "path": {
+      "url": "https://raw.githubusercontent.com/nodejs/node/v26.12.0/lib/path.js",
+      "sha256": "f05ab2a1f33102880bb8c5052cb0e634a001112883da897f3498492bef67f3f6"
+    },
+    "querystring": {
+      "url": "https://raw.githubusercontent.com/nodejs/node/v26.12.0/lib/querystring.js",
+      "sha256": "35c87b8230aef78ab162579a6820e78a4de8266a2983e36272ad3b248a357441"
+    },
+    "url": {
+      "url": "https://raw.githubusercontent.com/nodejs/node/v26.12.0/lib/url.js",
+      "sha256": "9037c1cae0efe6af02ea18da109ff0c406496cccaf9df4c3308ef057d009150f"
+    },
+    "internal/querystring": {
+      "url": "https://raw.githubusercontent.com/nodejs/node/v26.12.0/lib/internal/querystring.js",
+      "sha256": "92d0cbd561d7cce93936b083d56d2a41063d177f3aa6772ae2c1871f160163d1"
+    },
+    "internal/constants": {
+      "url": "https://raw.githubusercontent.com/nodejs/node/v26.12.0/lib/internal/constants.js",
+      "sha256": "4548f10f15035b415bfa69a158e7bcf7e320355625d744d7318715c9acc21212"
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/nodejs/node/v26.12.0/LICENSE",
+      "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c"
+    }
+  },
+  "npmLockSha256": "893966b143afc47f0a9a3b9734ea594747b3e786c38f320291e4a47de3be803b"
+}

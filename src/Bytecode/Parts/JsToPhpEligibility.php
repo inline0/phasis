@@ -76,7 +76,36 @@ trait JsToPhpEligibility
         if (!$body instanceof BlockStatement) {
             return false;
         }
-        return self::blockHasUnsafeLexical($body->body);
+        return self::blockHasUnsafeLexical($body->body) || self::blockBindingEscapes($body, $body);
+    }
+
+    private static function blockBindingEscapes(Node $node, BlockStatement $body): bool
+    {
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        if ($node instanceof BlockStatement && $node !== $body) {
+            foreach ($node->body as $statement) {
+                if (
+                    $statement instanceof VariableDeclaration && $statement->kind !== 'var'
+                    && self::readsAnyName($body, self::collectDeclNames($statement), $node)
+                ) {
+                    return true;
+                }
+            }
+        }
+        foreach (get_object_vars($node) as $value) {
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if ($child instanceof Node && self::blockBindingEscapes($child, $body)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -178,8 +207,11 @@ trait JsToPhpEligibility
      *
      * @param list<string> $names
      */
-    private static function readsAnyName(Node $node, array $names): bool
+    private static function readsAnyName(Node $node, array $names, ?Node $excludedScope = null): bool
     {
+        if ($node === $excludedScope) {
+            return false;
+        }
         if ($node instanceof Identifier) {
             return in_array($node->name, $names, true);
         }
@@ -191,30 +223,30 @@ trait JsToPhpEligibility
             return false;
         }
         if ($node instanceof \Phasis\Ast\Expression\MemberExpression) {
-            if (self::readsAnyName($node->object, $names)) {
+            if (self::readsAnyName($node->object, $names, $excludedScope)) {
                 return true;
             }
-            if ($node->computed && self::readsAnyName($node->property, $names)) {
+            if ($node->computed && self::readsAnyName($node->property, $names, $excludedScope)) {
                 return true;
             }
             return false;
         }
         if ($node instanceof \Phasis\Ast\Expression\Property) {
-            if ($node->computed && self::readsAnyName($node->key, $names)) {
+            if ($node->computed && self::readsAnyName($node->key, $names, $excludedScope)) {
                 return true;
             }
-            return self::readsAnyName($node->value, $names);
+            return self::readsAnyName($node->value, $names, $excludedScope);
         }
         foreach ((array) $node as $value) {
             if ($value instanceof Node) {
-                if (self::readsAnyName($value, $names)) {
+                if (self::readsAnyName($value, $names, $excludedScope)) {
                     return true;
                 }
                 continue;
             }
             if (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof Node && self::readsAnyName($item, $names)) {
+                    if ($item instanceof Node && self::readsAnyName($item, $names, $excludedScope)) {
                         return true;
                     }
                 }
@@ -407,6 +439,33 @@ trait JsToPhpEligibility
         return false;
     }
 
+    /** Ordinary calls can expose caller/arguments through any transitive callback or getter. */
+    private static function bodyHasUntrackedCall(Node $node): bool
+    {
+        if ($node instanceof CallExpression || $node instanceof \Phasis\Ast\Expression\NewExpression) {
+            return true;
+        }
+        if (
+            $node instanceof FunctionDeclaration || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node && self::bodyHasUntrackedCall($value)) {
+                return true;
+            }
+            if (is_array($value)) {
+                foreach ($value as $child) {
+                    if ($child instanceof Node && self::bodyHasUntrackedCall($child)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private static function exprHasTailCall(Node $node): bool
     {
         if ($node instanceof CallExpression) {
@@ -427,16 +486,17 @@ trait JsToPhpEligibility
         return false;
     }
 
-    private static function bodyReferencesPerCallBindings(Node $node): bool
+    private static function bodyReferencesPerCallBindings(Node $node, bool $lexicalThis): bool
     {
         if ($node instanceof Identifier) {
             // 'super' / 'arguments' / 'new.target' — all per-call.
             return $node->name === 'arguments' || $node->name === 'super';
         }
-        // ThisExpression is allowed: the compiled closure now accepts
-        // an explicit `$thisValue` parameter that emit binds to PHP
-        // `$thisValue`, so `this` reads in the body resolve to it
-        // directly rather than walking the closure env.
+        // The emitted receiver is the call's receiver. Lexical this needs
+        // the defining activation, including when a nested arrow captures it.
+        if ($node instanceof \Phasis\Ast\Expression\ThisExpression) {
+            return $lexicalThis;
+        }
         if ($node instanceof \Phasis\Ast\Expression\MetaProperty) {
             return true;
         }
@@ -449,6 +509,7 @@ trait JsToPhpEligibility
         ) {
             return false;
         }
+        $lexicalThis = $lexicalThis || $node instanceof \Phasis\Ast\Expression\ArrowFunction;
         // ArrowFunction bodies CAN see the outer arguments / this,
         // but we already bail on outer-local capture in
         // checkNestedCaptures; arguments isn't in declaredLocals so
@@ -456,14 +517,14 @@ trait JsToPhpEligibility
         // bodies too.
         foreach ((array) $node as $value) {
             if ($value instanceof Node) {
-                if (self::bodyReferencesPerCallBindings($value)) {
+                if (self::bodyReferencesPerCallBindings($value, $lexicalThis)) {
                     return true;
                 }
                 continue;
             }
             if (is_array($value)) {
                 foreach ($value as $item) {
-                    if ($item instanceof Node && self::bodyReferencesPerCallBindings($item)) {
+                    if ($item instanceof Node && self::bodyReferencesPerCallBindings($item, $lexicalThis)) {
                         return true;
                     }
                 }

@@ -85,12 +85,8 @@ class AbortControllerConstructor
     public const SLOT_IS_CONTROLLER = '[[IsAbortController]]';
     public const SLOT_LINKED_SIGNAL = '[[LinkedSignal]]';
 
-    private static ?Environment $env = null;
-
     public static function install(Environment $env): void
     {
-        self::$env = $env;
-
         // Locate EventTarget.prototype for the prototype-chain wire-in.
         // EventTargetConstructor::install() runs before us in Engine.php,
         // but be defensive against rearrangement.
@@ -106,6 +102,9 @@ class AbortControllerConstructor
         }
 
         $signalProto = self::buildSignalPrototype($eventTargetProto);
+        $env->get('DOMException');
+        $signalProto->setInternalProperty('[[AbortEventConstructor]]', $env->getIntrinsic('Event'));
+        $signalProto->setInternalProperty('[[AbortExceptionConstructor]]', $env->getIntrinsic('DOMException'));
 
         $signalCtor = self::buildSignalConstructor($signalProto, $eventTargetProto);
         $controllerCtor = self::buildControllerConstructor($signalProto);
@@ -372,7 +371,7 @@ class AbortControllerConstructor
                 if ($self->getInternalProperty(self::SLOT_ABORTED) === true) {
                     $reason = $self->getInternalProperty(self::SLOT_REASON);
                     if (!$reason instanceof JsValue) {
-                        $reason = self::defaultAbortReason();
+                        $reason = self::defaultAbortReason($self);
                     }
                     // Throw the JS value directly. Phasis's exception
                     // bridge will surface this as a JS-level throw.
@@ -506,6 +505,8 @@ class AbortControllerConstructor
         $signal->setInternalProperty(self::SLOT_SOURCES, []);
         $signal->setInternalProperty(self::SLOT_DEPENDENTS, []);
         $signal->setInternalProperty(self::SLOT_TIMEOUT_DEADLINE, null);
+        $signal->setInternalProperty('[[AbortEventConstructor]]', $proto->getInternalProperty('[[AbortEventConstructor]]'));
+        $signal->setInternalProperty('[[AbortExceptionConstructor]]', $proto->getInternalProperty('[[AbortExceptionConstructor]]'));
         // Brand as EventTarget so inherited addEventListener/dispatchEvent
         // accept this receiver. EventTargetConstructor::brandAsEventTarget
         // initialises [[EventListeners]] alongside the brand.
@@ -527,7 +528,7 @@ class AbortControllerConstructor
             return;
         }
         if ($reason instanceof JsUndefined) {
-            $reason = self::defaultAbortReason();
+            $reason = self::defaultAbortReason($signal);
         }
         $signal->setInternalProperty(self::SLOT_ABORTED, true);
         $signal->setInternalProperty(self::SLOT_REASON, $reason);
@@ -547,11 +548,7 @@ class AbortControllerConstructor
             $algo();
         }
 
-        // Build and dispatch an abort event. We call the engine's Event
-        // constructor through the env so subclassing / Event.prototype
-        // mutations are respected, with a fallback to a hand-built event
-        // object if Event is somehow not installed yet.
-        $event = self::buildAbortEvent();
+        $event = self::buildAbortEvent($signal);
         // Per spec the user-agent-fired abort event is a trusted event.
         $event->setInternalProperty('[[IsTrusted]]', true);
         $dispatch = $signal->get('dispatchEvent');
@@ -568,21 +565,15 @@ class AbortControllerConstructor
     }
 
     /**
-     * Construct an Event("abort") via the public Event constructor so
-     * subclass / prototype mutations are honoured. Falls back to a
-     * synthetic event object branded with [[IsEvent]] for environments
-     * where Event somehow is not yet installed.
+     * Construct the abort event using the signal's realm-owned intrinsic.
      */
-    private static function buildAbortEvent(): JsObject
+    private static function buildAbortEvent(JsObject $signal): JsObject
     {
-        $env = self::$env;
-        if ($env !== null && $env->has('Event')) {
-            $eventCtor = $env->get('Event');
-            if ($eventCtor instanceof JsFunction) {
-                $result = $eventCtor->construct([new JsString('abort')]);
-                if ($result instanceof JsObject) {
-                    return $result;
-                }
+        $eventCtor = $signal->getInternalProperty('[[AbortEventConstructor]]');
+        if ($eventCtor instanceof JsFunction) {
+            $result = $eventCtor->construct([new JsString('abort')]);
+            if ($result instanceof JsObject) {
+                return $result;
             }
         }
         // Fallback: synthetic event with the slots dispatchEvent needs.
@@ -621,6 +612,7 @@ class AbortControllerConstructor
             return;
         }
         $reason = self::makeDomException(
+            $signal,
             'signal timed out',
             'TimeoutError',
         );
@@ -667,19 +659,23 @@ class AbortControllerConstructor
      * plain Error-shaped object so reads of `.name` / `.message` still
      * give useful output.
      */
-    private static function defaultAbortReason(): JsObject
+    private static function defaultAbortReason(JsObject $signal): JsObject
     {
         return self::makeDomException(
+            $signal,
             'signal is aborted without reason',
             'AbortError',
         );
     }
 
-    private static function makeDomException(string $message, string $name): JsObject
+    private static function makeDomException(JsObject $signal, string $message, string $name): JsObject
     {
-        $env = self::$env;
-        if ($env !== null) {
-            return DomExceptionConstructor::create($env, $message, $name);
+        $constructor = $signal->getInternalProperty('[[AbortExceptionConstructor]]');
+        if ($constructor instanceof JsFunction) {
+            $exception = $constructor->construct([new JsString($message), new JsString($name)]);
+            if ($exception instanceof JsObject) {
+                return $exception;
+            }
         }
         // Last-ditch fallback shape — should never run in practice.
         $obj = new JsObject();

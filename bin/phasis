@@ -19,10 +19,12 @@ declare(strict_types=1);
 
 use Phasis\Ast\Serializer;
 use Phasis\Engine;
+use Phasis\Node\NodeCommand;
 use Phasis\Parser\Parser;
 
 $args = array_slice($argv, 1);
-$opts = getopt('e:', ['ast', 'repl', 'render:', 'props:']);
+$opts = getopt('e:', ['ast', 'repl', 'render:', 'props:', 'node'], $restIndex);
+$nodeMode = isset($opts['node']);
 
 if (isset($opts['render'])) {
     $file = (string) $opts['render'];
@@ -50,6 +52,8 @@ if (isset($opts['e'])) {
 
     if (isset($opts['ast'])) {
         outputAst($source);
+    } elseif ($nodeMode) {
+        exit(NodeCommand::runSource($source, array_slice($argv, $restIndex)));
     } else {
         executeSource($source);
     }
@@ -68,10 +72,14 @@ if (in_array('--ast', $args, true)) {
 }
 
 // Default: execute a file
-$file = $args[0] ?? null;
+$file = $argv[$restIndex] ?? null;
 if ($file === null || !file_exists($file)) {
-    fwrite(STDERR, "Usage: phasis <file.js|file.mjs|file.jsx> | phasis -e '<expr>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']\n");
+    fwrite(STDERR, "Usage: phasis [--node] <file.js|file.mjs|file.jsx> [args] | phasis [--node] -e '<expr>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']\n");
     exit(1);
+}
+
+if ($nodeMode) {
+    exit(NodeCommand::runFile($file, array_slice($argv, $restIndex + 1)));
 }
 
 $jsx = new \Phasis\Parser\Jsx\JsxOptions();
