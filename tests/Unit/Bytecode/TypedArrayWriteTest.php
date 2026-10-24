@@ -6,6 +6,10 @@ namespace Phasis\Tests\Unit\Bytecode;
 
 use Phasis\Engine;
 use Phasis\Value\JsFunction;
+use Phasis\Value\JsArrayBuffer;
+use Phasis\Value\JsNumber;
+use Phasis\Value\JsTypedArray;
+use Phasis\Value\JsValue;
 use PHPUnit\Framework\TestCase;
 
 final class TypedArrayWriteTest extends TestCase
@@ -50,5 +54,28 @@ try { strict(immutable, 0, value); } catch (error) { result.push(error.name); }
 result.push(coercions, immutable[0]);
 result;
 JS));
+    }
+
+    public function testNumericStoresRetainHostTypedArrayOverrides(): void
+    {
+        $buffer = new JsArrayBuffer(2);
+        $view = new class ('Uint8Array', $buffer, 0, 2) extends JsTypedArray {
+            public function setIndex(int $index, JsValue $value): void
+            {
+                parent::setIndex($index + 1, $value);
+            }
+        };
+        self::assertTrue($view->setIntegerIndex(0, JsNumber::of(31)));
+        self::assertSame('001f', bin2hex($buffer->getData()));
+    }
+
+    public function testPrimitiveNumericStoresStillRejectImmutableBuffers(): void
+    {
+        $buffer = new JsArrayBuffer(1);
+        $view = new JsTypedArray('Uint8Array', $buffer, 0, 1);
+        $view->setIntegerIndex(0, JsNumber::of(7));
+        $buffer->makeImmutable();
+        self::assertFalse($view->setIntegerIndex(0, JsNumber::of(31)));
+        self::assertSame('07', bin2hex($buffer->getData()));
     }
 }

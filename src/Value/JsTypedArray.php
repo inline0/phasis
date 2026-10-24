@@ -593,6 +593,18 @@ class JsTypedArray extends JsObject
         if ($this->buffer->isImmutable()) {
             return false;
         }
+        // Primitive numbers cannot run user conversion between the validity check and write.
+        if (
+            $this->typeName === 'Uint8Array' && $value instanceof JsNumber
+            && get_class($this) === self::class && get_class($this->buffer) === JsArrayBuffer::class
+        ) {
+            if ($index >= 0 && $index < $this->getLength()) {
+                $number = $value->value;
+                $integer = is_nan($number) || is_infinite($number) ? 0 : (int) $number;
+                $this->buffer->writeBytes($this->byteOffset + $index, pack('C', $integer));
+            }
+            return true;
+        }
         $coerced = $this->coerceTypedArrayValue($value);
         if ($index >= 0 && $index < $this->getLength()) {
             $this->setIndex($index, $coerced);

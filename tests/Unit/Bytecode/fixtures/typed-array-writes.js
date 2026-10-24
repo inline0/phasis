@@ -53,3 +53,21 @@ for (const store of [strictStore, sloppyStore]) {
   store(tracking, 5, {valueOf() { resizable.resize(8); return 29; }});
   typedArrayWriteResult.push(['grow', tracking.length, tracking[5]]);
 }
+for (const store of [strictStore, sloppyStore]) {
+  const buffer = new ArrayBuffer(8, {maxByteLength: 12});
+  const offset = new Uint8Array(buffer, 2, 3);
+  store(offset, 0, 257.75);
+  store(offset, 2, -257.75);
+  typedArrayWriteResult.push(['offset-numbers', store.name, Array.from(new Uint8Array(buffer))]);
+  buffer.resize(1);
+  store(offset, 0, 31);
+  typedArrayWriteResult.push(['number-oob', store.name, Array.from(new Uint8Array(buffer))]);
+  buffer.resize(12);
+  store(offset, 1, 511);
+  const tracking = new Uint8Array(buffer);
+  store(tracking, 11, -1);
+  typedArrayWriteResult.push(['number-regrown', store.name, Array.from(tracking)]);
+  structuredClone(buffer, {transfer: [buffer]});
+  store(offset, 0, 73);
+  typedArrayWriteResult.push(['number-detached', store.name, offset.length]);
+}
