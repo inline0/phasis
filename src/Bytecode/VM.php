@@ -816,10 +816,13 @@ final class VM
                             $loopCounts[$code[$pc + 1]] = 0;
                             $pc += 2;
                             break;
-                        case Op::LOOP_TICK:
+                        case Op::CHECK_BUDGET:
                             if ($this->interp->hasExecutionBudget()) {
                                 $this->interp->checkBudget();
                             }
+                            $pc++;
+                            break;
+                        case Op::LOOP_TICK:
                             if (++$loopCounts[$code[$pc + 1]] > $this->interp->getMaxLoopIterations()) {
                                 throw new InternalError('Maximum loop iterations exceeded');
                             }

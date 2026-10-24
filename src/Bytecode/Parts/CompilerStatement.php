@@ -470,6 +470,7 @@ trait CompilerStatement
         $loopId = $this->loopCount++;
         $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
+        $this->emit(Op::CHECK_BUDGET);
         // Test. Try the fused JUMP_IF_LOCAL_GE_CONST shortcut first
         // for the canonical `for (let i = 0; i < N; i++)` pattern.
         $jmpExit = -1;
@@ -532,9 +533,10 @@ trait CompilerStatement
         $loopId = $this->loopCount++;
         $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
-        $this->emit(Op::LOOP_TICK, $loopId);
+        $this->emit(Op::CHECK_BUDGET);
         $this->compileExpression($node->test);
         $jmpExit = $this->emitJump(Op::JUMP_IF_FALSE);
+        $this->emit(Op::LOOP_TICK, $loopId);
         $this->loopStack[] = ['continue' => -1, 'breaks' => [], 'continues' => []];
         $this->compileStatement($node->body);
         $continueTarget = count($this->code);
@@ -559,6 +561,7 @@ trait CompilerStatement
         $loopId = $this->loopCount++;
         $this->emit(Op::LOOP_INIT, $loopId);
         $loopStart = count($this->code);
+        $this->emit(Op::CHECK_BUDGET);
         $this->emit(Op::LOOP_TICK, $loopId);
         $this->loopStack[] = ['continue' => -1, 'breaks' => [], 'continues' => []];
         $this->compileStatement($node->body);

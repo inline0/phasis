@@ -101,9 +101,13 @@ trait JsToPhpEmitStatement
         }
     }
 
-    private function emitLoopTick(string $counter): void
+    private function emitLoopBudgetCheck(): void
     {
         $this->emitLine('if ($interp->hasExecutionBudget()) { $interp->checkBudget(); }');
+    }
+
+    private function emitLoopTick(string $counter): void
+    {
         $this->emitLine('if (++' . $counter . ' > $interp->getMaxLoopIterations()) {');
         $this->indentLevel++;
         $this->emitLine('throw new \\Phasis\\Exceptions\\InternalError("Maximum loop iterations exceeded");');
@@ -315,37 +319,23 @@ trait JsToPhpEmitStatement
                 $updatePending = $this->pendingStatements;
             }
             $this->pendingStatements = $savedPending;
-            if ($testPending === [] && $updatePending === []) {
-                // Cheap path: clean test + update, emit a plain `while`.
-                $this->emitLine('while (' . $test . ') {');
-                $this->indentLevel++;
-                $this->emitLoopTick($loopCounter);
-                $this->emitStatement($node->body);
-                if ($update !== null) {
-                    $this->emitLine($update . ';');
-                }
-                $this->indentLevel--;
-                $this->emitLine('}');
-            } else {
-                // Rewrite shape: while (true) { pending; if (!test)
-                // break; body; update_pending; update; }.
-                $this->emitLine('while (true) {');
-                $this->indentLevel++;
-                foreach ($testPending as $line) {
+            $this->emitLine('while (true) {');
+            $this->indentLevel++;
+            $this->emitLoopBudgetCheck();
+            foreach ($testPending as $line) {
+                $this->emitLine($line);
+            }
+            $this->emitLine('if (!(' . $test . ')) { break; }');
+            $this->emitLoopTick($loopCounter);
+            $this->emitStatement($node->body);
+            if ($update !== null) {
+                foreach ($updatePending as $line) {
                     $this->emitLine($line);
                 }
-                $this->emitLine('if (!(' . $test . ')) { break; }');
-                $this->emitLoopTick($loopCounter);
-                $this->emitStatement($node->body);
-                if ($update !== null) {
-                    foreach ($updatePending as $line) {
-                        $this->emitLine($line);
-                    }
-                    $this->emitLine($update . ';');
-                }
-                $this->indentLevel--;
-                $this->emitLine('}');
+                $this->emitLine($update . ';');
             }
+            $this->indentLevel--;
+            $this->emitLine('}');
             return;
         }
         if ($node instanceof WhileStatement) {
@@ -356,15 +346,16 @@ trait JsToPhpEmitStatement
             $test = $this->emitExpression($node->test);
             $testPending = $this->pendingStatements;
             $this->pendingStatements = $savedPending;
-            // The interpreter checks the checkpoint before every condition,
-            // including its lifted calls and its final false evaluation.
+            // A final false condition still checks the deadline, but consumes
+            // no body iteration from the configured loop limit.
             $this->emitLine('while (true) {');
             $this->indentLevel++;
-            $this->emitLoopTick($loopCounter);
+            $this->emitLoopBudgetCheck();
             foreach ($testPending as $line) {
                 $this->emitLine($line);
             }
             $this->emitLine('if (!(' . $test . ')) { break; }');
+            $this->emitLoopTick($loopCounter);
             $this->emitStatement($node->body);
             $this->indentLevel--;
             $this->emitLine('}');
@@ -380,6 +371,7 @@ trait JsToPhpEmitStatement
             $this->pendingStatements = $savedPending;
             $this->emitLine('do {');
             $this->indentLevel++;
+            $this->emitLoopBudgetCheck();
             $this->emitLoopTick($loopCounter);
             $this->emitStatement($node->body);
             if ($testPending !== []) {

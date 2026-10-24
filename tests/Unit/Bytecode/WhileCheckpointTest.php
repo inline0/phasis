@@ -8,6 +8,7 @@ use Phasis\Engine;
 use Phasis\Exceptions\BudgetExceeded;
 use Phasis\Exceptions\InternalError;
 use Phasis\Value\JsFunction;
+use Phasis\Value\JsNumber;
 use Phasis\Value\JsUndefined;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -25,7 +26,7 @@ final class WhileCheckpointTest extends TestCase
     }
 
     #[DataProvider('loopModes')]
-    public function testWhileLimitPrecedesTheFinalFalseCondition(bool $ast, bool $continue): void
+    public function testWhileLimitCountsOnlySuccessfulIterations(bool $ast, bool $continue): void
     {
         $engine = new Engine();
         if ($ast) {
@@ -37,7 +38,7 @@ final class WhileCheckpointTest extends TestCase
         self::assertInstanceOf(JsFunction::class, $function);
         self::assertSame(!$ast, $function->compiled !== null);
         $engine->setLimit('maxLoopIterations', 1);
-        self::assertSame(['Maximum loop iterations exceeded', 1], $engine->eval(<<<'JS'
+        self::assertSame([1, 2], $engine->eval(<<<'JS'
 conditions = 0;
 var result;
 try { result = probe(); } catch (error) { result = error.message; }
@@ -50,7 +51,7 @@ JS));
     public static function budgetModes(): iterable
     {
         foreach ([false, true] as $ast) {
-            foreach (['while', 'do-while'] as $loop) {
+            foreach (['while', 'do-while', 'for'] as $loop) {
                 foreach ([1, 1000] as $limit) {
                     yield ($ast ? 'ast-' : 'bytecode-') . $loop . '-' . $limit => [$ast, $loop, $limit];
                 }
@@ -72,12 +73,17 @@ JS));
             }
         });
         $body = '{ n++; iterations++; expireBudget(); }';
-        $statement = $loop === 'while' ? 'while (n < 2) ' . $body : 'do ' . $body . ' while (n < 2);';
-        $engine->eval('var iterations = 0; function probe() { let n = 0; ' . $statement . ' return n; } probe();');
+        $condition = '(conditions++, n < 2)';
+        $statement = match ($loop) {
+            'while' => 'while (' . $condition . ') ' . $body,
+            'do-while' => 'do ' . $body . ' while (' . $condition . ');',
+            default => 'for (; ' . $condition . ';) ' . $body,
+        };
+        $engine->eval('var iterations = 0, conditions = 0; function probe() { let n = 0; ' . $statement . ' return n; } probe();');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
         self::assertSame(!$ast, $function->compiled !== null);
-        $engine->eval('iterations = 0');
+        $engine->eval('iterations = 0; conditions = 0;');
         $engine->setLimit('maxLoopIterations', $limit);
         $expire = true;
         $this->expectException(BudgetExceeded::class);
@@ -85,6 +91,7 @@ JS));
             $engine->eval('probe()');
         } finally {
             self::assertSame(1.0, $engine->getGlobalEnv()->get('iterations')->value);
+            self::assertSame(1.0, $engine->getGlobalEnv()->get('conditions')->value);
             self::assertSame(0, $engine->getInterpreter()->getCallStack()->depth());
         }
     }
@@ -97,7 +104,7 @@ JS));
     }
 
     #[DataProvider('phpModes')]
-    public function testGeneratedPhpChecksBeforeConditionPreludes(bool $continue): void
+    public function testGeneratedPhpCountsOnlySuccessfulIterations(bool $continue): void
     {
         $engine = new Engine();
         $body = 'n++;' . ($continue ? 'continue;' : '');
@@ -111,12 +118,52 @@ JS);
         self::assertInstanceOf(\Closure::class, $function->phpCompiled);
         $engine->eval('conditions = 0');
         $engine->setLimit('maxLoopIterations', 1);
+        self::assertSame(1.0, ($function->phpCompiled)([], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), [])->value);
+        self::assertSame(2.0, $engine->getGlobalEnv()->get('conditions')->value);
+        $engine->eval('conditions = 0');
+        $engine->setLimit('maxLoopIterations', 0);
         $this->expectException(InternalError::class);
         try {
             ($function->phpCompiled)([], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), []);
         } finally {
             self::assertSame(1.0, $engine->getGlobalEnv()->get('conditions')->value);
         }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function emptyLoopTiers(): iterable
+    {
+        foreach (['ast', 'bytecode', 'php'] as $tier) {
+            yield $tier => [$tier];
+        }
+    }
+
+    #[DataProvider('emptyLoopTiers')]
+    public function testZeroLimitPermitsAnInitiallyFalseLoop(string $tier): void
+    {
+        $engine = new Engine();
+        if ($tier === 'ast') {
+            $engine->setExecutionBudget(10);
+        }
+        $engine->eval('var conditions = 0; function condition(n) { conditions++; return n; }');
+        $loop = 'while (condition(n)) { n--; }';
+        if ($tier === 'bytecode') {
+            $loop = 'try {' . $loop . '} finally {}';
+        }
+        $engine->eval('function probe(n) {' . $loop . ' return n; } probe(1);');
+        $function = $engine->getGlobalEnv()->get('probe');
+        self::assertInstanceOf(JsFunction::class, $function);
+        $engine->eval('conditions = 0');
+        $engine->setLimit('maxLoopIterations', 0);
+        if ($tier === 'php') {
+            self::assertInstanceOf(\Closure::class, $function->phpCompiled);
+            $result = ($function->phpCompiled)([JsNumber::of(0)], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), []);
+            self::assertSame(0.0, $result->value);
+        } else {
+            self::assertSame($tier === 'bytecode', $function->compiled !== null);
+            self::assertSame(0, $engine->eval('probe(0)'));
+        }
+        self::assertSame(1.0, $engine->getGlobalEnv()->get('conditions')->value);
     }
 
     public function testGeneratedPhpBudgetPrecedesTheIterationLimit(): void

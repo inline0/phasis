@@ -2334,13 +2334,12 @@ trait StatementExecution
             if ($this->budget !== null) {
                 $this->checkBudget();
             }
-            if (++$iterations > $this->maxLoopIterations) {
-                throw new InternalError('Maximum loop iterations exceeded');
-            }
-
             $test = $this->evaluate($node->test, $env);
             if (!TypeConversion::toBoolean($test)) {
                 break;
+            }
+            if (++$iterations > $this->maxLoopIterations) {
+                throw new InternalError('Maximum loop iterations exceeded');
             }
 
             $completion = $this->executeStatement($node->body, $env);
