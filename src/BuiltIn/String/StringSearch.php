@@ -93,16 +93,19 @@ trait StringSearch
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            $ascii = $this_ instanceof JsString && get_class($this_) === JsString::class
+                && isset($args[0]) && $args[0] instanceof JsString && get_class($args[0]) === JsString::class
+                && $this_->isAscii() && $args[0]->isAscii();
 
             // Per §22.1.3.9 String.prototype.indexOf: positions are UTF-16
             // code unit offsets. Convert both haystack and needle to UTF-16LE
             // byte strings and search by byte, then divide by 2. Using
             // mb_strpos with UTF-8 counts codepoints which misaligns for
             // strings that contain surrogate pairs (chars above U+FFFF).
-            $hayU16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
+            $hayU16 = $ascii ? '' : ($this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str));
             $needle = $args[0] ?? null;
-            $needleU16 = $needle instanceof JsString ? $needle->utf16LE() : JsString::utf8ToUtf16LE($search);
-            $hayLen = strlen($hayU16) / 2;
+            $needleU16 = $ascii ? '' : ($needle instanceof JsString ? $needle->utf16LE() : JsString::utf8ToUtf16LE($search));
+            $hayLen = $ascii ? strlen($str) : strlen($hayU16) / 2;
 
             $posFloat = isset($args[1])
                 ? TypeConversion::toIntegerOrInfinity($args[1])
@@ -117,6 +120,10 @@ trait StringSearch
                     return JsNumber::of((float) $hayLen);
                 }
                 return JsNumber::of(-1.0);
+            }
+            if ($ascii) {
+                $offset = strpos($str, $search, $fromIndex);
+                return JsNumber::of($offset === false ? -1.0 : (float) $offset);
             }
 
             // strpos over UTF-16LE bytes could in principle match at an

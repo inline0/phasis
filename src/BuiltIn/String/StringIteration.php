@@ -131,8 +131,9 @@ trait StringIteration
             $str = self::extractString($this_);
             // Per spec, String.prototype.slice indices are UTF-16 code unit
             // offsets, not code point offsets, so work on the UTF-16LE form.
-            $u16 = $this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str);
-            $len = (int) (strlen($u16) / 2);
+            $ascii = $this_ instanceof JsString && get_class($this_) === JsString::class && $this_->isAscii();
+            $u16 = $ascii ? '' : ($this_ instanceof JsString ? $this_->utf16LE() : JsString::utf8ToUtf16LE($str));
+            $len = $ascii ? strlen($str) : (int) (strlen($u16) / 2);
 
             // Per spec 22.1.3.22: intStart = ToIntegerOrInfinity(start).
             $startArg = $args[0] ?? JsUndefined::instance();
@@ -164,6 +165,9 @@ trait StringIteration
 
             if ($from >= $to) {
                 return new JsString('');
+            }
+            if ($ascii) {
+                return new JsString(substr($str, $from, $to - $from));
             }
 
             $sliceBytes = substr($u16, $from * 2, ($to - $from) * 2);
