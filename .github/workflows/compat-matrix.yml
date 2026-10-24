@@ -400,3 +400,26 @@ jobs:
             echo "Push failed; snapshot is in the compat-report artifact."
             exit 0
           fi
+
+      # Preserve and publish the full failure report before failing the gate.
+      # A complete run may still contain failing tests.
+      - name: Require a complete passing canonical snapshot
+        run: |
+          php <<'PHP'
+          <?php
+          $snapshot = json_decode(file_get_contents('compat.json'), true, 512, JSON_THROW_ON_ERROR);
+          $total = $snapshot['discovery']['testFileCount'] ?? null;
+          $totals = $snapshot['test262']['totals'] ?? [];
+          $passed = ($snapshot['complete'] ?? false) === true && is_int($total) && $total > 0
+              && ($snapshot['test262']['skippedFeatures'] ?? null) === [];
+          foreach (['pass', 'attempted', 'known', 'total'] as $key) {
+              $passed = $passed && ($totals[$key] ?? null) === $total;
+          }
+          foreach (['fail', 'skip', 'blocked', 'pending', 'running'] as $key) {
+              $passed = $passed && ($totals[$key] ?? null) === 0;
+          }
+          if (!$passed) {
+              fwrite(STDERR, "Canonical test262 did not pass every discovered file. See compat.json and COMPAT.md.\n");
+              exit(1);
+          }
+          PHP
