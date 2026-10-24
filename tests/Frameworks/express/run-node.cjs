@@ -8,6 +8,14 @@ const args = process.argv.slice(2);
 const selectedFile = args.find((arg) => arg.startsWith('--file='))?.slice(7);
 const selectedGrep = args.find((arg) => arg.startsWith('--grep='))?.slice(7);
 const output = args.find((arg) => arg.startsWith('--output='))?.slice(9);
+const scaleIndex = args.findIndex(arg => arg === '--timeout-scale' || arg.startsWith('--timeout-scale='));
+const rawScale = scaleIndex < 0 ? (process.env.PHASIS_FRAMEWORK_TIMEOUT_SCALE ?? '1')
+  : args[scaleIndex] === '--timeout-scale' ? args[scaleIndex + 1] : args[scaleIndex].slice(16);
+if (typeof rawScale !== 'string' || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(rawScale.trim())
+    || !Number.isFinite(Number(rawScale)) || Number(rawScale) <= 0 || Number(rawScale) > 100) {
+  throw new Error('--timeout-scale must be a finite positive number at most 100.');
+}
+const timeoutScale = Number(rawScale);
 const pinned = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 const manifest = pinned.files.filter(file => !selectedFile || file.path === selectedFile);
 if (!manifest.length) throw new Error('The requested file is not part of the pinned Express suite.');
@@ -26,6 +34,7 @@ globalThis.__expressFinished = function finished(serialized) {
   process.exitCode = result.fail || result.pending || result.loadErrors.length || result.asynchronousErrors.length ? 1 : 0;
 };
 require('./runner.cjs')(files, {
+  timeoutScale,
   grep: selectedGrep,
   expectedTests: manifest.reduce((sum, file) => sum + file.tests, 0),
   expectedCases: manifest.flatMap(file => file.cases),

@@ -7,7 +7,16 @@ require dirname(__DIR__, 3) . '/vendor/autoload.php';
 use Phasis\Engine;
 use Phasis\Node\NodeOptions;
 
-$options = getopt('', ['file:', 'grep:', 'output:', 'budget:']);
+$options = getopt('', ['file:', 'grep:', 'output:', 'budget:', 'timeout-scale:']);
+if (in_array('--timeout-scale', $argv, true) && !array_key_exists('timeout-scale', $options)) {
+    throw new InvalidArgumentException('--timeout-scale requires a numeric value.');
+}
+$scaleEnvironment = getenv('PHASIS_FRAMEWORK_TIMEOUT_SCALE');
+$rawScale = $options['timeout-scale'] ?? ($scaleEnvironment === false ? '1' : $scaleEnvironment);
+if (!is_string($rawScale) || !is_numeric($rawScale) || !is_finite((float) $rawScale) || (float) $rawScale <= 0 || (float) $rawScale > 100) {
+    throw new InvalidArgumentException('--timeout-scale must be a finite positive number at most 100.');
+}
+$timeoutScale = (float) $rawScale;
 $root = __DIR__ . '/upstream';
 $pinned = json_decode((string) file_get_contents(__DIR__ . '/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
 $files = [];
@@ -64,6 +73,7 @@ $engine->setGlobal('__expressProgress', function (string $serialized) use (&$res
 $engine->setGlobal('__expressFiles', $files);
 $engine->setGlobal('__expressRunner', __DIR__ . '/runner.cjs');
 $engine->setGlobal('__expressOptions', [
+    'timeoutScale' => $timeoutScale,
     'grep' => $options['grep'] ?? null,
     'expectedTests' => array_sum(array_column($manifest, 'tests')),
     'expectedCases' => array_merge(...array_column($manifest, 'cases')),
@@ -97,6 +107,7 @@ $result = [
     'source' => $metadata,
     'filtered' => isset($options['file']) || isset($options['grep']),
     'manifest' => $manifest,
+    'timeoutScale' => $timeoutScale,
 ] + $result;
 $serialized = json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR) . "\n";
 if (isset($options['output'])) {

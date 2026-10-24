@@ -6,7 +6,9 @@ import concurrent.futures
 import datetime
 import hashlib
 import json
+import math
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -28,11 +30,21 @@ def tree_hash(directory):
     return digest.hexdigest()
 
 
-def source_identity():
+def timeout_scale(value):
+    if not re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", str(value).strip()):
+        raise argparse.ArgumentTypeError("timeout scale must be a finite positive number")
+    number = float(value)
+    if not math.isfinite(number) or number <= 0 or number > 100:
+        raise argparse.ArgumentTypeError("timeout scale must be a finite positive number at most 100")
+    return number
+
+
+def source_identity(scale=1):
     harness = hashlib.sha256()
     for name in ("run.py", "runner.cjs", "run-node.cjs", "run-phasis.php", "setup.py", "upstream.json"):
         harness.update(name.encode() + b"\0" + (HERE / name).read_bytes())
     return {
+        "timeoutScale": scale,
         "runtimeSha256": tree_hash(REPOSITORY / "src"),
         "upstreamSha256": tree_hash(HERE / "upstream"),
         "manifestSha256": hashlib.sha256((HERE / "manifest.json").read_bytes()).hexdigest(),
@@ -65,6 +77,8 @@ def main():
     parser.add_argument("--runtime", choices=("node", "phasis", "both"), default="both")
     parser.add_argument("--jobs", type=int, choices=(1, 2), default=1)
     parser.add_argument("--timeout", type=float, default=1800)
+    parser.add_argument("--timeout-scale", type=timeout_scale,
+                        default=os.environ.get("PHASIS_FRAMEWORK_TIMEOUT_SCALE", "1"))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.timeout <= 0:
@@ -75,7 +89,7 @@ def main():
     args.output.mkdir(parents=True)
     manifest = json.loads((HERE / "manifest.json").read_text())
     source = json.loads((HERE / "upstream.json").read_text())
-    identity_before = source_identity()
+    identity_before = source_identity(args.timeout_scale)
     runtimes = ["node", "phasis"] if args.runtime == "both" else [args.runtime]
     tasks = [(runtime, entry) for runtime in runtimes for entry in manifest["files"]]
     stopped = threading.Event()
@@ -97,7 +111,7 @@ def main():
         log = output.with_suffix(".log")
         command = (["node", str(HERE / "run-node.cjs")] if runtime == "node" else
                    ["php", "-d", "memory_limit=1G", str(HERE / "run-phasis.php")])
-        command += ["--file=" + entry["path"], "--output=" + str(output)]
+        command += ["--file=" + entry["path"], "--output=" + str(output), "--timeout-scale=" + str(args.timeout_scale)]
         timed_out = False
         start = time.monotonic()
         with log.open("w") as handle:
@@ -135,6 +149,7 @@ def main():
             "exitCode": exit_code, "timedOut": timed_out, "log": log.name,
             "elapsedSeconds": time.monotonic() - start,
             "caseIdentityMatches": case_identity_matches, "unaccountedCases": missing,
+            "timeoutScaleMatches": report.get("timeoutScale") == args.timeout_scale,
             "report": report,
         }
         print(json.dumps({key: value for key, value in result.items() if key not in ("report", "unaccountedCases")}
@@ -171,14 +186,15 @@ def main():
                     results.append(result)
         for name, handler in previous_handlers.items():
             signal.signal(name, handler)
-    identity_after = source_identity()
+    identity_after = source_identity(args.timeout_scale)
     stable_source = identity_before == identity_after
     summary = {
         "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "source": source, "manifest": manifest, "filtered": False,
         "identityBefore": identity_before, "identityAfter": identity_after,
         "stableSource": stable_source, "interrupted": stopped.is_set(),
-        "execution": {"isolation": "file", "workers": args.jobs, "timeoutSeconds": args.timeout},
+        "execution": {"isolation": "file", "workers": args.jobs, "timeoutSeconds": args.timeout,
+                      "timeoutScale": args.timeout_scale},
         "runtimes": {}, "files": results,
     }
     successful = stable_source and not stopped.is_set()
@@ -206,6 +222,7 @@ def main():
                              and not unaccounted and values["pass"] == values["expectedTests"]
                              and values["fail"] == values["pending"] == values["loadErrors"] == values["asynchronousErrors"] == 0
                              and all(result["exitCode"] == 0 for result in selected.values()))
+        values["success"] = values["success"] and all(result["timeoutScaleMatches"] for result in selected.values())
         successful = successful and values["success"]
         summary["runtimes"][runtime] = values
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
