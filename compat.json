@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-10-24T05:12:14+00:00",
-    "updatedAt": "2026-10-24T05:12:14+00:00",
+    "generatedAt": "2026-10-24T06:14:06+00:00",
+    "updatedAt": "2026-10-24T06:14:06+00:00",
     "complete": true,
     "git": {
         "branch": "feat/express-hono-compatibility",
-        "commit": "39724214",
+        "commit": "4c3cf399",
         "isDirty": true
     },
     "environment": {
@@ -19,8 +19,8 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "854fe5d604c4e4242d6895d002c533834ad815d7",
-        "runIdentity": "94e3b04d57ecbc5f3d5d44387f054fad3f92fffd8a2979bc45632c4bd6b7f90c"
+        "fingerprint": "bb54c91d6d6c114b8b91b39b47bdf15064054854",
+        "runIdentity": "03a46d1c626e11de932edfba29a2e4b57cf32559b9c91abb5c8177585a22588c"
     },
     "discovery": {
         "groupCount": 161,
@@ -2719,16 +2719,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 187.136,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 182.278,
+                "durationSec": 185.003,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
@@ -2737,16 +2728,16 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 179.007,
+                "durationSec": 184.441,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
+                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
                 ]
             },
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 178.499,
+                "durationSec": 184.159,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
@@ -2755,7 +2746,16 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 178.458,
+                "durationSec": 181.971,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 177.41,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
@@ -2764,7 +2764,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 171.051,
+                "durationSec": 169.918,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
@@ -2773,43 +2773,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 169.255,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 166.512,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 148.758,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 143.603,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 138.609,
+                "durationSec": 156.581,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
@@ -2818,7 +2782,25 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 122.55,
+                "durationSec": 155.46,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 149.212,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 125.007,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
@@ -2827,7 +2809,7 @@
             {
                 "group": "intl402",
                 "kind": "normal",
-                "durationSec": 87.509,
+                "durationSec": 83.986,
                 "filesCount": 22,
                 "sampleFiles": [
                     "test262/test/intl402/constructors-string-and-single-element-array.js",
@@ -2838,48 +2820,18 @@
                 ]
             },
             {
-                "group": "language/literals",
-                "kind": "normal",
-                "durationSec": 80.139,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js",
-                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js",
-                    "...",
-                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js",
-                    "test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 74.946,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js"
-                ]
-            },
-            {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 74.73,
-                "filesCount": 25,
+                "durationSec": 81.827,
+                "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js"
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
                 ]
             },
             {
                 "group": "built-ins/TypedArray",
                 "kind": "normal",
-                "durationSec": 71.508,
+                "durationSec": 71.72,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
@@ -2890,9 +2842,18 @@
                 ]
             },
             {
+                "group": "built-ins/decodeURI",
+                "kind": "normal",
+                "durationSec": 70.619,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
+                ]
+            },
+            {
                 "group": "intl402/DateTimeFormat",
                 "kind": "normal",
-                "durationSec": 68.375,
+                "durationSec": 67.318,
                 "filesCount": 12,
                 "sampleFiles": [
                     "test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plainmonthday-formatting-timezonename.js",
@@ -2903,27 +2864,62 @@
                 ]
             },
             {
-                "group": "annexB/built-ins/RegExp",
+                "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 63.498,
-                "filesCount": 25,
+                "durationSec": 59.6,
+                "filesCount": 5,
                 "sampleFiles": [
-                    "test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js",
-                    "test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js",
-                    "...",
-                    "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js",
-                    "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bengali.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Beria_Erfe.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bhaiksuki.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Brahmi.js"
                 ]
             },
             {
                 "group": "built-ins/RegExp/property-escapes/generated",
                 "kind": "normal",
-                "durationSec": 59.922,
+                "durationSec": 58.985,
                 "filesCount": 3,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kirat_Rai.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lao.js",
-                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js"
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Old_Uyghur.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Oriya.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Osage.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 58.976,
+                "filesCount": 5,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Adlam.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Ahom.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Anatolian_Hieroglyphs.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Arabic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Armenian.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 58.932,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Tham.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Viet.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Yo.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 58.032,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Syloti_Nagri.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Syriac.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tagalog.js"
                 ]
             }
         ]
