@@ -1,5 +1,5 @@
 import { setTimeout as nativeTimeout } from 'node:timers';
-import { parseTimeoutScale, scaledTimeout } from '../deadline.mjs';
+import { parseTimeoutScale, scaledTimeout, timeoutScale, withDeadline } from '../deadline.mjs';
 const realNow = performance.now.bind(performance);
 const delay = duration => new Promise(resolve => nativeTimeout(resolve, duration));
 const busy = duration => {
@@ -16,6 +16,14 @@ test('scale validation and timer bounds', () => {
   expect(() => scaledTimeout(Number.MIN_VALUE, .5)).toThrow();
   expect(scaledTimeout(0, 10)).toBe(0);
   expect(scaledTimeout(Infinity, 10)).toBe(Infinity);
+});
+test('scaled deadlines remain enforced', async () => {
+  for (const action of [() => delay(60), () => busy(60)]) {
+    await expect(withDeadline(action, 1)).rejects.toMatchObject({
+      originalTimeout: 1,
+      effectiveTimeout: timeoutScale,
+    });
+  }
 });
 test('explicit awaited deadline', () => delay(60), 20);
 test('explicit elapsed deadline', { timeout: 20 }, () => busy(60));

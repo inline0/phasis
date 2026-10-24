@@ -101,8 +101,8 @@ def main():
                 raise RuntimeError(label + ' did not finish')
             report = reports[0]
             (archive / (label + '.json')).write_text(json.dumps(report, indent=2))
-            expected = {'pass': 8, 'fail': 0, 'upstream-skip': 0, 'harness-blocked': 0, 'suite-blocked': 0} if scale == 10 else {
-                'pass': 3, 'fail': 4, 'upstream-skip': 0, 'harness-blocked': 0, 'suite-blocked': 1}
+            expected = {'pass': 9, 'fail': 0, 'upstream-skip': 0, 'harness-blocked': 0, 'suite-blocked': 0} if scale == 10 else {
+                'pass': 4, 'fail': 4, 'upstream-skip': 0, 'harness-blocked': 0, 'suite-blocked': 1}
             if report['timeoutScale'] != scale or report['counts'] != expected:
                 raise RuntimeError(label + ' produced incorrect deadline outcomes')
             for case in report['results']:
