@@ -210,7 +210,11 @@ trait IteratorProtocol
         if ($done) {
             return JsUndefined::instance();
         }
-        if ($iterator instanceof \Phasis\Value\JsArrayIterator && $iterator->hasIntrinsicNext($nextMethod)) {
+        if (
+            ($iterator instanceof \Phasis\Value\JsArrayIterator
+                || ($iterator instanceof \Phasis\Value\JsStringIterator && $this->budget === null))
+            && $iterator->hasIntrinsicNext($nextMethod)
+        ) {
             try {
                 $value = $iterator->nextValue($done);
                 return $readValue ? $value : JsUndefined::instance();

@@ -38,9 +38,10 @@ class StringPrototype
         $iteratorPrototype = $env->has('__IteratorPrototype__')
             ? $env->get('__IteratorPrototype__')
             : null;
-        self::getStringIteratorPrototype(
+        $stringIteratorPrototype = self::getStringIteratorPrototype(
             $iteratorPrototype instanceof JsObject ? $iteratorPrototype : null,
         );
+        $env->setIntrinsic('StringIteratorPrototype', $stringIteratorPrototype);
 
         $proto = new JsObject();
 
@@ -222,7 +223,7 @@ class StringPrototype
 
         // String.prototype[Symbol.iterator] per spec 22.1.3.34.
         $iterSym = SymbolConstructor::iterator();
-        $iterFn = JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $this_): JsValue {
+        $iterFn = JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $this_) use ($stringIteratorPrototype): JsValue {
             // RequireObjectCoercible(this value), then ToString.
             if ($this_ instanceof JsNull || $this_ instanceof JsUndefined) {
                 throw new \Phasis\Exceptions\TypeError(
@@ -230,7 +231,7 @@ class StringPrototype
                 );
             }
             $str = $this_ instanceof JsString ? $this_ : new JsString(TypeConversion::toString($this_));
-            return self::createStringIterator($str);
+            return self::createStringIterator($str, $stringIteratorPrototype);
         }, 0);
         $proto->definePropertyBySymbol(
             $iterSym,
