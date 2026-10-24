@@ -4,7 +4,7 @@
 
 ### Added
 - Opt-in Node-compatible realms and `phasis --node`, with CommonJS package loading, Buffer and streams, filesystem and process I/O, HTTP/HTTPS/HTTP2, TLS, compression, timers, async context, and isolated VM realms.
-- Pinned Express and Hono upstream runners with original assertions, case inventories, source hashes, bounded workers and real network interoperability checks.
+- Experimental Express and Hono support with pinned upstream runners, original assertions, case inventories, source hashes, bounded workers and real network interoperability checks.
 - Ed25519 WebCrypto keys, MessageEvent and in-process BroadcastChannel support.
 - Keyed Promise combinators, iterator chunk/window/zip helpers, and immutable ArrayBuffers with protected typed-array, DataView, and Atomics writes.
 - Locale variants and locale-specific calendar, collation, hour-cycle, text-direction, and week information.
@@ -32,6 +32,7 @@
 - Intl option precedence, legacy constructors, plural notation, numbering systems, and plain date/time formatting.
 
 ### Changed
+- Framework runners accept an explicit timeout scale and record original and effective limits. Experimental Express/Hono CI uses a scale of 10 while performance work is deferred; test262 limits and engine budgets are unchanged.
 - Bytecode compilation handles captured bindings, default initializers, array bindings and assignments, optional chains, spread calls, computed methods, object prototypes, regular-expression literals and strict tail calls; reusable syntax templates keep closure state separate.
 - Proven disjoint lexical scopes reuse frame slots, ordinary function prototypes materialize when observed, and numeric typed-array writes avoid redundant conversions while retaining buffer-resize and detachment behavior.
 - Completed frames clear their local slots in one allocation while releasing activation references.

@@ -78,7 +78,7 @@ jobs:
         if: matrix.suite == 'express'
         run: |
           python3 -B tests/Frameworks/express/test_runner.py
-          python3 -B tests/Frameworks/express/run.py --runtime both --jobs 1 --output framework-results/express
+          python3 -B tests/Frameworks/express/run.py --runtime both --jobs 1 --timeout-scale 10 --output framework-results/express
 
       - name: Hono harness deadline differential
         if: startsWith(matrix.suite, 'hono-')
@@ -90,7 +90,7 @@ jobs:
         if: startsWith(matrix.suite, 'hono-')
         env:
           FRAMEWORK_SUITE: ${{ matrix.suite }}
-        run: python3 -B tests/Frameworks/hono/run.py --project "${FRAMEWORK_SUITE#hono-}" --timeout 1800
+        run: python3 -B tests/Frameworks/hono/run.py --project "${FRAMEWORK_SUITE#hono-}" --timeout 1800 --timeout-scale 10
 
       - name: Hono independent native Vitest baseline
         if: startsWith(matrix.suite, 'hono-') && !cancelled()

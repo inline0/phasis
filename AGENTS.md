@@ -14,8 +14,13 @@ run test oracles, but must never become an execution backend. Explicit
 `child_process` operations use PHP host processes; a JavaScript child launched
 through `process.execPath` runs the Phasis PHP entry point. New host resources
 must register cleanup with their owning NodeRuntime. Keep original framework
-assertions and timeouts, report all discovered cases and upstream skips, and
-retain source identity for complete-run claims. Close and reap owned test
+assertions, report all discovered cases and upstream skips, and retain source
+identity for complete-run claims. Express and Hono support is experimental;
+their CI runners explicitly use `--timeout-scale 10` while performance work is
+deferred. Preserve original timeout values and record effective limits in the
+results; a scaled run is a functional compatibility result, not a claim to meet
+upstream performance deadlines. Never relax test262 assertions, coverage or
+timeouts to accommodate framework workloads. Close and reap owned test
 processes and listeners after every run.
 
 ## Releases

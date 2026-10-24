@@ -1,4 +1,7 @@
-# Hono upstream compatibility
+# Experimental Hono compatibility
+
+Hono support is experimental. CI checks functional compatibility with an explicit
+timeout scale of 10; meeting the original performance deadlines is deferred.
 
 The ignored source tree in `upstream/hono-4.13.13` is the unchanged Hono v4.13.13
 archive at commit `08a023cbfde55b434fb0fb30fae35d42e4bf20aa`. The repository,
@@ -31,7 +34,14 @@ python3 tests/Frameworks/hono/run.py src/context.test.ts src/request.test.ts
 runs both and compares every discovered case's identity and outcome. Each
 file runs in a separate process, sequentially, with a 1,800 second outer wall
 limit (`--timeout` overrides it). This lets large files finish hundreds of
-cases while retaining the original per-test and per-hook deadlines.
+cases while retaining the original per-test and per-hook deadlines by default.
+Pass `--timeout-scale 10` to match CI, or set
+`PHASIS_FRAMEWORK_TIMEOUT_SCALE=10`; an explicit CLI value takes precedence.
+The scale applies equally to the Node harness and Phasis, and reports record
+the scale plus each case's original and effective timeout. The outer worker
+limit, engine budgets and test262 timeouts are unchanged. Disabled upstream
+deadlines remain disabled. The independent native Vitest oracle retains its
+original deadlines.
 The PHP worker uses `XDEBUG_MODE=off`, a 4 GiB memory limit and a one million
 iteration limit so the unchanged 100,000-entry parser and large-body stress
 cases fit. Override memory with `--php-memory-limit 2G`; positive byte counts
@@ -59,8 +69,9 @@ Unsupported harness operations throw and are reported separately. Upstream
 skip declarations remain skips, never passes. The test environment clears
 `NO_COLOR` for both engines, matching the color tests' unstubbed assumption.
 The Node runtime project sets `NAME=Node`, as its upstream configuration does.
-Test and hook deadlines preserve Vitest 5's defaults of 5,000 ms and 10,000 ms,
-explicit numeric/options values, suite inheritance and disabled deadlines.
+At scale 1, test and hook deadlines preserve Vitest 5's defaults of 5,000 ms and
+10,000 ms, explicit numeric/options values, suite inheritance and disabled
+deadlines. At scale 10, those defaults become 50,000 ms and 100,000 ms.
 Captured real timers and monotonic time keep deadlines effective under fake
 timers and synchronous or microtask starvation. Failed suite setup is recorded
 as a suite failure with blocked cases, separately from upstream skip declarations.

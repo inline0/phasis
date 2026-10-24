@@ -65,7 +65,8 @@ In ES modules, `process.env.NODE_ENV` is replaced with the configured value at p
 
 ## Node compatibility
 
-Enable Node mode explicitly for packages that use Node APIs:
+Express and Hono support is **experimental**. Enable Node mode explicitly for
+packages that use Node APIs:
 
 ```php
 use Phasis\Engine;
@@ -140,6 +141,12 @@ The pinned original Express and Hono test runners live in
 failures, blocked tests, source hashes and process timeouts. Framework versions
 and suite revisions are recorded there; passing a framework suite does not imply
 that the complete Node test suite or Hono's Bun/Deno/Fastly/workerd hosts pass.
+
+Framework CI passes `--timeout-scale 10` to the Express and Hono runners so slow
+PHP workloads can complete their original assertions. Reports retain the
+original and effective timeouts; scaled results do not establish upstream
+performance parity. The default scale is 1 for checking the original deadlines.
+This configuration does not affect test262 or engine execution budgets.
 
 ## Styles and assets
 
