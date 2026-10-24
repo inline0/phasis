@@ -149,9 +149,10 @@ trait CompilerBlockBindings
             $node instanceof FunctionDeclaration || $node instanceof FunctionExpression || $node instanceof ArrowFunction
             || $node instanceof ClassDeclaration || $node instanceof ClassExpression
         ) {
-            // Even a shadowed use is conservatively excluded here. A fresh
-            // environment remains necessary for any possible closure capture.
-            return !$this->blockBindingNameOccurs($node, $name);
+            // Ordinary nested bodies may shadow this name in their own block.
+            // Class evaluation keeps the conservative scope proof.
+            $resolveFunctionScopes = !$node instanceof ClassDeclaration && !$node instanceof ClassExpression;
+            return !$this->blockBindingNameOccurs($node, $name, $resolveFunctionScopes);
         }
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $declaration) {
@@ -193,14 +194,37 @@ trait CompilerBlockBindings
         return true;
     }
 
-    private function blockBindingNameOccurs(Node $node, string $name): bool
+    private function blockBindingNameOccurs(Node $node, string $name, bool $resolveFunctionScopes = false): bool
     {
         if ($node instanceof Identifier && $node->name === $name) {
             return true;
         }
+        if ($node instanceof ClassDeclaration || $node instanceof ClassExpression) {
+            $resolveFunctionScopes = false;
+        }
+        if ($resolveFunctionScopes && $node instanceof BlockStatement) {
+            foreach ($node->body as $statement) {
+                if (!$statement instanceof VariableDeclaration || ($statement->kind !== 'let' && $statement->kind !== 'const')) {
+                    continue;
+                }
+                foreach ($statement->declarations as $declaration) {
+                    if ($declaration->id instanceof Identifier && $declaration->id->name === $name) {
+                        // The binding shadows the outer name throughout this
+                        // exact block, including its initializer and TDZ.
+                        return false;
+                    }
+                }
+            }
+        }
+        if ($resolveFunctionScopes && $node instanceof MemberExpression && !$node->computed) {
+            return $this->blockBindingNameOccurs($node->object, $name, $resolveFunctionScopes);
+        }
+        if ($resolveFunctionScopes && $node instanceof Property && !$node->computed) {
+            return $this->blockBindingNameOccurs($node->value, $name, $resolveFunctionScopes);
+        }
         foreach (get_object_vars($node) as $value) {
             foreach (is_array($value) ? $value : [$value] as $child) {
-                if ($child instanceof Node && $this->blockBindingNameOccurs($child, $name)) {
+                if ($child instanceof Node && $this->blockBindingNameOccurs($child, $name, $resolveFunctionScopes)) {
                     return true;
                 }
             }
