@@ -17,6 +17,8 @@
 - Symbol property writes preserve Proxy traps and receivers; typed-array copies clamp array-like lengths before checking destination bounds.
 - Array literals and built-in array results retain their realm's intrinsic prototype when the global Array constructor is replaced.
 - Compiled identifier updates and strict program assignments retain their original references through coercion and right-hand-side effects.
+- Generated PHP preserves numeric truthiness and literal precision, evaluates operands once, and falls back before observable effects.
+- Same-type typed-array copies preserve byte payloads and prototype-validation order; host byte views and inlined callbacks retain their defining realms.
 - Stream controllers, readers and writers retain their originating realm after VM context creation; pending Promise finalizers retain their registered async context.
 - Temporal calendar fields, arithmetic, rounding, parsing, timezone boundaries, and Intl formatting use consistent calendar data and option validation.
 - Module evaluation, source and typed imports, resource disposal, cross-realm intrinsics, numeric serialization, and compiled global bindings follow current language semantics.
