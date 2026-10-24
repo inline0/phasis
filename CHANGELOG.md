@@ -18,7 +18,9 @@
 - Array literals and built-in array results retain their realm's intrinsic prototype when the global Array constructor is replaced.
 - Compiled identifier updates and strict program assignments retain their original references through coercion and right-hand-side effects.
 - Generated PHP preserves numeric truthiness and literal precision, evaluates operands once, and falls back before observable effects.
+- Calls, getters and constructors retain caller and argument records; non-callable errors do not invoke object conversion hooks.
 - Same-type typed-array copies preserve byte payloads and prototype-validation order; host byte views and inlined callbacks retain their defining realms.
+- Typed-array `set` checks bounds before content-type mismatches and copies matching native element types without changing stored bits.
 - Stream controllers, readers and writers retain their originating realm after VM context creation; pending Promise finalizers retain their registered async context.
 - Temporal calendar fields, arithmetic, rounding, parsing, timezone boundaries, and Intl formatting use consistent calendar data and option validation.
 - Module evaluation, source and typed imports, resource disposal, cross-realm intrinsics, numeric serialization, and compiled global bindings follow current language semantics.
@@ -30,10 +32,11 @@
 ### Changed
 - Bytecode compilation handles captured bindings, default initializers, array bindings and assignments, optional chains, spread calls, computed methods, object prototypes, regular-expression literals and strict tail calls; reusable syntax templates keep closure state separate.
 - Proven disjoint lexical scopes reuse frame slots, ordinary function prototypes materialize when observed, and numeric typed-array writes avoid redundant conversions while retaining buffer-resize and detachment behavior.
+- Completed frames clear their local slots in one allocation while releasing activation references.
 - Protected returns preserve finalizer completion order in bytecode, and logical assignments and object relational operators use the shared JavaScript semantics.
 - Bounded regular-expression preparation and cached UTF-16 searches reduce repeated work while preserving fresh objects and observable coercions.
 - The test262 runner executes both variants of unflagged scripts, preserves raw sources and module parse goals, requires async completion, and checks negative-test error types and phases.
-- Compatibility shards retain full file manifests; merging rejects overlapping or stale results and keeps missing coverage visible. Incomplete or failing coverage cannot round up to 100%.
+- Compatibility shards retain full file manifests; merging rejects overlapping or stale results and keeps missing coverage visible. Incomplete or failing coverage cannot round up to 100%; the canonical workflow fails on nonpassing results after preserving the report.
 
 ## [0.8.0] - 2026-10-16
 
