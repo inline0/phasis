@@ -1,0 +1,693 @@
+{
+  "initial": {
+    "ordinary": {
+      "name": [
+        "ordinary",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        2,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "strict": {
+      "name": [
+        "strict",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "defaulted": {
+      "name": [
+        "defaulted",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "restOnly": {
+      "name": [
+        "restOnly",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        0,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "destructured": {
+      "name": [
+        "destructured",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        2,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "arrow": {
+      "name": [
+        "arrow",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        2,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": null,
+      "extensible": true
+    },
+    "method": {
+      "name": [
+        "method",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        2,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": null,
+      "extensible": true
+    },
+    "getter": {
+      "name": [
+        "get value",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        0,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": null,
+      "extensible": true
+    },
+    "setter": {
+      "name": [
+        "set value",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": null,
+      "extensible": true
+    },
+    "asyncFunction": {
+      "name": [
+        "asyncFunction",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        2,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "async",
+      "ownPrototype": null,
+      "extensible": true
+    },
+    "generator": {
+      "name": [
+        "generator",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "generator",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "asyncGenerator": {
+      "name": [
+        "asyncGenerator",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "asyncGenerator",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "Constructor": {
+      "name": [
+        "Constructor",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        false,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "anonymous": {
+      "name": [
+        "",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "bound": {
+      "name": [
+        "bound ordinary",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": null,
+      "extensible": true
+    },
+    "native": {
+      "name": [
+        "max",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        2,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": null,
+      "extensible": true
+    },
+    "dynamic": {
+      "name": [
+        "anonymous",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        1,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    },
+    "proxy": {
+      "name": [
+        "ordinary",
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "length": [
+        2,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "keys": [
+        "length",
+        "name",
+        "prototype"
+      ],
+      "initialMetadataOrder": [
+        "length",
+        "name"
+      ],
+      "enumerable": [],
+      "prototypeKind": "function",
+      "ownPrototype": [
+        "object",
+        true,
+        false,
+        false
+      ],
+      "extensible": true
+    }
+  },
+  "sloppyWritePreserved": true,
+  "strictWriteRejected": true,
+  "changed": {
+    "name": [
+      "renamed",
+      true,
+      true,
+      true,
+      false,
+      false
+    ],
+    "length": [
+      8,
+      false,
+      false,
+      true,
+      false,
+      false
+    ],
+    "keys": [
+      "length",
+      "prototype",
+      "name"
+    ],
+    "initialMetadataOrder": [
+      "length",
+      "name"
+    ],
+    "enumerable": [
+      "name"
+    ],
+    "prototypeKind": "function",
+    "ownPrototype": [
+      "object",
+      true,
+      false,
+      false
+    ],
+    "extensible": true
+  },
+  "frozen": {
+    "name": [
+      "renamed",
+      false,
+      true,
+      false,
+      false,
+      false
+    ],
+    "length": [
+      8,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "keys": [
+      "length",
+      "prototype",
+      "name"
+    ],
+    "initialMetadataOrder": [
+      "length",
+      "name"
+    ],
+    "enumerable": [
+      "name"
+    ],
+    "prototypeKind": "function",
+    "ownPrototype": [
+      "object",
+      false,
+      false,
+      false
+    ],
+    "extensible": false
+  },
+  "prototypeIdentity": [
+    true,
+    true,
+    true
+  ]
+}

@@ -291,21 +291,33 @@ class JsFunction extends JsObject
                 $length++;
             }
         }
-        $this->defineOwnProperty('length', new \Phasis\Object\PropertyDescriptor(
+        $lengthDescriptor = new \Phasis\Object\PropertyDescriptor(
             value: JsNumber::of((float) $length),
             writable: false,
             enumerable: false,
             configurable: true,
-        ));
+        );
+        // The base constructor just created this map. Host subclasses retain
+        // their virtual definition hooks, including mutations between fields.
+        if (get_class($this) === self::class) {
+            $this->properties->set('length', $lengthDescriptor);
+        } else {
+            $this->defineOwnProperty('length', $lengthDescriptor);
+        }
         // Per spec, the exposed .name is "" for anonymous functions.
         // Internally we keep '(anonymous)' as a sentinel for name inference.
         $exposedName = $name === '(anonymous)' ? '' : $name;
-        $this->defineOwnProperty('name', new \Phasis\Object\PropertyDescriptor(
+        $nameDescriptor = new \Phasis\Object\PropertyDescriptor(
             value: new JsString($exposedName),
             writable: false,
             enumerable: false,
             configurable: true,
-        ));
+        );
+        if (get_class($this) === self::class) {
+            $this->properties->set('name', $nameDescriptor);
+        } else {
+            $this->defineOwnProperty('name', $nameDescriptor);
+        }
     }
 
     /**
