@@ -415,6 +415,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
@@ -483,6 +485,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
@@ -561,6 +565,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
@@ -607,6 +613,8 @@ final class VM
                     $callback->isClassConstructor()
                     || $callback->isDerivedConstructor()
                     || $callback->getHomeObject() !== null
+                    || ($callback->realm !== null
+                        && $callback->realm !== (\Phasis\Engine::getCurrentInterpreter() ?? $this->interp)->getRealm())
                 ) {
                     return null;
                 }
