@@ -231,6 +231,7 @@ final class Op
             case self::INSTANCEOF:
             case self::NOT:
             case self::TYPEOF:
+            case self::TO_STRING:
             case self::BAND:
             case self::BOR:
             case self::BXOR:

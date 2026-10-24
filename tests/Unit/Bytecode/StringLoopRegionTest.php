@@ -55,6 +55,34 @@ JS;
         }
     }
 
+    public function testTemplateAfterTheLoopDoesNotDisableItsVerifiedRegion(): void
+    {
+        $engine = new Engine();
+        $source = str_replace(
+            'return [state.creation, index];',
+            'return `${state.creation}:${index}:${tail}`;',
+            self::SOURCE,
+        );
+        $engine->eval($source . <<<'JS'
+const tail = { toString() { events.push('toString'); return 'tail'; } };
+JS);
+        self::assertSame(
+            ['1:4:tail', '2:3:tail', [3, 'toString', 'toString'], 2],
+            $engine->eval("[scan('abc,def', 0), scan('abc', 0), events, creations]"),
+        );
+        $compiled = $this->compiled($engine);
+        self::assertCount(1, array_filter($compiled->loopRegions));
+        $conversions = [];
+        for ($pc = 0; $pc < count($compiled->code); $pc += 1 + Op::operandCount($compiled->code[$pc])) {
+            if ($compiled->code[$pc] === Op::TO_STRING) {
+                $conversions[] = $pc;
+            }
+        }
+        self::assertSame(count($compiled->code), $pc);
+        self::assertCount(3, $conversions);
+        self::assertGreaterThan($this->regionPc($compiled), min($conversions));
+    }
+
     public function testNativeExitRestoresActiveSlotsAndCounterExactlyOnce(): void
     {
         $engine = new Engine();
