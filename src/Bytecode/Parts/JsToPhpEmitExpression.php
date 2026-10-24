@@ -28,6 +28,7 @@ use Phasis\Ast\Statement\ReturnStatement;
 use Phasis\Ast\Statement\WhileStatement;
 use Phasis\Value\JsFunction;
 use Phasis\Bytecode\Bailout;
+use Phasis\Bytecode\PhpNumericLiteral;
 
 /**
  * JsToPhp trait part: JsToPhpEmitExpression. Composed into JsToPhp via
@@ -170,17 +171,7 @@ trait JsToPhpEmitExpression
     {
         if ($node instanceof Literal) {
             if (is_int($node->value) || is_float($node->value)) {
-                // Emit numerical literals with a .0 suffix when they
-                // would otherwise look like ints to PHP. JS's `===`
-                // compares by value-only; PHP's `===` is type+value,
-                // so `(float)0 !== (int)0` in PHP. Forcing the literal
-                // through `(float)` keeps both sides float-typed and
-                // matches JS Number semantics exactly.
-                $f = (float) $node->value;
-                if (is_finite($f) && $f === (float) (int) $f) {
-                    return $f >= 0 ? sprintf('%d.0', (int) $f) : sprintf('-%d.0', -(int) $f);
-                }
-                return (string) $f;
+                return PhpNumericLiteral::render((float) $node->value);
             }
             if (is_bool($node->value)) {
                 return $node->value ? 'true' : 'false';
