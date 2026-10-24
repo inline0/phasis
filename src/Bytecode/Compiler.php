@@ -68,6 +68,7 @@ final class Compiler
     use Parts\CompilerEmit;
     use Parts\CompilerStatement;
     use Parts\CompilerExpression;
+    use Parts\CompilerStringLoopRegions;
 
     /** @var list<int> */
     private array $code = [];
@@ -290,6 +291,7 @@ final class Compiler
         }
         try {
             $compiled = $this->compileFunction($fn);
+            $this->finalizeStringLoopRegions($compiled);
             CompilationTemplates::remember($fn, $compiled);
             return $compiled;
         } catch (CompilerBailout $error) {
@@ -303,6 +305,7 @@ final class Compiler
         if ($fn->isAsync() || $fn->isNative()) {
             throw new CompilerBailout('non-ordinary function kind');
         }
+        $this->regionFunction = $this->ordinaryRegionFunction($fn);
         $this->thisFromFrame = !$fn->isArrow() && !$fn->isGenerator() && !$fn->isDerivedConstructor();
         // Generators get a stricter bailout: only "simple" bodies
         // (no yield* delegation, no try/catch/finally containing

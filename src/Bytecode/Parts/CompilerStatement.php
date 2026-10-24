@@ -62,6 +62,7 @@ trait CompilerStatement
 {
     private function compileStatement(Node $node): void
     {
+        $this->recordRegionStatement($node);
         if ($node instanceof ReturnStatement) {
             if ($this->inGenerator && $this->finallyLoopBoundaries !== []) {
                 throw new CompilerBailout('generator return inside try-with-finally');
@@ -532,6 +533,7 @@ trait CompilerStatement
     {
         $loopId = $this->loopCount++;
         $this->emit(Op::LOOP_INIT, $loopId);
+        $region = $this->beginStringLoopRegion($node, $loopId);
         $loopStart = count($this->code);
         $this->emit(Op::CHECK_BUDGET);
         $this->compileExpression($node->test);
@@ -544,6 +546,7 @@ trait CompilerStatement
         $jumpOpcodePc = count($this->code) - 2;
         $this->code[$jumpOpcodePc + 1] = $loopStart - $jumpOpcodePc;
         $loopExit = count($this->code);
+        $this->finishStringLoopRegion($region, $loopStart, $loopExit);
         $this->patchJumpToHere($jmpExit);
         $frame = array_pop($this->loopStack);
         foreach ($frame['continues'] as $idx) {

@@ -130,7 +130,7 @@ trait JsToPhpEmitExpression
             }
             if (isset($this->declaredLocals[$node->name])) {
                 $kind = $this->localTypes[$node->name] ?? 'numeric';
-                return $kind === 'numeric' ? 'numeric' : 'unknown';
+                return $kind === 'numeric' ? 'numeric' : ($kind === 'boolean' ? 'boolean' : 'unknown');
             }
             // Free var: emitExpression unboxes to numeric (with a
             // runtime JsNumber assertion).
@@ -192,7 +192,7 @@ trait JsToPhpEmitExpression
                 // means the local is being read in a context our
                 // numeric pipeline can't lower. Bail.
                 $kind = $this->localTypes[$node->name] ?? 'numeric';
-                if ($kind !== 'numeric') {
+                if ($kind !== 'numeric' && $kind !== 'boolean') {
                     throw new Bailout('non-numeric local in expression: ' . $node->name);
                 }
                 return $this->slotVar($node->name);

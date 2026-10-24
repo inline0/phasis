@@ -63,6 +63,7 @@ final class JsToPhp
     use Parts\JsToPhpEmitStatement;
     use Parts\JsToPhpEmitExpression;
     use Parts\JsToPhpStringScanners;
+    use Parts\JsToPhpLoopRegions;
 
     /** @var array<string, true> */
     private array $declaredLocals = [];

@@ -62,6 +62,15 @@ trait JsToPhpStringScanners
 
     private function scannerCallType(CallExpression $expression): ?string
     {
+        if (
+            $this->loopRegion !== null && $expression->callee instanceof MemberExpression
+            && !$expression->callee->computed && !$expression->callee->optional
+            && $expression->callee->object instanceof Identifier && $expression->callee->property instanceof Identifier
+            && ($this->loopRegion->bindingTypes[$expression->callee->object->name] ?? null) === 'string'
+            && $expression->callee->property->name === 'charCodeAt'
+        ) {
+            return 'numeric';
+        }
         if ($this->scannerPlan === null) {
             return null;
         }
@@ -81,7 +90,7 @@ trait JsToPhpStringScanners
     private function emitScannerCall(CallExpression $expression): ?string
     {
         $type = $this->scannerCallType($expression);
-        if ($type === null || $this->scannerPlan === null) {
+        if ($type === null || ($this->scannerPlan === null && $this->loopRegion === null)) {
             return null;
         }
         if ($type === 'numeric' && $expression->callee instanceof MemberExpression) {
@@ -100,7 +109,7 @@ trait JsToPhpStringScanners
                 . ' ? NAN : (float) ord(' . $string . '[(int) ' . $position . ']);';
             return $value;
         }
-        if (!$expression->callee instanceof Identifier) {
+        if (!$expression->callee instanceof Identifier || $this->scannerPlan === null) {
             throw new Bailout('scanner predicate is not a named binding');
         }
         $predicate = $this->scannerPlan->predicates[$expression->callee->name];

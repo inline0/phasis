@@ -166,6 +166,7 @@ trait JsToPhpEmitStatement
             $expr = $this->emitExpression($node->expression);
             $this->flushPending();
             $this->emitLine($expr . ';');
+            $this->emitRegionExpressionWrite($node->expression);
             return;
         }
         if ($node instanceof VariableDeclaration) {
@@ -247,7 +248,7 @@ trait JsToPhpEmitStatement
                     $callRaw = $this->emitFunctionValuedCall($decl->init);
                     $this->flushPending();
                     $this->emitLine($this->slotVar($name) . ' = ' . $callRaw . ';');
-                } elseif ($kind === 'numeric' && $decl->init instanceof CallExpression && $this->scannerPlan === null) {
+                } elseif ($kind === 'numeric' && $decl->init instanceof CallExpression && $this->scannerPlan === null && $this->loopRegion === null) {
                     // `let r = callExpr()` where r's static type defaults
                     // to numeric. emitExpression would emit the call THEN
                     // a runtime `instanceof JsNumber` check that throws
@@ -268,6 +269,7 @@ trait JsToPhpEmitStatement
                     $this->flushPending();
                     $this->emitLine($this->slotVar($name) . ' = ' . $val . ';');
                 }
+                $this->emitRegionWrite($name);
             }
             return;
         }

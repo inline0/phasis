@@ -189,6 +189,7 @@ final class Op
     public const LOOP_INIT = 120;
     public const LOOP_TICK = 121;
     public const CHECK_BUDGET = 126; // Host deadline checkpoint, independent of the body iteration count.
+    public const STRING_LOOP_REGION = 125; // I: one-shot pure first segment; ordinary VM backedges bypass it.
     public const ITERATOR_INIT = 122; // L: acquire an iterator and cached next in adjacent private slots.
     public const ITERATOR_NEXT = 123; // L I J: check loop limits, push the next value or branch when done.
     public const ITERATOR_CLOSE = 124; // L L L: close with the pending completion and value.
@@ -285,6 +286,7 @@ final class Op
             case self::MAKE_CLASS:
             case self::LOOP_INIT:
             case self::LOOP_TICK:
+            case self::STRING_LOOP_REGION:
             case self::ITERATOR_INIT:
                 return 1;
             // 2-operand opcodes

@@ -816,6 +816,21 @@ final class VM
                             $loopCounts[$code[$pc + 1]] = 0;
                             $pc += 2;
                             break;
+                        case Op::STRING_LOOP_REGION:
+                            $region = $cf->loopRegions[$code[$pc + 1]] ?? null;
+                            if ($sp === 0 && $region !== null) {
+                                $exit = ($region->execute)($locals, $this->interp, $loopCounts);
+                                if ($exit !== null) {
+                                    $token = (int) $exit;
+                                    if (!isset($region->exitPcs[$token])) {
+                                        throw new \LogicException('Pure loop returned an invalid exit');
+                                    }
+                                    $pc = $region->exitPcs[$token];
+                                    break;
+                                }
+                            }
+                            $pc += 2;
+                            break;
                         case Op::CHECK_BUDGET:
                             if ($this->interp->hasExecutionBudget()) {
                                 $this->interp->checkBudget();

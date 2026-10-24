@@ -383,7 +383,7 @@ final class StringScannerPlan
     }
 
     /** @param \Closure(Node): ?string $type */
-    private static function scalarExpressionType(Node $expression, \Closure $type): ?string
+    public static function scalarExpressionType(Node $expression, \Closure $type): ?string
     {
         if ($expression instanceof UnaryExpression) {
             $argument = $type($expression->argument);

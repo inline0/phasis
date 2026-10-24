@@ -21,6 +21,9 @@ use Phasis\Value\JsValue;
  */
 final class CompiledFunction
 {
+    /** @var list<StringLoopRegion|null> Immutable native code with exact ordinary-bytecode exits. */
+    public array $loopRegions = [];
+
     /**
      * Ordered flat array bindings reuse the interpreter's iterator protocol.
      * Captured identifiers retain their live Environment binding.
