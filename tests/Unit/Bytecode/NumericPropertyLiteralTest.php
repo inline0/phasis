@@ -6,6 +6,8 @@ namespace Phasis\Tests\Unit\Bytecode;
 
 use Phasis\Engine;
 use Phasis\Value\JsFunction;
+use Phasis\Value\JsArray;
+use Phasis\Value\JsUndefined;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -38,7 +40,18 @@ final class NumericPropertyLiteralTest extends TestCase
         self::assertTrue($engine->eval($source), $literal);
         $function = $engine->getGlobalEnv()->get('literal');
         self::assertInstanceOf(JsFunction::class, $function);
-        self::assertInstanceOf(\Closure::class, $function->phpCompiled);
+        if (!$array) {
+            self::assertInstanceOf(\Closure::class, $function->phpCompiled);
+            return;
+        }
+        self::assertNull($function->phpCompiled);
+        self::assertTrue($engine->eval('function pureLiteral() { const object = {items: [' . $literal . ']};'
+            . 'return object.items; } Object.is(pureLiteral()[0], (' . $literal . '));'), $literal);
+        $pure = $engine->getGlobalEnv()->get('pureLiteral');
+        self::assertInstanceOf(JsFunction::class, $pure);
+        self::assertInstanceOf(\Closure::class, $pure->phpCompiled);
+        $result = ($pure->phpCompiled)([], JsUndefined::instance(), $pure->getClosure(), $engine->getInterpreter(), []);
+        self::assertInstanceOf(JsArray::class, $result);
     }
 
     public function testPropertyLiteralsIgnorePhpDisplayPrecision(): void

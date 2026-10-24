@@ -41,6 +41,11 @@ trait JsToPhpEmitStatement
      */
     private function emitPrologue(array $params): void
     {
+        $this->emitLine('$_php_context = \\Phasis\\Engine::getCurrentInterpreter();');
+        $this->emitLine('if (!$env->hasPlainChain()'
+            . ' || get_class($interp) !== \\Phasis\\Runtime\\Interpreter::class'
+            . ' || ($_php_context !== null && get_class($_php_context) !== \\Phasis\\Runtime\\Interpreter::class)) {'
+            . ' throw new \\Phasis\\Bytecode\\Bailout("untracked host override"); }');
         $this->emitScannerGuards();
         foreach ($params as $idx => $param) {
             if (!$param instanceof Identifier) {
@@ -432,8 +437,11 @@ trait JsToPhpEmitStatement
                 !$this->numericMode && $node->argument instanceof Identifier
                 && !isset($this->declaredLocals[$node->argument->name])
             ) {
-                $this->recordObservableEffect();
-                $this->emitLine('return $env->get(' . var_export($node->argument->name, true) . ');');
+                $this->recordRuntimeGuard();
+                $value = $this->newTemp('return_binding');
+                $this->emitLine($value . ' = $env->getDataBinding(' . var_export($node->argument->name, true) . ');');
+                $this->emitLine('if (' . $value . ' === null) { throw new \\Phasis\\Bytecode\\Bailout("observable return binding"); }');
+                $this->emitLine('return ' . $value . ';');
                 return;
             }
             if (
@@ -442,11 +450,16 @@ trait JsToPhpEmitStatement
                 && $node->argument->object instanceof Identifier && $node->argument->property instanceof Identifier
                 && ($this->localTypes[$node->argument->object->name] ?? null) === 'object'
             ) {
-                $this->recordObservableEffect();
+                $this->recordRuntimeGuard();
                 $receiver = $this->slotVar($node->argument->object->name);
-                $this->emitLine('return $interp->vmLookupPrimitiveMember(' . $receiver
-                    . ' ?? \\Phasis\\Value\\JsUndefined::instance(), '
-                    . var_export($node->argument->property->name, true) . ');');
+                $value = $this->newTemp('return_member');
+                $this->emitLine('if (!(' . $receiver . ' instanceof \\Phasis\\Value\\JsObject)'
+                    . ' || get_class(' . $receiver . ') !== \\Phasis\\Value\\JsObject::class) {'
+                    . ' throw new \\Phasis\\Bytecode\\Bailout("observable return receiver"); }');
+                $this->emitLine($value . ' = ' . $receiver . '->properties->dataSlots['
+                    . var_export($node->argument->property->name, true) . '] ?? null;');
+                $this->emitLine('if (' . $value . ' === null) { throw new \\Phasis\\Bytecode\\Bailout("observable return member"); }');
+                $this->emitLine('return ' . $value . ';');
                 return;
             }
             if ($node->argument === null) {

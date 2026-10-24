@@ -1607,7 +1607,8 @@ final class VM
                             } elseif ($callee instanceof \Phasis\Value\JsProxy && $callee->isCallable()) {
                                 $stack[$sp++] = $callee->apply($receiver, $args);
                             } else {
-                                $display = $cf->callMethodDisplays[$pc] ?? (TypeConversion::toString($callee) ?: 'value');
+                                $display = $cf->callMethodDisplays[$pc]
+                                    ?? ($callee instanceof JsObject ? 'value' : (TypeConversion::toString($callee) ?: 'value'));
                                 throw new TypeError($display . ' is not a function');
                             }
                             $pc += 2;
@@ -1654,9 +1655,8 @@ final class VM
                                     $pc += 2;
                                     break;
                                 }
-                                throw new TypeError(
-                                    (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
-                                );
+                                $display = $callee instanceof JsObject ? 'value' : (TypeConversion::toString($callee) ?: 'value');
+                                throw new TypeError($display . ' is not a function');
                             }
                             // Cross-realm calls need the ordinary realm switch;
                             // cached eligibility describes only function shape.
@@ -2168,12 +2168,11 @@ final class VM
                                 // Prefer the compiler-rendered call-site
                                 // source (e.g. `[].__proto__`) so the
                                 // TypeError matches V8 / SpiderMonkey
-                                // wording. Fall back to the value's
-                                // toString and finally a generic 'value'
-                                // when no display was recorded.
+                                // wording. Object coercion while formatting
+                                // an error must not invoke user code.
                                 $display = $cf->callMethodDisplays[$pc] ?? null;
                                 if ($display === null) {
-                                    $display = TypeConversion::toString($method) ?: 'value';
+                                    $display = $method instanceof JsObject ? 'value' : (TypeConversion::toString($method) ?: 'value');
                                 }
                                 throw new TypeError($display . ' is not a function');
                             }

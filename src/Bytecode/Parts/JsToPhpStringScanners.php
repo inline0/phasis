@@ -44,7 +44,8 @@ trait JsToPhpStringScanners
         $index = 0;
         foreach ($this->scannerPlan->predicates as $name => $_) {
             $this->emitLine('$_scanner_binding = $env->findBindingDepth(' . var_export($name, true) . ');');
-            $this->emitLine('if ($_scanner_binding === null || $_scanner_binding[0] !== $scannerGuards[' . $index . ']->get()) {'
+            $this->emitLine('if ($_scanner_binding === null || $_scanner_binding[0] !== $scannerGuards[' . $index . ']->get()'
+                . ' || !$_scanner_binding[0]->getClosure()->hasPlainChain()) {'
                 . ' throw new \\Phasis\\Bytecode\\Bailout("scanner predicate changed"); }');
             ++$index;
         }

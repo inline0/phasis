@@ -8,8 +8,6 @@ use Phasis\Engine;
 use Phasis\Exceptions\BudgetExceeded;
 use Phasis\Exceptions\InternalError;
 use Phasis\Value\JsFunction;
-use Phasis\Value\JsNumber;
-use Phasis\Value\JsUndefined;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -104,7 +102,7 @@ JS));
     }
 
     #[DataProvider('phpModes')]
-    public function testGeneratedPhpCountsOnlySuccessfulIterations(bool $continue): void
+    public function testEffectfulConditionsFallBackAndCountOnlySuccessfulIterations(bool $continue): void
     {
         $engine = new Engine();
         $body = 'n++;' . ($continue ? 'continue;' : '');
@@ -116,29 +114,16 @@ JS);
             . 'let n = 0; while (condition(n)) {' . $body . '} return n; } probe();');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
-        self::assertInstanceOf(\Closure::class, $function->phpCompiled);
+        self::assertNull($function->phpCompiled);
         $engine->eval('conditions = 0');
         $engine->setLimit('maxLoopIterations', 1);
-        $result = ($function->phpCompiled)(
-            [],
-            JsUndefined::instance(),
-            $function->getClosure(),
-            $engine->getInterpreter(),
-            $function->phpCompiledNodes,
-        );
-        self::assertSame(1.0, $result->value);
+        self::assertSame(1, $engine->eval('probe()'));
         self::assertSame(2.0, $engine->getGlobalEnv()->get('conditions')->value);
         $engine->eval('conditions = 0');
         $engine->setLimit('maxLoopIterations', 0);
         $this->expectException(InternalError::class);
         try {
-            ($function->phpCompiled)(
-                [],
-                JsUndefined::instance(),
-                $function->getClosure(),
-                $engine->getInterpreter(),
-                $function->phpCompiledNodes,
-            );
+            $engine->eval('probe()');
         } finally {
             self::assertSame(1.0, $engine->getGlobalEnv()->get('conditions')->value);
         }
@@ -171,15 +156,9 @@ JS);
         $engine->eval('conditions = 0');
         $engine->setLimit('maxLoopIterations', 0);
         if ($tier === 'php') {
-            self::assertInstanceOf(\Closure::class, $function->phpCompiled);
-            $result = ($function->phpCompiled)(
-                [JsNumber::of(0)],
-                JsUndefined::instance(),
-                $function->getClosure(),
-                $engine->getInterpreter(),
-                $function->phpCompiledNodes,
-            );
-            self::assertSame(0.0, $result->value);
+            self::assertNull($function->phpCompiled);
+            self::assertNotNull($function->compiled);
+            self::assertSame(0, $engine->eval('probe(0)'));
         } else {
             self::assertSame($tier === 'bytecode', $function->compiled !== null);
             self::assertSame(0, $engine->eval('probe(0)'));
@@ -187,7 +166,7 @@ JS);
         self::assertSame(1.0, $engine->getGlobalEnv()->get('conditions')->value);
     }
 
-    public function testGeneratedPhpBudgetPrecedesTheIterationLimit(): void
+    public function testEffectfulBudgetActivationFallsBackBeforeTheIterationLimit(): void
     {
         $engine = new Engine();
         $expire = false;
@@ -200,11 +179,11 @@ JS);
             . 'let n = 0; while (n < 2) { n++; expireLocal(); } return n; } probe();');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
-        self::assertInstanceOf(\Closure::class, $function->phpCompiled);
+        self::assertNull($function->phpCompiled);
         $engine->setLimit('maxLoopIterations', 1);
         $expire = true;
         $this->expectException(BudgetExceeded::class);
-        ($function->phpCompiled)([], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), $function->phpCompiledNodes);
+        $engine->eval('probe()');
     }
 
     public function testBudgetAbortUnwindsInlineFramesAndBypassesJsCatch(): void

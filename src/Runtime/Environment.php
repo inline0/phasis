@@ -517,6 +517,19 @@ class Environment
         return null;
     }
 
+    /** Internal: generated reads must not bypass host overrides on any scope in the chain. */
+    final public function hasPlainChain(): bool
+    {
+        $current = $this;
+        while ($current !== null) {
+            if (get_class($current) !== self::class) {
+                return false;
+            }
+            $current = $current->parent;
+        }
+        return true;
+    }
+
     /**
      * Read an ordinary data binding without invoking getters, imports or with traps.
      * Null declines speculation and leaves errors and observable reads to the interpreter.

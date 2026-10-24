@@ -1509,7 +1509,7 @@ trait ExpressionEvaluation
                 $args = $this->evaluateArguments($node->arguments, $env);
                 if (!($callee instanceof JsFunction)) {
                     throw new TypeError(
-                        TypeConversion::toString($callee) . ' is not a function',
+                        ($callee instanceof JsObject ? 'value' : TypeConversion::toString($callee)) . ' is not a function',
                     );
                 }
                 return $this->callFunction($callee, $rawObj, $args);
@@ -3312,7 +3312,7 @@ trait ExpressionEvaluation
         }
 
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
-            throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
+            throw new TypeError(($callee instanceof JsObject ? 'value' : TypeConversion::toString($callee)) . ' is not a constructor');
         }
 
         // Create a new object with the constructor's prototype
@@ -3699,7 +3699,7 @@ trait ExpressionEvaluation
      * Format the call expression's callee for "X is not a function" errors.
      * Mirrors V8/SpiderMonkey error messages by serialising MemberExpression
      * and Identifier callees rather than using the value's toString. Falls
-     * back to the value's stringification for opaque/computed callees.
+     * back to primitive formatting or a generic object label without invoking hooks.
      */
     private function formatCalleeForError(Node $node, JsValue $value): string
     {
@@ -3707,7 +3707,7 @@ trait ExpressionEvaluation
         if ($text !== null) {
             return $text;
         }
-        return TypeConversion::toString($value);
+        return $value instanceof JsObject ? 'value' : TypeConversion::toString($value);
     }
 
     /** Recursively render a MemberExpression / Identifier / ArrayExpression
@@ -5932,7 +5932,8 @@ trait ExpressionEvaluation
             }
             $value = $descriptor->value;
         }
-        return $value instanceof JsFunction && $value->builtinKind === $kind && $value->getNativeCallable() !== null;
+        return $value instanceof JsFunction && get_class($value) === JsFunction::class
+            && $value->builtinKind === $kind && $value->getNativeCallable() !== null;
     }
 
     /**
@@ -6108,7 +6109,7 @@ trait ExpressionEvaluation
             return $callee->construct($args, $callee);
         }
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
-            throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
+            throw new TypeError(($callee instanceof JsObject ? 'value' : TypeConversion::toString($callee)) . ' is not a constructor');
         }
         // Mirror evalNewExpression's full setup so class field
         // initializers, derived-constructor checks, and the

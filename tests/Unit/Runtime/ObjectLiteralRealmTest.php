@@ -78,15 +78,15 @@ JS));
         }
         $phpFunction = $foreign->getGlobalEnv()->get('foreignPhpLiteral');
         self::assertInstanceOf(JsFunction::class, $phpFunction);
-        self::assertInstanceOf(\Closure::class, $phpFunction->phpCompiled);
-        self::assertInstanceOf(\Closure::class, $phpFunction->phpCompiledNumeric);
+        self::assertNull($phpFunction->phpCompiled);
+        self::assertNull($phpFunction->phpCompiledNumeric);
         $phpFunction->phpCompiledNumeric = null;
         self::assertSame([1, 0], $caller->eval('[localNumeric(1), wrongRealmCalls]'));
         if (!$budgeted) {
             foreach (['localStandard', 'localNumeric', 'localMethod'] as $name) {
                 $wrapper = $caller->getGlobalEnv()->get($name);
                 self::assertInstanceOf(JsFunction::class, $wrapper);
-                self::assertInstanceOf(\Closure::class, $wrapper->phpCompiled, $name);
+                self::assertNull($wrapper->phpCompiled, $name);
             }
         }
         self::assertSame(0, $caller->getInterpreter()->getCallStack()->depth());

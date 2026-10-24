@@ -32,29 +32,19 @@ use Phasis\Value\JsFunction;
  * JS-to-PHP source compiler. Emits a PHP closure that runs the JS
  * function body directly, bypassing the VM dispatch loop entirely.
  *
- * Phase 2 scope: tight numeric subset where every value flow can be
- * statically proven to use raw PHP doubles for numbers and bools for
- * booleans. The compiler now supports:
- *   - Free-variable reads (resolved via $env->get + unbox-on-entry).
- *   - Function calls with Identifier callee, when args / return are
- *     numeric. Recursive call into another phpCompiled closure goes
- *     direct, skipping executeFunction's setup; otherwise we route
- *     through Interpreter::callFunction so the spec-y bookkeeping
- *     still runs.
- *   - All Phase 1 features: arithmetic, comparisons, locals, simple
- *     control flow.
+ * Frameless specialization admits call-free scalar arithmetic, locals,
+ * control flow and guarded ordinary data reads. Fresh private object and
+ * array operations can share that tier without exposing their allocations.
+ * Reads that could invoke getters or host overrides decline before effects.
  *
- * Bails (returns null) on:
- *   - Member access (would need shape-aware property reads).
- *   - String / object / array operations.
- *   - Closures that write to free variables.
- *   - Any node not enumerated in emitStatement / emitExpression.
+ * Ordinary calls and construction remain on the tracked VM/AST paths.
+ * Their transitive callbacks can observe caller/arguments even when a callee
+ * has a numeric return entry. Only complete scanner/region proofs may inline
+ * closed scalar predicates and guarded primitive intrinsics without a frame.
  *
- * Calls inside expressions are lifted to temporary statements by a
- * pendingStatements buffer so each call result lands in its own
- * named PHP variable; the enclosing expression then references that
- * variable. Avoids closure-per-expression patterns that would blow
- * up PHP JIT traces.
+ * A pendingStatements buffer preserves evaluation order where scalar
+ * expressions need temporaries. Unsupported syntax and writes to free
+ * variables decline compilation rather than weakening these contracts.
  */
 final class JsToPhp
 {
@@ -184,7 +174,10 @@ final class JsToPhp
 
     public static function compile(JsFunction $fn): ?\Closure
     {
-        if ($fn->getBoundTarget() !== null) {
+        if (
+            get_class($fn) !== JsFunction::class || !$fn->getClosure()->hasPlainChain()
+            || $fn->getBoundTarget() !== null
+        ) {
             return null;
         }
         if (CompilationFailures::get($fn, 'php') !== null) {
@@ -251,7 +244,7 @@ final class JsToPhp
         if (self::bodyHasNestedLexical($body)) {
             return null;
         }
-        $standard = self::compileWith($fn, false);
+        $standard = self::bodyHasUntrackedCall($body) ? null : self::compileWith($fn, false);
         if ($standard === null) {
             $scanner = StringScannerPlan::analyze($fn);
             return $scanner !== null ? self::compileWith($fn, false, $scanner) : null;

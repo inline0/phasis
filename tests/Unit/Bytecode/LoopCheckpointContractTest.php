@@ -93,10 +93,10 @@ final class LoopCheckpointContractTest extends TestCase
         $engine->eval('function probe(amount) { ' . $helper . 'let count = 0; ' . $statement . ' return count; } probe(1);');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
-        if ($tier === 'php') {
+        if ($tier === 'php' && $helper === '') {
             self::assertInstanceOf(\Closure::class, $function->phpCompiled);
         } else {
-            self::assertSame($tier === 'bytecode', $function->compiled !== null);
+            self::assertSame($tier !== 'ast', $function->compiled !== null);
             self::assertNull($function->phpCompiled);
         }
         return $function;
@@ -104,7 +104,7 @@ final class LoopCheckpointContractTest extends TestCase
 
     private function invoke(Engine $engine, JsFunction $function, string $tier, int $amount): float
     {
-        if ($tier === 'php') {
+        if ($tier === 'php' && $function->phpCompiled !== null) {
             $result = ($function->phpCompiled)(
                 [JsNumber::of($amount)],
                 JsUndefined::instance(),

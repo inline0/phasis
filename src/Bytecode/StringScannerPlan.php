@@ -336,9 +336,15 @@ final class StringScannerPlan
         if (isset($this->predicates[$name])) {
             return $this->predicates[$name];
         }
-        $value = $this->function->getClosure()->findBindingDepth($name)[0] ?? null;
+        $scope = $this->function->getClosure();
+        if (!$scope->hasPlainChain()) {
+            return null;
+        }
+        $value = $scope->findBindingDepth($name)[0] ?? null;
         if (
-            !$value instanceof JsFunction || $value->getNativeCallable() !== null || $value->getBoundTarget() !== null
+            !$value instanceof JsFunction || get_class($value) !== JsFunction::class
+            || !$value->getClosure()->hasPlainChain()
+            || $value->getNativeCallable() !== null || $value->getBoundTarget() !== null
             || $value->isClassConstructor() || $value->isDerivedConstructor() || $value->isAsync() || $value->isGenerator()
         ) {
             return null;

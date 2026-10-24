@@ -392,6 +392,104 @@ JS);
         return $function;
     }
 
+    public function testReplacedIntrinsicGettersAndCallbacksObserveTheTrackedScanner(): void
+    {
+        $engine = new Engine();
+        $engine->eval(self::SOURCE . "forward(' ', 0);");
+        self::assertSame([1, true, true, 1], $engine->eval(<<<'JS'
+const originalMethod = String.prototype.charCodeAt;
+let getterCaller = false, callbackCaller = false, reads = 0;
+function replacement(index) {
+    callbackCaller = replacement.caller === forward;
+    return originalMethod.call(this, index);
+}
+function methodGetter() {
+    reads++;
+    getterCaller = methodGetter.caller === forward;
+    return replacement;
+}
+Object.defineProperty(String.prototype, 'charCodeAt', { get: methodGetter, configurable: true });
+const result = forward(' ', 0);
+Object.defineProperty(String.prototype, 'charCodeAt', {
+    value: originalMethod, writable: true, configurable: true
+});
+[result, getterCaller, callbackCaller, reads];
+JS));
+    }
+
+    public function testHostStringOverridesAreNotInvokedByCompiledGuards(): void
+    {
+        $engine = new Engine();
+        $engine->eval(self::SOURCE . "forward(' ', 0);");
+        $value = new class (' ') extends JsString {
+            public int $reads = 0;
+
+            public function isAscii(): bool
+            {
+                ++$this->reads;
+                return true;
+            }
+        };
+        try {
+            $this->runCompiled($engine, $this->compiledFunction($engine, 'forward'), [$value, JsNumber::of(0)]);
+            self::fail('A host string subclass must stay outside the scanner.');
+        } catch (Bailout) {
+            self::assertSame(0, $value->reads);
+        }
+    }
+
+    public function testCachedPredicateClosureReplacementDeclinesBeforeHostMetadata(): void
+    {
+        $engine = new Engine();
+        $engine->eval(self::SOURCE . "forward(' ', 0);");
+        $predicate = $engine->getGlobalEnv()->get('separator');
+        self::assertInstanceOf(JsFunction::class, $predicate);
+        $scope = new class ($engine->getGlobalEnv()) extends \Phasis\Runtime\Environment {
+            public int $lookups = 0;
+
+            public function findBindingDepth(string $name): ?array
+            {
+                ++$this->lookups;
+                return parent::findBindingDepth($name);
+            }
+        };
+        $predicate->closure = $scope->createChild();
+        try {
+            $this->runCompiled($engine, $this->compiledFunction($engine, 'forward'), [new JsString(' '), JsNumber::of(0)]);
+            self::fail('A changed predicate host scope must not be inlined.');
+        } catch (Bailout) {
+            self::assertSame(0, $scope->lookups);
+        }
+    }
+
+    public function testHostIntrinsicFunctionOverridesAreNotInvokedByPreflight(): void
+    {
+        $engine = new Engine();
+        $engine->eval(self::SOURCE . "forward(' ', 0);");
+        $prototype = $engine->getGlobalEnv()->get('String')->get('prototype');
+        $original = $prototype->get('charCodeAt');
+        $host = new class ('charCodeAt', [], null, $engine->getGlobalEnv()) extends JsFunction {
+            public int $reads = 0;
+
+            public function getNativeCallable(): ?\Closure
+            {
+                ++$this->reads;
+                return static fn (): JsNumber => JsNumber::of(32);
+            }
+        };
+        $host->builtinKind = 'string.charCodeAt';
+        $previous = Engine::getCurrentInterpreter();
+        Engine::setCurrentInterpreter($engine->getInterpreter());
+        try {
+            $prototype->defineOwnProperty('charCodeAt', \Phasis\Object\PropertyDescriptor::data($host, true, false, true));
+            self::assertFalse($engine->getInterpreter()->hasCachedStringIntrinsic('charCodeAt', 'string.charCodeAt'));
+            self::assertSame(0, $host->reads);
+        } finally {
+            $prototype->defineOwnProperty('charCodeAt', \Phasis\Object\PropertyDescriptor::data($original, true, false, true));
+            Engine::setCurrentInterpreter($previous);
+        }
+    }
+
     /** @param list<JsValue> $arguments */
     private function runCompiled(Engine $engine, JsFunction $function, array $arguments): JsNumber
     {

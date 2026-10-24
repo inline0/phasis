@@ -81,6 +81,9 @@ trait JsToPhpLoopRegions
     private function emitRegionGuards(): void
     {
         $this->emitLine('$_region_context = \\Phasis\\Engine::getCurrentInterpreter();');
+        $this->emitLine('if (get_class($interp) !== \\Phasis\\Runtime\\Interpreter::class'
+            . ' || $_region_context === null || get_class($_region_context) !== \\Phasis\\Runtime\\Interpreter::class)'
+            . ' { return null; }');
         $this->emitLine('if ($interp->hasExecutionBudget() || $_region_context?->hasExecutionBudget()'
             . ' || $_region_context?->getRealm() !== $interp->getRealm() || $interp->getRealm() === null) { return null; }');
         $this->emitLine('if (!$interp->hasCachedStringIntrinsic("charCodeAt", "string.charCodeAt")) { return null; }');

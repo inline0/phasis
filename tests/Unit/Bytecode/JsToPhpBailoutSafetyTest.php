@@ -18,7 +18,7 @@ final class JsToPhpBailoutSafetyTest extends TestCase
             'var n=0,value=\'x\'; function touch(){n++} function checked(){touch();return value'
                 . '} var a=checked(),b=n,c=checked(); JSON.stringify([a,b,c,n]);',
             '["x",1,"x",2]',
-            true,
+            false,
             true,
         ];
         yield 'arithmetic-free-return' => [
@@ -32,14 +32,14 @@ final class JsToPhpBailoutSafetyTest extends TestCase
             'var n=0;function produce(){n++;return \'x\'}function checked(){return produce()}va'
                 . 'r a=checked(),b=n,c=checked();JSON.stringify([a,b,c,n]);',
             '["x",1,"x",2]',
-            true,
+            false,
             true,
         ];
         yield 'nonnumeric-call-result' => [
             'var n=0;function produce(){n++;return \'x\'}function checked(){return produce()+0}'
                 . 'var a=checked(),b=n,c=checked();JSON.stringify([a,b,c,n]);',
             '["x0",1,"x0",2]',
-            true,
+            false,
             true,
         ];
         yield 'member-after-effect' => [
@@ -48,7 +48,7 @@ final class JsToPhpBailoutSafetyTest extends TestCase
                 . 'st object={value:0};object.change();return object.value}var a=checked(),b=n,c=ch'
                 . 'ecked();JSON.stringify([a,b,c,n]);',
             '["x",2,"x",4]',
-            true,
+            false,
             true,
         ];
         yield 'branch-merge' => [
@@ -100,7 +100,7 @@ final class JsToPhpBailoutSafetyTest extends TestCase
                 . 'd(x){return target(x)}var error;try{checked(1)}catch(e){error=e instanceof TypeE'
                 . 'rror}JSON.stringify([error,n]);',
             '[true,0]',
-            true,
+            false,
             true,
         ];
         yield 'global-getter-before-fallback' => [
@@ -115,7 +115,7 @@ final class JsToPhpBailoutSafetyTest extends TestCase
             'function identity(x){return x}identity(1);function checked(){let value=1;value=i'
                 . 'dentity();return value}JSON.stringify([typeof checked(),typeof checked()]);',
             '["undefined","undefined"]',
-            true,
+            false,
             true,
         ];
         yield 'local-callee-fallback-and-arguments' => [
@@ -125,7 +125,7 @@ final class JsToPhpBailoutSafetyTest extends TestCase
                 . '{const object={};object.method(value+=1);return value}var a=checked(7),b=checked'
                 . '(8);JSON.stringify([a,b,lookups,events]);',
             '[8,9,2,[1,8,9]]',
-            true,
+            false,
             true,
         ];
         yield 'argument-source-order' => [
@@ -133,21 +133,21 @@ final class JsToPhpBailoutSafetyTest extends TestCase
                 . 'ombine(1,1);function checked(n){return combine((n=n+1),identity(n)+0)}JSON.strin'
                 . 'gify([checked(1),checked(2)]);',
             '[202,303]',
-            true,
+            false,
             true,
         ];
         yield 'postfix-arguments' => [
             'function combine(a,b){return a*100+b}combine(1,1);function checked(n){return com'
                 . 'bine(n++,n)}JSON.stringify([checked(1),checked(2)]);',
             '[102,203]',
-            true,
+            false,
             true,
         ];
         yield 'postfix-subtraction-left' => [
             'function identity(n){return n}identity(1);function checked(n){return n--*100-ide'
                 . 'ntity(n)}JSON.stringify([checked(1),checked(3)]);',
             '[100,298]',
-            true,
+            false,
             true,
         ];
         yield 'own-object-write' => [
@@ -219,7 +219,7 @@ final class JsToPhpBailoutSafetyTest extends TestCase
                 . ' checked(n){const object={first:n,second:n};return object.inspect()}JSON.stringi'
                 . 'fy([checked(1),checked(2)]);',
             '["first,second","first,second"]',
-            true,
+            false,
             true,
         ];
         yield 'escaped-object-mutation' => [

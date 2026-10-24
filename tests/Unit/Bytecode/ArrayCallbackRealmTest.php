@@ -38,8 +38,8 @@ foreignCalls = 0;
 JS);
         $callback = $foreign->getGlobalEnv()->get('foreignCallback');
         self::assertInstanceOf(JsFunction::class, $callback);
-        self::assertInstanceOf(\Closure::class, $callback->phpCompiled);
-        self::assertInstanceOf(\Closure::class, $callback->phpCompiledNumeric);
+        self::assertNull($callback->phpCompiled);
+        self::assertNull($callback->phpCompiledNumeric);
         if (!$numeric) {
             $callback->phpCompiledNumeric = null;
         }
@@ -69,6 +69,43 @@ JS));
                 self::assertNotNull($wrapper->compiled, $name . ' must exercise the VM callback path.');
             }
         }
+        self::assertNull($callback->phpCompiledNumeric);
+        self::assertNull($callback->phpCompiled);
+        self::assertSame(0, $caller->getInterpreter()->getCallStack()->depth());
+        self::assertSame(0, $foreign->getInterpreter()->getCallStack()->depth());
+    }
+
+    #[DataProvider('executionModes')]
+    public function testPureCompiledCallbackErrorsUseTheirOwnRealm(bool $budgeted, bool $numeric): void
+    {
+        $foreign = new Engine();
+        $foreign->eval('function pureCallback(value) { let count = 0; while (count < value) { count++; } return count; }'
+            . 'pureCallback(1);');
+        $callback = $foreign->getGlobalEnv()->get('pureCallback');
+        self::assertInstanceOf(JsFunction::class, $callback);
+        self::assertInstanceOf(\Closure::class, $callback->phpCompiled);
+        self::assertInstanceOf(\Closure::class, $callback->phpCompiledNumeric);
+        if (!$numeric) {
+            $callback->phpCompiledNumeric = null;
+        }
+        $caller = new Engine();
+        $caller->setGlobalJsValue('pureCallback', $callback);
+        $caller->setGlobalJsValue('ForeignError', $foreign->getGlobalEnv()->get('Error'));
+        $caller->setLimit('maxLoopIterations', 1);
+        if ($budgeted) {
+            $caller->setExecutionBudget(10);
+        }
+        self::assertSame([true, true, true, true], $caller->eval(<<<'JS'
+function map() { return [2].map(pureCallback); }
+function reduce() { return [2].reduce(pureCallback, 2); }
+function each() { return [2].forEach(pureCallback); }
+function filter() { return [2].filter(pureCallback); }
+function exceeds(action) {
+    try { action(); return false; }
+    catch (error) { return error instanceof ForeignError && !(error instanceof Error); }
+}
+[exceeds(map), exceeds(reduce), exceeds(each), exceeds(filter)];
+JS));
         self::assertSame($numeric, $callback->phpCompiledNumeric !== null);
         self::assertInstanceOf(\Closure::class, $callback->phpCompiled);
         self::assertSame(0, $caller->getInterpreter()->getCallStack()->depth());

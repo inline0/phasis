@@ -439,6 +439,33 @@ trait JsToPhpEligibility
         return false;
     }
 
+    /** Ordinary calls can expose caller/arguments through any transitive callback or getter. */
+    private static function bodyHasUntrackedCall(Node $node): bool
+    {
+        if ($node instanceof CallExpression || $node instanceof \Phasis\Ast\Expression\NewExpression) {
+            return true;
+        }
+        if (
+            $node instanceof FunctionDeclaration || $node instanceof \Phasis\Ast\Expression\FunctionExpression
+            || $node instanceof \Phasis\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node && self::bodyHasUntrackedCall($value)) {
+                return true;
+            }
+            if (is_array($value)) {
+                foreach ($value as $child) {
+                    if ($child instanceof Node && self::bodyHasUntrackedCall($child)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private static function exprHasTailCall(Node $node): bool
     {
         if ($node instanceof CallExpression) {
