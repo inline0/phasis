@@ -18,7 +18,8 @@
 - Array literals and built-in array results retain their realm's intrinsic prototype when the global Array constructor is replaced.
 - Compiled identifier updates and strict program assignments retain their original references through coercion and right-hand-side effects.
 - Generated PHP preserves numeric truthiness and literal precision, evaluates operands once, and falls back before observable effects.
-- Generated binding preflight does not invoke host property-map or descriptor overrides.
+- Generated binding and string-method preflight checks do not invoke host property-map or descriptor overrides.
+- Template strings outside pure loops no longer prevent those loops from using verified compiled code.
 - Calls, getters and constructors retain caller and argument records; non-callable errors do not invoke object conversion hooks.
 - Same-type typed-array copies preserve byte payloads and prototype-validation order; host byte views and inlined callbacks retain their defining realms.
 - Typed-array `set` checks bounds before content-type mismatches and copies matching native element types without changing stored bits.
