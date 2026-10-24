@@ -8,7 +8,7 @@ import { fn, spyOn, clearAllMocks, resetAllMocks, restoreAllMocks } from '@vites
 import { expectTypeOf } from 'expect-type';
 import fakeTimers from '@sinonjs/fake-timers';
 import { format } from '@vitest/pretty-format';
-import { defaultTestTimeout, defaultHookTimeout, withDeadline, monotonicNow } from './deadline.mjs';
+import { defaultTestTimeout, defaultHookTimeout, withDeadline, monotonicNow, timeoutScale, timeoutSettings } from './deadline.mjs';
 
 chai.use(JestExtend);
 chai.use(JestChaiExpect);
@@ -192,6 +192,7 @@ function fullName(entry) {
 }
 function failure(error, depth = 0) {
   return { name: error?.name || 'Error', message: String(error?.message ?? error), stack: String(error?.stack || ''),
+    ...(error?.originalTimeout !== undefined ? { originalTimeout: error.originalTimeout, effectiveTimeout: error.effectiveTimeout } : {}),
     ...(error?.cause !== undefined && depth < 3 ? { cause: failure(error.cause, depth + 1) } : {}) };
 }
 async function invoke(hook, context) {
@@ -200,8 +201,10 @@ async function invoke(hook, context) {
 }
 async function runCase(entry, ancestors, results, inheritedError) {
   const started = monotonicNow();
-  const record = { id: entry.id, name: fullName(entry), status: 'pass', assertions: 0 };
-  globalThis.__honoCase?.(JSON.stringify({ id: record.id, name: record.name }));
+  const record = { id: entry.id, name: fullName(entry), status: 'pass', assertions: 0,
+    ...timeoutSettings(entry.options.timeout ?? defaultTestTimeout) };
+  globalThis.__honoCase?.(JSON.stringify({ id: record.id, name: record.name,
+    originalTimeout: record.originalTimeout, effectiveTimeout: record.effectiveTimeout }));
   if (entry.skipped) {
     record.status = 'upstream-skip';
     results.push(record);
@@ -296,5 +299,6 @@ export async function run() {
   await runSuite(root, [], results);
   const counts = { pass: 0, fail: 0, 'upstream-skip': 0, 'harness-blocked': 0, 'suite-blocked': 0 };
   for (const result of results) counts[result.status]++;
-  return { counts, results, suiteErrors };
+  return { counts, results, suiteErrors, timeoutScale,
+    timeouts: { test: timeoutSettings(defaultTestTimeout), hook: timeoutSettings(defaultHookTimeout) } };
 }

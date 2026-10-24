@@ -24,6 +24,7 @@ def main():
         'phasis': ['php', '-d', 'memory_limit=1G', str(DIRECTORY / 'run-php.php'), str(script)],
     }
     manifest = {'id': run_id, 'kind': 'harness-deadline-selftest', 'results': {},
+                'timeoutScale': 1, 'nativeVitestTimeouts': 'original Vitest configuration',
                 'runtimeSource': source_hash(REPOSITORY / 'src'), 'harnessSource': harness_hash()}
     for runtime, command in commands.items():
         status, output = execute(command, 60, log_file=archive / (runtime + '.log'))
@@ -87,6 +88,37 @@ def main():
             if schedules[runtime] != schedules['native']:
                 manifest['results'][runtime]['differences'].append('lifecycle job scheduling differs')
     manifest['scheduling'] = schedules
+    scaling = {}
+    for scale in [1, 10]:
+        for runtime in ['node', 'phasis']:
+            script = DIRECTORY / '.generated/selftest/timeout-scaling.mjs'
+            command = ['node', str(script)] if runtime == 'node' else [
+                'php', '-d', 'memory_limit=1G', str(DIRECTORY / 'run-php.php'), str(script)]
+            label = 'timeout-scaling-' + runtime + '-' + str(scale)
+            status, output = execute(command, 60, log_file=archive / (label + '.log'), timeout_scale=scale)
+            reports = [json.loads(line[len(PREFIX):]) for line in output.splitlines() if line.startswith(PREFIX)]
+            if status != 0 or len(reports) != 1:
+                raise RuntimeError(label + ' did not finish')
+            report = reports[0]
+            (archive / (label + '.json')).write_text(json.dumps(report, indent=2))
+            expected = {'pass': 8, 'fail': 0, 'upstream-skip': 0, 'harness-blocked': 0, 'suite-blocked': 0} if scale == 10 else {
+                'pass': 3, 'fail': 4, 'upstream-skip': 0, 'harness-blocked': 0, 'suite-blocked': 1}
+            if report['timeoutScale'] != scale or report['counts'] != expected:
+                raise RuntimeError(label + ' produced incorrect deadline outcomes')
+            for case in report['results']:
+                original = 20 if case['name'].startswith('explicit ') else 0 if case['name'].startswith('disabled ') else (
+                    'Infinity' if case['name'].startswith('infinite ') else 5000)
+                effective = original * scale if isinstance(original, int) else original
+                if (case['originalTimeout'], case['effectiveTimeout']) != (original, effective):
+                    raise RuntimeError(label + ': incorrect recorded limit for ' + case['name'])
+                if scale == 1 and case['status'] in ['fail', 'suite-blocked']:
+                    if (case['error'].get('originalTimeout'), case['error'].get('effectiveTimeout')) != (20, 20):
+                        raise RuntimeError(label + ': missing original hook/test deadline evidence')
+            scaling[label] = [(case['id'], case['name'], case['status'], case['assertions'],
+                               case['originalTimeout'], case['effectiveTimeout']) for case in report['results']]
+        if scaling['timeout-scaling-node-' + str(scale)] != scaling['timeout-scaling-phasis-' + str(scale)]:
+            raise RuntimeError('Node/Phasis timeout scaling case identities, assertions or outcomes differ')
+    manifest['timeoutScaling'] = scaling
     (archive / 'manifest.json').write_text(json.dumps(manifest, indent=2))
     print(json.dumps(manifest['results']))
     print('Run manifest:', archive / 'manifest.json')

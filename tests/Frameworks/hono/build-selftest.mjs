@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const directory = dirname(fileURLToPath(import.meta.url));
 const output = resolve(directory, '.generated/selftest');
 await mkdir(output, { recursive: true });
-for (const name of ['timeouts', 'scheduling']) {
+for (const name of ['timeouts', 'scheduling', 'timeout-scaling']) {
   await build({
     entryPoints: [resolve(directory, 'fixtures/' + name + '-entry.mjs')],
     outfile: resolve(output, name + '.cjs'), bundle: true, platform: 'node',

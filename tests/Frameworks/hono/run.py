@@ -3,6 +3,7 @@
 import argparse
 import json
 import hashlib
+import math
 from datetime import datetime, timezone
 from uuid import uuid4
 from inventory import inventory as upstream_inventory
@@ -48,9 +49,10 @@ def terminate_group(process):
     process.wait()
 
 
-def execute(command, timeout, project="main", log_file=None):
+def execute(command, timeout, project="main", log_file=None, timeout_scale=1):
     try:
-        environment = dict(os.environ, XDEBUG_MODE='off', PHASIS_HONO_PROJECT=project)
+        environment = dict(os.environ, XDEBUG_MODE='off', PHASIS_HONO_PROJECT=project,
+                           PHASIS_FRAMEWORK_TIMEOUT_SCALE=str(timeout_scale))
         if project == 'node':
             environment['NAME'] = 'Node'
         environment.pop('NO_COLOR', None)
@@ -104,10 +106,23 @@ def php_memory_limit(value):
     return match[1] + suffix
 
 
+def timeout_scale(value):
+    source = str(value).strip()
+    if re.fullmatch(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?', source) is None:
+        raise argparse.ArgumentTypeError('The timeout scale must be a finite positive number')
+    scale = float(source)
+    if not math.isfinite(scale) or scale <= 0 or scale > 100:
+        raise argparse.ArgumentTypeError('The timeout scale must be finite, greater than 0 and at most 100')
+    return scale
+
+
 def parse_arguments(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('files', nargs='*')
     parser.add_argument('--timeout', type=float, default=1800)
+    parser.add_argument('--timeout-scale', type=timeout_scale,
+                        default=os.environ.get('PHASIS_FRAMEWORK_TIMEOUT_SCALE', '1'),
+                        help='Multiply framework test/hook deadlines by >0 and <=100 (default: environment or 1); not the process watchdog')
     parser.add_argument('--project', choices=['main', 'jsx-runtime-default', 'jsx-runtime-dom', 'node'], default='main')
     parser.add_argument('--runtime', choices=['node', 'phasis', 'both'], default='both')
     parser.add_argument('--no-build', action='store_true')
@@ -138,6 +153,10 @@ def main():
                 'inventory': inventory, 'upstreamProjects': all_projects,
                 'selected': files, 'runtimes': args.runtime,
                 'timeoutSeconds': args.timeout, 'phpMemoryLimit': args.php_memory_limit,
+                'timeoutScale': args.timeout_scale,
+                'timeouts': {'test': {'originalTimeout': 5000, 'effectiveTimeout': 5000 * args.timeout_scale},
+                             'hook': {'originalTimeout': 10000, 'effectiveTimeout': 10000 * args.timeout_scale}},
+                'nativeVitestTimeouts': 'unchanged; configure the independent native runner separately',
                 'runtimeSourceAtStart': source_hash(REPOSITORY / 'src'),
                 'harnessSourceAtStart': harness_hash(), 'dependenciesAtStart': dependency_hash(),
                 'complete': False, 'files': manifest}
@@ -156,7 +175,8 @@ def main():
         manifest.append(row)
         save_manifest()
         if not args.no_build:
-            status, output = execute(['node', str(DIRECTORY / 'build.mjs'), name], args.timeout, args.project)
+            status, output = execute(['node', str(DIRECTORY / 'build.mjs'), name], args.timeout, args.project,
+                                     timeout_scale=args.timeout_scale)
             save(identifier + '-build.log', output)
             if status:
                 row['build'] = {'status': 'build-blocked', 'exitCode': status}
@@ -174,7 +194,7 @@ def main():
                 'php', '-d', 'memory_limit=' + args.php_memory_limit, str(DIRECTORY / 'run-php.php'), script]
             started = time.monotonic()
             status, output = execute(command, args.timeout, args.project,
-                                     archive / (identifier + '-' + runtime + '.log'))
+                                     archive / (identifier + '-' + runtime + '.log'), timeout_scale=args.timeout_scale)
             row.setdefault('elapsedSeconds', {})[runtime] = round(time.monotonic() - started, 3)
             save(identifier + '-' + runtime + '.log', output)
             reports = [line[len(PREFIX):] for line in output.splitlines() if line.startswith(PREFIX)]
@@ -182,7 +202,9 @@ def main():
                 row['runtimes'][runtime] = {'status': 'process-blocked', 'exitCode': status}
             else:
                 report = json.loads(reports[0])
-                if not report['results']:
+                if report.get('timeoutScale') != args.timeout_scale:
+                    row['runtimes'][runtime] = {'status': 'timeout-configuration-mismatch', 'exitCode': status}
+                elif not report['results']:
                     row['runtimes'][runtime] = {'status': 'empty-discovery', 'exitCode': status}
                 else:
                     save(identifier + '-' + runtime + '.json', json.dumps(report, indent=2))

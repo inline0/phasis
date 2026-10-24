@@ -42,6 +42,8 @@ for name in manifest['selected']:
         row['missing'] = list((expected - actual).elements())
         row['unexpected'] = list((actual - expected).elements())
 result = {'run': manifest['id'], 'runtime': args.runtime, 'files': comparison,
+          'timeoutScale': manifest.get('timeoutScale', 1),
+          'nativeVitestTimeouts': 'original Vitest configuration; framework timeout scaling is not applied',
           'counts': dict(Counter(row['status'] for row in comparison))}
 output = args.manifest.parent / ('native-comparison-' + args.runtime + '.json')
 output.write_text(json.dumps(result, indent=2))
