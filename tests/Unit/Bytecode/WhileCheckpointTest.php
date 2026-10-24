@@ -112,19 +112,33 @@ JS));
 var conditions = 0;
 function condition(n) { conditions++; return n < 1 ? 1 : 0; }
 JS);
-        $engine->eval('function probe() { let n = 0; while (condition(n)) {' . $body . '} return n; } probe();');
+        $engine->eval('function probe() { function condition(value) { conditions++; return value < 1 ? 1 : 0; } '
+            . 'let n = 0; while (condition(n)) {' . $body . '} return n; } probe();');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
         self::assertInstanceOf(\Closure::class, $function->phpCompiled);
         $engine->eval('conditions = 0');
         $engine->setLimit('maxLoopIterations', 1);
-        self::assertSame(1.0, ($function->phpCompiled)([], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), [])->value);
+        $result = ($function->phpCompiled)(
+            [],
+            JsUndefined::instance(),
+            $function->getClosure(),
+            $engine->getInterpreter(),
+            $function->phpCompiledNodes,
+        );
+        self::assertSame(1.0, $result->value);
         self::assertSame(2.0, $engine->getGlobalEnv()->get('conditions')->value);
         $engine->eval('conditions = 0');
         $engine->setLimit('maxLoopIterations', 0);
         $this->expectException(InternalError::class);
         try {
-            ($function->phpCompiled)([], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), []);
+            ($function->phpCompiled)(
+                [],
+                JsUndefined::instance(),
+                $function->getClosure(),
+                $engine->getInterpreter(),
+                $function->phpCompiledNodes,
+            );
         } finally {
             self::assertSame(1.0, $engine->getGlobalEnv()->get('conditions')->value);
         }
@@ -150,14 +164,21 @@ JS);
         if ($tier === 'bytecode') {
             $loop = 'try {' . $loop . '} finally {}';
         }
-        $engine->eval('function probe(n) {' . $loop . ' return n; } probe(1);');
+        $engine->eval('function probe(n) { function condition(value) { conditions++; return value; } '
+            . $loop . ' return n; } probe(1);');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
         $engine->eval('conditions = 0');
         $engine->setLimit('maxLoopIterations', 0);
         if ($tier === 'php') {
             self::assertInstanceOf(\Closure::class, $function->phpCompiled);
-            $result = ($function->phpCompiled)([JsNumber::of(0)], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), []);
+            $result = ($function->phpCompiled)(
+                [JsNumber::of(0)],
+                JsUndefined::instance(),
+                $function->getClosure(),
+                $engine->getInterpreter(),
+                $function->phpCompiledNodes,
+            );
             self::assertSame(0.0, $result->value);
         } else {
             self::assertSame($tier === 'bytecode', $function->compiled !== null);
@@ -175,14 +196,15 @@ JS);
                 $engine->setExecutionBudget(-1);
             }
         });
-        $engine->eval('function probe() { let n = 0; while (n < 2) { n++; expireBudget(); } return n; } probe();');
+        $engine->eval('function probe() { function expireLocal() { expireBudget(); } '
+            . 'let n = 0; while (n < 2) { n++; expireLocal(); } return n; } probe();');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
         self::assertInstanceOf(\Closure::class, $function->phpCompiled);
         $engine->setLimit('maxLoopIterations', 1);
         $expire = true;
         $this->expectException(BudgetExceeded::class);
-        ($function->phpCompiled)([], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), []);
+        ($function->phpCompiled)([], JsUndefined::instance(), $function->getClosure(), $engine->getInterpreter(), $function->phpCompiledNodes);
     }
 
     public function testBudgetAbortUnwindsInlineFramesAndBypassesJsCatch(): void
@@ -197,7 +219,7 @@ JS);
         self::assertSame(2, $engine->eval(<<<'JS'
 var iterations = 0, caught = false;
 function innerLoop() { let n = 0; while (n < 2) { n++; iterations++; expireBudget(); } return n; }
-function middleLoop() { return innerLoop(); }
+function middleLoop() { try { return innerLoop(); } finally {} }
 function outerLoop() { try { return middleLoop(); } catch (error) { caught = true; return -1; } }
 outerLoop();
 JS));

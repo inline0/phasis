@@ -64,6 +64,7 @@ final class JsToPhp
     use Parts\JsToPhpEmitExpression;
     use Parts\JsToPhpStringScanners;
     use Parts\JsToPhpLoopRegions;
+    use Parts\JsToPhpBailoutSafety;
 
     /** @var array<string, true> */
     private array $declaredLocals = [];
@@ -133,29 +134,6 @@ final class JsToPhp
     private array $freeVars = [];
 
     /**
-     * Per-safe-name set of free vars whose `static $_fvenv_…, $_fvver_…,
-     * $_fv_… = ...;` declaration has already been hoisted into the
-     * closure prologue. Survives captureBranch (which intentionally
-     * resets `freeVars` so each conditional arm re-emits the lazy
-     * init check), so the same `static` declaration isn't emitted
-     * twice and tripped by PHP's "Duplicate declaration of static
-     * variable" compile-time error.
-     *
-     * @var array<string, true>
-     */
-    private array $freeVarStatics = [];
-
-    /**
-     * `static $_fvenv_$safe = null, $_fvver_$safe = -1, $_fv_$safe = 0.0;`
-     * lines hoisted to the top of the closure. Each safe-name appears
-     * at most once, regardless of how many branches resolve the same
-     * free var.
-     *
-     * @var list<string>
-     */
-    private array $freeVarStaticDecls = [];
-
-    /**
      * AST nodes the eval'd closure references at run time, indexed
      * positionally. Currently only nested FunctionDeclaration nodes
      * that the closure materialises into JsFunctions via vmMakeFunction.
@@ -206,6 +184,9 @@ final class JsToPhp
 
     public static function compile(JsFunction $fn): ?\Closure
     {
+        if ($fn->getBoundTarget() !== null) {
+            return null;
+        }
         if (CompilationFailures::get($fn, 'php') !== null) {
             return null;
         }
@@ -227,7 +208,9 @@ final class JsToPhp
         // derived ctor was leaking through as `$env->get("super")`
         // which then ReferenceError-ed at runtime.
         if (
-            $fn->isClassConstructor()
+            $fn->isAsync()
+            || $fn->isGenerator()
+            || $fn->isClassConstructor()
             || $fn->isDerivedConstructor()
             || $fn->getHomeObject() !== null
         ) {
@@ -299,6 +282,10 @@ final class JsToPhp
         if ($isExpressionBody && !$body instanceof Node) {
             return null;
         }
+        // A raw entry must have an explicit final return before any body can run.
+        if ($numeric && !$isExpressionBody && !self::numericModeEligible($fn)) {
+            return null;
+        }
         $compiler = new self();
         $compiler->numericMode = $numeric;
         $compiler->scannerPlan = $scanner;
@@ -335,6 +322,7 @@ final class JsToPhp
                     return null;
                 }
             } else {
+                $compiler->prepareLocalFunctionDeclarations($body);
                 $compiler->collectLocals($body->body);
                 $compiler->checkNestedCaptures($body->body);
                 // Bail if any declared local has no init AND no
@@ -377,18 +365,7 @@ final class JsToPhp
                 foreach ($body->body as $stmt) {
                     $compiler->emitStatement($stmt);
                 }
-                if ($numeric) {
-                    // Numeric-mode bodies must end with an explicit
-                    // ReturnStatement (handled by emitStatement). A
-                    // function that falls through has no numeric value
-                    // to surface — bail at runtime so the standard
-                    // entry's undefined return takes over. NAN serves
-                    // as a "fell off body" sentinel here, but better
-                    // is to emit a Bailout so the caller falls back.
-                    $compiler->emitLine(
-                        'throw new \\Phasis\\Bytecode\\Bailout("numeric body fall-off");'
-                    );
-                } else {
+                if (!$numeric) {
                     $compiler->emitLine('return \\Phasis\\Value\\JsUndefined::instance();');
                 }
             }
@@ -418,12 +395,7 @@ final class JsToPhp
         // overflow thresholds while leaving headroom below
         // typical PHP defaults. Use a static counter local to the
         // closure so we don't depend on private CallStack APIs.
-        $freeVarStatics = '';
-        foreach ($compiler->freeVarStaticDecls as $decl) {
-            $freeVarStatics .= $decl . "\n";
-        }
-        $bodyPrologue = $freeVarStatics
-            . "static \$_jstophp_depth = 0;\n"
+        $bodyPrologue = "static \$_jstophp_depth = 0;\n"
             . "if (\$_jstophp_depth >= 8192) { throw new \\Phasis\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
             . "\$_jstophp_depth++;\n"
             . "try {\n";

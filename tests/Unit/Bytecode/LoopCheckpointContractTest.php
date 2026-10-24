@@ -77,6 +77,11 @@ final class LoopCheckpointContractTest extends TestCase
         if ($tier === 'ast') {
             $engine->setExecutionBudget(10);
         }
+        $helper = '';
+        if (str_contains($body, 'expireBudget();')) {
+            $helper = 'function expireLocal() { expireBudget(); } ';
+            $body = str_replace('expireBudget();', 'expireLocal();', $body);
+        }
         $statement = match ($loop) {
             'for' => 'for (; count < amount;) {' . $body . '}',
             'while' => 'while (count < amount) {' . $body . '}',
@@ -85,7 +90,7 @@ final class LoopCheckpointContractTest extends TestCase
         if ($tier === 'bytecode') {
             $statement = 'try {' . $statement . '} finally {}';
         }
-        $engine->eval('function probe(amount) { let count = 0; ' . $statement . ' return count; } probe(1);');
+        $engine->eval('function probe(amount) { ' . $helper . 'let count = 0; ' . $statement . ' return count; } probe(1);');
         $function = $engine->getGlobalEnv()->get('probe');
         self::assertInstanceOf(JsFunction::class, $function);
         if ($tier === 'php') {

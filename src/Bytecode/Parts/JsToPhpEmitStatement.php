@@ -60,13 +60,9 @@ trait JsToPhpEmitStatement
             }
             $php = $this->slotVar($name);
             if ($this->numericMode) {
-                // Numeric entry: caller (another JsToPhp closure) has
-                // already validated the arg shape and passes raw
-                // float values via $rawArgs. Default missing args to
-                // NAN — JS spec says ToNumber(undefined) is NaN, and
-                // a numeric body computing on a missing param should
-                // propagate NaN rather than silently treat as 0.
-                $this->emitLine($php . ' = $rawArgs[' . $idx . '] ?? NAN;');
+                $this->emitLine($php . ' = $rawArgs[' . $idx . '] ?? null;');
+                $this->emitLine('if (!is_float(' . $php . ')) {'
+                    . ' throw new \\Phasis\\Bytecode\\Bailout("non-numeric raw argument"); }');
             } else {
                 $this->emitLine(
                     $php . ' = isset($args[' . $idx . ']) && $args[' . $idx . '] '
@@ -140,6 +136,9 @@ trait JsToPhpEmitStatement
                 $this->slotVar($name) . ' = $interp->vmMakeFunction($nestedFns['
                 . $idx . '], $env);'
             );
+            if (isset($this->topLevelFunctionDeclarations[spl_object_id($node)])) {
+                $this->initializedLocalFunctions[$name] = true;
+            }
             return;
         }
         if ($node instanceof BlockStatement) {
@@ -164,7 +163,8 @@ trait JsToPhpEmitStatement
                 $this->emitLine($resultTemp . ';');
                 return;
             }
-            $expr = $this->emitExpression($node->expression);
+            $expr = $node->expression instanceof UpdateExpression
+                ? $this->emitLocalUpdate($node->expression, true) : $this->emitExpression($node->expression);
             $this->flushPending();
             $this->emitLine($expr . ';');
             $this->emitRegionExpressionWrite($node->expression);
@@ -237,9 +237,6 @@ trait JsToPhpEmitStatement
                     // the construct-returns-primitive corner case.
                     $newTemp = $this->emitNewExpression($decl->init);
                     $this->flushPending();
-                    $this->emitLine('if (!(' . $newTemp
-                        . ' instanceof \\Phasis\\Value\\JsObject)) { '
-                        . 'throw new \\Phasis\\Bytecode\\Bailout("new returned non-object"); }');
                     $this->emitLine($this->slotVar($name) . ' = ' . $newTemp . ';');
                 } elseif ($kind === 'function' && $decl->init instanceof CallExpression) {
                     // Call returning a JsFunction (e.g. `const add5 =
@@ -266,6 +263,13 @@ trait JsToPhpEmitStatement
                     // callee returns a JsNumber.
                     throw new Bailout('let X = callExpr() with default numeric type');
                 } else {
+                    if (!in_array($kind, ['numeric', 'boolean'], true)) {
+                        throw new Bailout('initializer changes a non-scalar local type');
+                    }
+                    $expected = $kind === 'boolean' ? 'boolean' : 'numeric';
+                    if ($this->inferExpressionType($decl->init) !== $expected) {
+                        throw new Bailout('non-numeric scalar initializer');
+                    }
                     $val = $this->emitExpression($decl->init);
                     $this->flushPending();
                     $this->emitLine($this->slotVar($name) . ' = ' . $val . ';');
@@ -302,6 +306,7 @@ trait JsToPhpEmitStatement
                     $this->emitLine($expr . ';');
                 }
             }
+            $loopSafety = $this->beginLoopSafety();
             // The test / update are emitted at every iteration boundary.
             // When the test or update needs deferred statements (free-
             // variable resolution caches, lifted call results), rewrite
@@ -312,13 +317,14 @@ trait JsToPhpEmitStatement
             // loop that references a closed-over local in its test.
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
-            $test = $node->test !== null ? $this->emitExpression($node->test) : 'true';
+            $test = $node->test !== null ? $this->emitLoopCondition($node->test) : 'true';
             $testPending = $this->pendingStatements;
             $this->pendingStatements = [];
             $update = null;
             $updatePending = [];
             if ($node->update !== null) {
-                $update = $this->emitExpression($node->update);
+                $update = $node->update instanceof UpdateExpression
+                    ? $this->emitLocalUpdate($node->update, true) : $this->emitExpression($node->update);
                 $updatePending = $this->pendingStatements;
             }
             $this->pendingStatements = $savedPending;
@@ -339,14 +345,16 @@ trait JsToPhpEmitStatement
             }
             $this->indentLevel--;
             $this->emitLine('}');
+            $this->finishLoopSafety($loopSafety);
             return;
         }
         if ($node instanceof WhileStatement) {
+            $loopSafety = $this->beginLoopSafety();
             $loopCounter = $this->newTemp('loop');
             $this->emitLine($loopCounter . ' = 0;');
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
-            $test = $this->emitExpression($node->test);
+            $test = $this->emitLoopCondition($node->test);
             $testPending = $this->pendingStatements;
             $this->pendingStatements = $savedPending;
             // A final false condition still checks the deadline, but consumes
@@ -362,14 +370,16 @@ trait JsToPhpEmitStatement
             $this->emitStatement($node->body);
             $this->indentLevel--;
             $this->emitLine('}');
+            $this->finishLoopSafety($loopSafety);
             return;
         }
         if ($node instanceof DoWhileStatement) {
+            $loopSafety = $this->beginLoopSafety();
             $loopCounter = $this->newTemp('loop');
             $this->emitLine($loopCounter . ' = 0;');
             $savedPending = $this->pendingStatements;
             $this->pendingStatements = [];
-            $test = $this->emitExpression($node->test);
+            $test = $this->emitLoopCondition($node->test);
             $testPending = $this->pendingStatements;
             $this->pendingStatements = $savedPending;
             $this->emitLine('do {');
@@ -391,6 +401,7 @@ trait JsToPhpEmitStatement
                 // a flag so the pending lines run before the test.
                 $this->emitLine('} while (' . $test . ');');
             }
+            $this->finishLoopSafety($loopSafety);
             return;
         }
         if ($node instanceof BreakStatement) {
@@ -408,6 +419,36 @@ trait JsToPhpEmitStatement
             return;
         }
         if ($node instanceof ReturnStatement) {
+            if (!$this->numericMode && $node->argument instanceof CallExpression) {
+                if (in_array('function', $this->localTypes, true)) {
+                    throw new Bailout('boxed return call requires interpreter function hoists');
+                }
+                $value = $this->emitCallCore($node->argument);
+                $this->flushPending();
+                $this->emitLine('return ' . $value . ';');
+                return;
+            }
+            if (
+                !$this->numericMode && $node->argument instanceof Identifier
+                && !isset($this->declaredLocals[$node->argument->name])
+            ) {
+                $this->recordObservableEffect();
+                $this->emitLine('return $env->get(' . var_export($node->argument->name, true) . ');');
+                return;
+            }
+            if (
+                !$this->numericMode && $node->argument instanceof \Phasis\Ast\Expression\MemberExpression
+                && !$node->argument->computed && !$node->argument->optional
+                && $node->argument->object instanceof Identifier && $node->argument->property instanceof Identifier
+                && ($this->localTypes[$node->argument->object->name] ?? null) === 'object'
+            ) {
+                $this->recordObservableEffect();
+                $receiver = $this->slotVar($node->argument->object->name);
+                $this->emitLine('return $interp->vmLookupPrimitiveMember(' . $receiver
+                    . ' ?? \\Phasis\\Value\\JsUndefined::instance(), '
+                    . var_export($node->argument->property->name, true) . ');');
+                return;
+            }
             if ($node->argument === null) {
                 if ($this->numericMode) {
                     // No numeric value to surface; bail so the caller
@@ -459,8 +500,7 @@ trait JsToPhpEmitStatement
         \Phasis\Ast\Pattern\ObjectPattern $pattern,
         \Phasis\Ast\Expression\ObjectExpression $literal,
     ): void {
-        // Build a key → AST value map from the literal so pattern
-        // targets can fetch their values without a runtime lookup.
+        // Every initializer runs before binding targets, including unused and overwritten properties.
         $keyMap = [];
         foreach ($literal->properties as $prop) {
             if (!$prop instanceof \Phasis\Ast\Expression\Property) {
@@ -477,7 +517,13 @@ trait JsToPhpEmitStatement
             } else {
                 throw new Bailout('weird destructure source key');
             }
-            $keyMap[$key] = $prop->value;
+            if ($key === '__proto__' || $this->inferExpressionType($prop->value) !== 'numeric') {
+                throw new Bailout('non-numeric destructuring value');
+            }
+            $value = $this->emitExpression($prop->value);
+            $temporary = $this->newTemp('destructure_value');
+            $this->pendingStatements[] = $temporary . ' = ' . $value . ';';
+            $keyMap[$key] = $temporary;
         }
         foreach ($pattern->properties as $prop) {
             if (!$prop instanceof \Phasis\Ast\Pattern\AssignmentProperty) {
@@ -500,12 +546,22 @@ trait JsToPhpEmitStatement
             if (!isset($keyMap[$patKey])) {
                 throw new Bailout('pattern key missing in source');
             }
-            $valueExpr = $this->emitExpression($keyMap[$patKey]);
+            $valueExpr = $keyMap[$patKey];
             $this->flushPending();
             $this->emitLine(
                 $this->slotVar($prop->value->name) . ' = ' . $valueExpr . ';'
             );
         }
+    }
+
+    /** @phpstan-impure */
+    private function emitLoopCondition(Node $condition): string
+    {
+        if ($condition instanceof CallExpression && $this->scannerPlan === null && $this->loopRegion === null) {
+            $value = $this->emitCallCore($condition);
+            return '\\Phasis\\Spec\\TypeConversion::toBoolean(' . $value . ')';
+        }
+        return $this->emitExpression($condition);
     }
 
     private function flushPending(): void
@@ -546,9 +602,12 @@ trait JsToPhpEmitStatement
             } else {
                 throw new Bailout('object literal weird key');
             }
+            if ($key === '__proto__') {
+                throw new Bailout('object literal prototype setter');
+            }
             $valueRef = $this->emitJsValueExpression($prop->value);
-            $this->pendingStatements[] = $temp . '->properties->dataSlots['
-                . var_export($key, true) . '] = ' . $valueRef . ';';
+            $this->pendingStatements[] = $temp . '->properties->setDataSlot('
+                . var_export($key, true) . ', ' . $valueRef . ');';
         }
         return $temp;
     }

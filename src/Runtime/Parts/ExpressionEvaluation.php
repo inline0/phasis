@@ -3795,6 +3795,18 @@ trait ExpressionEvaluation
         }
     }
 
+    /** @param list<JsValue> $args */
+    public function vmCallValue(JsValue $callee, JsValue $thisValue, array $args, string $display = 'value'): JsValue
+    {
+        if ($callee instanceof JsFunction) {
+            return $this->callFunction($callee, $thisValue, $args);
+        }
+        if ($callee instanceof \Phasis\Value\JsProxy && $callee->isCallable()) {
+            return $callee->apply($thisValue, $args);
+        }
+        throw new TypeError($display . ' is not a function');
+    }
+
     /** @param JsValue[] $args */
     public function callFunction(
         JsFunction $fn,

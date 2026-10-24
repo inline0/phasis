@@ -232,8 +232,9 @@ trait JsToPhpScope
 
     /**
      * Build the initial set of names defined in a nested function's
-     * own scope: its parameters, plus its own name (FunctionExpression
-     * / FunctionDeclaration). Names in this set shadow outer locals
+     * own scope: its parameters, plus a named FunctionExpression's name.
+     * A FunctionDeclaration's name resolves through its enclosing scope.
+     * Names in this set shadow outer locals
      * and are NOT considered captures.
      *
      * @return array<string, true>
@@ -241,9 +242,6 @@ trait JsToPhpScope
     private function initialNestedScope(Node $fnNode): array
     {
         $blocked = [];
-        if ($fnNode instanceof FunctionDeclaration && $fnNode->id !== null) {
-            $blocked[$fnNode->id->name] = true;
-        }
         if (
             $fnNode instanceof \Phasis\Ast\Expression\FunctionExpression
             && $fnNode->name !== null

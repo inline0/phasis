@@ -154,8 +154,9 @@ trait JsToPhpEmitExpression
             return 'unknown';
         }
         if ($node instanceof AssignmentExpression) {
-            // Result of an assignment is the assigned value; most
-            // assignments in our profile deal with numeric slots.
+            if ($node->operator === '=') {
+                return $node->right instanceof CallExpression ? 'numeric' : $this->inferExpressionType($node->right);
+            }
             return 'numeric';
         }
         if ($node instanceof \Phasis\Ast\Expression\MemberExpression) {
@@ -197,64 +198,32 @@ trait JsToPhpEmitExpression
                 }
                 return $this->slotVar($node->name);
             }
-            // Free variable: read from env, unbox to raw double on
-            // first reference; subsequent uses pull the raw $_fv_*
-            // PHP local. Bail if the free var is not a JsNumber so
-            // the VM falls back gracefully.
-            //
-            // Cache strategy: gate the env lookup on Environment::
-            // $globalBindingsVersion. The static persists across
-            // closure invocations; if no binding has been written
-            // since the previous call (closure / fib hot path), we
-            // skip env->get entirely and reuse the cached raw value.
-            // The env identity check guards against the same compiled
-            // closure being reused on a different env; if so, the
-            // cache invalidates and we re-resolve.
+            $this->recordRuntimeGuard();
             $name = $node->name;
             if (!isset($this->freeVars[$name])) {
                 $this->freeVars[$name] = true;
                 $safe = preg_replace('/[^A-Za-z0-9_]/', '_', $name);
                 $box = '$_fvbox_' . $safe;
-                $php = $this->freeVar($name);
-                $envCacheVar = '$_fvenv_' . $safe;
-                $verCacheVar = '$_fvver_' . $safe;
-                // Hoist the `static …` declaration to the closure
-                // prologue exactly once per safe-name. Emitting it
-                // inline here would duplicate when the same free var
-                // is read from both arms of a conditional — captureBranch
-                // resets $freeVars so each arm re-enters this block,
-                // but PHP forbids redeclaring the same static variable
-                // in one function body.
-                if (!isset($this->freeVarStatics[$safe])) {
-                    $this->freeVarStatics[$safe] = true;
-                    $this->freeVarStaticDecls[] = 'static ' . $envCacheVar
-                        . ' = null, ' . $verCacheVar . ' = -1, ' . $php . ' = 0.0;';
-                }
-                $this->pendingStatements[] = '$_curVer = \\Phasis\\Runtime\\Environment::'
-                    . '$globalBindingsVersion;';
-                $this->pendingStatements[] = 'if ($env !== ' . $envCacheVar
-                    . ' || $_curVer !== ' . $verCacheVar . ') {';
-                $this->pendingStatements[] = '    ' . $box
-                    . ' = $env->get(' . var_export($name, true) . ');';
-                $this->pendingStatements[] = '    if (!(' . $box
+                $this->pendingStatements[] = $box . ' = $env->getDataBinding(' . var_export($name, true) . ');';
+                $this->pendingStatements[] = 'if (!(' . $box
                     . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric freevar"); }';
-                // Update the cache only AFTER the JsNumber check
-                // succeeds. If the value is not numeric we throw
-                // Bailout, and the cache must stay unchanged so the
-                // next call re-enters the if-block and re-throws,
-                // routing again to the VM fallback. Mutating env /
-                // version before the throw makes the cache appear
-                // valid on retry and returns the stale default.
-                $this->pendingStatements[] = '    ' . $envCacheVar . ' = $env;';
-                $this->pendingStatements[] = '    ' . $verCacheVar . ' = $_curVer;';
-                $this->pendingStatements[] = '    ' . $php . ' = ' . $box . '->value;';
-                $this->pendingStatements[] = '}';
+                $this->pendingStatements[] = $this->freeVar($name) . ' = ' . $box . '->value;';
             }
             return $this->freeVar($name);
         }
         if ($node instanceof BinaryExpression) {
             $l = $this->emitExpression($node->left);
+            if ($this->scannerPlan === null && $this->loopRegion === null) {
+                $left = $this->newTemp('binary_left');
+                $this->pendingStatements[] = $left . ' = ' . $l . ';';
+                $l = $left;
+            }
             $r = $this->emitExpression($node->right);
+            if ($this->scannerPlan === null && $this->loopRegion === null) {
+                $right = $this->newTemp('binary_right');
+                $this->pendingStatements[] = $right . ' = ' . $r . ';';
+                $r = $right;
+            }
             switch ($node->operator) {
                 case '+':
                 case '-':
@@ -329,15 +298,7 @@ trait JsToPhpEmitExpression
             }
         }
         if ($node instanceof UpdateExpression) {
-            if (!$node->argument instanceof Identifier) {
-                throw new Bailout('update on non-identifier');
-            }
-            if (!isset($this->declaredLocals[$node->argument->name])) {
-                throw new Bailout('update on non-local');
-            }
-            $slot = $this->slotVar($node->argument->name);
-            $op = $node->operator === '++' ? '+= 1' : '-= 1';
-            return '(' . $slot . ' ' . $op . ')';
+            return $this->emitLocalUpdate($node, false);
         }
         if ($node instanceof AssignmentExpression) {
             // obj.prop = value: lower to a direct dataSlots write on
@@ -359,16 +320,21 @@ trait JsToPhpEmitExpression
                 }
                 $recv = $this->slotVar($recvName);
                 $key = $node->left->property->name;
+                if ($this->inferExpressionType($node->right) !== 'numeric') {
+                    throw new Bailout('non-numeric private write');
+                }
                 $val = $this->emitExpression($node->right);
                 $temp = $this->newTemp('mw');
+                $this->recordRuntimeGuard();
+                $this->pendingStatements[] = 'if (!(' . $recv . ' instanceof \\Phasis\\Value\\JsObject)'
+                    . ' || get_class(' . $recv . ') !== \\Phasis\\Value\\JsObject::class'
+                    . ' || !isset(' . $recv . '->properties->dataSlots[' . var_export($key, true) . '])) {'
+                    . ' throw new \\Phasis\\Bytecode\\Bailout("member write requires an own data slot"); }';
                 $this->pendingStatements[] = $temp
                     . ' = \\Phasis\\Value\\JsNumber::of((float)(' . $val . '));';
-                $this->pendingStatements[] = $recv . '->properties->dataSlots['
-                    . var_export($key, true) . '] = ' . $temp . ';';
-                // Expression value of assignment is the assigned RHS;
-                // most callers (ExpressionStatement) discard it, but
-                // return the boxed JsValue so chained assignment works.
-                return $temp;
+                $this->pendingStatements[] = $recv . '->properties->setDataSlot('
+                    . var_export($key, true) . ', ' . $temp . ');';
+                return $temp . '->value';
             }
             // Computed bracket-write: arr[i] = numericExpr on an array-
             // typed local. Lowers to a denseElements write via
@@ -389,23 +355,28 @@ trait JsToPhpEmitExpression
                 }
                 $recv = $this->slotVar($recvName);
                 $idxExpr = $this->emitExpression($node->left->property);
+                $index = $this->newTemp('array_index');
+                $this->pendingStatements[] = $index . ' = ' . $idxExpr . ';';
+                if ($this->inferExpressionType($node->right) !== 'numeric') {
+                    throw new Bailout('non-numeric private write');
+                }
                 $val = $this->emitExpression($node->right);
                 $idxLocal = $this->newTemp('ai');
                 $valTemp = $this->newTemp('av');
-                $this->pendingStatements[] = $idxLocal . ' = (int) ' . $idxExpr . ';';
                 $this->pendingStatements[] = $valTemp
                     . ' = \\Phasis\\Value\\JsNumber::of((float)(' . $val . '));';
-                $this->pendingStatements[] = 'if (!' . $recv
-                    . '->isDenseMode()) { throw new \\Phasis\\Bytecode\\Bailout("array write on non-dense receiver"); }';
+                $this->recordRuntimeGuard();
+                $this->pendingStatements[] = 'if (!(' . $recv . ' instanceof \\Phasis\\Value\\JsArray)'
+                    . ' || get_class(' . $recv . ') !== \\Phasis\\Value\\JsArray::class || !' . $recv . '->isDenseMode()'
+                    . ' || !is_float(' . $index . ') || !is_finite(' . $index . ') || ' . $index . ' < 0 || floor(' . $index . ') !== ' . $index
+                    . ' || ' . $index . ' >= ' . $recv . '->getLength()) {'
+                    . ' throw new \\Phasis\\Bytecode\\Bailout("array write requires an own dense index"); }';
+                $this->pendingStatements[] = $idxLocal . ' = (int) ' . $index . ';';
+                $this->pendingStatements[] = 'if ((' . $recv . '->getDenseElements()[' . $idxLocal . '] ?? null) === null) {'
+                    . ' throw new \\Phasis\\Bytecode\\Bailout("array write requires a present index"); }';
                 $this->pendingStatements[] = $recv . '->setDenseElement('
                     . $idxLocal . ', ' . $valTemp . ');';
-                // Maintain length invariant: extending past current
-                // length needs setLength to keep getLength() correct
-                // for downstream reads (e.g. .length / dense iter).
-                $this->pendingStatements[] = 'if (' . $idxLocal . ' >= ' . $recv
-                    . '->getLength()) { ' . $recv . '->setLength('
-                    . $idxLocal . ' + 1); }';
-                return $valTemp;
+                return $valTemp . '->value';
             }
             if (!$node->left instanceof Identifier) {
                 throw new Bailout('assign to non-identifier');
@@ -438,9 +409,6 @@ trait JsToPhpEmitExpression
                 && ($this->localTypes[$name] ?? null) === 'object'
             ) {
                 $newTemp = $this->emitNewExpression($node->right);
-                $this->pendingStatements[] = 'if (!(' . $newTemp
-                    . ' instanceof \\Phasis\\Value\\JsObject)) { '
-                    . 'throw new \\Phasis\\Bytecode\\Bailout("new returned non-object"); }';
                 $this->pendingStatements[] = $this->slotVar($name) . ' = ' . $newTemp . ';';
                 return $newTemp;
             }
@@ -466,8 +434,18 @@ trait JsToPhpEmitExpression
                 }
                 throw new Bailout('string assignment ' . $node->operator);
             }
+            if (!in_array($kind ?? 'numeric', ['numeric', 'boolean'], true)) {
+                throw new Bailout('assignment changes a non-scalar local type');
+            }
             $slot = $this->slotVar($name);
             $val = $this->emitExpression($node->right);
+            $expected = ($this->localTypes[$name] ?? 'numeric') === 'boolean' ? 'boolean' : 'numeric';
+            if (
+                $this->inferExpressionType($node->right) !== $expected
+                && !($expected === 'numeric' && $node->right instanceof CallExpression)
+            ) {
+                throw new Bailout('assignment changes a scalar local type');
+            }
             $op = $node->operator;
             if ($op === '=') {
                 return '(' . $slot . ' = ' . $val . ')';
@@ -541,6 +519,7 @@ trait JsToPhpEmitExpression
             ) {
                 $key = $node->property->name;
                 $temp = $this->newTemp('tmr');
+                $this->recordRuntimeGuard();
                 $this->pendingStatements[] = 'if (!($thisValue instanceof \\Phasis\\Value\\JsObject)) { '
                     . 'throw new \\Phasis\\Bytecode\\Bailout("this not object"); }';
                 $this->pendingStatements[] = $temp . ' = $thisValue'
@@ -566,9 +545,15 @@ trait JsToPhpEmitExpression
                 $recv = $this->slotVar($recvName);
                 $idxLocal = $this->newTemp('ai');
                 $valLocal = $this->newTemp('av');
-                $this->pendingStatements[] = $idxLocal . ' = (int) ' . $idxExpr . ';';
-                $this->pendingStatements[] = 'if (!' . $recv
-                    . '->isDenseMode()) { throw new \\Phasis\\Bytecode\\Bailout("array read on non-dense receiver"); }';
+                $index = $this->newTemp('array_index');
+                $this->pendingStatements[] = $index . ' = ' . $idxExpr . ';';
+                $this->recordRuntimeGuard();
+                $this->pendingStatements[] = 'if (!(' . $recv . ' instanceof \\Phasis\\Value\\JsArray)'
+                    . ' || get_class(' . $recv . ') !== \\Phasis\\Value\\JsArray::class || !' . $recv . '->isDenseMode()'
+                    . ' || !is_float(' . $index . ') || !is_finite(' . $index . ') || ' . $index . ' < 0 || floor(' . $index . ') !== ' . $index
+                    . ' || ' . $index . ' >= ' . $recv . '->getLength()) {'
+                    . ' throw new \\Phasis\\Bytecode\\Bailout("array read requires an own dense index"); }';
+                $this->pendingStatements[] = $idxLocal . ' = (int) ' . $index . ';';
                 $this->pendingStatements[] = $valLocal . ' = ' . $recv
                     . '->getDenseElements()[' . $idxLocal . '] ?? null;';
                 $this->pendingStatements[] = 'if (!(' . $valLocal
@@ -597,6 +582,9 @@ trait JsToPhpEmitExpression
             }
             $recv = $this->slotVar($recvName);
             $temp = $this->newTemp('mr');
+            $this->recordRuntimeGuard();
+            $this->pendingStatements[] = 'if (!(' . $recv . ' instanceof \\Phasis\\Value\\JsObject)) {'
+                . ' throw new \\Phasis\\Bytecode\\Bailout("member receiver unavailable"); }';
             $this->pendingStatements[] = $temp . ' = ' . $recv
                 . '->properties->dataSlots[' . var_export($key, true) . '] ?? null;';
             $this->pendingStatements[] = 'if (!(' . $temp
@@ -621,33 +609,6 @@ trait JsToPhpEmitExpression
         if ($scannerCall !== null) {
             return $scannerCall;
         }
-        // Method call shortcut: `arr.push(val)` on an array-typed
-        // local goes straight to JsArray::push without resolving the
-        // method through the prototype chain. Returns the new length
-        // as a numeric raw double, matching the VM inline path.
-        if (
-            $node->callee instanceof \Phasis\Ast\Expression\MemberExpression
-            && !$node->callee->computed
-            && $node->callee->object instanceof Identifier
-            && $node->callee->property instanceof Identifier
-        ) {
-            $recvName = $node->callee->object->name;
-            if (
-                isset($this->declaredLocals[$recvName])
-                && ($this->localTypes[$recvName] ?? 'numeric') === 'array'
-                && $node->callee->property->name === 'push'
-                && count($node->arguments) === 1
-                && !($node->arguments[0] instanceof \Phasis\Ast\Expression\SpreadElement)
-            ) {
-                $argExpr = $this->emitExpression($node->arguments[0]);
-                $recv = $this->slotVar($recvName);
-                $valTemp = $this->newTemp('av');
-                $this->pendingStatements[] = $valTemp
-                    . ' = \\Phasis\\Value\\JsNumber::of(' . $argExpr . ');';
-                $this->pendingStatements[] = $recv . '->push(' . $valTemp . ');';
-                return '((float) ' . $recv . '->getLength())';
-            }
-        }
         // Always prefer the callee's numeric entry when it exists,
         // regardless of caller mode. The result is a raw float that
         // can be plugged into either pipeline directly: numeric mode
@@ -658,6 +619,7 @@ trait JsToPhpEmitExpression
             return $rawTemp;
         }
         $resultTemp = $this->emitCallCore($node);
+        $this->recordRuntimeGuard();
         // The numeric pipeline expects a raw double. The callee's
         // contract is `JsNumber` — anything else triggers a Bailout
         // so the VM / tree-walker fallback handles non-numeric cases.
@@ -682,73 +644,35 @@ trait JsToPhpEmitExpression
         if (!$node->callee instanceof Identifier) {
             return null;
         }
-        // Same arg / callee resolution as emitCallCore but emitting
-        // directly to numeric entry. Bail back (return null) if the
-        // shape doesn't fit so the caller falls back to spec dispatch.
-        $argRawExprs = [];
-        foreach ($node->arguments as $arg) {
-            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
+        $this->recordRuntimeGuard();
+        $name = $node->callee->name;
+        if (isset($this->declaredLocals[$name])) {
+            if (($this->localTypes[$name] ?? null) !== 'function') {
                 return null;
             }
-            $argRawExprs[] = $this->emitExpression($arg);
-        }
-        $calleeName = $node->callee->name;
-        $isLocalFnCallee = false;
-        if (isset($this->declaredLocals[$calleeName])) {
-            if (($this->localTypes[$calleeName] ?? null) !== 'function') {
-                return null;
-            }
-            $calleeRef = $this->slotVar($calleeName);
-            $isLocalFnCallee = true;
+            $callee = $this->slotVar($name);
         } else {
-            $calleeRef = '$_fnc_' . preg_replace('/[^A-Za-z0-9_]/', '_', $calleeName);
-            if (!isset($this->freeVars['__fnc_' . $calleeName])) {
-                $this->freeVars['__fnc_' . $calleeName] = true;
-                $this->pendingStatements[] = $calleeRef
-                    . ' = $env->get(' . var_export($calleeName, true) . ');';
+            $callee = $this->newTemp('numeric_callee');
+            $this->pendingStatements[] = $callee . ' = $env->getDataBinding(' . var_export($name, true) . ');';
+        }
+        $this->pendingStatements[] = 'if (!(' . $callee . ' instanceof \\Phasis\\Value\\JsFunction)'
+            . ' || ' . $callee . '->phpCompiledNumeric === null || !' . $this->emitSameRealmGuard($callee)
+            . ' || $interp->hasExecutionBudget() || (\\Phasis\\Engine::getCurrentInterpreter()?->hasExecutionBudget() ?? false)) {'
+            . ' throw new \\Phasis\\Bytecode\\Bailout("numeric callee unavailable"); }';
+        $arguments = [];
+        foreach ($node->arguments as $argument) {
+            if ($argument instanceof \Phasis\Ast\Expression\SpreadElement) {
+                throw new Bailout('spread numeric argument');
             }
+            $arguments[] = $this->emitNumericArgument($argument);
         }
-        $argsArr = '[' . implode(', ', $argRawExprs) . ']';
-        $resultTemp = $this->newTemp('cn');
-        if (!$isLocalFnCallee) {
-            $this->pendingStatements[] = 'if (!(' . $calleeRef
-                . ' instanceof \\Phasis\\Value\\JsFunction)) { throw new \\Phasis\\Bytecode\\Bailout("non-function callee"); }';
-        }
-        // Prefer phpCompiledNumeric. Fall back to phpCompiled with
-        // JsNumber boxing of args + unboxing of result. If neither
-        // exists, fall back to callFunction (and unbox).
-        $boxedArgs = [];
-        foreach ($argRawExprs as $expr) {
-            $boxedArgs[] = '\\Phasis\\Value\\JsNumber::of(' . $expr . ')';
-        }
-        $boxedArgsArr = '[' . implode(', ', $boxedArgs) . ']';
-        $this->pendingStatements[] = $resultTemp . ' = '
-            . $calleeRef . '->phpCompiledNumeric !== null'
-            . ' && ' . $this->emitSameRealmGuard($calleeRef)
-            . ' ? (' . $calleeRef . '->phpCompiledNumeric)('
-            . $argsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
-            . $calleeRef . '->closure, $interp, '
-            . $calleeRef . '->phpCompiledNodes)'
-            . ' : null;';
-        // null sentinel triggers spec-entry fallback. Use the same
-        // pattern as the standard call core: phpCompiled or callFunction,
-        // then unbox.
-        $boxedResult = $this->newTemp('cnb');
-        $this->pendingStatements[] = 'if (' . $resultTemp . ' === null) {';
-        $this->pendingStatements[] = '    ' . $boxedResult . ' = '
-            . $calleeRef . '->phpCompiled !== null'
-            . ' && ' . $this->emitSameRealmGuard($calleeRef)
-            . ' ? (' . $calleeRef . '->phpCompiled)('
-            . $boxedArgsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
-            . $calleeRef . '->closure, $interp, '
-            . $calleeRef . '->phpCompiledNodes)'
-            . ' : $interp->callFunction(' . $calleeRef . ', '
-            . '\\Phasis\\Value\\JsUndefined::instance(), ' . $boxedArgsArr . ');';
-        $this->pendingStatements[] = '    if (!(' . $boxedResult
-            . ' instanceof \\Phasis\\Value\\JsNumber)) { throw new \\Phasis\\Bytecode\\Bailout("non-numeric call result"); }';
-        $this->pendingStatements[] = '    ' . $resultTemp . ' = ' . $boxedResult . '->value;';
-        $this->pendingStatements[] = '}';
-        return $resultTemp;
+        $this->recordRuntimeGuard();
+        $result = $this->newTemp('numeric_result');
+        $this->pendingStatements[] = $result . ' = (' . $callee . '->phpCompiledNumeric)([' . implode(', ', $arguments)
+            . '], \\Phasis\\Value\\JsUndefined::instance(), ' . $callee . '->closure, $interp, '
+            . $callee . '->phpCompiledNodes);';
+        $this->recordObservableEffect();
+        return $result;
     }
 
     /**
@@ -760,6 +684,7 @@ trait JsToPhpEmitExpression
     private function emitFunctionValuedCall(CallExpression $node): string
     {
         $resultTemp = $this->emitCallCore($node);
+        $this->recordRuntimeGuard();
         $this->pendingStatements[] = 'if (!(' . $resultTemp
             . ' instanceof \\Phasis\\Value\\JsFunction)) { throw new \\Phasis\\Bytecode\\Bailout("non-function call result"); }';
         return $resultTemp;
@@ -774,98 +699,96 @@ trait JsToPhpEmitExpression
      */
     private function emitCallCore(CallExpression $node): string
     {
-        // MemberExpression callee — `obj.method(args)`. Receiver
-        // must be a known object-typed local; method name must be
-        // an identifier (non-computed). Emits a runtime lookup +
-        // JsFunction guard + dispatch with the receiver passed as
-        // `$thisValue`. Falls back to bailout if the resolved
-        // method isn't BC- or JsToPhp-compiled (callFunction
-        // handles the spec-correct path).
         if (
-            $node->callee instanceof \Phasis\Ast\Expression\MemberExpression
-            && !$node->callee->computed
-            && $node->callee->object instanceof Identifier
-            && $node->callee->property instanceof Identifier
+            $node->callee instanceof \Phasis\Ast\Expression\MemberExpression && !$node->callee->computed
+            && $node->callee->object instanceof Identifier && $node->callee->property instanceof Identifier
         ) {
             return $this->emitMethodCallCore($node);
         }
         if (!$node->callee instanceof Identifier) {
             throw new Bailout('non-identifier callee');
         }
-        // Emit each arg as a numeric raw expression and box on the way
-        // in. Calls within args produce their own pending statements,
-        // which run before this call's; emit order matches JS spec
-        // left-to-right argument evaluation.
-        $argRawExprs = [];
-        foreach ($node->arguments as $arg) {
-            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
-                throw new Bailout('spread arg');
-            }
-            $argRawExprs[] = $this->emitExpression($arg);
-        }
-        $calleeName = $node->callee->name;
-        // Resolve the callee. Function-typed local? Use the slot var
-        // directly (FunctionDeclaration-bound or assigned earlier from
-        // a function-valued call). Otherwise free-variable lookup
-        // cached in a $_fnc_ local on first reference.
-        $isLocalFnCallee = false;
-        if (isset($this->declaredLocals[$calleeName])) {
-            if (($this->localTypes[$calleeName] ?? null) !== 'function') {
+        $name = $node->callee->name;
+        if (isset($this->declaredLocals[$name])) {
+            if (($this->localTypes[$name] ?? null) !== 'function') {
                 throw new Bailout('non-function-typed local callee');
             }
-            $calleeRef = $this->slotVar($calleeName);
-            $isLocalFnCallee = true;
-        } else {
-            $calleeRef = '$_fnc_' . preg_replace('/[^A-Za-z0-9_]/', '_', $calleeName);
-            if (!isset($this->freeVars['__fnc_' . $calleeName])) {
-                $this->freeVars['__fnc_' . $calleeName] = true;
-                $this->pendingStatements[] = $calleeRef
-                    . ' = $env->get(' . var_export($calleeName, true) . ');';
+            if (!isset($this->initializedLocalFunctions[$name])) {
+                throw new Bailout('local call requires interpreter function hoists');
             }
+            $callee = $this->slotVar($name);
+        } else {
+            $this->recordRuntimeGuard();
+            $callee = $this->newTemp('callee');
+            $this->pendingStatements[] = $callee . ' = $env->getDataBinding(' . var_export($name, true) . ');';
+            $this->pendingStatements[] = 'if (' . $callee . ' === null) {'
+                . ' throw new \\Phasis\\Bytecode\\Bailout("observable callee lookup"); }';
         }
-        // Box args, build the args array, dispatch.
-        $boxedArgs = [];
-        foreach ($argRawExprs as $expr) {
-            $boxedArgs[] = '\\Phasis\\Value\\JsNumber::of(' . $expr . ')';
+        $arguments = [];
+        foreach ($node->arguments as $argument) {
+            if ($argument instanceof \Phasis\Ast\Expression\SpreadElement) {
+                throw new Bailout('spread arg');
+            }
+            $arguments[] = '\\Phasis\\Value\\JsNumber::of(' . $this->emitNumericArgument($argument) . ')';
         }
-        $argsArr = '[' . implode(', ', $boxedArgs) . ']';
-        $resultTemp = $this->newTemp('cr');
-        // Direct closure-to-closure dispatch when both this body and
-        // the callee are JsToPhp-compiled. Skips executeFunction's
-        // setup (callStack push, sloppy this coerce, frame setup,
-        // teardown) entirely. Falls back to callFunction for natives,
-        // generators, and any uncompiled callee — those still need
-        // the standard prologue / kind dispatch.
-        // Guard: if the callee isn't a JsFunction we can't dispatch
-        // numerically. Bail to VM so the spec-correct TypeError /
-        // Proxy / etc. handling fires.
-        // The instanceof JsFunction guard is only needed for free-var
-        // callees, where env->get could return any JsValue. For
-        // function-typed locals, the assignment site (FunctionDeclaration
-        // emit / function-valued call init) already asserted JsFunction
-        // and the slot type stays invariant — the per-call check is
-        // pure overhead. Free-var callees still need the guard since
-        // global / outer-scope bindings can change shape between calls.
-        if (!$isLocalFnCallee) {
-            $this->pendingStatements[] = 'if (!(' . $calleeRef
-                . ' instanceof \\Phasis\\Value\\JsFunction)) { throw new \\Phasis\\Bytecode\\Bailout("non-function callee"); }';
+        return $this->emitBoxedDispatch(
+            $callee,
+            '\\Phasis\\Value\\JsUndefined::instance()',
+            '[' . implode(', ', $arguments) . ']',
+            $name,
+        );
+    }
+
+    private function emitLocalUpdate(UpdateExpression $node, bool $discard): string
+    {
+        if (!$node->argument instanceof Identifier || !isset($this->declaredLocals[$node->argument->name])) {
+            throw new Bailout('update on non-local identifier');
         }
-        // Direct closure dispatch when phpCompiled is set. The compile
-        // path only runs for non-native callees (callFunctionInner
-        // routes natives to their callable before reaching tryRunOnVm),
-        // so phpCompiled !== null implies non-native. Direct property
-        // access on $closure / phpCompiledNodes skips the getter
-        // method dispatch in this hot path.
-        $this->pendingStatements[] = $resultTemp . ' = '
-            . $calleeRef . '->phpCompiled !== null'
-            . ' && ' . $this->emitSameRealmGuard($calleeRef)
-            . ' ? (' . $calleeRef . '->phpCompiled)('
-            . $argsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
-            . $calleeRef . '->closure, $interp, '
-            . $calleeRef . '->phpCompiledNodes)'
-            . ' : $interp->callFunction(' . $calleeRef . ', '
-            . '\\Phasis\\Value\\JsUndefined::instance(), ' . $argsArr . ');';
-        return $resultTemp;
+        if (($this->localTypes[$node->argument->name] ?? 'numeric') !== 'numeric') {
+            throw new Bailout('update on a non-numeric local');
+        }
+        $slot = $this->slotVar($node->argument->name);
+        $operation = $slot . ($node->operator === '++' ? ' += 1.0' : ' -= 1.0');
+        if ($node->prefix || $discard) {
+            return '(' . $operation . ')';
+        }
+        $previous = $this->newTemp('postfix');
+        $this->pendingStatements[] = $previous . ' = ' . $slot . ';';
+        $this->pendingStatements[] = $operation . ';';
+        return $previous;
+    }
+
+    private function emitNumericArgument(Node $argument): string
+    {
+        if ($this->inferExpressionType($argument) !== 'numeric') {
+            throw new Bailout('non-numeric call argument');
+        }
+        $value = $this->emitExpression($argument);
+        $temporary = $this->newTemp('argument');
+        $this->pendingStatements[] = $temporary . ' = ' . $value . ';';
+        return $temporary;
+    }
+
+    private function emitBoxedDispatch(string $callee, string $receiver, string $arguments, string $display): string
+    {
+        $result = $this->newTemp('call_result');
+        $packed = $this->newTemp('call_arguments');
+        $this->pendingStatements[] = $packed . ' = ' . $arguments . ';';
+        $arguments = $packed;
+        $fallback = '$interp->vmCallValue(' . $callee . ', ' . $receiver . ', ' . $arguments
+            . ', ' . var_export($display, true) . ')';
+        $this->pendingStatements[] = 'try {';
+        $this->pendingStatements[] = '    ' . $result . ' = ' . $callee . ' instanceof \\Phasis\\Value\\JsFunction'
+            . ' && ' . $callee . '->phpCompiled !== null && ' . $this->emitSameRealmGuard($callee)
+            . ' && !$interp->hasExecutionBudget()'
+            . ' && !(\\Phasis\\Engine::getCurrentInterpreter()?->hasExecutionBudget() ?? false)'
+            . ' ? (' . $callee . '->phpCompiled)(' . $arguments . ', ' . $receiver . ', '
+            . $callee . '->closure, $interp, ' . $callee . '->phpCompiledNodes) : ' . $fallback . ';';
+        $this->pendingStatements[] = '} catch (\\Phasis\\Bytecode\\Bailout) {';
+        $this->pendingStatements[] = '    ' . $result . ' = ' . $fallback . ';';
+        $this->pendingStatements[] = '}';
+        $this->recordObservableEffect();
+        return $result;
     }
 
     /** Direct PHP dispatch cannot establish a foreign function's execution realm. */
@@ -885,15 +808,9 @@ trait JsToPhpEmitExpression
      */
     private function emitNewExpression(\Phasis\Ast\Expression\NewExpression $node): string
     {
+        $this->recordObservableEffect();
         if (!$node->callee instanceof Identifier) {
             throw new Bailout('new with non-identifier callee');
-        }
-        $argRawExprs = [];
-        foreach ($node->arguments as $arg) {
-            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
-                throw new Bailout('spread arg in new');
-            }
-            $argRawExprs[] = $this->emitExpression($arg);
         }
         $ctorName = $node->callee->name;
         // Prefer the function-typed local slot when the constructor was
@@ -904,14 +821,21 @@ trait JsToPhpEmitExpression
             isset($this->declaredLocals[$ctorName])
             && ($this->localTypes[$ctorName] ?? null) === 'function'
         ) {
+            if (!isset($this->initializedLocalFunctions[$ctorName])) {
+                throw new Bailout('local constructor requires interpreter function hoists');
+            }
             $ctorRef = $this->slotVar($ctorName);
         } else {
             $ctorRef = '$_ctor_' . preg_replace('/[^A-Za-z0-9_]/', '_', $ctorName);
-            if (!isset($this->freeVars['__ctor_' . $ctorName])) {
-                $this->freeVars['__ctor_' . $ctorName] = true;
-                $this->pendingStatements[] = $ctorRef
-                    . ' = $env->get(' . var_export($ctorName, true) . ');';
+            $this->pendingStatements[] = $ctorRef
+                . ' = $env->get(' . var_export($ctorName, true) . ');';
+        }
+        $argRawExprs = [];
+        foreach ($node->arguments as $arg) {
+            if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
+                throw new Bailout('spread arg in new');
             }
+            $argRawExprs[] = $this->emitNumericArgument($arg);
         }
         $boxedArgs = [];
         foreach ($argRawExprs as $expr) {
@@ -965,45 +889,23 @@ trait JsToPhpEmitExpression
         $recv = $this->slotVar($recvName);
         $methodTemp = $this->newTemp('mc');
         $propLit = var_export($propId->name, true);
-        // Inline the common own-data-slot and prototype-data-slot
-        // resolutions; only fall back to `->get()` when we miss both.
-        // This mirrors the VM's LOAD_MEMBER fast paths but inside the
-        // JsToPhp-compiled closure so proto-method hot loops never
-        // pay the method-dispatch tax. The receiver was already
-        // proven to be an object-typed local upstream, so the
-        // ->properties / ->prototype field accesses are safe.
-        $this->pendingStatements[] = $methodTemp . ' = '
-            . $recv . '->properties->dataSlots[' . $propLit . ']'
-            . ' ?? ('
-            . $recv . '->prototype !== null'
-            . ' ? (' . $recv . '->prototype->properties->dataSlots[' . $propLit . ']'
-            . ' ?? ' . $recv . '->get(' . $propLit . '))'
-            . ' : ' . $recv . '->get(' . $propLit . '));';
-        $this->pendingStatements[] = 'if (!(' . $methodTemp
-            . ' instanceof \\Phasis\\Value\\JsFunction)) { '
-            . 'throw new \\Phasis\\Bytecode\\Bailout("non-function method"); }';
+        $this->recordRuntimeGuard();
+        $this->pendingStatements[] = 'if (!(' . $recv . ' instanceof \\Phasis\\Value\\JsObject)) {'
+            . ' throw new \\Phasis\\Bytecode\\Bailout("method receiver unavailable"); }';
+        $this->recordObservableEffect();
+        $this->pendingStatements[] = $methodTemp . ' = ' . $recv . '->get(' . $propLit . ');';
         $argRawExprs = [];
         foreach ($node->arguments as $arg) {
             if ($arg instanceof \Phasis\Ast\Expression\SpreadElement) {
                 throw new Bailout('spread arg in method call');
             }
-            $argRawExprs[] = $this->emitExpression($arg);
+            $argRawExprs[] = $this->emitNumericArgument($arg);
         }
         $boxedArgs = [];
         foreach ($argRawExprs as $expr) {
             $boxedArgs[] = '\\Phasis\\Value\\JsNumber::of(' . $expr . ')';
         }
         $argsArr = '[' . implode(', ', $boxedArgs) . ']';
-        $resultTemp = $this->newTemp('mr');
-        $this->pendingStatements[] = $resultTemp . ' = '
-            . $methodTemp . '->phpCompiled !== null'
-            . ' && ' . $this->emitSameRealmGuard($methodTemp)
-            . ' ? (' . $methodTemp . '->phpCompiled)('
-            . $argsArr . ', ' . $recv . ', '
-            . $methodTemp . '->closure, $interp, '
-            . $methodTemp . '->phpCompiledNodes)'
-            . ' : $interp->callFunction(' . $methodTemp . ', '
-            . $recv . ', ' . $argsArr . ');';
-        return $resultTemp;
+        return $this->emitBoxedDispatch($methodTemp, $recv, $argsArr, $recvName . '.' . $propId->name);
     }
 }

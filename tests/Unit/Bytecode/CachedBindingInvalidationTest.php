@@ -6,6 +6,7 @@ namespace Phasis\Tests\Unit\Bytecode;
 
 use Phasis\Ast\Declaration\FunctionDeclaration;
 use Phasis\Bytecode\Compiler;
+use Phasis\Bytecode\Bailout;
 use Phasis\Bytecode\Frame;
 use Phasis\Bytecode\JsToPhp;
 use Phasis\Bytecode\Op;
@@ -21,6 +22,20 @@ use PHPUnit\Framework\TestCase;
 
 final class CachedBindingInvalidationTest extends TestCase
 {
+    public function testImportFallbackDoesNotRepeatTheResolver(): void
+    {
+        $engine = new Engine();
+        $scope = $engine->getGlobalEnv()->createChild();
+        $calls = 0;
+        $scope->defineImportBinding('current', static function () use (&$calls): JsNumber {
+            return JsNumber::of(++$calls);
+        });
+        $read = $this->reader($engine, $scope, 'php', true);
+        self::assertSame(1.0, $read());
+        self::assertSame(2.0, $read());
+        self::assertSame(2, $calls);
+    }
+
     /** @return iterable<string, array{string, string}> */
     public static function mutations(): iterable
     {
@@ -47,7 +62,7 @@ final class CachedBindingInvalidationTest extends TestCase
         } else {
             $parent->set('current', JsNumber::of(1));
         }
-        $read = $this->reader($engine, $scope, $tier);
+        $read = $this->reader($engine, $scope, $tier, $mutation === 'shadow-import');
         self::assertSame(1.0, $read());
         switch ($mutation) {
             case 'replace-deletable':
@@ -72,7 +87,7 @@ final class CachedBindingInvalidationTest extends TestCase
     }
 
     /** @return \Closure(): float */
-    private function reader(Engine $engine, Environment $scope, string $tier): \Closure
+    private function reader(Engine $engine, Environment $scope, string $tier, bool $importFallback = false): \Closure
     {
         // Activation setup must not incidentally invalidate the warmed binding cache.
         $declaration = (new Parser('function read() { return current + 0; }'))->parse()->body[0];
@@ -82,7 +97,17 @@ final class CachedBindingInvalidationTest extends TestCase
         if ($tier === 'php') {
             $compiled = JsToPhp::compile($function);
             self::assertInstanceOf(\Closure::class, $compiled);
-            return static fn (): float => $compiled([], $undefined, $scope, $engine->getInterpreter(), [])->value;
+            return static function () use ($compiled, $undefined, $scope, $engine, $function, $importFallback): float {
+                try {
+                    return $compiled([], $undefined, $scope, $engine->getInterpreter(), [])->value;
+                } catch (Bailout $error) {
+                    if (!$importFallback) {
+                        throw $error;
+                    }
+                    self::assertNull($scope->getDataBinding('current'));
+                    return $engine->getInterpreter()->callFunction($function, $undefined, [])->value;
+                }
+            };
         }
         $compiled = (new Compiler())->compile($function);
         self::assertContains(Op::LOAD_NAME, $compiled->code);

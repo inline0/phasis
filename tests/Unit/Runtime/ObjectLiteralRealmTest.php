@@ -25,11 +25,13 @@ final class ObjectLiteralRealmTest extends TestCase
         $foreign = new Engine();
         $foreign->eval(<<<'JS'
 function foreignLiteral(callback) { return [{}, callback(), {}]; }
-Object.prototype.markForeignLiteral = function () { this.observed = 31; };
+var foreignMarkCalls = 0;
+Object.prototype.markForeignLiteral = function () { this.observed = 31; foreignMarkCalls++; };
 function foreignPhpLiteral(value) {
     const object = {observed: 0, value: value};
+    const result = object.value;
     object.markForeignLiteral();
-    return object.observed;
+    return result;
 }
 class ForeignRecord { constructor() { this.value = {}; } }
 foreignLiteral(() => ({})); foreignPhpLiteral(1); new ForeignRecord();
@@ -55,28 +57,31 @@ function localStandard(value) { foreignPhpLiteral(value); return value; }
 function localNumeric(value) { return foreignPhpLiteral(value) + 0; }
 function localMethod(value) {
     const receiver = {value: value};
-    return receiver.foreignMethod(value) + 0;
+    receiver.foreignMethod(value);
+    return value;
 }
 localLiteral();
 JS);
+        $foreign->eval('foreignMarkCalls = 0');
         for ($pass = 0; $pass < 3; $pass++) {
-            self::assertSame([true, true, true, true, true, true, 1, 31, 31, 0], $caller->eval(<<<'JS'
+            self::assertSame([true, true, true, true, true, true, 1, 1, 1, 0], $caller->eval(<<<'JS'
 var values = foreignLiteral(localLiteral);
 [Object.getPrototypeOf(values[0]) === foreignObjectPrototype,
  Object.getPrototypeOf(values[1]) === Object.prototype,
  Object.getPrototypeOf(values[2]) === foreignObjectPrototype,
  Object.getPrototypeOf(new ForeignRecord().value) === foreignObjectPrototype,
- foreignPhpLiteral(1) === 31,
+ foreignPhpLiteral(1) === 1,
  Object.getPrototypeOf(localLiteral()) === Object.prototype,
  localStandard(1), localNumeric(1), localMethod(1), wrongRealmCalls];
 JS));
+            self::assertSame(($pass + 1) * 4, $foreign->eval('foreignMarkCalls'));
         }
         $phpFunction = $foreign->getGlobalEnv()->get('foreignPhpLiteral');
         self::assertInstanceOf(JsFunction::class, $phpFunction);
         self::assertInstanceOf(\Closure::class, $phpFunction->phpCompiled);
         self::assertInstanceOf(\Closure::class, $phpFunction->phpCompiledNumeric);
         $phpFunction->phpCompiledNumeric = null;
-        self::assertSame([31, 0], $caller->eval('[localNumeric(1), wrongRealmCalls]'));
+        self::assertSame([1, 0], $caller->eval('[localNumeric(1), wrongRealmCalls]'));
         if (!$budgeted) {
             foreach (['localStandard', 'localNumeric', 'localMethod'] as $name) {
                 $wrapper = $caller->getGlobalEnv()->get($name);

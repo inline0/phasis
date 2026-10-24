@@ -517,6 +517,49 @@ class Environment
         return null;
     }
 
+    /**
+     * Read an ordinary data binding without invoking getters, imports or with traps.
+     * Null declines speculation and leaves errors and observable reads to the interpreter.
+     */
+    public function getDataBinding(string $name): ?JsValue
+    {
+        $current = $this;
+        while ($current !== null) {
+            if (
+                $current->withObject !== null || isset($current->tdz[$name])
+                || array_key_exists($name, $current->importBindings)
+            ) {
+                return null;
+            }
+            if (isset($current->bindings[$name])) {
+                if (!$current->isGlobalObjectBinding($name)) {
+                    return $current->bindings[$name];
+                }
+                $object = $current->linkedObject;
+                return $object !== null ? self::ordinaryDataValue($object, $name) : null;
+            }
+            if ($current->parent === null && $current->linkedObject !== null) {
+                $object = $current->linkedObject;
+                return self::ordinaryDataValue($object, $name);
+            }
+            $current = $current->parent;
+        }
+        return null;
+    }
+
+    private static function ordinaryDataValue(\Phasis\Value\JsObject $object, string $name): ?JsValue
+    {
+        if (get_class($object) !== \Phasis\Value\JsObject::class) {
+            return null;
+        }
+        $value = $object->properties->dataSlots[$name] ?? null;
+        if ($value !== null) {
+            return $value;
+        }
+        $descriptor = $object->properties->descriptors[$name] ?? null;
+        return $descriptor !== null && $descriptor->isDataDescriptor() ? $descriptor->value : null;
+    }
+
     public function get(
         string $name,
         bool $strict = false,
