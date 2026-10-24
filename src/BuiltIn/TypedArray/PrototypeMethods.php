@@ -76,16 +76,16 @@ trait PrototypeMethods
                     $source->validateNotDetached();
                     $srcLen = $source->getLength();
                     $targetLen = $this_->getLength();
-                    // Per spec: if one is BigInt and the other is not, throw TypeError.
                     $isBigSrc = $source->isBigIntArray();
+                    // Per spec: if srcLength + targetOffset > targetLength, throw RangeError.
+                    if ($srcLen + $offset > $targetLen) {
+                        throw new RangeError('Source is too large');
+                    }
+                    // Bounds errors precede a Number/BigInt content-type mismatch.
                     if ($isBigSrc !== $isBigTarget) {
                         throw new \Phasis\Exceptions\TypeError(
                             'Cannot mix BigInt and other types, use explicit conversions'
                         );
-                    }
-                    // Per spec: if srcLength + targetOffset > targetLength, throw RangeError.
-                    if ($srcLen + $offset > $targetLen) {
-                        throw new RangeError('Source is too large');
                     }
                     // Per spec: if same buffer, clone srcBuffer first.
                     if ($source->getBuffer() === $this_->getBuffer()) {

@@ -1,0 +1,114 @@
+[
+  [
+    "BigInt64Array from Uint8Array oversized",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "BigInt64Array from Uint8Array offset exceeds range",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "BigInt64Array from Uint8Array infinite offset",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "BigInt64Array from Uint8Array content mismatch",
+    [
+      "offset"
+    ],
+    "TypeError"
+  ],
+  [
+    "BigInt64Array from Uint8Array detached oversized source",
+    [
+      "offset"
+    ],
+    "TypeError"
+  ],
+  [
+    "BigInt64Array from Uint8Array detached source infinite offset",
+    [
+      "offset"
+    ],
+    "TypeError"
+  ],
+  [
+    "BigInt64Array from Uint8Array detached source negative offset",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "BigInt64Array from Uint8Array throw before detached source",
+    [
+      "offset"
+    ],
+    "sentinel"
+  ],
+  [
+    "Uint8Array from BigInt64Array oversized",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "Uint8Array from BigInt64Array offset exceeds range",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "Uint8Array from BigInt64Array infinite offset",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "Uint8Array from BigInt64Array content mismatch",
+    [
+      "offset"
+    ],
+    "TypeError"
+  ],
+  [
+    "Uint8Array from BigInt64Array detached oversized source",
+    [
+      "offset"
+    ],
+    "TypeError"
+  ],
+  [
+    "Uint8Array from BigInt64Array detached source infinite offset",
+    [
+      "offset"
+    ],
+    "TypeError"
+  ],
+  [
+    "Uint8Array from BigInt64Array detached source negative offset",
+    [
+      "offset"
+    ],
+    "RangeError"
+  ],
+  [
+    "Uint8Array from BigInt64Array throw before detached source",
+    [
+      "offset"
+    ],
+    "sentinel"
+  ]
+]
