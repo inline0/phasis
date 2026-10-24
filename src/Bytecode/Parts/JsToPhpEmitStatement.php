@@ -524,7 +524,7 @@ trait JsToPhpEmitStatement
     private function emitObjectLiteral(\Phasis\Ast\Expression\ObjectExpression $node): string
     {
         $temp = $this->newTemp('obj');
-        $this->pendingStatements[] = $temp . ' = new \\Phasis\\Value\\JsObject();';
+        $this->pendingStatements[] = $temp . ' = $interp->vmNewObject();';
         foreach ($node->properties as $prop) {
             if (!$prop instanceof \Phasis\Ast\Expression\Property) {
                 throw new Bailout('non-Property in object literal');

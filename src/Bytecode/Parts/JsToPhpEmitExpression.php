@@ -724,6 +724,7 @@ trait JsToPhpEmitExpression
         $boxedArgsArr = '[' . implode(', ', $boxedArgs) . ']';
         $this->pendingStatements[] = $resultTemp . ' = '
             . $calleeRef . '->phpCompiledNumeric !== null'
+            . ' && ' . $this->emitSameRealmGuard($calleeRef)
             . ' ? (' . $calleeRef . '->phpCompiledNumeric)('
             . $argsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
             . $calleeRef . '->closure, $interp, '
@@ -736,6 +737,7 @@ trait JsToPhpEmitExpression
         $this->pendingStatements[] = 'if (' . $resultTemp . ' === null) {';
         $this->pendingStatements[] = '    ' . $boxedResult . ' = '
             . $calleeRef . '->phpCompiled !== null'
+            . ' && ' . $this->emitSameRealmGuard($calleeRef)
             . ' ? (' . $calleeRef . '->phpCompiled)('
             . $boxedArgsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
             . $calleeRef . '->closure, $interp, '
@@ -856,6 +858,7 @@ trait JsToPhpEmitExpression
         // method dispatch in this hot path.
         $this->pendingStatements[] = $resultTemp . ' = '
             . $calleeRef . '->phpCompiled !== null'
+            . ' && ' . $this->emitSameRealmGuard($calleeRef)
             . ' ? (' . $calleeRef . '->phpCompiled)('
             . $argsArr . ', \\Phasis\\Value\\JsUndefined::instance(), '
             . $calleeRef . '->closure, $interp, '
@@ -863,6 +866,13 @@ trait JsToPhpEmitExpression
             . ' : $interp->callFunction(' . $calleeRef . ', '
             . '\\Phasis\\Value\\JsUndefined::instance(), ' . $argsArr . ');';
         return $resultTemp;
+    }
+
+    /** Direct PHP dispatch cannot establish a foreign function's execution realm. */
+    private function emitSameRealmGuard(string $callee): string
+    {
+        return '(' . $callee . '->realm === null || ' . $callee
+            . '->realm === (\\Phasis\\Engine::getCurrentInterpreter() ?? $interp)->getRealm())';
     }
 
     /**
@@ -987,6 +997,7 @@ trait JsToPhpEmitExpression
         $resultTemp = $this->newTemp('mr');
         $this->pendingStatements[] = $resultTemp . ' = '
             . $methodTemp . '->phpCompiled !== null'
+            . ' && ' . $this->emitSameRealmGuard($methodTemp)
             . ' ? (' . $methodTemp . '->phpCompiled)('
             . $argsArr . ', ' . $recv . ', '
             . $methodTemp . '->closure, $interp, '

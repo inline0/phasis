@@ -6072,15 +6072,10 @@ trait ExpressionEvaluation
      */
     public function vmNewObject(): JsObject
     {
-        if ($this->cachedObjectPrototype === null) {
-            if ($this->globalEnv->has('__ObjectPrototype__')) {
-                $p = $this->globalEnv->get('__ObjectPrototype__');
-                if ($p instanceof JsObject) {
-                    $this->cachedObjectPrototype = $p;
-                }
-            }
-        }
-        return new JsObject($this->cachedObjectPrototype);
+        $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
+        return new JsObject(
+            $realmInterpreter->cachedObjectPrototype ??= $realmInterpreter->resolveCachedPrototype('__ObjectPrototype__'),
+        );
     }
 
     /**
@@ -7281,12 +7276,7 @@ trait ExpressionEvaluation
 
     private function evalObjectExpression(ObjectExpression $node, Environment $env): JsValue
     {
-        // Cache the global Object.prototype lookup. The binding is in
-        // globalEnv and doesn't change across an Engine instance, so
-        // looking it up via env-walk on every literal is wasted work.
-        $obj = new JsObject(
-            $this->cachedObjectPrototype ??= $this->resolveCachedPrototype('__ObjectPrototype__'),
-        );
+        $obj = $this->vmNewObject();
 
         foreach ($node->properties as $prop) {
             if ($prop instanceof SpreadElement) {
