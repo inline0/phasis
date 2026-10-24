@@ -89,10 +89,7 @@ final class Frame
     {
         unset($this->env);
         $this->thisValue = $undefined;
-        $count = count($this->locals);
-        for ($i = 0; $i < $count; $i++) {
-            $this->locals[$i] = $undefined;
-        }
+        $this->locals = array_fill(0, count($this->locals), $undefined);
         $this->stack = [];
         $this->sp = 0;
     }
