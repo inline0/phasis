@@ -5921,13 +5921,19 @@ trait ExpressionEvaluation
     {
         $realmInterpreter = \Phasis\Engine::getCurrentInterpreter() ?? $this;
         $prototype = $realmInterpreter->cachedStringPrototype;
-        if ($prototype === null || get_class($prototype) !== JsObject::class) {
+        if (
+            $prototype === null || get_class($prototype) !== JsObject::class
+            || get_class($prototype->properties) !== \Phasis\Object\PropertyMap::class
+        ) {
             return false;
         }
         $value = $prototype->properties->dataSlots[$name] ?? null;
         if ($value === null) {
             $descriptor = $prototype->properties->descriptors[$name] ?? null;
-            if ($descriptor === null || !$descriptor->isDataDescriptor()) {
+            if (
+                $descriptor === null || get_class($descriptor) !== PropertyDescriptor::class
+                || !$descriptor->isDataDescriptor()
+            ) {
                 return false;
             }
             $value = $descriptor->value;
