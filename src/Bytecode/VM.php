@@ -2573,6 +2573,7 @@ final class VM
                             if (
                                 $obj instanceof \Phasis\Value\JsArray
                                 && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
                                 && $obj->isDenseMode()
                             ) {
                                 $kv = $key->value;
@@ -2755,6 +2756,7 @@ final class VM
                             if (
                                 $obj instanceof \Phasis\Value\JsArray
                                 && $key instanceof JsNumber
+                                && $key->value >= 0 && $key->value < PHP_INT_MAX
                             ) {
                                 $kv = $key->value;
                                 $kvi = (int) $kv;
