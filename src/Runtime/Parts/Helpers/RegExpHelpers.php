@@ -159,14 +159,13 @@ trait RegExpHelpers
         return $newObj;
     }
 
-    /** @var array<string, array{pattern: string, flags: string, pcre: string, groups: array<string, string>, names: list<string>, custom: bool}> */
+    /** @var array<string, array{pattern: string, flags: string, pcre: string, groups: array<string, string>, names: list<string>, custom: bool, ast: ?\Phasis\Regex\Ast\Pattern}> */
     private array $preparedRegExpPatterns = [];
 
     private function createRegExpObject(string $pattern, string $flags): JsObject
     {
         $originalPattern = $pattern;
         $prepared = $this->prepareRegExpPattern($pattern, $flags);
-        $pattern = $prepared['pattern'];
         $sortedFlags = $prepared['flags'];
         $pcrePattern = $prepared['pcre'];
         $groupNameMap = $prepared['groups'];
@@ -229,33 +228,25 @@ trait RegExpHelpers
         //     points; ES non-unicode mode requires UTF-16 code units,
         //     so `.` must NOT match an astral character).
         // exec() routes through the in-engine matcher in those cases.
-        if ($prepared['custom']) {
-            try {
-                // The AST parser consumes ordinary alternatives after Unicode string sets are lowered.
-                $customPattern = str_contains($flags, 'v') ? $this->transformVFlagPattern($pattern) : $pattern;
-                $regexAst = (new \Phasis\Regex\Parser($customPattern, $flags))->parse();
-                $obj->defineOwnProperty(
-                    '[[CustomRegexAst]]',
-                    PropertyDescriptor::data(
-                        new \Phasis\Value\JsHostValue($regexAst),
-                        false,
-                        false,
-                        false,
-                    ),
-                );
-                $obj->defineOwnProperty(
-                    '[[CustomRegexFlags]]',
-                    PropertyDescriptor::data(
-                        new JsString($flags),
-                        false,
-                        false,
-                        false,
-                    ),
-                );
-            } catch (\Throwable) {
-                // If our parser bails on something it doesn't model
-                // yet, fall back to PCRE2.
-            }
+        if ($prepared['ast'] !== null) {
+            $obj->defineOwnProperty(
+                '[[CustomRegexAst]]',
+                PropertyDescriptor::data(
+                    new \Phasis\Value\JsHostValue($prepared['ast']),
+                    false,
+                    false,
+                    false,
+                ),
+            );
+            $obj->defineOwnProperty(
+                '[[CustomRegexFlags]]',
+                PropertyDescriptor::data(
+                    new JsString($flags),
+                    false,
+                    false,
+                    false,
+                ),
+            );
         }
 
         // [[NamedGroupNames]] preserves every distinct named group in the
@@ -284,9 +275,12 @@ trait RegExpHelpers
     }
 
     /**
-     * Reuse immutable preprocessing only; every instance keeps fresh lastIndex,
-     * prototype, named-group objects and custom matcher state.
-     * @return array{pattern: string, flags: string, pcre: string, groups: array<string, string>, names: list<string>, custom: bool}
+     * Reuse immutable preprocessing and syntax nodes. Every instance keeps
+     * fresh lastIndex, prototype, named-group objects and matcher state.
+     * @return array{
+     *     pattern: string, flags: string, pcre: string, groups: array<string, string>,
+     *     names: list<string>, custom: bool, ast: ?\Phasis\Regex\Ast\Pattern,
+     * }
      */
     private function prepareRegExpPattern(string $pattern, string $flags): array
     {
@@ -422,23 +416,22 @@ trait RegExpHelpers
         // as an ECMAScript SyntaxError, since accepting silently
         // would let invalid patterns pass.
         $pcreCompiles = @preg_match($pcrePattern, '') !== false;
-        if (!$pcreCompiles) {
-            $customNeeded = self::patternNeedsCustomMatcher($pattern, $flags);
-            $customParseOk = false;
-            if ($customNeeded) {
-                try {
-                    $customPattern = str_contains($flags, 'v') ? $this->transformVFlagPattern($pattern) : $pattern;
-                    (new \Phasis\Regex\Parser($customPattern, $flags))->parse();
-                    $customParseOk = true;
-                } catch (\Throwable) {
-                    $customParseOk = false;
-                }
+        $customNeeded = self::patternNeedsCustomMatcher($pattern, $flags);
+        $customAst = null;
+        if ($customNeeded) {
+            try {
+                // Syntax nodes contain only readonly syntax data. Captures,
+                // cursors and memoization belong to each fresh Matcher.
+                $customPattern = str_contains($flags, 'v') ? $this->transformVFlagPattern($pattern) : $pattern;
+                $customAst = (new \Phasis\Regex\Parser($customPattern, $flags))->parse();
+            } catch (\Throwable) {
+                // Keep the existing PCRE fallback for unmodeled custom syntax.
             }
-            if (!$customParseOk) {
-                throw new \Phasis\Exceptions\SyntaxError(
-                    'Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg(),
-                );
-            }
+        }
+        if (!$pcreCompiles && $customAst === null) {
+            throw new \Phasis\Exceptions\SyntaxError(
+                'Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg(),
+            );
         }
 
         $prepared = [
@@ -447,9 +440,10 @@ trait RegExpHelpers
             'pcre' => $pcrePattern,
             'groups' => $groupNameMap,
             'names' => self::extractNamedGroupNames($pattern),
-            'custom' => self::patternNeedsCustomMatcher($pattern, $flags),
+            'custom' => $customNeeded,
+            'ast' => $customAst,
         ];
-        if ($key !== null && !$prepared['custom'] && strlen($pcrePattern) <= 16384) {
+        if ($key !== null && (!$customNeeded || $customAst !== null) && strlen($pcrePattern) <= 16384) {
             if (count($this->preparedRegExpPatterns) >= 128) {
                 array_shift($this->preparedRegExpPatterns);
             }
