@@ -2437,7 +2437,7 @@ class Engine
             if ($num === -INF) {
                 return -INF;
             }
-            if ($num == (int) $num && abs($num) < PHP_INT_MAX) {
+            if (abs($num) < PHP_INT_MAX && $num == (int) $num) {
                 return (int) $num;
             }
             return $num;

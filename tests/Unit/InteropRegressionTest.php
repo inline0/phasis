@@ -10,6 +10,23 @@ use PHPUnit\Framework\TestCase;
 
 final class InteropRegressionTest extends TestCase
 {
+    public function testLargeNumericResultsDoNotAttemptOutOfRangeIntegerCasts(): void
+    {
+        $numbers = [PHP_FLOAT_MAX, -PHP_FLOAT_MAX, (float) PHP_INT_MAX, -(float) PHP_INT_MAX, 42.0, 0.5];
+        $engine = new Engine();
+        $engine->setGlobal('numbers', $numbers);
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+        try {
+            self::assertSame([
+                PHP_FLOAT_MAX, -PHP_FLOAT_MAX, (float) PHP_INT_MAX, -(float) PHP_INT_MAX, 42, 0.5,
+            ], $engine->eval('numbers'));
+        } finally {
+            restore_error_handler();
+        }
+    }
+
     public function testPublicPropertiesAndMethodsReferToTheOriginalObject(): void
     {
         $engine = new Engine();
