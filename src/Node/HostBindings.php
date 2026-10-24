@@ -52,7 +52,7 @@ final class HostBindings
             }
             return JsNumber::of($written);
         });
-        self::method($host, 'stdioRead', static function (array $args): JsValue {
+        self::method($host, 'stdioRead', static function (array $args) use ($runtime): JsValue {
             if ((int) ($args[0] ?? JsUndefined::instance())->toNumber() !== 0) {
                 throw new TypeError('Invalid standard input descriptor');
             }
@@ -68,9 +68,7 @@ final class HostBindings
             if ($bytes === '' && feof(STDIN)) {
                 return \Phasis\Value\JsNull::instance();
             }
-            $buffer = new \Phasis\Value\JsArrayBuffer(strlen($bytes));
-            $buffer->setData($bytes);
-            return new \Phasis\Value\JsTypedArray('Uint8Array', $buffer, 0, strlen($bytes));
+            return $runtime->byteArray($bytes);
         });
         self::method($host, 'timer', static function (array $args) use ($engine): JsValue {
             $operation = ($args[0] ?? JsUndefined::instance())->toJsString();

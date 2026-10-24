@@ -8,10 +8,12 @@ use Phasis\Engine;
 use Phasis\Exceptions\TypeError;
 use Phasis\Interop\PhpToJs;
 use Phasis\Runtime\AsyncContextStorage;
+use Phasis\Value\JsArrayBuffer;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsObject;
 use Phasis\Value\JsPromise;
 use Phasis\Value\JsString;
+use Phasis\Value\JsTypedArray;
 use Phasis\Value\JsUndefined;
 use Phasis\Value\JsValue;
 
@@ -170,6 +172,21 @@ final class NodeRuntime
     public function module(string $name): JsValue
     {
         return $this->engine->getInterpreter()->getModuleLoader()->requireModule($name, __FILE__);
+    }
+
+    /** Create fresh bytes with the owning realm's view and backing-buffer intrinsics. */
+    public function byteArray(string $bytes): JsTypedArray
+    {
+        $env = $this->engine->getGlobalEnv();
+        $viewPrototype = $env->getIntrinsic('Uint8Array.prototype');
+        $bufferPrototype = $env->getIntrinsic('ArrayBuffer.prototype');
+        if (!$viewPrototype instanceof JsObject || !$bufferPrototype instanceof JsObject) {
+            throw new \LogicException('Node byte arrays require installed TypedArray intrinsics.');
+        }
+        $length = strlen($bytes);
+        $buffer = new JsArrayBuffer($length, $bufferPrototype);
+        $buffer->setData($bytes);
+        return new JsTypedArray('Uint8Array', $buffer, 0, $length, $viewPrototype);
     }
 
     /** Run the asynchronous Fetch transport on this realm's HTTP sockets. */

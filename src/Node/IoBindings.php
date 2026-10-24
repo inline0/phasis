@@ -8,7 +8,6 @@ use Phasis\Engine;
 use Phasis\Exceptions\TypeError;
 use Phasis\Interop\PhpToJs;
 use Phasis\Runtime\AsyncContextStorage;
-use Phasis\Value\JsArrayBuffer;
 use Phasis\Value\JsBoolean;
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsNumber;
@@ -342,9 +341,7 @@ final class IoBindings
         }
         $data = @fread($stream, 65536);
         if ($data !== false && $data !== '') {
-            $buffer = new JsArrayBuffer(strlen($data));
-            $buffer->setData($data);
-            $this->emit($socket, 'data', new JsTypedArray('Uint8Array', $buffer, 0, strlen($data)));
+            $this->emit($socket, 'data', $this->runtime->byteArray($data));
         }
         if (is_resource($stream) && isset($this->sockets[$socket->id]) && feof($stream)) {
             $socket->readEnded = true;

@@ -372,6 +372,7 @@ trait TypedArrayHelpers
             PropertyDescriptor::data($proto, false, false, false),
         );
 
+        $env->setIntrinsic($typeName . '.prototype', $proto);
         $env->defineVar($typeName, $constructor);
     }
 
