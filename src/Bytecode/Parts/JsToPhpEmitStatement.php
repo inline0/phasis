@@ -28,6 +28,7 @@ use Phasis\Ast\Statement\ReturnStatement;
 use Phasis\Ast\Statement\WhileStatement;
 use Phasis\Value\JsFunction;
 use Phasis\Bytecode\Bailout;
+use Phasis\Bytecode\PhpNumericLiteral;
 
 /**
  * JsToPhp trait part: JsToPhpEmitStatement. Composed into JsToPhp via
@@ -570,7 +571,7 @@ trait JsToPhpEmitStatement
                 return '\\Phasis\\Value\\JsBoolean::of(' . ($node->value ? 'true' : 'false') . ')';
             }
             if (is_int($node->value) || is_float($node->value)) {
-                return '\\Phasis\\Value\\JsNumber::of((float) ' . (string) (float) $node->value . ')';
+                return '\\Phasis\\Value\\JsNumber::of(' . PhpNumericLiteral::render((float) $node->value) . ')';
             }
             if (is_string($node->value)) {
                 return 'new \\Phasis\\Value\\JsString(' . var_export($node->value, true) . ')';
