@@ -279,7 +279,7 @@ trait JsToPhpEmitStatement
             return;
         }
         if ($node instanceof IfStatement) {
-            $cond = $this->emitExpression($node->test);
+            $cond = $this->emitScalarCondition($node->test);
             $this->flushPending();
             $this->emitLine('if (' . $cond . ') {');
             $this->indentLevel++;
@@ -561,7 +561,7 @@ trait JsToPhpEmitStatement
             $value = $this->emitCallCore($condition);
             return '\\Phasis\\Spec\\TypeConversion::toBoolean(' . $value . ')';
         }
-        return $this->emitExpression($condition);
+        return $this->emitScalarCondition($condition);
     }
 
     private function flushPending(): void

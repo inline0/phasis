@@ -167,6 +167,28 @@ trait JsToPhpEmitExpression
         return 'unknown';
     }
 
+    private function scalarTruthiness(string $value, string $type): string
+    {
+        return match ($type) {
+            'numeric' => '(' . $value . ' != 0.0 && !is_nan(' . $value . '))',
+            'boolean' => $value,
+            default => throw new Bailout('unknown scalar truthiness'),
+        };
+    }
+
+    /** @phpstan-impure */
+    private function emitScalarCondition(Node $node): string
+    {
+        $value = $this->emitExpression($node);
+        $type = $this->inferExpressionType($node);
+        if ($type === 'numeric') {
+            $temporary = $this->newTemp('truthy');
+            $this->pendingStatements[] = $temporary . ' = ' . $value . ';';
+            $value = $temporary;
+        }
+        return $this->scalarTruthiness($value, $type);
+    }
+
     /** @phpstan-impure */
     private function emitExpression(Node $node): string
     {
@@ -267,10 +289,11 @@ trait JsToPhpEmitExpression
             $rightBranch = $this->captureBranch($node->right);
             $temp = $this->newTemp('lv');
             $this->pendingStatements[] = $temp . ' = ' . $l . ';';
+            $truthy = $this->scalarTruthiness($temp, $this->inferExpressionType($node->left));
             if ($node->operator === '&&') {
-                $this->pendingStatements[] = 'if (' . $temp . ') {';
+                $this->pendingStatements[] = 'if (' . $truthy . ') {';
             } elseif ($node->operator === '||') {
-                $this->pendingStatements[] = 'if (!(' . $temp . ')) {';
+                $this->pendingStatements[] = 'if (!(' . $truthy . ')) {';
             } else {
                 throw new Bailout('logical ' . $node->operator);
             }
@@ -285,14 +308,15 @@ trait JsToPhpEmitExpression
             throw new Bailout('postfix unary');
         }
         if ($node instanceof UnaryExpression) {
+            if ($node->operator === '!') {
+                return '(!' . $this->emitScalarCondition($node->argument) . ')';
+            }
             $arg = $this->emitExpression($node->argument);
             switch ($node->operator) {
                 case '-':
                     return '(-' . $arg . ')';
                 case '+':
                     return '(+' . $arg . ')';
-                case '!':
-                    return '(!' . $arg . ')';
                 default:
                     throw new Bailout('unary ' . $node->operator);
             }
@@ -462,7 +486,7 @@ trait JsToPhpEmitExpression
             // pendings unconditionally — fatal for recursion shapes
             // like `n < 2 ? n : fib(n-1)+fib(n-2)`. Lower to a temp +
             // if/else so each branch's pendings run only on its arm.
-            $test = $this->emitExpression($node->test);
+            $test = $this->emitScalarCondition($node->test);
             $consBranch = $this->captureBranch($node->consequent);
             $altBranch = $this->captureBranch($node->alternate);
             // Fast path: when neither branch lifted any statements

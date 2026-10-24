@@ -43,7 +43,7 @@ trait JsToPhpLoopRegions
             $compiler->emitLine('while (true) {');
             ++$compiler->indentLevel;
             $compiler->emitLoopBudgetCheck();
-            $condition = $compiler->emitExpression($plan->loop->test);
+            $condition = $compiler->emitScalarCondition($plan->loop->test);
             $compiler->flushPending();
             $compiler->emitLine('if (!(' . $condition . ')) { return ' . count($plan->exits) . '.0; }');
             $compiler->emitLoopTick('$_region_iterations');
