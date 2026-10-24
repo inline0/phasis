@@ -87,6 +87,30 @@ trait PrototypeMethods
                             'Cannot mix BigInt and other types, use explicit conversions'
                         );
                     }
+                    // Matching element types preserve stored bits, including NaN payloads.
+                    if (
+                        get_class($this_) === JsTypedArray::class && get_class($source) === JsTypedArray::class
+                        && $source->getTypeName() === $this_->getTypeName()
+                    ) {
+                        $sourceBuffer = $source->getBuffer();
+                        $targetBuffer = $this_->getBuffer();
+                        if (
+                            get_class($sourceBuffer) === JsArrayBuffer::class
+                            && get_class($targetBuffer) === JsArrayBuffer::class
+                            && !$sourceBuffer->isResizable() && !$targetBuffer->isResizable()
+                            && !$sourceBuffer->isDetached() && !$targetBuffer->isDetached()
+                            && !$source->isOutOfBounds() && !$this_->isOutOfBounds()
+                        ) {
+                            $width = $source->getBytesPerElement();
+                            $byteLength = $srcLen * $width;
+                            // Snapshot first so overlapping views preserve set's source bytes.
+                            $bytes = $sourceBuffer->readBytes($source->getByteOffset(), $byteLength);
+                            if (strlen($bytes) === $byteLength) {
+                                $targetBuffer->writeBytes($this_->getByteOffset() + $offset * $width, $bytes);
+                                return JsUndefined::instance();
+                            }
+                        }
+                    }
                     // Per spec: if same buffer, clone srcBuffer first.
                     if ($source->getBuffer() === $this_->getBuffer()) {
                         $cached = [];
