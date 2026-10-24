@@ -2604,6 +2604,25 @@ final class VM
                                     break;
                                 }
                             }
+                            // Primitive keys require no coercion. Read live own
+                            // data only; accessors, prototypes and exotic receivers
+                            // retain the ordinary computed-property path.
+                            if (get_class($obj) === JsObject::class) {
+                                $value = null;
+                                if (get_class($key) === JsString::class) {
+                                    $value = $obj->properties->dataSlots[$key->value] ?? null;
+                                } elseif (get_class($key) === \Phasis\Value\JsSymbol::class) {
+                                    $descriptor = $obj->getSymbolPropertyDescriptor($key);
+                                    if ($descriptor !== null && $descriptor->isDataDescriptor()) {
+                                        $value = $descriptor->value;
+                                    }
+                                }
+                                if ($value !== null) {
+                                    $stack[$sp++] = $value;
+                                    $pc++;
+                                    break;
+                                }
+                            }
                             $stack[$sp++] = $this->lookupComputed($obj, $key);
                             $pc++;
                             break;
