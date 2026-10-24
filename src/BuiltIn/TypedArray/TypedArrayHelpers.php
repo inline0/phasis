@@ -328,7 +328,13 @@ trait TypedArrayHelpers
                     }
                     return $defaultProto;
                 };
-                return self::constructTypedArray($typeName, $bpe, $protoResolver, $args);
+                return self::constructTypedArray(
+                    $typeName,
+                    $bpe,
+                    $protoResolver,
+                    $args,
+                    $nt !== null && $nt === $ctorBox->ref,
+                );
             },
             3,
         );
@@ -582,6 +588,7 @@ trait TypedArrayHelpers
         int $bpe,
         JsObject|\Closure $protoOrResolver,
         array $args,
+        bool $intrinsicNewTarget,
     ): JsTypedArray {
         $getProto = static function () use (&$protoOrResolver): JsObject {
             if ($protoOrResolver instanceof \Closure) {
@@ -705,6 +712,27 @@ trait TypedArrayHelpers
             }
             $srcLen = $arg0->getLength();
             $result = JsTypedArray::fromLength($typeName, $srcLen, $resolvedProto);
+            // Same-type copies preserve the stored bits, including NaN payloads.
+            if (
+                $intrinsicNewTarget && get_class($arg0) === JsTypedArray::class
+                && $arg0->getTypeName() === $typeName
+            ) {
+                $sourceBuffer = $arg0->getBuffer();
+                $resultBuffer = $result->getBuffer();
+                if (
+                    get_class($sourceBuffer) === JsArrayBuffer::class
+                    && get_class($resultBuffer) === JsArrayBuffer::class
+                    && !$sourceBuffer->isResizable() && !$sourceBuffer->isDetached()
+                    && !$arg0->isOutOfBounds() && $arg0->getLength() === $srcLen
+                ) {
+                    $byteLength = $srcLen * $bpe;
+                    $bytes = substr($sourceBuffer->getData(), $arg0->getByteOffset(), $byteLength);
+                    if (strlen($bytes) === $byteLength) {
+                        $resultBuffer->setData($bytes);
+                        return $result;
+                    }
+                }
+            }
             for ($i = 0; $i < $srcLen; $i++) {
                 $result->setIndex($i, $arg0->getIndex($i));
             }

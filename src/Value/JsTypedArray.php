@@ -138,6 +138,9 @@ class JsTypedArray extends JsObject
     /**
      * Whether this TypedArray's view is out of bounds for its buffer.
      * Only relevant for fixed-length views on resizable buffers.
+     * Buffer resize or detachment through an alias can change this between reads.
+     *
+     * @phpstan-impure
      */
     public function isOutOfBounds(): bool
     {
