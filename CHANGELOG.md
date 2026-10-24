@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-24
+
 ### Added
 - Opt-in Node-compatible realms and `phasis --node`, with CommonJS package loading, Buffer and streams, filesystem and process I/O, HTTP/HTTPS/HTTP2, TLS, compression, timers, async context, and isolated VM realms.
 - Experimental Express and Hono support with pinned upstream runners, original assertions, case inventories, source hashes, bounded workers and real network interoperability checks.

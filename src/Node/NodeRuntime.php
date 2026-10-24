@@ -310,7 +310,7 @@ final class NodeRuntime
         $this->process->set('execPath', new JsString(PHP_BINARY));
         $this->process->set('version', new JsString('v26.12.0'));
         $this->process->set('release', PhpToJs::convert(['name' => 'node']));
-        $this->process->set('versions', PhpToJs::convert(['node' => '26.12.0', 'phasis' => '0.8.0', 'php' => PHP_VERSION]));
+        $this->process->set('versions', PhpToJs::convert(['node' => '26.12.0', 'phasis' => '0.9.0', 'php' => PHP_VERSION]));
         $this->process->set('platform', new JsString(match (PHP_OS_FAMILY) {
             'Darwin' => 'darwin', 'Windows' => 'win32', default => strtolower(PHP_OS_FAMILY),
         }));
