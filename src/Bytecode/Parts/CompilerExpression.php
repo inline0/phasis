@@ -641,6 +641,12 @@ trait CompilerExpression
             throw new CompilerBailout('direct eval');
         }
         if ($node->callee instanceof Identifier && $node->callee->name === 'super') {
+            if ($node === $this->constructorSuperCall) {
+                $index = count($this->interpretedExpressions);
+                $this->interpretedExpressions[] = $node;
+                $this->emit(Op::EVAL_EXPRESSION, $index);
+                return;
+            }
             throw new CompilerBailout('super call');
         }
 

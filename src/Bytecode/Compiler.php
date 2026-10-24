@@ -103,6 +103,8 @@ final class Compiler
 
     private bool $needsArguments = false;
 
+    private ?CallExpression $constructorSuperCall = null;
+
     /** @var array<string, string> Captured function-scope bindings and declaration kinds. */
     private array $capturedLocals = [];
 
@@ -174,7 +176,7 @@ final class Compiler
      */
     private array $classNodes = [];
 
-    /** @var list<Node> Program expressions that need complete interpreter reference semantics. */
+    /** @var list<Node> Expressions whose live bindings remain in the frame environment. */
     private array $interpretedExpressions = [];
 
     /**
@@ -295,10 +297,10 @@ final class Compiler
 
     private function compileFunction(JsFunction $fn): CompiledFunction
     {
-        if ($fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
+        if ($fn->isAsync() || $fn->isNative()) {
             throw new CompilerBailout('non-ordinary function kind');
         }
-        $this->thisFromFrame = !$fn->isArrow() && !$fn->isGenerator();
+        $this->thisFromFrame = !$fn->isArrow() && !$fn->isGenerator() && !$fn->isDerivedConstructor();
         // Generators get a stricter bailout: only "simple" bodies
         // (no yield* delegation, no try/catch/finally containing
         // yield, not an async generator) can be lowered to the
@@ -315,7 +317,7 @@ final class Compiler
         $body = $fn->getBody();
         $functionStrict = $fn->isStrict()
             || ($body instanceof BlockStatement && self::programHasUseStrictDirective($body->body));
-        $this->tailCallsEnabled = $functionStrict && !$fn->isGenerator();
+        $this->tailCallsEnabled = $functionStrict && !$fn->isGenerator() && !$fn->isClassConstructor();
         // Unmapped arguments and zero-parameter ordinary functions can use
         // the interpreter's existing arguments object without slot aliases.
         // Sloppy mapped parameter lists retain the interpreter path.
@@ -356,6 +358,10 @@ final class Compiler
             $this->paramSlots[] = $slot;
         }
 
+        if ($fn->isDerivedConstructor()) {
+            $this->prepareConstructorSuperCall($body);
+        }
+
         if ($isExpressionBody) {
             $this->collectCapturedLocals($body);
             // Arrow expression body: nothing to pre-walk (no var
@@ -380,7 +386,7 @@ final class Compiler
                 nestedFns: $this->nestedFns,
                 needsThis: $needsEnvThis,
                 needsArgsBinding: $this->capturedLocals !== [] || $this->needsArguments,
-                canSkipEnvAlloc: !$needsEnvThis && !$this->parametersFromEnvironment
+                canSkipEnvAlloc: !$fn->isClassConstructor() && !$needsEnvThis && !$this->parametersFromEnvironment
                     && $this->capturedLocals === [] && !$this->needsArguments,
                 parametersFromEnvironment: $this->parametersFromEnvironment,
                 hasTailCalls: $this->hasTailCalls,
@@ -399,6 +405,11 @@ final class Compiler
             throw new CompilerBailout('local arguments binding');
         }
         $this->collectCapturedLocals($body);
+        foreach ($this->constructorSuperCall->arguments ?? [] as $argument) {
+            if ($argument instanceof Identifier) {
+                $this->capturedLocals[$argument->name] ??= 'parameter';
+            }
+        }
 
         // TDZ guard: bail if any let/const name appears in source
         // BEFORE its declaration.
@@ -436,7 +447,7 @@ final class Compiler
             nestedFns: $this->nestedFns,
             needsThis: $needsEnvThis,
             needsArgsBinding: $this->capturedLocals !== [] || $this->needsArguments,
-            canSkipEnvAlloc: !$needsEnvThis && !$this->parametersFromEnvironment
+            canSkipEnvAlloc: !$fn->isClassConstructor() && !$needsEnvThis && !$this->parametersFromEnvironment
                 && $this->capturedLocals === [] && $this->nestedFns === []
                 && !$this->needsArguments,
             parametersFromEnvironment: $this->parametersFromEnvironment,
@@ -445,9 +456,42 @@ final class Compiler
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
+        $cf->interpretedExpressions = $this->interpretedExpressions;
         $cf->arrayBindings = $this->arrayBindings;
         $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
+    }
+
+    private function prepareConstructorSuperCall(Node $body): void
+    {
+        $statement = $body instanceof BlockStatement ? ($body->body[0] ?? null) : null;
+        $call = $statement instanceof ExpressionStatement ? $statement->expression : null;
+        if (
+            !$call instanceof CallExpression || $call->optional
+            || !$call->callee instanceof Identifier || $call->callee->name !== 'super'
+        ) {
+            throw new CompilerBailout('derived constructor needs a leading super call');
+        }
+        $parameters = [];
+        foreach ($this->paramSlots as $slot) {
+            $parameters[$this->localNames[$slot]] = true;
+        }
+        foreach ($call->arguments as $argument) {
+            if ($argument instanceof Identifier && isset($parameters[$argument->name])) {
+                continue;
+            }
+            if (
+                $argument instanceof Literal
+                && ($argument->value === null || is_scalar($argument->value))
+            ) {
+                continue;
+            }
+            throw new CompilerBailout('super argument needs additional environment bindings');
+        }
+        // The unchanged interpreter owns super lookup, argument evaluation,
+        // field initialization and BindThisValue. Its parameter reads must
+        // share the same live bindings used by subsequent bytecode.
+        $this->constructorSuperCall = $call;
     }
 
     /** @return array<string, string>|null */
