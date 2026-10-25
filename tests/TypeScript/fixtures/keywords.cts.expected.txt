@@ -1,0 +1,7 @@
+42
+43
+44
+45
+46
+function 1
+declare,fifth,first,fourth,override,private,protected,public,readonly,second,sixth,third

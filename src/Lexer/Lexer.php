@@ -9,6 +9,7 @@ use Phasis\Exceptions\SyntaxError;
 class Lexer
 {
     use JsxScanning;
+    use TypeScriptScanning;
 
     private string $source;
     private int $length;
@@ -83,6 +84,8 @@ class Lexer
         $this->tokens = [];
         $this->comments = [];
         $this->jsxStack = [];
+        $this->typeScriptTokens = [];
+        $this->typeScriptExpressionEnds = [];
         $this->jsxPragmas = [];
         $this->pos = 0;
         $this->line = 1;
@@ -119,6 +122,10 @@ class Lexer
         $tokenCountChecked = 0;
 
         while ($this->pos < $this->length) {
+            if ($this->typeScriptTokens !== []) {
+                $this->tokens[] = array_shift($this->typeScriptTokens);
+                continue;
+            }
             // Inside a JSX tag or between JSX children, the JSX scanner owns
             // the source: whitespace and `//` are significant there.
             if ($this->jsxStack !== [] && $this->jsxStack[count($this->jsxStack) - 1]['kind'] !== 'expr') {
@@ -165,6 +172,7 @@ class Lexer
             // normal tokenization path and emit `{`/`}` as usual.
             if (
                 $this->source[$this->pos] === '{'
+                && !$this->typeScript
                 && $this->templateDepth === 0
                 && $this->jsxStack === []
                 && $this->canCoalesceEmptyBlock()
@@ -290,6 +298,18 @@ class Lexer
         // JSX element: `<` where an expression may start, followed by a name
         // or by `>` for a fragment. Plain JavaScript never starts an
         // expression with `<`, so this cannot change the meaning of valid JS.
+        if (
+            $ch === '!' && $this->typeScript && !$this->lineTerminatorBefore
+            && ($this->source[$this->pos + 1] ?? '') !== '=' && !$this->canStartRegExp()
+        ) {
+            $this->typeScriptExpressionEnds[$this->pos] = true;
+        }
+        if ($ch === '<' && $this->typeScript && ($this->source[$this->pos + 1] ?? '') !== '<') {
+            $end = $this->typeScriptAngleEnd();
+            if ($end !== null) {
+                $this->typeScriptExpressionEnds[$end - 1] = true;
+            }
+        }
         if ($ch === '<' && $this->jsx && $this->jsxCanStartElement()) {
             return $this->startJsxElement($start);
         }
@@ -1883,6 +1903,9 @@ class Lexer
             return true;
         }
         $prev = $this->tokens[count($this->tokens) - 1];
+        if ($this->typeScript && isset($this->typeScriptExpressionEnds[$prev->location->offset + strlen($prev->value) - 1])) {
+            return false;
+        }
         // RightParen is the most ambiguous case: after `)` from a
         // function call / grouping expression `/` is division, but
         // after `)` from a flow-control statement header (`if(...)`,

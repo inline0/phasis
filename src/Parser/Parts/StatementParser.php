@@ -90,6 +90,13 @@ trait StatementParser
     private function parseStatementOrDeclaration(): Node
     {
         $token = $this->current();
+        if (
+            $this->typeScript && $this->checkContextual('abstract') && $this->peekIs(TokenType::Class_)
+            && !$this->peek()->lineTerminatorBefore
+        ) {
+            $this->advance();
+            return $this->parseClassDeclaration();
+        }
 
         // In sloppy mode, `let` is only a keyword when followed by an identifier,
         // `[`, or `{` (binding pattern starts). Otherwise treat it as an identifier.
@@ -256,6 +263,7 @@ trait StatementParser
     private function parseBlockStatement(bool $isFunctionBody = false): BlockStatement
     {
         $location = $this->expect(TokenType::LeftBrace)->location;
+        $this->blockDepth++;
         $body = [];
 
         // Function bodies may begin with a "use strict" prologue, which
@@ -283,9 +291,12 @@ trait StatementParser
         }
         try {
             while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
-                $body[] = $this->parseStatementOrDeclaration();
+                if (!$this->tsEraseDeclaration()) {
+                    $body[] = $this->parseStatementOrDeclaration();
+                }
             }
         } finally {
+            $this->blockDepth--;
             $this->moduleTopLevel = $prevModuleTopLevel;
             $this->strictMode = $prevStrict;
             $this->allowCoverInit = $prevAllowCoverInit;
@@ -834,6 +845,7 @@ trait StatementParser
         $localNames = [];
 
         while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
+            $typeOnly = $this->typeScript && $this->tsTypeOnlySpecifier();
             $importedToken = $this->parseModuleExportName();
             $imported = $importedToken->value;
 
@@ -853,29 +865,31 @@ trait StatementParser
                 $localNode = $this->parseIdentifier();
                 $local = $localNode->name;
             }
-            // ImportedBinding is a BindingIdentifier and is parsed under
-            // strict-mode rules (modules are always strict). 'arguments'
-            // and 'eval' are forbidden binding names per §13.1.1.
-            if ($local === 'arguments' || $local === 'eval') {
-                throw new ParseError(
-                    "Binding identifier '{$local}' may not be used in strict mode",
-                    $localToken,
-                );
-            }
-            if (isset($localNames[$local])) {
-                throw new ParseError(
-                    "Duplicate import binding '{$local}'",
-                    $localToken,
-                );
-            }
-            $localNames[$local] = true;
+            if (!$typeOnly) {
+                // ImportedBinding is a BindingIdentifier and is parsed under
+                // strict-mode rules (modules are always strict). 'arguments'
+                // and 'eval' are forbidden binding names per §13.1.1.
+                if ($local === 'arguments' || $local === 'eval') {
+                    throw new ParseError(
+                        "Binding identifier '{$local}' may not be used in strict mode",
+                        $localToken,
+                    );
+                }
+                if (isset($localNames[$local])) {
+                    throw new ParseError(
+                        "Duplicate import binding '{$local}'",
+                        $localToken,
+                    );
+                }
+                $localNames[$local] = true;
 
-            $specifiers[] = new ImportSpecifier(
-                $importedToken->location,
-                'named',
-                $local,
-                $imported,
-            );
+                $specifiers[] = new ImportSpecifier(
+                    $importedToken->location,
+                    'named',
+                    $local,
+                    $imported,
+                );
+            }
 
             if (!$this->eat(TokenType::Comma)) {
                 break;
@@ -917,6 +931,9 @@ trait StatementParser
         }
         $location = $this->expect(TokenType::Export)->location;
         $attributes = null;
+        if ($this->typeScript && $this->checkContextual('abstract') && $this->peekIs(TokenType::Class_)) {
+            $this->advance();
+        }
 
         // export default ...
         if ($this->check(TokenType::Default_)) {
@@ -1047,6 +1064,7 @@ trait StatementParser
         $specifiers = [];
 
         while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
+            $typeOnly = $this->typeScript && $this->tsTypeOnlySpecifier();
             $localToken = $this->parseModuleExportName();
             $localIsString = $localToken->type === TokenType::String;
             $local = $localToken->value;
@@ -1066,13 +1084,15 @@ trait StatementParser
                 $exported = $exportedToken->value;
             }
 
-            $specifiers[] = new ExportSpecifier(
-                $localToken->location,
-                $local,
-                $exported,
-                $localIsString,
-                $exportedIsString,
-            );
+            if (!$typeOnly) {
+                $specifiers[] = new ExportSpecifier(
+                    $localToken->location,
+                    $local,
+                    $exported,
+                    $localIsString,
+                    $exportedIsString,
+                );
+            }
 
             if (!$this->eat(TokenType::Comma)) {
                 break;
@@ -1119,6 +1139,10 @@ trait StatementParser
     private function parseVariableDeclarator(): VariableDeclarator
     {
         $id = $this->parseBindingPattern();
+        if ($this->typeScript) {
+            $this->eat(TokenType::Bang);
+        }
+        $this->tsAnnotation();
         $init = null;
 
         if ($this->eat(TokenType::Equal)) {
@@ -1642,6 +1666,7 @@ trait StatementParser
     {
         $location = $this->expect(TokenType::Ellipsis)->location;
         $argument = $this->parseBindingPattern();
+        $this->tsAnnotation();
         return new RestElement($location, $argument);
     }
 
@@ -1674,6 +1699,7 @@ trait StatementParser
         $this->topLevel = false;
         $this->inStaticBlock = false;
         $params = $this->parseFormalParameters();
+        $this->tsAnnotation();
         $body = $this->parseBlockStatement(true);
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
@@ -2385,6 +2411,9 @@ trait StatementParser
         } finally {
             $this->strictMode = $prevStrict;
         }
+        if ($this->typeScript && $this->check(TokenType::LessThan)) {
+            $this->tsTypeParameters();
+        }
         $superClass = null;
         if ($this->eat(TokenType::Extends)) {
             // ClassHeritage is parsed in strict mode (the entire class is
@@ -2412,6 +2441,12 @@ trait StatementParser
                     $this->current(),
                 );
             }
+        }
+        if ($this->typeScript && $this->checkContextual('implements')) {
+            $this->advance();
+            do {
+                $this->tsType();
+            } while ($this->eat(TokenType::Comma));
         }
         $body = $this->parseClassBody();
         // SuperCall is only allowed in a derived constructor.
@@ -2560,6 +2595,9 @@ trait StatementParser
                 $elementDecorators = $this->parseDecoratorList();
             }
             $element = $this->parseClassElement();
+            if ($this->typeScript && $element instanceof EmptyStatement) {
+                continue;
+            }
             // Attach decorators to the element
             if (!empty($elementDecorators)) {
                 if ($element instanceof ClassMethod) {
@@ -2685,6 +2723,7 @@ trait StatementParser
 
     private function parseClassElementInner(): Node
     {
+        $tsTypeOnly = $this->typeScript && $this->tsClassModifiers();
         $location = $this->current()->location;
         $isStatic = false;
 
@@ -2878,8 +2917,24 @@ trait StatementParser
             $key = $this->parsePropertyName();
         }
 
+        if ($this->typeScript) {
+            $this->eat(TokenType::Question);
+            $this->eat(TokenType::Bang);
+            if ($this->check(TokenType::LessThan)) {
+                $this->tsTypeParameters();
+            }
+            $this->tsAnnotation();
+        }
+
         // Determine if this is a field or a method: if the next token is '(', it's a method.
         if (!$this->check(TokenType::LeftParen)) {
+            if ($tsTypeOnly) {
+                if ($this->check(TokenType::Equal)) {
+                    $this->tsUnsupported();
+                }
+                $this->consumeSemicolon();
+                return new EmptyStatement($location);
+            }
             // This is a field declaration (not a method).
             // If we consumed async/get/set/*, those were actually the field name.
             // We need to handle this: if isAsync/isGenerator/kind!=method was set but
@@ -2978,6 +3033,14 @@ trait StatementParser
         $this->topLevel = false;
         $this->inStaticBlock = false;
         $params = $this->parseFormalParameters();
+        $this->tsAnnotation();
+        if ($this->typeScript && $this->eat(TokenType::Semicolon)) {
+            $this->inGenerator = $prevGenerator;
+            $this->inAsync = $prevAsync;
+            $this->topLevel = $prevTopLevel;
+            $this->inStaticBlock = $prevStaticBlock;
+            return new EmptyStatement($location);
+        }
         // Per §15.5.1 / §15.6.1: getters take 0 params, setters take 1.
         if ($kind === 'get' && count($params) !== 0) {
             throw new ParseError(
@@ -3109,6 +3172,7 @@ trait StatementParser
             $this->topLevel = false;
             $this->inStaticBlock = false;
             $params = $this->parseFormalParameters();
+            $this->tsAnnotation();
             $body = $this->parseBlockStatement(true);
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
@@ -3146,6 +3210,9 @@ trait StatementParser
     /** @return Node[] */
     private function parseFormalParameters(): array
     {
+        if ($this->typeScript && $this->check(TokenType::LessThan)) {
+            $this->tsTypeParameters();
+        }
         $this->expect(TokenType::LeftParen);
         $params = [];
 
@@ -3155,7 +3222,23 @@ trait StatementParser
                 break;
             }
 
+            if (
+                $this->typeScript
+                && in_array($this->current()->value, ['public', 'private', 'protected', 'readonly'], true)
+                && !in_array($this->peek()->value, [':', '=', ',', ')', '?'], true)
+            ) {
+                $this->tsUnsupported();
+            }
+            if ($this->typeScript && $this->check(TokenType::This) && $this->peekIs(TokenType::Colon)) {
+                $this->advance();
+                $this->tsAnnotation();
+                if (!$this->eat(TokenType::Comma)) {
+                    break;
+                }
+                continue;
+            }
             $param = $this->parseBindingPattern();
+            $this->tsAnnotation(true);
             if ($this->eat(TokenType::Equal)) {
                 $default = $this->parseAssignmentExpression();
                 $param = new AssignmentPattern($param->location, $param, $default);
@@ -3728,6 +3811,7 @@ trait StatementParser
             $param = null;
             if ($this->eat(TokenType::LeftParen)) {
                 $param = $this->parseBindingPattern();
+                $this->tsAnnotation();
                 $this->expect(TokenType::RightParen);
                 // Per §14.15.1: BoundNames of CatchParameter must be unique.
                 $names = self::collectPatternNames($param);

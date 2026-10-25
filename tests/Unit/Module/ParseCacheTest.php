@@ -42,4 +42,25 @@ final class ParseCacheTest extends TestCase
         $this->assertSame('<p>two</p>', $render());
         $this->assertCount(3, self::entries($cache));
     }
+
+    public function testTypeScriptCacheDoesNotBypassJavaScriptSyntaxValidation(): void
+    {
+        $source = 'export const answer: number = 42;';
+        $root = $this->project(['entry.ts' => $source, 'entry.js' => $source]);
+        $options = new ModuleOptions(parseCacheDir: $root . '/.cache');
+        foreach ([1, 2] as $attempt) {
+            $engine = new Engine();
+            $engine->setModuleOptions($options);
+            $this->assertSame(42, $engine->getExport($root . '/entry.ts', 'answer'));
+            $engine->close();
+        }
+        $engine = new Engine();
+        $engine->setModuleOptions($options);
+        $this->expectException(\Phasis\Exceptions\SyntaxError::class);
+        try {
+            $engine->getExport($root . '/entry.js', 'answer');
+        } finally {
+            $engine->close();
+        }
+    }
 }

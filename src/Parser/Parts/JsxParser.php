@@ -70,6 +70,9 @@ trait JsxParser
         }
 
         $name = $this->parseJsxElementName();
+        if ($this->typeScript && $this->check(TokenType::LessThan)) {
+            $this->tsTypeParameters(false);
+        }
         $attributes = [];
         while (!$this->check(TokenType::Slash) && !$this->check(TokenType::JsxTagEnd)) {
             $attributes[] = $this->parseJsxAttribute();

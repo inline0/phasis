@@ -1,0 +1,5 @@
+{
+  "string": "<section data-greeting=\"Hello\"><h2 title=\"type T = string\">Ada<em>Hello</em></h2><p>(parentheses): type User = string</p><p>as const &lt;T&gt; interface User</p></section>",
+  "static": "<section data-greeting=\"Hello\"><h2 title=\"type T = string\">Ada<em>Hello</em></h2><p>(parentheses): type User = string</p><p>as const &lt;T&gt; interface User</p></section>",
+  "prerender": "<section data-greeting=\"Hello\"><h2 title=\"type T = string\">Ada<em>Hello</em></h2><p>(parentheses): type User = string</p><p>as const &lt;T&gt; interface User</p></section>"
+}

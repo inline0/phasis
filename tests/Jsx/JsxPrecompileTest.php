@@ -20,8 +20,8 @@ final class JsxPrecompileTest extends TestCase
     /** @return iterable<string, array{string}> */
     public static function reactProvider(): iterable
     {
-        foreach (glob(__DIR__ . '/react/*.jsx') ?: [] as $file) {
-            yield basename($file, '.jsx') => [$file];
+        foreach (glob(__DIR__ . '/react/*.{jsx,tsx}', GLOB_BRACE) ?: [] as $file) {
+            yield pathinfo($file, PATHINFO_FILENAME) => [$file];
         }
     }
 
@@ -29,7 +29,7 @@ final class JsxPrecompileTest extends TestCase
     public static function htmlProvider(): iterable
     {
         foreach (glob(__DIR__ . '/html/*.jsx') ?: [] as $file) {
-            yield basename($file, '.jsx') => [$file];
+            yield pathinfo($file, PATHINFO_FILENAME) => [$file];
         }
     }
 

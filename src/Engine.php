@@ -1834,7 +1834,7 @@ class Engine
         }
         // ES modules (.mjs) and JSX files go through the module loader, so
         // their imports resolve. Like evalAsModule(), they return null.
-        if (str_ends_with(strtolower($path), '.mjs') || $this->jsxOptions->appliesTo($path)) {
+        if (str_ends_with(strtolower($path), '.mjs') || Parser::isTypeScriptPath($path) || $this->jsxOptions->appliesTo($path)) {
             $this->importModule($path);
             return null;
         }

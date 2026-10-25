@@ -1,0 +1,10 @@
+after ambient undefined
+after function undefined
+after alias
+after interface
+after namespace undefined
+after ambient namespace undefined
+ambient values undefined undefined undefined undefined 0
+overload 42
+42 
+caught

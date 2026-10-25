@@ -1,0 +1,5 @@
+42 Ada 42
+n:1,2 undefined undefined
+true 1-2-3 41 Ada
+1 1 2 0
+ordinary-name

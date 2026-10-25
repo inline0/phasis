@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-25
+
+### Added
+- Automatic `.ts`, `.tsx`, `.mts` and `.cts` handling in file execution, imports, rendering, hydration and the CLI. No new configuration or runtime compiler is required.
+- Native PHP parsing of erasable TypeScript syntax, including annotations, generics, interfaces, type aliases, assertions, overloads, ambient declarations and explicit type-only imports/exports.
+- TypeScript fixtures compared with native Node stripping and esbuild/Node reference output, existing JSX AST preservation checks, and a connected TSX component checked through rendering, precompile and development/production hydration.
+
+### Changed
+- Module resolution finds TypeScript files after the existing JavaScript extensions. Parsed-module cache identities keep TypeScript and JavaScript separate.
+- Standalone `Parser::parseSource()` accepts an optional filename to select TypeScript and TSX syntax.
+
+### Upgrade notes
+- Type erasure does not type-check. Runtime enums, parameter properties, namespaces containing values and runtime import/export assignments require a separate compiler and report syntax errors in Phasis.
+
 ## [0.10.0] - 2026-10-25
 
 ### Added

@@ -291,7 +291,7 @@ async function main() {
         : fs.readdirSync(dir)
             .filter((f) => isDirectory
                 ? fs.statSync(path.join(dir, f)).isDirectory()
-                : f.endsWith(extension))
+                : f.endsWith(extension) || (suite === 'react' && f.endsWith('.tsx')))
             .sort()
             .map((f) => path.join(dir, f));
 

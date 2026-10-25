@@ -12,6 +12,9 @@ meta_description: "Render JSX components to HTML from PHP: .jsx modules, Engine:
 
 Phasis renders JSX components to HTML on the server, in pure PHP. Components import what they would import in the client bundle, and nothing is built first.
 
+[TypeScript components](/docs/typescript) work automatically with `.tsx` files
+through the same renderer and hydration APIs.
+
 ```jsx
 // components/PostCard.jsx
 import cx from 'classnames';                   // CommonJS package from node_modules

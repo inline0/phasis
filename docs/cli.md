@@ -21,7 +21,7 @@ After `composer require phasis/phasis`, the runtime CLI is linked at `vendor/bin
 ## bin/phasis
 
 ```
-phasis [--node] <file.js|file.mjs|file.jsx> [args] | phasis [--node] -e '<source>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']
+phasis [--node] <file.js|file.mjs|file.jsx|file.ts|file.tsx> [args] | phasis [--node] -e '<source>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']
 ```
 
 The `--node` flag enables Node-compatible packages and host I/O. There is no REPL or source-code input from stdin.
@@ -30,11 +30,18 @@ The `--node` flag enables Node-compatible packages and host I/O. There is no REP
 
 ```bash
 ./vendor/bin/phasis script.js
+./vendor/bin/phasis entry.ts
 ```
 
 Executes `script.js` as a classic script. When it finishes, everything the script wrote with `console.log` (and `console.error`, `console.warn`, …) is printed to stdout in one go. If the script throws, the error message goes to stderr and the exit status is 1.
 
-`.mjs` files and JSX files (`.jsx`) run as ES modules through the module loader, so `import` / `export`, top-level `await` and `import.meta` work and specifiers resolve the way bundlers resolve them (see [Modules](/docs/modules)). Every other file, including `.js`, is parsed as a classic script, so a `.js` file with `import` / `export` or top-level `await` fails with a SyntaxError.
+`.mjs` files and JSX files (`.jsx`) run as ES modules through the module loader,
+so `import` / `export`, top-level `await` and `import.meta` work and specifiers
+resolve the way bundlers resolve them (see [Modules](/docs/modules)).
+[TypeScript files](/docs/typescript) also work automatically: `.ts`, `.tsx`,
+`.mts` and `.cts`. Other files, including `.js`, are parsed as classic scripts,
+so a `.js` file with `import` / `export` or top-level `await` fails with a
+SyntaxError.
 
 ### Evaluate source
 
@@ -68,7 +75,10 @@ coverage and host limitations.
 ./vendor/bin/phasis -e 'a + b' --ast
 ```
 
-Prints the parse tree as JSON (indented by two spaces). Useful for debugging parser issues or building tooling on top of Phasis. For `.jsx` files the tree keeps the JSX nodes (`JsxMode::Preserve`). For programmatic access, use the [parser API](/docs/parser).
+Prints the parse tree as JSON (indented by two spaces). Useful for debugging
+parser issues or building tooling on top of Phasis. For `.jsx` and `.tsx` files
+the tree keeps the JSX nodes (`JsxMode::Preserve`); TypeScript types are erased.
+For programmatic access, use the [parser API](/docs/parser).
 
 ### Render a component
 

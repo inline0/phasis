@@ -50,6 +50,17 @@ try {
         checks += 5;
     }
     fs.symlinkSync(path.join(here, 'node_modules'), path.join(temp, 'node_modules'), 'dir');
+    const typed = execFileSync('php', [path.join(repo, 'tests/TypeScript/archive-consumer.php'), temp], {
+        encoding: 'utf8', env: { ...process.env, XDEBUG_MODE: 'off' },
+    });
+    assert.equal(typed.trim(), 'TypeScript runtime archive: PASS');
+    if (!sourceMode) {
+        const cli = execFileSync('php', [path.join(temp, 'vendor/bin/phasis'), path.join(temp, 'TypedEntry.ts')], {
+            encoding: 'utf8', cwd: temp, env: { ...process.env, XDEBUG_MODE: 'off' },
+        });
+        assert.equal(cli.trim(), '42');
+    }
+    checks++;
     const types = path.join(temp, 'types.mts');
     fs.writeFileSync(types, `
         import { hydrate, HydrationError } from './vendor/phasis/phasis/browser/hydrate.mjs';

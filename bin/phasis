@@ -74,7 +74,7 @@ if (in_array('--ast', $args, true)) {
 // Default: execute a file
 $file = $argv[$restIndex] ?? null;
 if ($file === null || !file_exists($file)) {
-    fwrite(STDERR, "Usage: phasis [--node] <file.js|file.mjs|file.jsx> [args] | phasis [--node] -e '<expr>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']\n");
+    fwrite(STDERR, "Usage: phasis [--node] <file.js|file.mjs|file.jsx|file.ts|file.tsx> [args] | phasis [--node] -e '<expr>' | phasis --ast <file> | phasis --render <component.jsx> [--props '<json>']\n");
     exit(1);
 }
 
@@ -83,7 +83,7 @@ if ($nodeMode) {
 }
 
 $jsx = new \Phasis\Parser\Jsx\JsxOptions();
-if (str_ends_with(strtolower($file), '.mjs') || $jsx->appliesTo($file)) {
+if (str_ends_with(strtolower($file), '.mjs') || Parser::isTypeScriptPath($file) || $jsx->appliesTo($file)) {
     // Modules (.mjs, .jsx) go through the module loader so imports resolve.
     $engine = new Engine();
     try {
@@ -120,7 +120,12 @@ function outputAst(string $source, ?string $file = null): void
 {
     $jsx = new \Phasis\Parser\Jsx\JsxOptions(mode: \Phasis\Parser\Jsx\JsxMode::Preserve);
     $isJsx = $file !== null && $jsx->appliesTo($file);
-    $ast = Parser::parseSource($source, $isJsx ? 'module' : 'script', $isJsx ? $jsx : null);
+    $parser = new Parser($source, $file);
+    $parser->setModuleMode($isJsx || ($file !== null && Parser::isTypeScriptPath($file) && !str_ends_with(strtolower($file), '.cts')));
+    if ($isJsx) {
+        $parser->setJsxOptions($jsx);
+    }
+    $ast = $parser->parse();
     echo jsonIndent2(Serializer::toArray($ast)) . "\n";
 }
 

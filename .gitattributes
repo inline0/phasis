@@ -39,3 +39,6 @@
 
 # JSX fixtures that test CRLF handling must keep their line endings.
 /tests/Jsx/**/*crlf*      -text
+
+# Console oracles preserve significant trailing spaces from empty arguments.
+/tests/TypeScript/fixtures/*.expected.txt -whitespace

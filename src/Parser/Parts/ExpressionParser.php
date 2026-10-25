@@ -301,6 +301,14 @@ trait ExpressionParser
 
         while (true) {
             $token = $this->current();
+            if (
+                $this->typeScript && in_array($token->value, ['as', 'satisfies'], true)
+                && !$token->lineTerminatorBefore && $minPrec < Precedence::RELATIONAL
+            ) {
+                $this->advance();
+                $this->tsType();
+                continue;
+            }
             $prec = Precedence::infixFor($token->type);
 
             if ($prec <= $minPrec) {
@@ -698,6 +706,13 @@ trait ExpressionParser
             if ($isUnparenthesizedArrow) {
                 break;
             }
+            if ($this->typeScript && $this->check(TokenType::Bang) && !$this->current()->lineTerminatorBefore) {
+                $this->advance();
+                continue;
+            }
+            if ($this->typeScript && $this->tsTryTypeArguments()) {
+                continue;
+            }
             if ($this->check(TokenType::Dot)) {
                 // Property access forces the receiver to be a normal
                 // expression — a CoverInitializedName like `{ a = 0 }` can
@@ -741,6 +756,9 @@ trait ExpressionParser
                     );
                 }
                 $this->advance();
+                if ($this->typeScript && $this->check(TokenType::LessThan)) {
+                    $this->tsTypeParameters(false);
+                }
                 if ($this->check(TokenType::LeftParen)) {
                     $this->advance();
                     $args = $this->parseArguments();
@@ -867,6 +885,9 @@ trait ExpressionParser
 
     private function parsePrimaryExpression(): Node
     {
+        if ($this->typeScript && $this->check(TokenType::LessThan)) {
+            return $this->tsParseAngleExpression();
+        }
         $token = $this->current();
 
         if ($token->type === TokenType::Slash || $token->type === TokenType::SlashEqual) {
@@ -2536,6 +2557,7 @@ trait ExpressionParser
         if ($this->peek()->type === TokenType::RightParen) {
             $this->advance(); // (
             $this->advance(); // )
+            $this->tsAnnotation();
             if ($this->check(TokenType::Arrow)) {
                 return $this->parseArrowFunctionFromParams($location, [], false);
             }
@@ -2547,6 +2569,7 @@ trait ExpressionParser
         if ($this->peek()->type === TokenType::Ellipsis) {
             $this->advance(); // (
             $params = $this->parseArrowParams();
+            $this->tsAnnotation();
             if ($this->check(TokenType::Arrow)) {
                 return $this->parseArrowFunctionFromParams($location, $params, false);
             }
@@ -2560,6 +2583,7 @@ trait ExpressionParser
         try {
             $this->advance(); // consume (
             $params = $this->parseArrowParams();
+            $this->tsAnnotation();
             if ($this->check(TokenType::Arrow)) {
                 return $this->parseArrowFunctionFromParams($location, $params, false);
             }
@@ -2610,6 +2634,7 @@ trait ExpressionParser
             }
 
             $param = $this->parseBindingPattern();
+            $this->tsAnnotation(true);
             if ($this->eat(TokenType::Equal)) {
                 $default = $this->parseAssignmentExpression();
                 $param = new AssignmentPattern($param->location, $param, $default);
@@ -2991,6 +3016,9 @@ trait ExpressionParser
             [$key, $computed] = $this->parsePropertyKey($computed);
         }
 
+        if ($this->typeScript && $this->check(TokenType::LessThan)) {
+            $this->tsTypeParameters();
+        }
         // Method shorthand: { foo() {} } or { *foo() {} } or { async foo() {} }
         if ($kind !== 'get' && $kind !== 'set' && $this->check(TokenType::LeftParen)) {
             $method = true;
@@ -3011,6 +3039,7 @@ trait ExpressionParser
             $this->topLevel = false;
             $this->inStaticBlock = false;
             $params = $this->parseFormalParameters();
+            $this->tsAnnotation();
             $body = $this->parseBlockStatement(true);
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
@@ -3069,6 +3098,7 @@ trait ExpressionParser
             $this->topLevel = false;
             $this->inStaticBlock = false;
             $params = $this->parseFormalParameters();
+            $this->tsAnnotation();
             $body = $this->parseBlockStatement(true);
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
@@ -3121,6 +3151,7 @@ trait ExpressionParser
             $this->inGenerator = false;
             $this->inAsync = false;
             $params = $this->parseFormalParameters();
+            $this->tsAnnotation();
             // Per §15.5.1 / §15.6.1: getters take exactly 0 parameters,
             // setters take exactly 1 (and it cannot be a rest element).
             $errToken = new \Phasis\Lexer\Token(TokenType::Identifier, '', $location);
@@ -3382,6 +3413,7 @@ trait ExpressionParser
             $name = $this->parseIdentifier()->name;
         }
         $params = $this->parseFormalParameters();
+        $this->tsAnnotation();
         $body = $this->parseBlockStatement(true);
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
@@ -3419,6 +3451,15 @@ trait ExpressionParser
     {
         $token = $this->current();
         $next = $this->peek();
+        if (
+            $this->typeScript && !$next->lineTerminatorBefore && $token->rawValue !== 'escaped'
+            && in_array($next->type, [TokenType::LessThan, TokenType::LeftParen], true)
+        ) {
+            $arrow = $this->tsTryAsyncArrow();
+            if ($arrow !== null) {
+                return $arrow;
+            }
+        }
 
         // Per spec, contextual keyword `async` cannot be lexed via Unicode
         // escapes. When the token is escaped (`async`), it is just
@@ -3475,6 +3516,7 @@ trait ExpressionParser
                 $this->inAsync = true;
                 try {
                     $params = $this->parseArrowParams();
+                    $this->tsAnnotation();
                 } finally {
                     $this->inAsync = $prevAsync;
                 }
@@ -3542,6 +3584,7 @@ trait ExpressionParser
         $this->topLevel = false;
         $this->inStaticBlock = false;
         $params = $this->parseFormalParameters();
+        $this->tsAnnotation();
         $body = $this->parseBlockStatement(true);
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
@@ -3591,6 +3634,9 @@ trait ExpressionParser
         } finally {
             $this->strictMode = $prevStrict;
         }
+        if ($this->typeScript && $this->check(TokenType::LessThan)) {
+            $this->tsTypeParameters();
+        }
         $superClass = null;
         if ($this->eat(TokenType::Extends)) {
             $prevStrict = $this->strictMode;
@@ -3612,6 +3658,12 @@ trait ExpressionParser
                 );
             }
         }
+        if ($this->typeScript && $this->checkContextual('implements')) {
+            $this->advance();
+            do {
+                $this->tsType();
+            } while ($this->eat(TokenType::Comma));
+        }
         $body = $this->parseClassBody();
         if ($superClass === null) {
             self::validateNoSuperCallInConstructor($body);
@@ -3631,6 +3683,9 @@ trait ExpressionParser
         $expr = $this->parsePrimaryExpression();
 
         while (true) {
+            if ($this->typeScript && $this->tsTryTypeArguments()) {
+                continue;
+            }
             if ($this->check(TokenType::Dot)) {
                 $this->advance();
                 $property = $this->parseIdentifierOrKeyword();
@@ -3660,6 +3715,9 @@ trait ExpressionParser
                     );
                 }
                 $this->advance();
+                if ($this->typeScript && $this->check(TokenType::LessThan)) {
+                    $this->tsTypeParameters(false);
+                }
                 if ($this->check(TokenType::LeftBracket)) {
                     $this->advance();
                     $property = $this->parseExpression();
@@ -3761,6 +3819,9 @@ trait ExpressionParser
 
         $args = [];
         $hasArgs = false;
+        if ($this->typeScript && $this->check(TokenType::LessThan)) {
+            $this->tsTypeParameters(false);
+        }
         if ($this->eat(TokenType::LeftParen)) {
             $hasArgs = true;
             $args = $this->parseArguments();
