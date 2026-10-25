@@ -61,7 +61,7 @@ final class UrlPatternConstructor
         $ctor = JsFunction::fromCallable(
             'URLPattern',
             static function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor URLPattern requires 'new'");
                 }
                 $first = $args[0] ?? JsUndefined::instance();

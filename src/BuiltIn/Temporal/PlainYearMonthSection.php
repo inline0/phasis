@@ -319,7 +319,7 @@ trait PlainYearMonthSection
         self::installTemporalToPrimitive($proto, 'PlainYearMonth');
 
         $ctor = JsFunction::fromCallable('PlainYearMonth', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainYearMonth must be called with new');
             }
             self::applyNewTargetPrototype($this_, $proto);
@@ -384,7 +384,7 @@ trait PlainYearMonthSection
                 ) {
                     return self::toPlainYearMonth($item);
                 }
-                if ($item instanceof JsObject && $item->has('[[IsPlainYearMonth]]')) {
+                if ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainYearMonth]]')) {
                     $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                     self::getOverflow($options);
                     return self::createPlainYearMonthObject(

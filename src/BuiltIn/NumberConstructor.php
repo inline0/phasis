@@ -439,7 +439,7 @@ class NumberConstructor
                 return $this_;
             }
             if ($this_ instanceof JsObject) {
-                $prim = $this_->get('[[PrimitiveValue]]');
+                $prim = $this_->getNativeSlot('[[PrimitiveValue]]');
                 if ($prim instanceof JsNumber) {
                     return $prim;
                 }
@@ -742,7 +742,7 @@ class NumberConstructor
             return $this_->value;
         }
         if ($this_ instanceof JsObject) {
-            $prim = $this_->get('[[PrimitiveValue]]');
+            $prim = $this_->getNativeSlot('[[PrimitiveValue]]');
             if ($prim instanceof JsNumber) {
                 return $prim->value;
             }

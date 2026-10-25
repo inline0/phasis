@@ -50,7 +50,7 @@ class PromiseConstructor
             'Promise',
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 // Promise must be called with new (§25.6.3.1 step 1)
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Promise constructor cannot be invoked without \'new\'');
                 }
                 $executor = $args[0] ?? JsUndefined::instance();
@@ -59,7 +59,7 @@ class PromiseConstructor
                 }
 
                 // Per spec OrdinaryCreateFromConstructor: use NewTarget's prototype.
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsFunction) {
                     $ctorProto = $newTarget->get('prototype');
                     $useProto = $ctorProto instanceof JsObject ? $ctorProto : $proto;

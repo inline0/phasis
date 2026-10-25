@@ -722,7 +722,7 @@ trait NumberFormatSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedNumberFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.NumberFormat.prototype.formatToParts called on non-NumberFormat',
@@ -754,7 +754,7 @@ trait NumberFormatSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedNumberFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.NumberFormat.prototype.formatRange called on non-NumberFormat',
@@ -839,7 +839,7 @@ trait NumberFormatSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedNumberFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.NumberFormat.prototype.formatRangeToParts called on non-NumberFormat',
@@ -2383,10 +2383,10 @@ trait NumberFormatSection
         ?string $bigIntStr,
         string $priority,
     ): string {
-        $hasMaxSig = $nf->get('[[HasMaxSig]]') instanceof JsBoolean
-            && $nf->get('[[HasMaxSig]]')->toBoolean();
-        $hasMaxFrac = $nf->get('[[HasMaxFrac]]') instanceof JsBoolean
-            && $nf->get('[[HasMaxFrac]]')->toBoolean();
+        $hasMaxSig = $nf->getNativeSlot('[[HasMaxSig]]') instanceof JsBoolean
+            && $nf->getNativeSlot('[[HasMaxSig]]')->toBoolean();
+        $hasMaxFrac = $nf->getNativeSlot('[[HasMaxFrac]]') instanceof JsBoolean
+            && $nf->getNativeSlot('[[HasMaxFrac]]')->toBoolean();
         $sigClone = self::cloneNumberFormatWithRoundingType($nf, 'significantDigits');
         $fracClone = self::cloneNumberFormatWithRoundingType($nf, 'fractionDigits');
         $sigStr = self::formatNumber($sigClone, $number, $bigIntStr);
@@ -2400,9 +2400,9 @@ trait NumberFormatSection
         //   sigMag = e - (maxSd - 1), where e = floor(log10(|x|))
         //   fracMag = -maxFd
         // morePrecision keeps the smaller (more negative) magnitude.
-        $maxSdSlot = $nf->get('[[MaximumSignificantDigits]]');
+        $maxSdSlot = $nf->getNativeSlot('[[MaximumSignificantDigits]]');
         $maxSd = $maxSdSlot instanceof JsNumber ? (int) $maxSdSlot->value : 21;
-        $maxFdSlot = $nf->get('[[MaximumFractionDigits]]');
+        $maxFdSlot = $nf->getNativeSlot('[[MaximumFractionDigits]]');
         $maxFd = $maxFdSlot instanceof JsNumber ? (int) $maxFdSlot->value : 0;
         $absVal = abs($number);
         if ($absVal === 0.0 || !is_finite($absVal)) {

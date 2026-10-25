@@ -74,7 +74,7 @@ class TemporalObject
      */
     private static function applyNewTargetPrototype(JsObject $receiver, JsObject $defaultProto): void
     {
-        $ntDesc = $receiver->getOwnPropertyDescriptor('[[NewTarget]]');
+        $ntDesc = $receiver->getNativeSlotDescriptor('[[NewTarget]]');
         if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
             $ntProto = $ntDesc->value->get('prototype');
             $receiver->setPrototype(

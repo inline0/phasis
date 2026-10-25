@@ -931,7 +931,7 @@ class JsFunction extends JsObject
         // class-ctor-realm tests see the matching constructor identity.
         if ($this->isClassConstructor) {
             $calledAsNew = $thisValue instanceof JsObject
-                && !($thisValue->get('[[NewTarget]]') instanceof JsUndefined);
+                && !($thisValue->getNativeSlot('[[NewTarget]]') instanceof JsUndefined);
             if (!$calledAsNew) {
                 $msg = "Class constructor {$this->name} cannot be invoked without 'new'";
                 $fnRealm = $this->realm;

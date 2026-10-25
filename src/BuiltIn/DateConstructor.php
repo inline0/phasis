@@ -42,7 +42,7 @@ class DateConstructor
 
         $constructor = JsFunction::fromCallable('Date', function (JsValue $this_, array $args) use ($proto): JsValue {
             // Called as a function (without new): always return the current date string.
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 return new JsString(self::toDateString(self::nowMs()));
             }
 
@@ -50,7 +50,7 @@ class DateConstructor
             // Per §9.1.13 OrdinaryCreateFromConstructor, the prototype must
             // come from newTarget.prototype (fall back to %Date.prototype%
             // if newTarget.prototype is not an object).
-            $newTarget = $this_->get('[[NewTarget]]');
+            $newTarget = $this_->getNativeSlot('[[NewTarget]]');
             if ($newTarget instanceof JsObject) {
                 $ntProto = $newTarget->get('prototype');
                 $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;

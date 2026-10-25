@@ -35,6 +35,7 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - **Experimental Express and Hono support** through opt-in Node compatibility: CommonJS packages, Buffer, streams, filesystem access, HTTP/HTTPS/HTTP2 servers and clients, TLS, crypto, timers, and async context, executed inside PHP. See the [module coverage and host limits](./docs/modules.md#node-compatibility).
 - **JSX Pack**: render JSX components to HTML from PHP with `Engine::render()`, no build step
   - **Native React 19.3 server renderer** in PHP: `react`, `react-dom/server` and `react-dom/static` are built in, with HTML byte-identical to `react-dom@19.3.1` and hydratable by React on the client (hooks, context, Suspense, `useId`, async components, resource hints)
+  - **Captured-data hydration**: `Engine::renderForHydration()` pairs HTML with safe public props and a Composer-shipped browser helper; see the [data and browser contract](./docs/react.md#rendering-a-component-for-hydration)
   - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8.1, plus `raw()`
   - **Bundler-style imports**: extensionless paths and `index` files, `jsconfig` aliases, `node_modules` with `package.json` `exports`, CommonJS packages, style and asset imports, import maps, and barrel pruning for `sideEffects: false` packages
   - Optional precompile of static markup, an `opcache.preload` script, and an on-disk parse cache
@@ -116,7 +117,7 @@ composer cs
 # Full quality gate (PHPStan + PHPCS + PHPUnit + oracle)
 ./bin/verify-all
 
-# Original Express and Hono suites, with pinned development dependencies
+# Local-only Express and Hono suites. NEVER run these in CI.
 npm ci --prefix tests/Frameworks
 python3 tests/Frameworks/express/setup.py
 python3 tests/Frameworks/hono/setup.py
@@ -127,7 +128,7 @@ python3 tests/Frameworks/hono/run.py --timeout-scale 10
 ./bin/test262 --category built-ins/Array --jobs 4
 ```
 
-Express and Hono support is experimental. Framework CI uses ten times the upstream test timeouts while retaining the original assertions and recording both timeout values. Omit `--timeout-scale 10` to check the original deadlines. This setting does not change test262 limits or engine execution budgets.
+Express and Hono support is experimental. **Framework compatibility suites must never run in CI**, including manual dispatches or release gates. The framework workflow is removed and disabled; releases do not require these suites. See the [local-only framework policy](./tests/Frameworks/README.md). Local runs may use `--timeout-scale 10` while retaining the original assertions and recording both timeout values. Omit it to check the original deadlines. This setting does not change test262 limits or engine execution budgets.
 
 CI runs PHPStan, PHPCS, the unit suite and the oracle regression on every push to `main` and every pull request; the Web Platform Tests and popular-package suites run when `src/` or their fixtures change. The full test262 matrix (`compat-matrix.yml`) is started by hand, not on every push; it runs against the test262 revision pinned by the submodule and commits the result to `COMPAT.md`, which records the snapshot time.
 

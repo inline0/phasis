@@ -40,21 +40,21 @@ class ObjectConstructor
                 // When our interpreter sets up the new-call, $this_ is already an empty
                 // object; set its prototype from newTarget so subclass construction
                 // (e.g. `class O extends Object {}`) observes O.prototype.
-                if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
-                    $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
+                    $ntDesc = $this_->getNativeSlotDescriptor('[[NewTarget]]');
                     if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
                         $ntProto = $ntDesc->value->get('prototype');
                         $this_->setPrototype(
                             $ntProto instanceof JsObject ? $ntProto : $proto,
                         );
                     }
-                    $newTarget = $this_->get('[[NewTarget]]');
+                    $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                     if ($newTarget !== $constructor) {
                         return $this_;
                     }
                 }
                 if (empty($args) || $args[0] instanceof JsUndefined || $args[0] instanceof JsNull) {
-                    if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                    if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                         return $this_;
                     }
                     $obj = new JsObject($proto);
@@ -350,18 +350,18 @@ class ObjectConstructor
                     $builtinTag = $primitiveTag;
                 } elseif (self::isArrayForToString($o)) {
                     $builtinTag = 'Array';
-                } elseif (!$isProxy && $o->hasOwnProperty('[[IsArguments]]')) {
+                } elseif (!$isProxy && $o->hasNativeSlot('[[IsArguments]]', own: true)) {
                     $builtinTag = 'Arguments';
                 } elseif (self::isCallableForToString($o)) {
                     $builtinTag = 'Function';
-                } elseif (!$isProxy && $o->hasOwnProperty('[[ErrorData]]')) {
+                } elseif (!$isProxy && $o->hasNativeSlot('[[ErrorData]]', own: true)) {
                     $builtinTag = 'Error';
-                } elseif (!$isProxy && $o->hasOwnProperty('[[PrimitiveValue]]')) {
+                } elseif (!$isProxy && $o->hasNativeSlot('[[PrimitiveValue]]', own: true)) {
                     // Spec internal-slot checks are own-only. Object.create on
                     // a Boolean/Number/String wrapper does not inherit
                     // [[BooleanData]]/[[NumberData]]/[[StringData]] from its
                     // prototype, so the resulting object's tag is "Object".
-                    $primDesc = $o->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+                    $primDesc = $o->getNativeSlotDescriptor('[[PrimitiveValue]]');
                     $prim = $primDesc?->value;
                     if ($prim instanceof JsBoolean) {
                         $builtinTag = 'Boolean';
@@ -375,11 +375,11 @@ class ObjectConstructor
                 } elseif (
                     !$isProxy && (
                         $o->getInternalProperty('[[IsDate]]') === true
-                        || $o->hasOwnProperty('[[IsDate]]')
+                        || $o->hasNativeSlot('[[IsDate]]', own: true)
                     )
                 ) {
                     $builtinTag = 'Date';
-                } elseif (!$isProxy && $o->hasOwnProperty('[[PCREPattern]]')) {
+                } elseif (!$isProxy && $o->hasNativeSlot('[[PCREPattern]]', own: true)) {
                     $builtinTag = 'RegExp';
                 } else {
                     $builtinTag = 'Object';

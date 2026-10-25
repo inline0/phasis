@@ -67,7 +67,7 @@ final class AsyncContextConstructor
         $ctor = JsFunction::fromCallable(
             'Variable',
             static function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor AsyncContext.Variable requires 'new'");
                 }
                 $this_->setPrototype($proto);
@@ -195,7 +195,7 @@ final class AsyncContextConstructor
             'Snapshot',
             static function (JsValue $this_, array $args) use ($proto): JsValue {
                 unset($args);
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor AsyncContext.Snapshot requires 'new'");
                 }
                 $this_->setPrototype($proto);

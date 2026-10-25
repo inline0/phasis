@@ -42,7 +42,7 @@ trait DataView
             'DataView',
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 // Step 1: NewTarget undefined → TypeError, checked before any arg coercion.
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError('Constructor DataView requires \'new\'');
                 }
                 $buffer = $args[0] ?? JsUndefined::instance();
@@ -94,8 +94,8 @@ trait DataView
                 }
 
                 $effectiveProto = $proto;
-                if ($this_->has('[[NewTarget]]')) {
-                    $newTarget = $this_->get('[[NewTarget]]');
+                if ($this_->hasNativeSlot('[[NewTarget]]')) {
+                    $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                     if ($newTarget instanceof JsFunction) {
                         // Per spec OrdinaryCreateFromConstructor, the
                         // newTarget.prototype lookup is observable and may

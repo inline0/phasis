@@ -201,7 +201,7 @@ trait PlainMonthDaySection
         self::installTemporalToPrimitive($proto, 'PlainMonthDay');
 
         $ctor = JsFunction::fromCallable('PlainMonthDay', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainMonthDay must be called with new');
             }
             self::applyNewTargetPrototype($this_, $proto);
@@ -259,7 +259,7 @@ trait PlainMonthDaySection
                 $item = $args[0] ?? JsUndefined::instance();
                 $rawOptions = $args[1] ?? JsUndefined::instance();
                 // For strings and PlainMonthDay instances, process first then validate options.
-                if ($item instanceof JsString || ($item instanceof JsObject && $item->has('[[IsPlainMonthDay]]'))) {
+                if ($item instanceof JsString || ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainMonthDay]]'))) {
                     $result = self::toPlainMonthDay($item);
                     $options = self::getOptionsObject($rawOptions);
                     self::getOverflow($options);

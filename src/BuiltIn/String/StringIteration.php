@@ -233,7 +233,7 @@ trait StringIteration
                 return $this_;
             }
             if ($this_ instanceof JsObject) {
-                $prim = $this_->get('[[PrimitiveValue]]');
+                $prim = $this_->getNativeSlot('[[PrimitiveValue]]');
                 if ($prim instanceof JsString) {
                     return $prim;
                 }

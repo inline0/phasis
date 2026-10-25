@@ -53,8 +53,8 @@ class ArrayConstructor
             // GetPrototypeFromConstructor: when newTarget.prototype is not an
             // Object, fall back to GetFunctionRealm(newTarget).[[%Array.prototype%]].
             $protoToUse = null;
-            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
-                $newTarget = $this_->get('[[NewTarget]]');
+            if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 $protoToUse = \Phasis\Spec\AbstractOperations::getPrototypeFromConstructor(
                     $newTarget,
                     static fn ($env) => \Phasis\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Array'),

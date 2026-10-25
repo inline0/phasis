@@ -61,24 +61,24 @@ trait RegExpHelpers
             function (JsValue $this_): JsValue {
                 if (
                     !$this_ instanceof JsObject
-                    || !$this_->hasOwnProperty('[[IteratingRegExp]]')
+                    || !$this_->hasNativeSlot('[[IteratingRegExp]]', own: true)
                 ) {
                     throw new \Phasis\Exceptions\TypeError(
                         'next called on non-RegExp string iterator'
                     );
                 }
-                $doneVal = $this_->get('[[Done]]');
+                $doneVal = $this_->getNativeSlot('[[Done]]');
                 if ($doneVal instanceof JsBoolean && $doneVal->value) {
                     return self::iterResult(JsUndefined::instance(), true);
                 }
-                $R = $this_->get('[[IteratingRegExp]]');
+                $R = $this_->getNativeSlot('[[IteratingRegExp]]');
                 if (!$R instanceof JsObject) {
                     return self::iterResult(JsUndefined::instance(), true);
                 }
-                $S = TypeConversion::toString($this_->get('[[IteratedString]]'));
-                $global = $this_->get('[[Global]]');
+                $S = TypeConversion::toString($this_->getNativeSlot('[[IteratedString]]'));
+                $global = $this_->getNativeSlot('[[Global]]');
                 $isGlobal = $global instanceof JsBoolean && $global->value;
-                $fullUnicode = $this_->get('[[Unicode]]');
+                $fullUnicode = $this_->getNativeSlot('[[Unicode]]');
                 $isUnicode = $fullUnicode instanceof JsBoolean
                     && $fullUnicode->value;
                 $match = self::regExpExec($R, $S);

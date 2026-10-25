@@ -121,6 +121,42 @@ class JsObject implements JsValue
         return $this->internalSlots[$name] ?? null;
     }
 
+    /**
+     * Read legacy native metadata without interpreting an ordinary data key as a slot.
+     * Native proxy/accessor reads can invoke user code and mutate the object.
+     *
+     * @phpstan-impure
+     */
+    public function getNativeSlot(string $name): JsValue
+    {
+        return $this instanceof JsDataObject ? JsUndefined::instance() : $this->get($name);
+    }
+
+    /**
+     * Check legacy native metadata while keeping public data properties unbranded.
+     * Proxy has traps can mutate state between otherwise identical checks.
+     *
+     * @phpstan-impure
+     */
+    public function hasNativeSlot(string $name, bool $own = false): bool
+    {
+        if ($this instanceof JsDataObject) {
+            return false;
+        }
+        return $own ? $this->hasOwnProperty($name) : $this->has($name);
+    }
+
+    /**
+     * Inspect legacy native metadata without exposing public data as a native slot.
+     * Exotic descriptors can invoke user code or change between calls.
+     *
+     * @phpstan-impure
+     */
+    public function getNativeSlotDescriptor(string $name): ?PropertyDescriptor
+    {
+        return $this instanceof JsDataObject ? null : $this->getOwnPropertyDescriptor($name);
+    }
+
     public static function setGlobalPrototype(JsObject $proto): void
     {
         self::$globalPrototype = $proto;
@@ -975,7 +1011,7 @@ class JsObject implements JsValue
     {
         return array_values(array_filter(
             $this->properties->keys(),
-            fn(string $k) => !self::isInternalSlot($k),
+            fn(string $k) => !static::isInternalSlot($k),
         ));
     }
 
@@ -993,7 +1029,7 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($allKeys as $key) {
-            if (self::isInternalSlot($key)) {
+            if (static::isInternalSlot($key)) {
                 continue;
             }
             if (self::isArrayIndex($key)) {
@@ -1088,7 +1124,7 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($stringKeys as $key) {
-            if (self::isInternalSlot($key)) {
+            if (static::isInternalSlot($key)) {
                 continue;
             }
             if (self::isArrayIndex($key)) {
@@ -1169,7 +1205,7 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($enumKeys as $key) {
-            if (self::isInternalSlot($key)) {
+            if (static::isInternalSlot($key)) {
                 continue;
             }
             if (self::isArrayIndex($key)) {

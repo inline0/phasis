@@ -125,7 +125,7 @@ final class ReactModule
     {
         $type = $args[0] ?? JsUndefined::instance();
         $config = $args[1] ?? JsUndefined::instance();
-        $props = new JsObject();
+        $props = new \Phasis\Value\JsDataObject();
         $key = JsNull::instance();
         if (!Js::isNullish($config)) {
             $configKey = Js::get($config, 'key');

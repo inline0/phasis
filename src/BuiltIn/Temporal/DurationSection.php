@@ -43,7 +43,7 @@ trait DurationSection
             self::defineGetter($proto, $field, function (JsValue $this_) use ($field): JsValue {
                 self::requireDuration($this_);
                 // Read the float value directly to avoid int overflow for large values.
-                $v = $this_->get("[[{$field}]]");
+                $v = $this_->getNativeSlot("[[{$field}]]");
                 return ($v instanceof JsNumber) ? $v : JsNumber::of(0.0);
             });
         }
@@ -184,7 +184,7 @@ trait DurationSection
                             // fall through to PlainDate parsing below
                         }
                     }
-                } elseif ($rtv instanceof JsObject && $rtv->has('[[IsZonedDateTime]]')) {
+                } elseif ($rtv instanceof JsObject && $rtv->hasNativeSlot('[[IsZonedDateTime]]')) {
                     $zonedRelativeTo = $rtv;
                 }
                 $relativeTo = self::toRelativeToPlainDate($rtv);
@@ -329,7 +329,7 @@ trait DurationSection
             if (
                 $relativeTo !== null
                 && $relativeTo instanceof JsObject
-                && $relativeTo->has('[[IsZonedDateTime]]')
+                && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')
             ) {
                 $epochNs = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
                 $durNs = self::durationToTotalNs($this_);
@@ -345,7 +345,7 @@ trait DurationSection
             if (
                 $relativeTo !== null
                 && $relativeTo instanceof JsObject
-                && $relativeTo->has('[[IsZonedDateTime]]')
+                && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')
                 && $unit === 'day'
                 && $hasCalUnit
             ) {
@@ -366,7 +366,7 @@ trait DurationSection
             if (
                 $relativeTo !== null
                 && $relativeTo instanceof JsObject
-                && $relativeTo->has('[[IsZonedDateTime]]')
+                && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')
                 && in_array($unit, $subDayUnits, true)
                 && ($hasDayUnit || $unit === 'day')
             ) {
@@ -437,7 +437,7 @@ trait DurationSection
 
         // Constructor
         $ctor = JsFunction::fromCallable('Duration', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Temporal.Duration must be called with new');
             }
             self::applyNewTargetPrototype($this_, $proto);
@@ -557,7 +557,7 @@ trait DurationSection
                     if (
                         $refDate === null
                         && $relativeTo instanceof JsObject
-                        && $relativeTo->has('[[IsZonedDateTime]]')
+                        && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')
                     ) {
                         $parts = self::zonedDateTimeParts($relativeTo);
                         $refDate = self::createPlainDateObject(
@@ -575,7 +575,7 @@ trait DurationSection
                     if (
                         $hasDateUnit
                         && $relativeTo instanceof JsObject
-                        && $relativeTo->has('[[IsZonedDateTime]]')
+                        && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')
                     ) {
                         $epochNs = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
                         $durNs1 = self::durationToTotalNs($one);
@@ -588,7 +588,7 @@ trait DurationSection
                     $relativeTo !== null
                     && $hasCalUnit
                     && $relativeTo instanceof JsObject
-                    && $relativeTo->has('[[IsZonedDateTime]]')
+                    && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')
                 ) {
                     // ZDT-aware compare: build end ZDTs respecting DST.
                     $end1 = self::addDurationToZdt($relativeTo, $one, 1, 'constrain');
@@ -649,7 +649,7 @@ trait DurationSection
                 if (
                     $relativeTo !== null
                     && $relativeTo instanceof JsObject
-                    && $relativeTo->has('[[IsZonedDateTime]]')
+                    && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')
                     && ($oneHasDay || $twoHasDay)
                 ) {
                     $end1 = self::addDurationToZdt($relativeTo, $one, 1, 'constrain');

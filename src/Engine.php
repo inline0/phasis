@@ -623,7 +623,7 @@ class Engine
         $bigIntFn = \Phasis\Value\JsFunction::fromCallable(
             'BigInt',
             function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
-                if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                if ($this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new \Phasis\Exceptions\TypeError('BigInt is not a constructor');
                 }
                 $val = $args[0] ?? \Phasis\Value\JsUndefined::instance();
@@ -673,7 +673,7 @@ class Engine
                 $bigint = $this_ instanceof \Phasis\Value\JsBigInt ? $this_ : null;
                 if ($bigint === null && $this_ instanceof \Phasis\Value\JsObject) {
                     // BigInt wrapper object.
-                    $v = $this_->get('[[BigIntData]]');
+                    $v = $this_->getNativeSlot('[[BigIntData]]');
                     $bigint = $v instanceof \Phasis\Value\JsBigInt ? $v : null;
                 }
                 if ($bigint === null) {
@@ -737,7 +737,7 @@ class Engine
                     return $this_;
                 }
                 if ($this_ instanceof \Phasis\Value\JsObject) {
-                    $v = $this_->get('[[BigIntData]]');
+                    $v = $this_->getNativeSlot('[[BigIntData]]');
                     if ($v instanceof \Phasis\Value\JsBigInt) {
                         return $v;
                     }
@@ -758,7 +758,7 @@ class Engine
             function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
                 $bigint = $this_ instanceof \Phasis\Value\JsBigInt ? $this_ : null;
                 if ($bigint === null && $this_ instanceof \Phasis\Value\JsObject) {
-                    $v = $this_->get('[[BigIntData]]');
+                    $v = $this_->getNativeSlot('[[BigIntData]]');
                     $bigint = $v instanceof \Phasis\Value\JsBigInt ? $v : null;
                 }
                 if ($bigint === null) {
@@ -1126,7 +1126,7 @@ class Engine
             $arg0 = $args[0] ?? \Phasis\Value\JsUndefined::instance();
             $arg1 = $args[1] ?? \Phasis\Value\JsUndefined::instance();
 
-            $calledAsNew = $this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]');
+            $calledAsNew = $this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]');
 
             // Per spec 22.2.3.1: IsRegExp check using @@match. If matcher is
             // undefined, fall back to whether the argument has the
@@ -1144,7 +1144,7 @@ class Engine
                     if ($arg0 instanceof \Phasis\Value\JsProxy) {
                         $patternIsRegExp = false;
                     } else {
-                        $patternIsRegExp = $arg0->getOwnPropertyDescriptor('[[PCREPattern]]') !== null;
+                        $patternIsRegExp = $arg0->getNativeSlotDescriptor('[[PCREPattern]]') !== null;
                     }
                 } else {
                     $patternIsRegExp = \Phasis\Spec\TypeConversion::toBoolean($matchProp);
@@ -1167,7 +1167,7 @@ class Engine
             $isSubclass = false;
             $newTarget = null;
             if ($calledAsNew) {
-                $ntd = $this_->getOwnPropertyDescriptor("[[NewTarget]]");
+                $ntd = $this_->getNativeSlotDescriptor("[[NewTarget]]");
                 $baseRegExp = $globalEnv->has("RegExp") ? $globalEnv->get("RegExp") : null;
                 if ($ntd !== null && $ntd->value !== null && $ntd->value !== $baseRegExp) {
                     $isSubclass = true;
@@ -1183,12 +1183,12 @@ class Engine
             $cachedPattern = null;
             $cachedFlags = null;
             if ($patternIsRegExp && $arg0 instanceof \Phasis\Value\JsObject) {
-                $srcDesc = $arg0->getOwnPropertyDescriptor('[[OriginalSource]]');
+                $srcDesc = $arg0->getNativeSlotDescriptor('[[OriginalSource]]');
                 if ($srcDesc !== null && $srcDesc->value instanceof \Phasis\Value\JsString) {
                     $cachedPattern = $srcDesc->value->value;
                 }
                 if ($arg1 instanceof \Phasis\Value\JsUndefined) {
-                    $flgDesc = $arg0->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                    $flgDesc = $arg0->getNativeSlotDescriptor('[[OriginalFlags]]');
                     if ($flgDesc !== null && $flgDesc->value instanceof \Phasis\Value\JsString) {
                         $cachedFlags = $flgDesc->value->value;
                     }
@@ -2164,6 +2164,56 @@ class Engine
         });
     }
 
+    /**
+     * Render a React element root from one captured JSON-data snapshot.
+     *
+     * The payload is captured before module evaluation. Existing render APIs
+     * retain their general PHP interop; this API never exposes PHP services,
+     * callables or serialization hooks to the component or the browser.
+     *
+     * @param array<array-key, mixed>|\stdClass $props Object-shaped public data.
+     * @param Hydration\HydrationOptions|null $options Explicit public entry, build and root identities.
+     * @return Hydration\RenderedRoot Matched HTML and immutable, script-safe state.
+     */
+    public function renderForHydration(
+        string $path,
+        array|\stdClass $props = [],
+        string $export = 'default',
+        ?Hydration\HydrationOptions $options = null,
+    ): Hydration\RenderedRoot {
+        if ($options === null) {
+            throw new \InvalidArgumentException('renderForHydration requires explicit HydrationOptions.');
+        }
+        $payload = Hydration\PropsSnapshot::capture($props, $export, $options);
+        $resolved = realpath($path);
+        if ($resolved === false) {
+            throw new \RuntimeException("Cannot read module: {$path}");
+        }
+        return Hydration\PropsSnapshot::withPrecision(fn (): Hydration\RenderedRoot => $this->withCurrentInterpreter(
+            function () use ($resolved, $payload, $export, $options): Hydration\RenderedRoot {
+                $state = BuiltIn\JsonObject::parseSource($payload, publicProperties: true);
+                if (!$state instanceof JsObject || !($jsProps = $state->get('props')) instanceof JsObject) {
+                    throw new \LogicException('Captured hydration props must be an object.');
+                }
+                $namespace = $this->interpreter->getModuleLoader()->loadModule($resolved);
+                $this->eventLoop->runUntilEmpty();
+                if (!$namespace->hasOwnProperty($export)) {
+                    throw new \InvalidArgumentException("Hydration component export is missing: {$export}");
+                }
+                $element = BuiltIn\Jsx\React\ReactModule::createElement([$namespace->get($export), $jsProps]);
+                $renderOptions = new JsObject();
+                $renderOptions->defineOwnProperty('identifierPrefix', PropertyDescriptor::data(new JsString($options->identifierPrefix)));
+                $html = $this->prerenderElement($element, $renderOptions);
+                if (preg_match('/<!doctype\s|<html[\s>]/i', $html) === 1) {
+                    throw new \InvalidArgumentException(
+                        'renderForHydration supports element roots, not full HTML documents; use render() for documents.',
+                    );
+                }
+                return new Hydration\RenderedRoot($html, $payload, $options);
+            },
+        ));
+    }
+
     /** @param array<string, mixed> $props */
     private function renderExport(string $modulePath, JsObject $namespace, array $props, string $export, ?RenderProfile $profile): string
     {
@@ -2180,11 +2230,16 @@ class Engine
             return \Phasis\BuiltIn\Jsx\Html\HtmlRenderer::renderComponent($this, $component, $jsProps);
         }
         $element = \Phasis\BuiltIn\Jsx\React\ReactModule::element($component, \Phasis\Value\JsNull::instance(), $jsProps);
+        return $this->prerenderElement($element, JsUndefined::instance());
+    }
+
+    private function prerenderElement(JsValue $element, JsValue $options): string
+    {
         $html = null;
         $error = null;
         \Phasis\BuiltIn\Jsx\React\Fizz\Server::prerender(
             $element,
-            JsUndefined::instance(),
+            $options,
             static function (\Phasis\BuiltIn\Jsx\React\Fizz\Request $request) use (&$html): void {
                 $html = \Phasis\BuiltIn\Jsx\React\Fizz\Server::flushToString($request);
             },

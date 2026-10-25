@@ -254,7 +254,7 @@ trait TemporalCalendarFormattingHelpers
         if ($temporal === null) {
             return self::dateTimeFromTimestampMs($timestampMs);
         }
-        if ($temporal->has('[[EpochNanoseconds]]')) {
+        if ($temporal->hasNativeSlot('[[EpochNanoseconds]]')) {
             return self::dateTimeFromTimestampMs(self::epochNsToMs(
                 self::extractInternalString($temporal, '[[EpochNanoseconds]]', '0'),
             ));

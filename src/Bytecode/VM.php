@@ -60,7 +60,7 @@ final class VM
             throw new TypeError("Cannot read properties of {$type} (reading '{$name}')");
         }
         if ($obj instanceof JsObject) {
-            $primSlot = $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+            $primSlot = $obj->getNativeSlotDescriptor('[[PrimitiveValue]]');
             if ($primSlot !== null && $primSlot->value instanceof \Phasis\Value\JsSymbol) {
                 return $this->interp->vmLookupPrimitiveMember($obj, $name);
             }

@@ -157,7 +157,7 @@ class RegExpPrototype
                     //   - Otherwise, if R is %RegExp.prototype% and propName
                     //     is a flag getter, return undefined.
                     //   - Otherwise throw TypeError.
-                    $origFlagsDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                    $origFlagsDesc = $this_->getNativeSlotDescriptor('[[OriginalFlags]]');
                     if ($origFlagsDesc === null) {
                         if ($this_ === $proto) {
                             if ($propName === 'source') {
@@ -178,7 +178,7 @@ class RegExpPrototype
                     // LineTerminator code points in the pattern must be escaped
                     // so the resulting string can round-trip through
                     // `/` + source + `/` + flags.
-                    $srcDesc = $this_->getOwnPropertyDescriptor('[[OriginalSource]]');
+                    $srcDesc = $this_->getNativeSlotDescriptor('[[OriginalSource]]');
                     if ($srcDesc && $srcDesc->value instanceof JsString) {
                         $src = $srcDesc->value->value;
                         if ($src === '') {
@@ -263,7 +263,7 @@ class RegExpPrototype
                 );
             }
             // Check for [[RegExpMatcher]] internal slot (we use [[PCREPattern]]).
-            $pcreDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+            $pcreDesc = $this_->getNativeSlotDescriptor('[[PCREPattern]]');
             if ($pcreDesc === null) {
                 throw new \Phasis\Exceptions\TypeError(
                     'Method RegExp.prototype.compile called on incompatible receiver',
@@ -297,7 +297,7 @@ class RegExpPrototype
             }
 
             // Per Annex B step 3: if [[LegacyFeaturesEnabled]] is false, throw TypeError.
-            $legacyDesc = $this_->getOwnPropertyDescriptor("[[LegacyFeaturesEnabled]]");
+            $legacyDesc = $this_->getNativeSlotDescriptor("[[LegacyFeaturesEnabled]]");
             if (
                 $legacyDesc !== null && $legacyDesc->value instanceof \Phasis\Value\JsBoolean
                 && !$legacyDesc->value->toBoolean()
@@ -313,7 +313,7 @@ class RegExpPrototype
             // If pattern is a RegExp object, flags must be undefined.
             $isRegExp = false;
             if ($patternArg instanceof JsObject) {
-                $patternPcre = $patternArg->getOwnPropertyDescriptor('[[PCREPattern]]');
+                $patternPcre = $patternArg->getNativeSlotDescriptor('[[PCREPattern]]');
                 if ($patternPcre !== null) {
                     $isRegExp = true;
                 }
@@ -328,8 +328,8 @@ class RegExpPrototype
                 // Read from [[OriginalSource]]/[[OriginalFlags]] internal slots
                 // to avoid triggering user-defined accessors on the instance.
                 /** @var JsObject $patternArg */
-                $srcDesc = $patternArg->getOwnPropertyDescriptor('[[OriginalSource]]');
-                $flgDesc = $patternArg->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                $srcDesc = $patternArg->getNativeSlotDescriptor('[[OriginalSource]]');
+                $flgDesc = $patternArg->getNativeSlotDescriptor('[[OriginalFlags]]');
                 if ($srcDesc !== null && $srcDesc->value !== null) {
                     $p = TypeConversion::toString($srcDesc->value);
                 } else {

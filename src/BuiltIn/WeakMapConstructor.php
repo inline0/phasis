@@ -33,11 +33,11 @@ class WeakMapConstructor
         $constructor = JsFunction::fromCallable(
             'WeakMap',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor WeakMap requires \'new\'');
                 }
                 $effectiveProto = $proto;
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsFunction) {
                     $ntProto = $newTarget->get('prototype');
                     if ($ntProto instanceof JsObject) {

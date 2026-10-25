@@ -304,7 +304,7 @@ trait TypedArrayHelpers
                 // Per spec: if NewTarget is undefined, throw TypeError.
                 if (
                     !$this_ instanceof JsObject
-                    || $this_->getOwnPropertyDescriptor('[[NewTarget]]') === null
+                    || $this_->getNativeSlotDescriptor('[[NewTarget]]') === null
                 ) {
                     throw new TypeError(
                         "Constructor {$typeName} requires 'new'"
@@ -313,7 +313,7 @@ trait TypedArrayHelpers
                 // Primitive lengths are coerced before prototype lookup. Buffer
                 // and TypedArray sources resolve it before source validation.
                 // Defer the lookup so constructTypedArray preserves that order.
-                $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                $ntDesc = $this_->getNativeSlotDescriptor('[[NewTarget]]');
                 $nt = ($ntDesc->value instanceof JsFunction)
                     ? $ntDesc->value
                     : null;

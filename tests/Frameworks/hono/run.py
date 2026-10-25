@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run unchanged transpiled Hono tests in bounded Node/Phasis subprocesses."""
+"""Local-only Hono compatibility. Never run in CI; see ../README.md."""
 import argparse
 import json
 import hashlib

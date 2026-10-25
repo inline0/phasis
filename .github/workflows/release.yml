@@ -1,5 +1,8 @@
 name: Release
 
+# Framework compatibility must never run in CI and is not a release gate.
+# See tests/Frameworks/README.md for the owner's local-only policy.
+
 on:
   release:
     types: [published]
@@ -13,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -20,27 +25,20 @@ jobs:
           extensions: mbstring, bcmath, curl, intl
           tools: composer
 
-      - run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+      - name: Stage the canonical runtime archive
+        run: |
+          mkdir -p dist/phasis
+          git archive HEAD | tar -x -C dist/phasis
+          composer install --working-dir=dist/phasis --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Verify autoloader
         run: |
+          cd dist/phasis
           php -r "require 'vendor/autoload.php'; class_exists('Phasis\\Engine', true) || exit(1); echo 'Autoloader OK';"
           php bin/phasis -e 'console.log(1 + 1)' | grep -q '^2$'
 
       - name: Create release archive
         run: |
-          mkdir -p dist
-          rsync -a --exclude='.git' --exclude='.github' --exclude='.claude' \
-            --exclude='.compat-state' --exclude='.phpunit*' --exclude='.phpstan*' \
-            --exclude='tests' --exclude='test262' --exclude='scenarios' \
-            --exclude='bench' --exclude='docs' --exclude='prds' \
-            --exclude='AGENTS.md' --exclude='CLAUDE.md' --exclude='BENCH.md' --exclude='bench.json' \
-            --exclude='compat.json' --exclude='phpunit.xml*' --exclude='phpcs.xml' \
-            --exclude='phpstan.neon*' \
-            --exclude='bin/compat-*' --exclude='bin/build-*' --exclude='bin/gen-*' \
-            --exclude='bin/test-regression' --exclude='bin/test262' \
-            --exclude='bin/verify-all' \
-            . dist/phasis/
           cd dist && zip -r ../phasis.zip phasis/
 
       - name: Upload release asset

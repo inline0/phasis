@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the complete pinned Express suite with bounded, isolated worker groups."""
+"""Local-only Express compatibility. Never run in CI; see ../README.md."""
 
 import argparse
 import concurrent.futures

@@ -295,7 +295,7 @@ trait DateConstruction
         if ($value->getInternalProperty('[[IsDate]]') === true) {
             return true;
         }
-        $marker = $value->get('[[IsDate]]');
+        $marker = $value->getNativeSlot('[[IsDate]]');
         return $marker instanceof JsBoolean && $marker->value;
     }
 
@@ -329,7 +329,7 @@ trait DateConstruction
         // [[DateValue]] as a real property descriptor still round-trip
         // through here. Keep both fallbacks so existing flows stay
         // correct.
-        $legacy = $obj->get('[[DateValue]]');
+        $legacy = $obj->getNativeSlot('[[DateValue]]');
         return $legacy instanceof JsNumber ? $legacy->value : NAN;
     }
 

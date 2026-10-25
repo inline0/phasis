@@ -239,10 +239,10 @@ class HeadersConstructor
         $constructor = JsFunction::fromCallable(
             'Headers',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Failed to construct 'Headers': Please use the 'new' operator");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);
@@ -489,7 +489,7 @@ class HeadersConstructor
             if (!$this_ instanceof JsObject) {
                 throw new TypeError('Headers Iterator.next called on incompatible receiver');
             }
-            $stateDesc = $this_->getOwnPropertyDescriptor('[[HeadersIterState]]');
+            $stateDesc = $this_->getNativeSlotDescriptor('[[HeadersIterState]]');
             if ($stateDesc === null) {
                 throw new TypeError('Headers Iterator.next called on incompatible receiver');
             }

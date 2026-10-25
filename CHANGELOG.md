@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-25
+
+### Added
+- `Engine::renderForHydration()` captures public JSON-data props before module execution and returns immutable matched React HTML, script-safe state and root metadata, without changing the existing rendering or callable interop APIs.
+- Explicit hydration entry/build/root identities, named exports, React `createElement` semantics and matching `identifierPrefix` forwarding to native Fizz and the browser.
+- Composer-shipped `browser/hydrate.mjs` and TypeScript declarations. The helper uses the consumer's peer React/React DOM pair, validates the captured transport and identities, rejects duplicate initialization, and preserves server HTML on transport failure.
+- Downstream Composer archive tests covering development/production hydration, node reuse, connected imports/context/state, render-time mutation, safe data shapes and real React diagnostics on PHP 8.2 through 8.5.
+
+### Changed
+- Release download archives use the same export-ignore runtime inventory as Composer before installing their bundled production autoloader.
+- Framework compatibility is local-only and must never run in CI or gate a release. Its GitHub Actions workflow is removed and disabled.
+
+### Fixed
+- Captured data preserves all public JSON keys, including names resembling native slots and leading null bytes. Native metadata readers keep those objects unbranded, so a public `[[PrimitiveValue]]` key cannot make them behave as boxed values.
+
+### Upgrade notes
+- The new helper targets React/React DOM 19.3.1 and element roots. Full-document convenience transport and renderer nonce/CSP options are explicitly unsupported; existing document rendering remains available through `render()`.
+- Only public data belongs in hydration props. Larger exact integers must be strings. WordPress loaders, application context, asset identities and cache policy remain the embedding application's responsibility.
+
 ## [0.9.0] - 2026-10-24
 
 ### Added

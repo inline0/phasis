@@ -246,7 +246,7 @@ class DomExceptionConstructor
                 ? 'Error'
                 : TypeConversion::toString($nameArg);
 
-            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 // Called via `new`: populate the pre-allocated object.
                 // The prototype was already set by evalNewExpression based on
                 // newTarget.prototype, so subclasses keep their chain.

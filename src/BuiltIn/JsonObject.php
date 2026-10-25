@@ -250,7 +250,7 @@ class JsonObject
         // Boolean / Number / String / BigInt) since spec ToJSON
         // unwraps these to their primitives, while our walker would
         // emit them as bare {} objects.
-        if ($value->getOwnPropertyDescriptor('[[PrimitiveValue]]') !== null) {
+        if (!$value instanceof \Phasis\Value\JsDataObject && $value->getNativeSlotDescriptor('[[PrimitiveValue]]') !== null) {
             return self::trivialBailout();
         }
         // RawJSON object: bail so the spec serialiser emits its raw
@@ -318,7 +318,10 @@ class JsonObject
             $integerKeys = [];
             $stringKeys = [];
             foreach (array_keys($value->properties->dataSlots) as $name) {
-                if (str_starts_with((string) $name, '[[') && str_ends_with((string) $name, ']]')) {
+                if (
+                    !$value instanceof \Phasis\Value\JsDataObject
+                    && str_starts_with((string) $name, '[[') && str_ends_with((string) $name, ']]')
+                ) {
                     continue;
                 }
                 // PHP stdClass treats NUL bytes / non-printable chars as
@@ -392,38 +395,38 @@ class JsonObject
 
     private static function hasNumberData(JsObject $obj): bool
     {
-        if (!$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof JsNumber;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof JsNumber;
     }
 
     private static function hasStringData(JsObject $obj): bool
     {
-        if (!$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof JsString;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof JsString;
     }
 
     private static function hasBooleanData(JsObject $obj): bool
     {
-        if (!$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof JsBoolean;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof JsBoolean;
     }
 
     private static function hasBigIntData(JsObject $obj): bool
     {
-        if (!$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof \Phasis\Value\JsBigInt;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof \Phasis\Value\JsBigInt;
     }
 
     /**
@@ -459,9 +462,21 @@ class JsonObject
      *
      * Mirrors the JSON.parse fast path (no reviver). Throws SyntaxError on
      * malformed input.
+     *
+     * @param bool $publicProperties Preserve every JSON key as public data, including legacy native-slot-looking names.
      */
-    public static function parseSource(string $text): JsValue
+    public static function parseSource(string $text, bool $publicProperties = false): JsValue
     {
+        if ($publicProperties) {
+            // Associative validation accepts JSON keys (including leading NUL)
+            // that PHP cannot represent as decoded stdClass properties.
+            try {
+                json_decode($text, true, 512, JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON');
+            }
+            return self::parseWithSources($text, publicProperties: true)['value'];
+        }
         $trimmed = trim($text);
         if ($trimmed === '-0') {
             return JsNumber::of(-0.0);
@@ -514,13 +529,13 @@ class JsonObject
     /**
      * @return array{value: JsValue, root: JsObject, sourceMap: array<string, array{0: string, 1: JsValue}>}
      */
-    private static function parseWithSources(string $text): array
+    private static function parseWithSources(string $text, bool $publicProperties = false): array
     {
         /** @var array<string, array{0: string, 1: JsValue}> $sourceMap */
         $sourceMap = [];
         $pos = 0;
-        $root = new JsObject();
-        $value = self::parseJsonValue($text, $pos, $sourceMap, $root, '');
+        $root = $publicProperties ? new \Phasis\Value\JsDataObject() : new JsObject();
+        $value = self::parseJsonValue($text, $pos, $sourceMap, $root, '', $publicProperties);
         $root->defineOwnProperty('', PropertyDescriptor::data($value, true, true, true));
         return ['value' => $value, 'root' => $root, 'sourceMap' => $sourceMap];
     }
@@ -534,6 +549,7 @@ class JsonObject
         array &$sourceMap,
         JsObject $holder,
         string $key,
+        bool $publicProperties = false,
     ): JsValue {
         self::skipWhitespace($text, $pos);
         $len = strlen($text);
@@ -545,10 +561,10 @@ class JsonObject
         $ch = $text[$pos];
 
         if ($ch === '{') {
-            return self::parseJsonObjectWithSources($text, $pos, $sourceMap);
+            return self::parseJsonObjectWithSources($text, $pos, $sourceMap, $publicProperties);
         }
         if ($ch === '[') {
-            return self::parseJsonArrayWithSources($text, $pos, $sourceMap);
+            return self::parseJsonArrayWithSources($text, $pos, $sourceMap, $publicProperties);
         }
         if ($ch === '"') {
             $start = $pos;
@@ -593,9 +609,10 @@ class JsonObject
         string $text,
         int &$pos,
         array &$sourceMap,
+        bool $publicProperties = false,
     ): JsObject {
         $pos++; // skip {
-        $obj = new JsObject();
+        $obj = $publicProperties ? new \Phasis\Value\JsDataObject() : new JsObject();
         self::skipWhitespace($text, $pos);
 
         if ($pos < strlen($text) && $text[$pos] === '}') {
@@ -614,7 +631,7 @@ class JsonObject
                 throw new \Phasis\Exceptions\SyntaxError('Expected colon in JSON object');
             }
             $pos++; // skip :
-            $propVal = self::parseJsonValue($text, $pos, $sourceMap, $obj, $propKey);
+            $propVal = self::parseJsonValue($text, $pos, $sourceMap, $obj, $propKey, $publicProperties);
             $obj->defineOwnProperty($propKey, PropertyDescriptor::data($propVal, true, true, true));
             self::skipWhitespace($text, $pos);
             if ($pos >= strlen($text)) {
@@ -640,6 +657,7 @@ class JsonObject
         string $text,
         int &$pos,
         array &$sourceMap,
+        bool $publicProperties = false,
     ): JsArray {
         $pos++; // skip [
         $arr = JsArray::fromArray([]);
@@ -653,7 +671,7 @@ class JsonObject
 
         while ($pos < strlen($text)) {
             $propKey = (string) $index;
-            $propVal = self::parseJsonValue($text, $pos, $sourceMap, $arr, $propKey);
+            $propVal = self::parseJsonValue($text, $pos, $sourceMap, $arr, $propKey, $publicProperties);
             $arr->defineOwnProperty($propKey, PropertyDescriptor::data($propVal, true, true, true));
             $index++;
             $arr->set('length', JsNumber::of($index));
@@ -1089,7 +1107,7 @@ class JsonObject
             } elseif (self::hasStringData($value)) {
                 $value = new JsString(TypeConversion::toString($value));
             } elseif (self::hasBooleanData($value)) {
-                $prim = $value->get('[[PrimitiveValue]]');
+                $prim = $value->getNativeSlot('[[PrimitiveValue]]');
                 if ($prim instanceof JsBoolean) {
                     $value = $prim;
                 }

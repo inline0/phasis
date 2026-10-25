@@ -1,5 +1,8 @@
 name: CI
 
+# Framework compatibility is local-only and must never run in any CI job.
+# Do not restore frameworks.yml. See tests/Frameworks/README.md.
+
 on:
   push:
     branches: [main]

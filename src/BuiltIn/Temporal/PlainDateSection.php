@@ -481,7 +481,7 @@ trait PlainDateSection
 
         // Constructor
         $ctor = JsFunction::fromCallable('PlainDate', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainDate must be called with new');
             }
             self::applyNewTargetPrototype($this_, $proto);
@@ -533,11 +533,12 @@ trait PlainDateSection
                 // For known Temporal types: convert first, then read options.
                 if (
                     $item instanceof JsObject && (
-                    ($item->has('[[ISOYear]]') && !$item->has('[[IsPlainTime]]') && !$item->has('[[IsPlainDateTime]]')
-                        && !$item->has('[[IsPlainYearMonth]]') && !$item->has('[[IsPlainMonthDay]]')
-                        && !$item->has('[[IsZonedDateTime]]') && !$item->has('[[IsDuration]]') && !$item->has('[[EpochNanoseconds]]'))
-                    || $item->has('[[IsPlainDateTime]]')
-                    || $item->has('[[IsZonedDateTime]]')
+                    ($item->hasNativeSlot('[[ISOYear]]') && !$item->hasNativeSlot('[[IsPlainTime]]') && !$item->hasNativeSlot('[[IsPlainDateTime]]')
+                        && !$item->hasNativeSlot('[[IsPlainYearMonth]]') && !$item->hasNativeSlot('[[IsPlainMonthDay]]')
+                        && !$item->hasNativeSlot('[[IsZonedDateTime]]') && !$item->hasNativeSlot('[[IsDuration]]')
+                        && !$item->hasNativeSlot('[[EpochNanoseconds]]'))
+                    || $item->hasNativeSlot('[[IsPlainDateTime]]')
+                    || $item->hasNativeSlot('[[IsZonedDateTime]]')
                     )
                 ) {
                     $result = self::toPlainDate($item, 'constrain');

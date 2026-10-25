@@ -72,7 +72,7 @@ final class WebAssemblyObject
         $ctor = JsFunction::fromCallable(
             'Memory',
             static function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("WebAssembly.Memory(): WebAssembly.Memory must be invoked with 'new'");
                 }
                 $descriptor = $args[0] ?? JsUndefined::instance();
@@ -114,7 +114,7 @@ final class WebAssemblyObject
                     );
                 }
 
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $targetProto = $newTarget->get('prototype');
                     $this_->setPrototype($targetProto instanceof JsObject ? $targetProto : $proto);

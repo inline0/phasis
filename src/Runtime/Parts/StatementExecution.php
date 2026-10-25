@@ -764,7 +764,7 @@ trait StatementExecution
                         // active function's new.target, not the super itself.
                         $newTarget = $ref->fn;
                         if ($thisVal instanceof JsObject) {
-                            $nt = $thisVal->get('[[NewTarget]]');
+                            $nt = $thisVal->getNativeSlot('[[NewTarget]]');
                             if ($nt instanceof JsFunction || $nt instanceof \Phasis\Value\JsProxy) {
                                 $newTarget = $nt;
                             }

@@ -147,8 +147,8 @@ class SymbolConstructor
         }
 
         // Handle Object(Symbol(...)) wrappers: [[PrimitiveValue]] holds the JsSymbol.
-        if ($this_ instanceof JsObject && $this_->has('[[PrimitiveValue]]')) {
-            $prim = $this_->get('[[PrimitiveValue]]');
+        if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[PrimitiveValue]]')) {
+            $prim = $this_->getNativeSlot('[[PrimitiveValue]]');
             if ($prim instanceof JsSymbol) {
                 return $prim;
             }
@@ -163,7 +163,7 @@ class SymbolConstructor
         // but invoking it via new throws TypeError per spec 20.4.1.1.
         $symbolFn = JsFunction::fromCallable('Symbol', function (JsValue $this_, array $args): JsValue {
             // When called via new, $this_ is the newly created object with [[NewTarget]].
-            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Symbol is not a constructor');
             }
             $description = null;

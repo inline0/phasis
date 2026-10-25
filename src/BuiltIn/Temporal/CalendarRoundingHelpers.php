@@ -26,7 +26,7 @@ trait CalendarRoundingHelpers
             0,
             0,
         );
-        if ($reference instanceof JsObject && $reference->has('[[IsZonedDateTime]]')) {
+        if ($reference instanceof JsObject && $reference->hasNativeSlot('[[IsZonedDateTime]]')) {
             $result = self::addDurationToZdt($reference, $duration, 1);
             self::validateInstantRange($result);
             return $result;
@@ -41,7 +41,7 @@ trait CalendarRoundingHelpers
 
     private static function durationDestinationEpochNs(JsValue $reference, JsValue $duration): string
     {
-        if ($reference instanceof JsObject && $reference->has('[[IsZonedDateTime]]')) {
+        if ($reference instanceof JsObject && $reference->hasNativeSlot('[[IsZonedDateTime]]')) {
             $result = self::addDurationToZdt($reference, $duration, 1);
             self::validateInstantRange($result);
             return $result;
@@ -85,7 +85,7 @@ trait CalendarRoundingHelpers
         $start = self::calendarUnitEpochNs($reference, $unit, 0);
         $direction = bccomp($destination, $start, 0) < 0 ? -1 : 1;
         $calendar = self::getSlotString($reference, '[[Calendar]]');
-        $zone = $reference instanceof JsObject && $reference->has('[[IsZonedDateTime]]')
+        $zone = $reference instanceof JsObject && $reference->hasNativeSlot('[[IsZonedDateTime]]')
             ? self::getSlotString($reference, '[[TimeZone]]') : 'UTC';
         $baseParts = self::epochNsToISOParts($start, $zone);
         $endParts = self::epochNsToISOParts($destination, $zone);

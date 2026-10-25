@@ -65,10 +65,10 @@ final class TransformStream
         $ctor = JsFunction::fromCallable(
             'TransformStream',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor TransformStream requires 'new'");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : self::getPrototype();

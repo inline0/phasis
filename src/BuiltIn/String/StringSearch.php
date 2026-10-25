@@ -1239,8 +1239,8 @@ trait StringSearch
             // If searchArg is a RegExp object, extract its source pattern.
             if ($searchArg instanceof JsUndefined) {
                 $R = '(?:)';
-            } elseif ($searchArg instanceof JsObject && $searchArg->has('[[OriginalSource]]')) {
-                $sourceVal = $searchArg->get('[[OriginalSource]]');
+            } elseif ($searchArg instanceof JsObject && $searchArg->hasNativeSlot('[[OriginalSource]]')) {
+                $sourceVal = $searchArg->getNativeSlot('[[OriginalSource]]');
                 $R = $sourceVal instanceof JsString ? $sourceVal->value : TypeConversion::toString($searchArg);
             } else {
                 $R = TypeConversion::toString($searchArg);

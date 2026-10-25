@@ -1321,7 +1321,7 @@ trait ExpressionEvaluation
             }
             $superHadNT = false;
             if ($currentThis instanceof JsObject) {
-                $superHadNT = !($currentThis->get('[[NewTarget]]') instanceof JsUndefined);
+                $superHadNT = !($currentThis->getNativeSlot('[[NewTarget]]') instanceof JsUndefined);
                 if (!$superHadNT && $superNewTarget instanceof JsFunction) {
                     $currentThis->defineOwnProperty(
                         '[[NewTarget]]',
@@ -3893,7 +3893,7 @@ trait ExpressionEvaluation
         // requires `TE === other.TypeError`.
         if ($fn->isClassConstructor()) {
             $calledAsNew = $thisValue instanceof JsObject
-                && !($thisValue->get('[[NewTarget]]') instanceof JsUndefined);
+                && !($thisValue->getNativeSlot('[[NewTarget]]') instanceof JsUndefined);
             if (!$calledAsNew) {
                 $msg = "Class constructor {$fn->getName()} cannot be invoked without 'new'";
                 $fnRealm = $fn->realm;
@@ -4301,7 +4301,7 @@ trait ExpressionEvaluation
                 // Store the newObj so super() can pass it to the parent constructor.
                 $fnEnv->defineVar('[[PendingThis]]', $thisValue);
                 $ntDesc = $thisValue instanceof JsObject
-                    ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
+                    ? $thisValue->getNativeSlotDescriptor('[[NewTarget]]')
                     : null;
                 if ($ntDesc !== null) {
                     $nt = $ntDesc->value;
@@ -4323,7 +4323,7 @@ trait ExpressionEvaluation
                 }
                 if (!$vmCanSkipEnvBindings) {
                     $ntDesc = ($thisValue instanceof JsObject && $fn->isConstructable())
-                        ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
+                        ? $thisValue->getNativeSlotDescriptor('[[NewTarget]]')
                         : null;
                     if ($ntDesc !== null) {
                         $nt = $ntDesc->value;
@@ -5895,7 +5895,7 @@ trait ExpressionEvaluation
         }
         if ($obj instanceof JsObject) {
             // Symbol-wrapper → fall through to the full slow path.
-            $primSlot = $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+            $primSlot = $obj->getNativeSlotDescriptor('[[PrimitiveValue]]');
             if ($primSlot !== null && $primSlot->value instanceof JsSymbol) {
                 $val = $this->lookupSymbolPrototypeProperty($primSlot->value, $name, false, null);
                 if ($val !== null) {
@@ -6973,7 +6973,7 @@ trait ExpressionEvaluation
             !$node->computed
             && $node->property instanceof Identifier
             && $obj instanceof JsObject
-            && $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]') === null
+            && $obj->getNativeSlotDescriptor('[[PrimitiveValue]]') === null
         ) {
             return $obj->get($node->property->name);
         }
@@ -7120,7 +7120,7 @@ trait ExpressionEvaluation
         if ($obj instanceof JsObject) {
             // Symbol wrapper objects created via Object(sym): look up on Symbol.prototype chain
             // so that description, toString, etc. are accessible with correct this-binding.
-            $ownDesc = $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+            $ownDesc = $obj->getNativeSlotDescriptor('[[PrimitiveValue]]');
             if ($ownDesc !== null && $ownDesc->value instanceof JsSymbol) {
                 $val = $this->lookupSymbolPrototypeProperty(
                     $ownDesc->value,

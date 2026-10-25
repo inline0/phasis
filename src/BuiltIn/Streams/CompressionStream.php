@@ -51,7 +51,7 @@ final class CompressionStream
         $ctor = JsFunction::fromCallable(
             $className,
             static function (JsValue $this_, array $args) use ($proto, $compress, $className): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor {$className} requires 'new'");
                 }
                 $formatArg = $args[0] ?? JsUndefined::instance();

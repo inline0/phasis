@@ -59,10 +59,10 @@ class UrlConstructor
         $constructor = JsFunction::fromCallable(
             'URL',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Failed to construct 'URL': Please use the 'new' operator");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);

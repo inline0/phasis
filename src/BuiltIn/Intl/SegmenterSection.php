@@ -39,7 +39,7 @@ trait SegmenterSection
         $constructor = JsFunction::fromCallable(
             'Segmenter',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Intl.Segmenter requires \'new\'');
                 }
 
@@ -100,7 +100,7 @@ trait SegmenterSection
         $segment = JsFunction::fromCallable('segment', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedSegmenter]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedSegmenter]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.Segmenter.prototype.segment called on non-Segmenter');
             }
@@ -137,7 +137,7 @@ trait SegmenterSection
 ): JsValue {
                 if (
                     !$this2_ instanceof JsObject
-                    || $this2_->get('[[String]]') instanceof JsUndefined
+                    || $this2_->getNativeSlot('[[String]]') instanceof JsUndefined
                 ) {
                     throw new TypeError(
                         'Intl.Segmenter%segments%.prototype.containing called on incompatible receiver',
@@ -305,7 +305,7 @@ trait SegmenterSection
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedSegmenter]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedSegmenter]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.Segmenter.prototype.resolvedOptions called on non-Segmenter');
             }

@@ -58,8 +58,8 @@ class GlobalObject
                 if ($this_ instanceof JsBoolean) {
                     return $this_;
                 }
-                if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
-                    $prim = $this_->get('[[PrimitiveValue]]');
+                if ($this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[PrimitiveValue]]')) {
+                    $prim = $this_->getNativeSlot('[[PrimitiveValue]]');
                     if ($prim instanceof JsBoolean) {
                         return $prim;
                     }
@@ -75,8 +75,8 @@ class GlobalObject
                 if ($this_ instanceof JsBoolean) {
                     return new JsString($this_->toBoolean() ? 'true' : 'false');
                 }
-                if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
-                    $prim = $this_->get('[[PrimitiveValue]]');
+                if ($this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[PrimitiveValue]]')) {
+                    $prim = $this_->getNativeSlot('[[PrimitiveValue]]');
                     if ($prim instanceof JsBoolean) {
                         return new JsString($prim->toBoolean() ? 'true' : 'false');
                     }
@@ -375,8 +375,8 @@ class GlobalObject
                     }
                 }
                 // Honor new.target.prototype for subclassed Function constructor.
-                if ($result instanceof JsFunction && $this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                    $newTarget = $this_->get('[[NewTarget]]');
+                if ($result instanceof JsFunction && $this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
+                    $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                     if ($newTarget instanceof JsFunction) {
                         $ntProto = $newTarget->get('prototype');
                         if ($ntProto instanceof \Phasis\Value\JsObject) {
@@ -647,14 +647,14 @@ class GlobalObject
                     if (
                         $isConstructable
                         && $th instanceof \Phasis\Value\JsObject
-                        && !($th->get('[[NewTarget]]') instanceof JsUndefined)
+                        && !($th->getNativeSlot('[[NewTarget]]') instanceof JsUndefined)
                     ) {
                         if ($innerInterp !== null) {
                             // Per §10.4.1.2 [[Construct]] for BoundFunction:
                             // step 4. If SameValue(F, newTarget) is true, set
                             // newTarget to target. This causes `new B()` where
                             // `B = A.bind()` to pass newTarget=A to A's body.
-                            $activeNewTarget = $th->get('[[NewTarget]]');
+                            $activeNewTarget = $th->getNativeSlot('[[NewTarget]]');
                             if (
                                 $selfRef->fn !== null
                                 && $activeNewTarget === $selfRef->fn
@@ -691,7 +691,7 @@ class GlobalObject
                         // newTarget (extracted from $th's [[NewTarget]] slot
                         // above) is honoured rather than collapsing to the
                         // bound target's prototype.
-                        $activeNewTarget = $th->get('[[NewTarget]]');
+                        $activeNewTarget = $th->getNativeSlot('[[NewTarget]]');
                         if (
                             $selfRef->fn !== null
                             && $activeNewTarget === $selfRef->fn

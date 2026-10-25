@@ -39,7 +39,7 @@ trait DisplayNamesSection
         $constructor = JsFunction::fromCallable(
             'DisplayNames',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Intl.DisplayNames requires \'new\'');
                 }
 
@@ -158,7 +158,7 @@ trait DisplayNamesSection
         $of = JsFunction::fromCallable('of', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedDisplayNames]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedDisplayNames]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DisplayNames.prototype.of called on non-DisplayNames');
             }
@@ -294,7 +294,7 @@ trait DisplayNamesSection
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedDisplayNames]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedDisplayNames]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DisplayNames.prototype.resolvedOptions called on non-DisplayNames');
             }

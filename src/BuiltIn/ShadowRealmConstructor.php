@@ -34,7 +34,7 @@ class ShadowRealmConstructor
         $constructor = JsFunction::fromCallable(
             'ShadowRealm',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor ShadowRealm requires \'new\'');
                 }
 
@@ -53,7 +53,7 @@ class ShadowRealmConstructor
                 // instead. Falls back to the active realm on the (rare)
                 // case where NewTarget isn't a JsFunction.
                 $outerRealm = null;
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsFunction && $newTarget->realm !== null) {
                     $outerRealm = $newTarget->realm;
                 }

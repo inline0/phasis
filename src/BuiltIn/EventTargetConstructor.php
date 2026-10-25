@@ -194,13 +194,13 @@ class EventTargetConstructor
             PropertyDescriptor::data(new JsString('MessageEvent'), false, false, true),
         );
         $ctor = JsFunction::fromCallable('MessageEvent', static function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError("Constructor MessageEvent requires 'new'");
             }
             if (!isset($args[0])) {
                 throw new TypeError('MessageEvent requires an event type');
             }
-            $newTarget = $this_->get('[[NewTarget]]');
+            $newTarget = $this_->getNativeSlot('[[NewTarget]]');
             $newProto = $newTarget instanceof JsObject ? $newTarget->get('prototype') : null;
             $this_->setPrototype($newProto instanceof JsObject ? $newProto : $proto);
             $type = TypeConversion::toString($args[0]);
@@ -358,7 +358,7 @@ class EventTargetConstructor
         $ctor = JsFunction::fromCallable(
             'CustomEvent',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor CustomEvent requires 'new'");
                 }
                 if (!isset($args[0])) {
@@ -366,7 +366,7 @@ class EventTargetConstructor
                         "Failed to construct 'CustomEvent': 1 argument required, but only 0 present."
                     );
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);
@@ -423,10 +423,10 @@ class EventTargetConstructor
         $ctor = JsFunction::fromCallable(
             'EventTarget',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor EventTarget requires 'new'");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);
@@ -909,7 +909,7 @@ class EventTargetConstructor
         $ctor = JsFunction::fromCallable(
             'Event',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor Event requires 'new'");
                 }
                 // Per WebIDL the type argument is required.
@@ -919,7 +919,7 @@ class EventTargetConstructor
                     );
                 }
 
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);
