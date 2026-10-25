@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Repository orchestration uses native TypeScript with Effect filesystem and scoped subprocess services, standard CLI flags, pinned Node/pnpm tooling and development-only dependency boundaries. PHP semantic probes and original reference fixtures remain native.
+
 ## [0.11.0] - 2026-10-25
 
 ### Added

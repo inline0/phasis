@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "tests/Jsx/oracle/*.ts",
+    "tests/TypeScript/oracle.ts",
+    "tests/Frameworks/**/*.ts",
+    "tests/Popular/gen-oracle.ts"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/upstream/**",
+    "**/fixtures/**",
+    "tests/Jsx/oracle/project/**"
+  ]
+}

@@ -7,8 +7,8 @@ Regenerate the pinned upstream implementations and their license manifest with:
 
 ```sh
 npm ci --ignore-scripts --prefix scripts/node-primitives
-node scripts/node-primitives/build.mjs
-node scripts/node-primitives/generate-oracles.mjs
+node scripts/node-primitives/build.ts
+node scripts/node-primitives/generate-oracles.ts
 XDEBUG_MODE=off vendor/bin/phpunit tests/Unit/Node
 ```
 

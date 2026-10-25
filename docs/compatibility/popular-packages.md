@@ -69,7 +69,7 @@ tests/Popular/lodash/
 Regenerate an oracle with:
 
 ```bash
-node tests/Popular/gen-oracle.js tests/Popular/<lib>
+node tests/Popular/gen-oracle.ts tests/Popular/<lib>
 ```
 
 (Used when you bump the vendored library — re-runs the runner under real Node and overwrites `oracle.txt`.)
@@ -81,7 +81,7 @@ Workflow: [`.github/workflows/popular.yml`](https://github.com/inline0/phasis/bl
 Runs on pushes and pull requests to `main` that change `src/`, `tests/Popular/`, `phpunit.xml.dist`, the Composer files or the workflow itself, and on manual dispatch. Two steps:
 
 1. **Phasis side** — runs the PHPUnit `popular` testsuite, which executes each library through Phasis and diffs against the committed oracle. Fails if a single byte differs.
-2. **Node re-verify** — runs `node tests/Popular/gen-oracle.js …` against each library and asserts the freshly regenerated oracle matches what's checked in. Detects "vendored library was bumped without updating the oracle" drift.
+2. **Node re-verify** — runs `node tests/Popular/gen-oracle.ts …` against each library and asserts the freshly regenerated oracle matches what's checked in. Detects "vendored library was bumped without updating the oracle" drift.
 
 Both must pass before the PR merges. A test262 win that breaks lodash isn't acceptable; a lodash win that breaks test262 isn't either.
 
@@ -118,7 +118,7 @@ Both must pass before the PR merges. A test262 win that breaks lodash isn't acce
 Drop a new directory under `tests/Popular/<name>/` with the three-file shape, then:
 
 ```bash
-node tests/Popular/gen-oracle.js tests/Popular/<name>   # one-time, generates oracle.txt
+node tests/Popular/gen-oracle.ts tests/Popular/<name>   # one-time, generates oracle.txt
 git add tests/Popular/<name>
 ```
 

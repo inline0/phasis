@@ -113,17 +113,17 @@ composer analyse
 composer cs
 
 # Oracle regression (scenarios with Node.js as the ground truth)
-./bin/test-regression
+node scripts/test-regression.ts
 
-# Full quality gate (PHPStan + PHPCS + PHPUnit + oracle)
-./bin/verify-all
+# Full quality gate (tooling + PHPStan + PHPCS + PHPUnit + oracle)
+node scripts/verify-all.ts
 
 # Local-only Express and Hono suites. NEVER run these in CI.
 npm ci --prefix tests/Frameworks
-python3 tests/Frameworks/express/setup.py
-python3 tests/Frameworks/hono/setup.py
-python3 tests/Frameworks/express/run.py --timeout-scale 10 --output /tmp/phasis-express-report
-python3 tests/Frameworks/hono/run.py --timeout-scale 10
+node tests/Frameworks/express/setup.ts
+node tests/Frameworks/hono/setup.ts
+node tests/Frameworks/express/run.ts --timeout-scale 10 --output /tmp/phasis-express-report
+node tests/Frameworks/hono/run.ts --timeout-scale 10
 
 # test262 conformance sample (needs: git submodule update --init test262)
 ./bin/test262 --category built-ins/Array --jobs 4
@@ -132,6 +132,43 @@ python3 tests/Frameworks/hono/run.py --timeout-scale 10
 Express and Hono support is experimental. **Framework compatibility suites must never run in CI**, including manual dispatches or release gates. The framework workflow is removed and disabled; releases do not require these suites. See the [local-only framework policy](./tests/Frameworks/README.md). Local runs may use `--timeout-scale 10` while retaining the original assertions and recording both timeout values. Omit it to check the original deadlines. This setting does not change test262 limits or engine execution budgets.
 
 CI runs PHPStan, PHPCS, the unit suite and the oracle regression on every push to `main` and every pull request; the Web Platform Tests and popular-package suites run when `src/` or their fixtures change. The full test262 matrix (`compat-matrix.yml`) is started by hand, not on every push; it runs against the test262 revision pinned by the submodule and commits the result to `COMPAT.md`, which records the snapshot time.
+
+### TypeScript development tooling
+
+Use Node **26.12.0** (`.nvmrc`) and pnpm **12.14.0** (`package.json`).
+Install with `pnpm run setup`, then run `XDEBUG_MODE=off pnpm verify`.
+`composer verify` delegates to that same complete Effect runner;
+`composer verify:tooling` runs just the TypeScript, script-test and docs gates.
+PHP commands such as `composer test`, semantic oracles, data probes and the
+published `bin/phasis` remain PHP. Native reference fixtures stay JavaScript.
+Node, Effect and the private root package are development-only and excluded
+from Composer and release archives.
+
+| pnpm command | Purpose |
+|---|---|
+| `setup` | Install the frozen host-tooling lockfile. |
+| `typecheck` | Check all owned TypeScript host tools without emitting code. |
+| `test:scripts` | Test injected services, CLI validation and subprocess cleanup. |
+| `check:docs` | Validate portable documents, navigation and relative links. |
+| `verify` | Run tooling, PHPStan, PHPCS, every PHPUnit suite and scenario regression. |
+| `test:regression` | Compare all scenario outputs; accepts `--jobs`, `--category` and `--fast`. |
+| `test:scenario`, `oracle`, `actual`, `compare` | Capture or compare one scenario by its category path. |
+| `test:hydrate`, `test:consumer` | Check real React hydration and the isolated Composer consumer. |
+| `oracle:jsx`, `oracle:typescript`, `oracle:formatter`, `oracle:primitives` | Refresh the pinned native reference outputs. |
+| `build:primitives`, `build:portable`, `build:http-parser` | Reproduce the pinned Node runtime assets and licenses. |
+| `build:react`, `build:react-scripts` | Prepare real React reference bundles and Fizz instruction strings. |
+| `build:calendar` | Refresh packed calendar records from the pinned ICU4X revision. |
+
+The host compiler uses `tsconfig.scripts.json`, so its strict options do not
+leak into esbuild reference fixtures or generated JavaScript.
+
+Every host command supports `--help`, `--json`, `--dry-run` and `--log-level`.
+Dry runs plan mutations without executing them. Effect filesystem services and
+scoped subprocess groups own temporary data, cancellation and descendant cleanup.
+Separate npm lockfiles continue to pin the original oracle/build inputs; install
+those inputs using the existing `npm ci --prefix ...` commands before rebuilding.
+See [the framework policy](./tests/Frameworks/README.md) for local-only framework
+controls. They are never included in `verify`, `test:scripts` or CI execution.
 
 ## Compatibility
 

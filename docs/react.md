@@ -242,9 +242,9 @@ Identical props always give identical HTML, so the output can be cached keyed by
 ## How it is verified
 
 - **Render oracle**: every React fixture in `tests/Jsx/react` renders byte-identical to `react-dom@19.3.1` in Node with `renderToString`, `renderToStaticMarkup` and `prerender`, and through `Engine::render()`.
-- **Hydration**: `tests/Jsx/oracle/hydrate.mjs` hydrates Phasis's output with React 19.3's client in jsdom, production and development builds, and requires zero recoverable errors, zero hydration warnings and every server node reused.
+- **Hydration**: `tests/Jsx/oracle/hydrate.ts` hydrates Phasis's output with React 19.3's client in jsdom, production and development builds, and requires zero recoverable errors, zero hydration warnings and every server node reused.
 - **Three-way**: real React 19.3 running inside Phasis agrees with both.
-- **Captured-data consumer**: `node tests/Jsx/oracle/hydration-contract.mjs`
+- **Captured-data consumer**: `node tests/Jsx/oracle/hydration-contract.ts`
   installs the committed Composer archive into a separate project, bundles its
   shipped helper with the same components and one peer React copy, and verifies
   development/production hydration, node reuse, connected interaction, prefixes,
@@ -256,7 +256,7 @@ Identical props always give identical HTML, so the output can be cached keyed by
 Libraries that reach into React internals the native implementation does not cover can run against real React instead. Map the built-ins to an ES module build of React 19.3 with an import map:
 
 ```php
-$dir = __DIR__ . '/react-19.3.1/'; // e.g. tests/Jsx/oracle/build-vendor.mjs output
+$dir = __DIR__ . '/react-19.3.1/'; // e.g. tests/Jsx/oracle/build-vendor.ts output
 $engine->setImportMap([
     'react' => $dir . 'react.mjs',
     'react/jsx-runtime' => $dir . 'jsx-runtime.mjs',

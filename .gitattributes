@@ -42,3 +42,10 @@
 
 # Console oracles preserve significant trailing spaces from empty arguments.
 /tests/TypeScript/fixtures/*.expected.txt -whitespace
+
+# Private TypeScript development tooling is never a consumer dependency.
+/.nvmrc export-ignore
+/package.json export-ignore
+/pnpm-lock.yaml export-ignore
+/pnpm-workspace.yaml export-ignore
+/tsconfig.scripts.json export-ignore

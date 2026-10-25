@@ -28,21 +28,21 @@ JavaScript has subtle semantics — `NaN !== NaN`, `-0 === 0`, `[1] + 1 === "11"
 Each scenario in `scenarios/` is a small JS program with known output. Run a single scenario:
 
 ```bash
-./bin/test-scenario operators/arithmetic
+node scripts/test-scenario.ts operators/arithmetic
 ```
 
 Run all of them, or just one category, or in parallel:
 
 ```bash
-./bin/test-regression
-./bin/test-regression --jobs 4
-./bin/test-regression --category expressions
+node scripts/test-regression.ts
+node scripts/test-regression.ts --jobs 4
+node scripts/test-regression.ts --category expressions
 ```
 
 Refresh the oracle (e.g. after a Node.js version update):
 
 ```bash
-./bin/oracle --refresh operators/arithmetic
+node scripts/oracle.ts --refresh operators/arithmetic
 ```
 
 Scenarios are organised by ECMAScript chapter: literals, operators, variables, control-flow, functions, objects, arrays, classes, builtins, errors, interop, edge cases.
@@ -63,7 +63,7 @@ The full-suite snapshot lives in [`COMPAT.md`](https://github.com/inline0/phasis
 
 ## Local pre-push check
 
-`./bin/verify-all` runs the quality gate that CI enforces:
+`node scripts/verify-all.ts` runs the quality gate that CI enforces:
 
 ```
 === PHPStan ===                  level 6, zero errors

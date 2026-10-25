@@ -39,10 +39,11 @@
         "cs": "@php -d memory_limit=512M ./vendor/bin/phpcs",
         "cs:fix": "@php -d memory_limit=512M ./vendor/bin/phpcbf",
         "analyse": "@php -d memory_limit=4G ./vendor/bin/phpstan analyse",
-        "verify": [
-            "@analyse",
-            "@cs",
-            "@test"
+        "verify": "node scripts/verify-all.ts",
+        "verify:tooling": [
+            "pnpm typecheck",
+            "pnpm test:scripts",
+            "pnpm check:docs"
         ]
     },
     "config": {

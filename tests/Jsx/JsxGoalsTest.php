@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
  *
  * The fixture project in tests/Jsx/oracle/project, bundled by esbuild like
  * a client build and rendered with react-dom@19.3.1's prerender in Node,
- * is the oracle (`node tests/Jsx/oracle/jsx-oracle.mjs project`).
+ * is the oracle (`node tests/Jsx/oracle/jsx-oracle.ts project`).
  */
 final class JsxGoalsTest extends TestCase
 {

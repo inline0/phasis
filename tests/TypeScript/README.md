@@ -1,6 +1,6 @@
 # TypeScript oracles
 
-Run `node tests/TypeScript/oracle.mjs` to refresh the committed reference
+Run `node tests/TypeScript/oracle.ts` to refresh the committed reference
 outputs. The current corpus was captured with Node 26.12.0. Most fixtures run
 unchanged in Node's built-in type-stripping mode. Angle-bracket assertions,
 which that mode rejects, use the existing JSX oracle toolchain's pinned

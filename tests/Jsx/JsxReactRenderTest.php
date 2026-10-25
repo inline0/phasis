@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
  * (renderToString, renderToStaticMarkup and prerender, via the shared
  * _driver.mjs). Engine::render() must return the prerender output.
  *
- * Regenerate expectations with `node tests/Jsx/oracle/jsx-oracle.mjs react`.
+ * Regenerate expectations with `node tests/Jsx/oracle/jsx-oracle.ts react`.
  */
 final class JsxReactRenderTest extends TestCase
 {

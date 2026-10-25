@@ -39,12 +39,12 @@ to `_cp/scripts/release-format.yml`.
 
 ```bash
 # Testing (oracle-driven)
-./bin/verify-all                         # Required final gate: analyse + cs + phpunit + full oracle regression
-./bin/test-scenario <name>               # Single scenario: oracle → actual → compare
-./bin/test-regression                    # All scenarios
-./bin/test-regression --jobs 4           # Parallel
-./bin/test-regression --category expressions  # By category
-./bin/test-regression --fast             # Pass/fail only, no reports
+node scripts/verify-all.ts                         # Required final gate: analyse + cs + phpunit + full oracle regression
+node scripts/test-scenario.ts <name>               # Single scenario: oracle → actual → compare
+node scripts/test-regression.ts                    # All scenarios
+node scripts/test-regression.ts --jobs 4           # Parallel
+node scripts/test-regression.ts --category expressions  # By category
+node scripts/test-regression.ts --fast             # Pass/fail only, no reports
 ./bin/compat-report                      # Generate compat.json + COMPAT.md from full test262 coverage
 
 # test262 suite
@@ -54,10 +54,10 @@ to `_cp/scripts/release-format.yml`.
 ./bin/test262 --report                   # Generate compliance percentage report
 
 # Oracle management
-./bin/oracle <name>                      # Capture Node.js output for scenario
-./bin/oracle --refresh <name>            # Re-capture (after Node version update)
-./bin/actual <name>                      # Run phasis, capture output
-./bin/compare <name>                     # Diff oracle vs actual
+node scripts/oracle.ts <name>                      # Capture Node.js output for scenario
+node scripts/oracle.ts --refresh <name>            # Re-capture (after Node version update)
+node scripts/actual.ts <name>                      # Run phasis, capture output
+node scripts/compare.ts <name>                     # Diff oracle vs actual
 
 # Unit tests (no Node.js needed)
 composer test:unit                       # Isolated component tests
@@ -79,10 +79,10 @@ composer analyse                         # PHPStan static analysis
 After every meaningful work pass, run the full matrix from the repo root before treating the work as done:
 
 ```bash
-./bin/verify-all
+node scripts/verify-all.ts
 ```
 
-`./bin/verify-all` runs PHPStan + cs + phpunit + the oracle scenario regression. It is the gate for "did I break the engine itself."
+`node scripts/verify-all.ts` runs PHPStan + cs + phpunit + the oracle scenario regression. It is the gate for "did I break the engine itself."
 
 **It is NOT enough on its own.** test262 compliance must never regress. After every change, also run a representative test262 sweep:
 
@@ -567,8 +567,8 @@ Same oracle-driven verification model as pitmaster, greph, and php-browser (sibl
 | Actual | PHP renderer | Pitmaster | greph | phasis |
 | Test suite | Fixture snapshots | git interop | Scenario corpus | **test262** (50,000+ tests) |
 | Pipeline | oracle → render → compare | oracle → actual → compare | oracle → actual → compare | oracle → actual → compare |
-| Combined | `./bin/test-fixture` | `./bin/test-scenario` | `./bin/test-scenario` | `./bin/test-scenario` |
-| Regression | `./bin/test-regression` | `./bin/test-regression` | `./bin/test-regression` | `./bin/test-regression` |
+| Combined | `./bin/test-fixture` | `node scripts/test-scenario.ts` | `node scripts/test-scenario.ts` | `node scripts/test-scenario.ts` |
+| Regression | `node scripts/test-regression.ts` | `node scripts/test-regression.ts` | `node scripts/test-regression.ts` | `node scripts/test-regression.ts` |
 | Compliance | CSS_COVERAGE.md | compat-report | compat-report | **COMPAT.md** |
 
 Study `pitmaster/tests/Oracle/` and `greph/tests/Oracle/` for the reference implementation of the oracle pattern.
@@ -719,3 +719,26 @@ The skip list in `config/support.php` (`test262_skipped_features`) is empty. Kee
 ## Comment Policy
 
 Same as all inline0 packages. PHPDoc on public APIs. Inline comments explain why, not what. No decorative separators. No em dashes. Use periods, commas, colons, or rewrite.
+
+## TypeScript development tooling
+
+Use Node 26.12 from `.nvmrc` and pnpm 12.14 from `package.json`.
+Install with `pnpm run setup`. Repository orchestration is TypeScript executed
+with plain Node, using Effect 4 and the injectable filesystem and command
+services in `scripts/lib`. Commands support `--help`, `--json`, `--dry-run` and
+`--log-level`. Own temporary directories and subprocess groups with scopes;
+cleanup must include descendants even when their leader exits successfully.
+Keep commands testable with supplied services and pure validation inputs.
+
+Run `pnpm typecheck`, `pnpm test:scripts` and `pnpm check:docs` after tooling
+changes, then `XDEBUG_MODE=off pnpm verify` for the complete local gate.
+PHP semantic oracles, inspection/data probes and the shipped runtime CLI remain
+PHP. Browser/reference fixtures and vendored upstream code retain their native
+languages. The private npm lockfiles pin the separate oracle/build inputs;
+`pnpm-lock.yaml` pins the host tooling. Neither is a visitor runtime dependency.
+Framework TypeScript hosts may be statically checked in CI. Their compatibility
+suites, controls and interoperability commands are local-only and reject CI.
+
+Use `tsconfig.scripts.json` for the host tools. Do not add a root
+`tsconfig.json`: upstream esbuild fixtures and asset builders would discover
+its compiler options and change the JavaScript under test.

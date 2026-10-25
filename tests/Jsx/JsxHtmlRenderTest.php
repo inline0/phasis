@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
  * HTML profile byte-identical to preact-render-to-string 6.8.1 in Node
  * (renderToString and renderToStringAsync, via the shared _driver.mjs).
  *
- * Regenerate expectations with `node tests/Jsx/oracle/jsx-oracle.mjs html`.
+ * Regenerate expectations with `node tests/Jsx/oracle/jsx-oracle.ts html`.
  */
 final class JsxHtmlRenderTest extends TestCase
 {

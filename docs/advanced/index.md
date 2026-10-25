@@ -23,7 +23,7 @@ The internals. If you're embedding Phasis you can skip this section. If you're m
 
 - **Don't touch core engine without a strong reason.** Anything under `src/Runtime/`, `src/Bytecode/`, `src/Lexer/`, `src/Parser/`, `src/Regex/` is on the test262 critical path. Touching it without a corresponding test262 verification is a recipe for regressions. Built-ins (`src/BuiltIn/`) are safer because the test262 sub-suites for each built-in catch breakage locally.
 - **Use traits for organization, not classes.** When a file exceeds ~2K lines, split it into trait files under a sibling directory (`src/BuiltIn/Temporal/`, `src/Runtime/Parts/`, etc.) rather than carving out new classes — keeps `self::` lookups working and avoids breaking the private-method API surface.
-- **Run `bin/verify-all` locally before pushing.** It runs PHPStan, PHPCS, every PHPUnit suite (unit, oracle, popular, wpt) and the oracle regression. CI runs the WPT and popular suites on changes to `src/`; the full test262 matrix is started by hand, so sample affected test262 categories locally.
+- **Run `node scripts/verify-all.ts` locally before pushing.** It runs PHPStan, PHPCS, every PHPUnit suite (unit, oracle, popular, wpt) and the oracle regression. CI runs the WPT and popular suites on changes to `src/`; the full test262 matrix is started by hand, so sample affected test262 categories locally.
 - **For every Web API addition, add a WPT fixture.** Drop the `.any.js` from `tests/Wpt/upstream/<area>/` into `tests/Wpt/fixtures/<category>/` and the runner picks it up.
 
 ## See also

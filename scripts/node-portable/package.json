@@ -10,5 +10,9 @@
     "tr46": "7.0.0",
     "url": "0.11.4",
     "util": "0.12.5"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node build.ts"
   }
 }

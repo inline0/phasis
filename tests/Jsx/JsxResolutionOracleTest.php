@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  * Module resolution oracle: each fixture app runs unbundled in Phasis and
  * must print exactly what the same app prints when esbuild bundles it
  * (configured like Phasis's defaults) and Node runs the bundle.
- * Regenerate with `node tests/Jsx/oracle/jsx-oracle.mjs resolution`.
+ * Regenerate with `node tests/Jsx/oracle/jsx-oracle.ts resolution`.
  */
 final class JsxResolutionOracleTest extends TestCase
 {

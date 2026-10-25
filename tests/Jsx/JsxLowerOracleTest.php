@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
  * Lowering oracle: each fixture runs against a recording JSX runtime that
  * prints every jsx/jsxs/createElement call. Phasis loads the unbundled
  * .jsx through its own module resolution; the expected trace comes from
- * esbuild + Node. Regenerate with `node tests/Jsx/oracle/jsx-oracle.mjs lower`.
+ * esbuild + Node. Regenerate with `node tests/Jsx/oracle/jsx-oracle.ts lower`.
  */
 final class JsxLowerOracleTest extends TestCase
 {

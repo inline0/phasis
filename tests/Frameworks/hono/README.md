@@ -10,26 +10,26 @@ archive at commit `08a023cbfde55b434fb0fb30fae35d42e4bf20aa`. The repository,
 commit archive URL, SHA-256 checksum, tag and revision are recorded in
 `upstream.json`. Setup verifies the downloaded archive and rejects edited
 existing source files.
-`python3 tests/Frameworks/hono/inventory.py` lists every original project,
+`node tests/Frameworks/hono/inventory.ts` lists every original project,
 including Bun, Deno, Fastly and workerd suites, with source hashes.
 
 Install the exact shared development dependencies with `npm ci --prefix
 tests/Frameworks`, then run from the Phasis repository root:
 
 ```bash
-python3 -B tests/Frameworks/hono/setup.py
-python3 tests/Frameworks/hono/run.py
-python3 tests/Frameworks/hono/run.py --project jsx-runtime-default
-python3 tests/Frameworks/hono/run.py --project jsx-runtime-dom
-python3 tests/Frameworks/hono/run.py --project node
-python3 tests/Frameworks/hono/run-toolchain.py
-python3 -B tests/Frameworks/hono/selftest.py
+node tests/Frameworks/hono/setup.ts
+node tests/Frameworks/hono/run.ts
+node tests/Frameworks/hono/run.ts --project jsx-runtime-default
+node tests/Frameworks/hono/run.ts --project jsx-runtime-dom
+node tests/Frameworks/hono/run.ts --project node
+node tests/Frameworks/hono/run-toolchain.ts
+node tests/Frameworks/hono/selftest.ts
 ```
 
 Pass upstream relative filenames to narrow a run, for example:
 
 ```bash
-python3 tests/Frameworks/hono/run.py src/context.test.ts src/request.test.ts
+node tests/Frameworks/hono/run.ts src/context.test.ts src/request.test.ts
 ```
 
 `--runtime node` and `--runtime phasis` select a single runtime. The default
@@ -56,7 +56,7 @@ The worker closes host resources after the suite completes, as Vitest does
 when terminating its worker. This also cleans up servers that upstream
 runtime tests intentionally leave open.
 
-`build.mjs` uses esbuild only during test preparation. It transpiles the
+`build.ts` uses esbuild only during test preparation. It transpiles the
 original source and assertions to a strict CommonJS module graph, preserving
 original `import.meta` and filename metadata as well as module
 boundaries for module reset and spies. It makes transpiler-generated export
@@ -103,7 +103,7 @@ Its immutable manifest and native Vitest report remain separate from runtime
 results. To prepare the declaration fixtures for a direct native Vitest run:
 
 ```bash
-node tests/Frameworks/hono/prepare-toolchain.mjs
+node tests/Frameworks/hono/prepare-toolchain.ts
 ```
 
 An independent native Vitest baseline runs the original source:
@@ -119,7 +119,7 @@ project in native Vitest. Compare an independent native report against a
 single immutable runner manifest with:
 
 ```bash
-python3 tests/Frameworks/hono/compare-native.py /tmp/hono-native.json \
+node tests/Frameworks/hono/compare-native.ts /tmp/hono-native.json \
   tests/Frameworks/hono/results/runs/RUN/manifest.json --runtime node
 ```
 

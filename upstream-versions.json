@@ -20,7 +20,7 @@
       "JSON",
       "CSS"
     ],
-    "oracle": "node tests/Jsx/oracle/formatter-oracle.mjs",
+    "oracle": "node tests/Jsx/oracle/formatter-oracle.ts",
     "source": "https://github.com/prettier/prettier/releases/tag/3.9.10"
   },
   "test262": {

@@ -24,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  * A drift means either the library hit a Phasis spec gap or Node was
  * regenerated against a different library version. The oracle is the
  * source of truth — if you bump the vendored library, regenerate
- * the oracle via `node tests/Popular/gen-oracle.js tests/Popular/<pkg>`.
+ * the oracle via `node tests/Popular/gen-oracle.ts tests/Popular/<pkg>`.
  */
 class PopularPackagesTest extends TestCase
 {
@@ -93,7 +93,7 @@ class PopularPackagesTest extends TestCase
             $captured,
             "Phasis output for {$package} diverged from Node oracle "
             . "(tests/Popular/{$package}/oracle.txt). Regenerate via "
-            . "`node tests/Popular/gen-oracle.js tests/Popular/{$package}` "
+            . "`node tests/Popular/gen-oracle.ts tests/Popular/{$package}` "
             . "if the vendored library was bumped; otherwise this is "
             . "a spec gap in Phasis.",
         );

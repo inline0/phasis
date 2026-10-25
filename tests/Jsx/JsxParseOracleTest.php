@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Parse oracle: Phasis's JSX AST (Preserve mode, ESTree summary) must match
  * @babel/parser with the jsx and estree plugins. Regenerate the expected
- * files with `node tests/Jsx/oracle/jsx-oracle.mjs parse`.
+ * files with `node tests/Jsx/oracle/jsx-oracle.ts parse`.
  */
 final class JsxParseOracleTest extends TestCase
 {

@@ -7,7 +7,7 @@
     "node": ">=26"
   },
   "scripts": {
-    "test:express:node": "node express/run-node.cjs"
+    "test:express:node": "node express/run.ts --runtime node"
   },
   "devDependencies": {
     "@hono/node-server": "2.0.12",
@@ -37,5 +37,6 @@
     "vitest": "5.0.1",
     "ws": "8.21.0",
     "zod": "3.23.8"
-  }
+  },
+  "type": "module"
 }

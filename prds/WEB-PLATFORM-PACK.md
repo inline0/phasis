@@ -135,7 +135,7 @@ For each API:
 2. **WPT pass rate ≥ 95%** for that API's subtree (matches Bun's and Deno's published numbers for these specific specs).
 3. **No regression** in test262 (50,506 / 50,506 stays).
 4. **No regression** in popular packages (acorn / mustache / lodash / marked still byte-equal to Node).
-5. **bin/verify-all green** (PHPStan, PHPCS, PHPUnit).
+5. **node scripts/verify-all.ts green** (PHPStan, PHPCS, PHPUnit).
 
 For the pack overall:
 

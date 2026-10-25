@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
  * Package smoke tests: popular npm packages, loaded unbundled from the
  * pinned toolchain in tests/Jsx/oracle/node_modules, must behave as in
  * Node. Needs `npm ci` in tests/Jsx/oracle; regenerate expectations with
- * `node tests/Jsx/oracle/jsx-oracle.mjs smoke`.
+ * `node tests/Jsx/oracle/jsx-oracle.ts smoke`.
  */
 final class JsxPackageSmokeTest extends TestCase
 {
