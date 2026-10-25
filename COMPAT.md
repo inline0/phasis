@@ -3,13 +3,13 @@
 Generated from a completed `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
-- Snapshot time: `2026-10-24T08:22:25+00:00`
+- Snapshot time: `2026-10-25T10:12:22+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `161`
 - Test files: `53616`
-- Git: `feat/express-hono-compatibility` @ `b4624b71` (dirty)
+- Git: `feat/react-hydration` @ `f8905d39` (dirty)
 
 ## Summary
 
@@ -198,26 +198,26 @@ Generated from a completed `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| staging/sm | NORMAL | 187.532s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
-| staging/sm | NORMAL | 185.335s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
-| staging/sm | NORMAL | 183.376s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
-| staging/sm | NORMAL | 181.430s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
-| staging/sm | NORMAL | 176.894s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
-| staging/sm | NORMAL | 167.859s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
-| built-ins/decodeURIComponent | NORMAL | 164.085s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
-| staging/sm | NORMAL | 156.742s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
-| staging/sm | NORMAL | 152.821s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
-| staging/sm | NORMAL | 149.594s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
-| built-ins/decodeURI | NORMAL | 144.082s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
-| staging/sm | NORMAL | 125.528s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
-| built-ins/decodeURIComponent | NORMAL | 74.418s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
-| built-ins/decodeURI | NORMAL | 73.594s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
-| annexB/built-ins/RegExp | NORMAL | 64.136s | 25 | `test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js`<br>`test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js`<br>...<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js`<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js` |
-| intl402/DateTimeFormat | NORMAL | 60.635s | 25 | `test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plainmonthday-formatting-timezonename.js`<br>`test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plaintime-formatting-timezonename.js`<br>...<br>`test262/test/intl402/DateTimeFormat/prototype/formatToParts/name.js`<br>`test262/test/intl402/DateTimeFormat/prototype/formatToParts/offset-timezone-correct.js` |
-| intl402 | NORMAL | 59.788s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.566s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Nandinagari.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_New_Tai_Lue.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Newa.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Nko.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Nushu.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.490s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inscriptional_Parthian.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Javanese.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kaithi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kannada.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Katakana.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 58.496s | 5 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Todhri.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tolong_Siki.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Toto.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tulu_Tigalari.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ugaritic.js` |
+| staging/sm | NORMAL | 178.996s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
+| staging/sm | NORMAL | 178.664s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
+| staging/sm | NORMAL | 178.023s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
+| staging/sm | NORMAL | 177.820s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
+| staging/sm | NORMAL | 177.799s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
+| staging/sm | NORMAL | 166.032s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
+| built-ins/decodeURIComponent | NORMAL | 160.372s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
+| staging/sm | NORMAL | 154.132s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
+| staging/sm | NORMAL | 148.807s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
+| built-ins/decodeURI | NORMAL | 148.468s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
+| staging/sm | NORMAL | 143.142s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
+| staging/sm | NORMAL | 119.585s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
+| built-ins/decodeURI | NORMAL | 74.512s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
+| built-ins/decodeURIComponent | NORMAL | 74.306s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
+| built-ins/TypedArray | NORMAL | 72.127s | 25 | `test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js`<br>`test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js`<br>...<br>`test262/test/built-ins/TypedArray/prototype/copyWithin/not-a-constructor.js`<br>`test262/test/built-ins/TypedArray/prototype/copyWithin/prop-desc.js` |
+| intl402/DateTimeFormat | NORMAL | 66.659s | 12 | `test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plainmonthday-formatting-timezonename.js`<br>`test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plaintime-formatting-timezonename.js`<br>...<br>`test262/test/intl402/DateTimeFormat/prototype/formatToParts/dangi-calendar-dates.js`<br>`test262/test/intl402/DateTimeFormat/prototype/formatToParts/date-constructor-not-called.js` |
+| annexB/built-ins/RegExp | NORMAL | 63.918s | 25 | `test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js`<br>`test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js`<br>...<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js`<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.933s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Shavian.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Siddham.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Sidetic.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.472s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Old_Uyghur.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Oriya.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Osage.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.432s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Palmyrene.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Pau_Cin_Hau.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Phags_Pa.js` |
 
 ## Runner Caveats
 
