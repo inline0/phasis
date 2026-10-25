@@ -84,8 +84,8 @@ $html = $engine->renderSource($component, ['title' => 'Hello'], path: '/Card.tsx
 
 `eval()` and JavaScript filenames retain JavaScript syntax. Standalone parser
 users can supply `path: 'entry.ts'` or `path: 'Card.tsx'` to
-`Parser::parseSource()`. Parsed-module cache identities distinguish TypeScript
-from JavaScript.
+`Parser::parseSource()`. Parsed-module cache identities distinguish JavaScript,
+TypeScript and TSX grammar.
 
 ## Verification
 

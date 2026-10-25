@@ -6,6 +6,7 @@ namespace Phasis\Tests\Unit\Module;
 
 use Phasis\Engine;
 use Phasis\Module\ModuleOptions;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ParseCacheTest extends TestCase
@@ -61,6 +62,38 @@ final class ParseCacheTest extends TestCase
             $engine->getExport($root . '/entry.js', 'answer');
         } finally {
             $engine->close();
+        }
+    }
+
+    /** @return iterable<string, array{bool, string}> */
+    public static function typedCacheGoals(): iterable
+    {
+        yield 'module' => [false, 'export const id = <T>(value: T) => value;'];
+        yield 'commonjs' => [true, 'module.exports = <T>(value: T) => value;'];
+    }
+
+    #[DataProvider('typedCacheGoals')]
+    public function testTypeScriptCacheDoesNotBypassTsxGrammar(bool $commonjs, string $source): void
+    {
+        $root = $this->project([
+            'entry.ts' => $source,
+            'entry.tsx' => $source,
+            'package.json' => '{"type":"commonjs"}',
+        ]);
+        foreach (['ts', 'tsx'] as $extension) {
+            $engine = new Engine(node: $commonjs);
+            $engine->setModuleOptions(new ModuleOptions(nodeCompatible: $commonjs, parseCacheDir: $root . '/.cache'));
+            $loader = $engine->getInterpreter()->getModuleLoader();
+            // Direct loader users may rely on the filename's implicit JSX mode.
+            $loader->setJsxOptions(null);
+            if ($extension === 'tsx') {
+                $this->expectException(\Phasis\Exceptions\SyntaxError::class);
+            }
+            try {
+                $loader->loadModule($root . '/entry.' . $extension);
+            } finally {
+                $engine->close();
+            }
         }
     }
 }

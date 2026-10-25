@@ -2215,7 +2215,12 @@ class ModuleLoader
             return ['program' => $program, 'jsxImportSource' => $parser->jsxImportSource()];
         };
         $cache = $this->parseCache();
-        $options = ['env' => $nodeEnv, 'jsx' => $jsx, 'typescript' => Parser::isTypeScriptPath($path)];
+        $options = [
+            'env' => $nodeEnv,
+            'jsx' => $jsx,
+            'typescript' => Parser::isTypeScriptPath($path),
+            'tsx' => str_ends_with(strtolower($path), '.tsx'),
+        ];
         $parsed = $cache === null ? $parse() : $cache->remember('module', $source, $options, $parse);
         $record->jsxImportSource = $parsed['jsxImportSource'];
         return $this->barrelPruner()->rewrite($parsed['program'], $path);
@@ -2225,7 +2230,11 @@ class ModuleLoader
     {
         $cache = $this->parseCache();
         $parse = fn (): \Phasis\Ast\Program => $this->commonJs()->parse($source, $path);
-        $options = ['node' => $this->resolver->options()->nodeCompatible, 'typescript' => Parser::isTypeScriptPath($path)];
+        $options = [
+            'node' => $this->resolver->options()->nodeCompatible,
+            'typescript' => Parser::isTypeScriptPath($path),
+            'tsx' => str_ends_with(strtolower($path), '.tsx'),
+        ];
         return $cache === null ? $parse() : $cache->remember('commonjs', $source, $options, $parse);
     }
 
