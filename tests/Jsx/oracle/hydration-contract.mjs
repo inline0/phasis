@@ -43,10 +43,11 @@ try {
         execFileSync('composer', ['install', '--no-dev', '--no-plugins', '--no-scripts', '--no-interaction', '--quiet'], { cwd: temp, stdio: 'pipe' });
         assert.ok(fs.existsSync(path.join(temp, 'vendor/phasis/phasis/browser/hydrate.mjs')));
         assert.ok(fs.existsSync(path.join(temp, 'vendor/phasis/phasis/browser/hydrate.d.mts')));
+        assert.ok(fs.existsSync(path.join(temp, 'vendor/phasis/phasis/browser/README.md')));
         assert.equal(fs.existsSync(path.join(temp, 'vendor/phasis/phasis/tests')), false);
         const cli = execFileSync('php', [path.join(temp, 'vendor/bin/phasis'), '-e', 'console.log(1 + 1)'], { encoding: 'utf8', cwd: temp });
         assert.equal(cli.trim(), '2');
-        checks += 4;
+        checks += 5;
     }
     fs.symlinkSync(path.join(here, 'node_modules'), path.join(temp, 'node_modules'), 'dir');
     const types = path.join(temp, 'types.mts');
