@@ -25,7 +25,7 @@ final readonly class ModuleOptions
      */
     public function __construct(
         public ?string $projectRoot = null,
-        public array $extensions = ['.jsx', '.js', '.mjs', '.cjs', '.json'],
+        public array $extensions = ['.jsx', '.js', '.mjs', '.cjs', '.json', '.tsx', '.ts', '.mts', '.cts'],
         public array $conditions = ['phasis', 'module', 'production'],
         public string $nodeEnv = 'production',
         public array $styleExtensions = ['.css', '.scss', '.sass', '.less', '.styl'],
@@ -44,7 +44,7 @@ final readonly class ModuleOptions
     {
         return new self(
             projectRoot: $this->projectRoot,
-            extensions: ['.js', '.json', '.cjs', '.mjs'],
+            extensions: ['.js', '.json', '.cjs', '.mjs', '.ts', '.tsx', '.mts', '.cts'],
             conditions: ['node'],
             nodeEnv: $this->nodeEnv,
             styleExtensions: [],

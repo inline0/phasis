@@ -23,7 +23,7 @@ fs.mkdirSync(outDir, { recursive: true });
 
 const fixtures = process.argv.length > 2
     ? process.argv.slice(2).map((f) => path.resolve(f))
-    : fs.readdirSync(reactDir).filter((f) => f.endsWith('.jsx')).sort().map((f) => path.join(reactDir, f));
+    : fs.readdirSync(reactDir).filter((f) => /\.(?:jsx|tsx)$/.test(f)).sort().map((f) => path.join(reactDir, f));
 
 let failed = 0;
 let checked = 0;

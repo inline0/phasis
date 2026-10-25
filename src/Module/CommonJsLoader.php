@@ -49,7 +49,7 @@ final class CommonJsLoader
     }
 
     /** Parse a file as CommonJS. Throws SyntaxError when it is not valid script code. */
-    public function parse(string $source): Program
+    public function parse(string $source, ?string $path = null): Program
     {
         if (str_starts_with($source, '#!')) {
             $newline = strcspn($source, "\r\n");
@@ -58,7 +58,9 @@ final class CommonJsLoader
         $head = $this->loader->moduleOptions()->nodeCompatible
             ? '(function (exports, require, module, __filename, __dirname) {'
             : self::WRAPPER_HEAD;
-        return (new Parser($head . $source . "\n})"))->parse();
+        $parser = new Parser($head . $source . "\n})", $path);
+        $parser->setCommonJsWrapper();
+        return $parser->parse();
     }
 
     /**

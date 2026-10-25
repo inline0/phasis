@@ -1,0 +1,2 @@
+42 named-type 1
+undefined

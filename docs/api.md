@@ -84,7 +84,15 @@ Specifiers resolve the way bundlers resolve them: import maps, extensions and `i
 public function execFile(string $path): mixed
 ```
 
-Loads a file from disk and runs it. `.mjs` files and JSX files (the `JsxOptions::$extensions`, `.jsx` by default) are loaded with the ES module loader, so their imports resolve, and `execFile()` returns `null` for them, like `evalAsModule()`. Every other file, including `.js`, passes its contents to `eval()` as a classic script and returns the value of its last expression; a `.js` file with `import` / `export` fails with a SyntaxError, and its real path becomes the base for dynamic `import()` specifiers. Use `getExport()` to read a module's exports.
+Loads a file from disk and runs it. [TypeScript files](/docs/typescript)
+(`.ts`, `.tsx`, `.mts`, `.cts`), `.mjs` files and JSX files (the
+`JsxOptions::$extensions`, `.jsx` and `.tsx` by default) use the module loader,
+so their imports resolve, and `execFile()` returns `null` for them, like
+`evalAsModule()`. Other files, including `.js`, pass their contents to `eval()`
+as a classic script and return the value of the last expression. A `.js` file
+with `import` / `export` fails with a SyntaxError, and its real path becomes
+the base for dynamic `import()` specifiers. Use `getExport()` to read a module's
+exports.
 
 ```php
 $engine->execFile(__DIR__ . '/script.js');

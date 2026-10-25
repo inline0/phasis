@@ -24,8 +24,8 @@ final class JsxReactThreeWayTest extends TestCase
     /** @return iterable<string, array{string}> */
     public static function fixtureProvider(): iterable
     {
-        foreach (glob(__DIR__ . '/react/*.jsx') ?: [] as $file) {
-            yield basename($file, '.jsx') => [$file];
+        foreach (glob(__DIR__ . '/react/*.{jsx,tsx}', GLOB_BRACE) ?: [] as $file) {
+            yield pathinfo($file, PATHINFO_FILENAME) => [$file];
         }
     }
 

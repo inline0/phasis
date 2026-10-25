@@ -18,7 +18,7 @@ final readonly class JsxOptions
         public string $importSource = 'react',
         public string $factory = 'React.createElement',
         public string $fragment = 'React.Fragment',
-        public array $extensions = ['.jsx'],
+        public array $extensions = ['.jsx', '.tsx'],
     ) {
     }
 

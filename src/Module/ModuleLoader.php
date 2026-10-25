@@ -2174,10 +2174,10 @@ class ModuleLoader
                 return 'asset';
             }
         }
-        if (str_ends_with($lower, '.cjs')) {
+        if (str_ends_with($lower, '.cjs') || str_ends_with($lower, '.cts')) {
             return 'commonjs';
         }
-        if (str_ends_with($lower, '.mjs') || ($this->jsxOptions !== null && $this->jsxOptions->appliesTo($path))) {
+        if (str_ends_with($lower, '.mjs') || str_ends_with($lower, '.mts') || ($this->jsxOptions !== null && $this->jsxOptions->appliesTo($path))) {
             return 'esm';
         }
         // Application code is ES modules, as bundlers treat it. Inside
@@ -2186,7 +2186,7 @@ class ModuleLoader
         if (!str_contains($path, '/node_modules/') && !$options->nodeCompatible) {
             return 'esm';
         }
-        if (str_ends_with($lower, '.js')) {
+        if (str_ends_with($lower, '.js') || str_ends_with($lower, '.ts')) {
             $scope = $this->resolver->packageScope($path);
             $type = $scope === null ? null : ($this->resolver->readPackageJson($scope)['type'] ?? null);
             if ($type === 'module') {
@@ -2200,9 +2200,10 @@ class ModuleLoader
     private function parseModule(ModuleRecord $record, string $path, string $source): \Phasis\Ast\Program
     {
         $nodeEnv = $this->resolver->options()->nodeCompatible ? null : $this->resolver->options()->nodeEnv;
-        $jsx = $this->jsxOptions !== null && $this->jsxOptions->appliesTo($path) ? $this->jsxOptions : null;
-        $parse = static function () use ($source, $nodeEnv, $jsx): array {
-            $parser = new Parser($source);
+        $jsx = $this->jsxOptions !== null && ($this->jsxOptions->appliesTo($path) || str_ends_with(strtolower($path), '.tsx'))
+            ? $this->jsxOptions : null;
+        $parse = static function () use ($source, $nodeEnv, $jsx, $path): array {
+            $parser = new Parser($source, $path);
             $parser->setModuleMode(true);
             if ($nodeEnv !== null) {
                 $parser->setDefines(['process.env.NODE_ENV' => $nodeEnv]);
@@ -2214,16 +2215,27 @@ class ModuleLoader
             return ['program' => $program, 'jsxImportSource' => $parser->jsxImportSource()];
         };
         $cache = $this->parseCache();
-        $parsed = $cache === null ? $parse() : $cache->remember('module', $source, ['env' => $nodeEnv, 'jsx' => $jsx], $parse);
+        $options = [
+            'env' => $nodeEnv,
+            'jsx' => $jsx,
+            'typescript' => Parser::isTypeScriptPath($path),
+            'tsx' => str_ends_with(strtolower($path), '.tsx'),
+        ];
+        $parsed = $cache === null ? $parse() : $cache->remember('module', $source, $options, $parse);
         $record->jsxImportSource = $parsed['jsxImportSource'];
         return $this->barrelPruner()->rewrite($parsed['program'], $path);
     }
 
-    private function parseCommonJs(string $source): \Phasis\Ast\Program
+    private function parseCommonJs(string $source, string $path): \Phasis\Ast\Program
     {
         $cache = $this->parseCache();
-        $parse = fn (): \Phasis\Ast\Program => $this->commonJs()->parse($source);
-        return $cache === null ? $parse() : $cache->remember('commonjs', $source, ['node' => $this->resolver->options()->nodeCompatible], $parse);
+        $parse = fn (): \Phasis\Ast\Program => $this->commonJs()->parse($source, $path);
+        $options = [
+            'node' => $this->resolver->options()->nodeCompatible,
+            'typescript' => Parser::isTypeScriptPath($path),
+            'tsx' => str_ends_with(strtolower($path), '.tsx'),
+        ];
+        return $cache === null ? $parse() : $cache->remember('commonjs', $source, $options, $parse);
     }
 
     private function parseCache(): ?ParseCache
@@ -2286,12 +2298,15 @@ class ModuleLoader
     private function detectFormat(ModuleRecord $record, string $path, string $source): ?\Phasis\Ast\Program
     {
         try {
-            $program = $this->parseCommonJs($source);
+            $program = $this->parseCommonJs($source, $path);
         } catch (\Phasis\Exceptions\SyntaxError $commonJsError) {
             try {
                 $program = $this->parseModule($record, $path, $source);
             } catch (\Phasis\Exceptions\SyntaxError) {
                 throw $commonJsError;
+            }
+            if ($this->programHasTopLevelAwait($program->body)) {
+                return $program;
             }
             foreach ($program->body as $node) {
                 if ($node instanceof ImportDeclaration || $node instanceof ExportDeclaration) {
@@ -2371,7 +2386,7 @@ class ModuleLoader
         switch ($format) {
             case 'commonjs':
                 unset($this->evaluating[$path]);
-                return $this->linkCommonJs($record, $path, $this->parseCommonJs($source));
+                return $this->linkCommonJs($record, $path, $this->parseCommonJs($source, $path));
             case 'builtin':
                 $specifier = substr($path, strlen(ModuleResolver::BUILTIN));
                 if (isset($this->commonJsBuiltins[$specifier])) {

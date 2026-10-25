@@ -108,7 +108,7 @@ final class ChildProcessBindings
         }
         $resolved = $this->resolveExecutable($file, $cwd, $environment['PATH'] ?? '/usr/bin:/bin');
         $command[0] = $resolved;
-        if ($resolved === PHP_BINARY && isset($command[1]) && preg_match('/\.(?:cjs|mjs|js)$/i', $command[1]) === 1) {
+        if ($resolved === PHP_BINARY && isset($command[1]) && preg_match('/\.(?:cjs|mjs|js|jsx|ts|tsx|mts|cts)$/i', $command[1]) === 1) {
             // process.execPath remains PHP. A requested JavaScript child therefore
             // runs in a new Phasis realm instead of being handed to another engine.
             array_splice($command, 1, 0, [__DIR__ . '/child-runtime.php']);

@@ -15,10 +15,13 @@ Phasis exposes its JavaScript parser as a standalone PHP API. You can parse sour
 ## parseSource
 
 ```php
-public static function parseSource(string $source, string $sourceType = 'script', ?JsxOptions $jsx = null): Program
+public static function parseSource(string $source, string $sourceType = 'script', ?JsxOptions $jsx = null, ?string $path = null): Program
 ```
 
 The one-call entry point on `Phasis\Parser\Parser`. Parses `$source` and returns the `Phasis\Ast\Program` root node.
+
+An optional `$path` selects `.ts` or `.tsx` syntax automatically. See
+[TypeScript](/docs/typescript) for the erasure rules.
 
 ```php
 use Phasis\Parser\Parser;

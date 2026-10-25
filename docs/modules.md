@@ -20,7 +20,7 @@ For each specifier, the first rule that applies wins:
 2. **Built-in modules**: `react`, `react/jsx-runtime`, `react-dom`, `react-dom/server`, `react-dom/static`, `phasis`, `phasis/jsx-runtime`.
 3. **`node:` specifiers** resolve supported built-ins when [Node compatibility](#node-compatibility) is enabled; otherwise they are an error naming the module.
 4. **`#` specifiers** through the nearest `package.json` `imports` field.
-5. **Relative and absolute paths**, trying the extensions (`.jsx`, `.js`, `.mjs`, `.cjs`, `.json` by default), then `index` files.
+5. **Relative and absolute paths**, trying the extensions (`.jsx`, `.js`, `.mjs`, `.cjs`, `.json`, `.tsx`, `.ts`, `.mts`, `.cts` by default), then `index` files.
 6. **Path aliases** from the nearest `jsconfig.json` or `tsconfig.json` (`compilerOptions.paths` and `baseUrl`; comments and trailing commas allowed).
 7. **`node_modules`**, walking up from the importing file: `package.json` `exports` (with conditions, subpath patterns and blocked `null` subpaths), then `module`, then `main`.
 

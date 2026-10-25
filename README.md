@@ -34,6 +34,7 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - **WebSocket** (RFC 6455 + replaceable transport), **XMLHttpRequest** (layered over fetch), and a real **event loop** (`setTimeout` / `setInterval` / `queueMicrotask`, plus Stage-3 `AsyncContext`)
 - **Experimental Express and Hono support** through opt-in Node compatibility: CommonJS packages, Buffer, streams, filesystem access, HTTP/HTTPS/HTTP2 servers and clients, TLS, crypto, timers, and async context, executed inside PHP. See the [module coverage and host limits](./docs/modules.md#node-compatibility).
 - **JSX Pack**: render JSX components to HTML from PHP with `Engine::render()`, no build step
+  - **Automatic TypeScript**: `.ts` and `.tsx` files use native PHP type erasure, with no new configuration or runtime compiler. See [TypeScript syntax and file handling](./docs/typescript.md).
   - **Native React 19.3 server renderer** in PHP: `react`, `react-dom/server` and `react-dom/static` are built in, with HTML byte-identical to `react-dom@19.3.1` and hydratable by React on the client (hooks, context, Suspense, `useId`, async components, resource hints)
   - **Captured-data hydration**: `Engine::renderForHydration()` pairs HTML with safe public props for React's standard `hydrateRoot`; a Composer-shipped bootstrap helper is optional. See the [data and browser contract](./docs/react.md#rendering-a-component-for-hydration).
   - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8.1, plus `raw()`
@@ -160,6 +161,7 @@ Full documentation lives at [phasis.inline0.dev](https://phasis.inline0.dev) (or
 - [API](./docs/api.md): full `Phasis\Engine` reference
 - [Parser](./docs/parser.md): standalone `Phasis\Parser\Parser` API, AST walker, ESTree export
 - [JSX](./docs/jsx.md): `.jsx` modules, `Engine::render()`, the React and HTML profiles, precompile
+- [TypeScript](./docs/typescript.md): automatic `.ts`/`.tsx` execution, type erasure and imports
 - [React](./docs/react.md): the native React 19.3 server renderer and hydration
 - [Modules](./docs/modules.md): import maps, `node_modules`, CommonJS, aliases, assets, barrel pruning
 - [Formatter](./docs/formatter.md): prettier-compatible formatting for JavaScript, JSON and CSS

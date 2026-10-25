@@ -75,7 +75,13 @@ trait JsxScanning
         // is real code, while comparing an object or function literal with
         // `<` is not. Babel and esbuild both read it as JSX.
         $last = $this->tokens === [] ? null : $this->tokens[count($this->tokens) - 1];
+        if ($this->typeScript && $last?->type === TokenType::OptionalChaining) {
+            return false;
+        }
         if (($last === null || $last->type !== TokenType::RightBrace) && !$this->canStartRegExp()) {
+            return false;
+        }
+        if ($this->typeScriptGenericStart()) {
             return false;
         }
         $i = $this->pos + 1;
@@ -159,6 +165,9 @@ trait JsxScanning
             return $this->readJsxString($start, $ch);
         }
         if ($ch === '<') {
+            if ($this->typeScript && $frame['tokens'] > 0) {
+                return $this->readJsxTypeArguments($start);
+            }
             // An element used as an attribute value: `<A b=<c /> />`.
             return $this->startJsxElement($start);
         }

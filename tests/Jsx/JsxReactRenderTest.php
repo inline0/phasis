@@ -21,8 +21,8 @@ final class JsxReactRenderTest extends TestCase
     /** @return iterable<string, array{string}> */
     public static function fixtureProvider(): iterable
     {
-        foreach (glob(__DIR__ . '/react/*.jsx') ?: [] as $file) {
-            yield basename($file, '.jsx') => [$file];
+        foreach (glob(__DIR__ . '/react/*.{jsx,tsx}', GLOB_BRACE) ?: [] as $file) {
+            yield pathinfo($file, PATHINFO_FILENAME) => [$file];
         }
     }
 
@@ -42,7 +42,7 @@ final class JsxReactRenderTest extends TestCase
         }
         $expected = json_decode((string) file_get_contents(substr($file, 0, -4) . '.expected.txt'), true);
         $props = [];
-        if (preg_match('/export const props = (\{.*\});/', $source, $m) === 1) {
+        if (preg_match('/export const props(?:\s*:\s*\w+)? = (\{.*\});/', $source, $m) === 1) {
             $props = json_decode((string) preg_replace('/(\w+):/', '"$1":', str_replace("'", '"', $m[1])), true) ?? [];
         }
         $engine = new Engine();

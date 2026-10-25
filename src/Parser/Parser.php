@@ -81,6 +81,7 @@ class Parser
     use Parts\ExpressionParser;
     use Parts\TokenNavigation;
     use Parts\JsxParser;
+    use Parts\TypeScriptParser;
 
     private int $pos = 0;
     private bool $noIn = false;
@@ -104,6 +105,8 @@ class Parser
      */
     private bool $moduleTopLevel = true;
     private bool $moduleMode = false;
+    private bool $commonJsWrapper = false;
+    private int $blockDepth = 0;
     private bool $strictMode = false;
     private string $source = '';
 
@@ -128,13 +131,28 @@ class Parser
      */
     private \SplObjectStorage $stringsWithLegacyOctal;
 
-    public function __construct(string $source)
+    /**
+     * Create a parser, inferring TypeScript and TSX syntax from its filename.
+     * @param string $source Original source text.
+     * @param ?string $path Optional source filename.
+     */
+    public function __construct(string $source, ?string $path = null)
     {
         $this->source = $source;
+        $this->typeScript = $path !== null && self::isTypeScriptPath($path);
+        if ($path !== null && str_ends_with(strtolower($path), '.tsx')) {
+            $this->jsxOptions = new Jsx\JsxOptions();
+        }
         $this->parenthesized = new \SplObjectStorage();
         $this->arrayExpressionsWithTrailingCommaAfterRest = new \SplObjectStorage();
         $this->stringsWithLegacyOctal = new \SplObjectStorage();
         $this->lexer = new Lexer($source);
+    }
+
+    /** Identify the file-level function wrapper inserted by the CommonJS loader. */
+    public function setCommonJsWrapper(): void
+    {
+        $this->commonJsWrapper = true;
     }
 
     /** @var Lexer */
@@ -252,6 +270,7 @@ class Parser
             $this->lexer->setModuleMode($this->moduleMode);
             $this->lexer->setCollectComments($this->collectComments);
             $this->lexer->setJsx($this->jsxOptions !== null);
+            $this->lexer->setTypeScript($this->typeScript);
             $this->tokens = $this->lexer->tokenize();
             if ($this->defines !== []) {
                 $this->applyDefines();
@@ -398,16 +417,30 @@ class Parser
         return substr($this->source, $startOffset, $endOffset - $startOffset);
     }
 
-    public static function parseSource(string $source, string $sourceType = 'script', ?Jsx\JsxOptions $jsx = null): Program
-    {
+    /**
+     * Parse source into its executable AST without evaluating it.
+     * @param string $source Original source text.
+     * @param string $sourceType Script or module grammar.
+     * @param ?Jsx\JsxOptions $jsx Existing JSX rendering or preservation options.
+     * @param ?string $path Optional filename selecting TypeScript/TSX syntax.
+     * @return Program The parsed program.
+     */
+    public static function parseSource(
+        string $source,
+        string $sourceType = 'script',
+        ?Jsx\JsxOptions $jsx = null,
+        ?string $path = null,
+    ): Program {
         if ($sourceType !== 'script' && $sourceType !== 'module') {
             throw new \InvalidArgumentException(
                 "sourceType must be \"script\" or \"module\", got \"{$sourceType}\"",
             );
         }
-        $parser = new self($source);
+        $parser = new self($source, $path);
         $parser->setModuleMode($sourceType === 'module');
-        $parser->setJsxOptions($jsx);
+        if ($jsx !== null) {
+            $parser->setJsxOptions($jsx);
+        }
         return $parser->parse();
     }
 
@@ -427,7 +460,9 @@ class Parser
         }
 
         while (!$this->isAtEnd()) {
-            $body[] = $this->parseStatementOrDeclaration();
+            if (!$this->tsEraseDeclaration()) {
+                $body[] = $this->parseStatementOrDeclaration();
+            }
         }
 
         if ($this->jsxLoweringInstance !== null && $this->jsxLoweringInstance->needsImports()) {
@@ -539,6 +574,9 @@ class Parser
      */
     private function hasUseStrictPrologue(): bool
     {
+        if ($this->typeScript) {
+            return $this->tsHasUseStrictPrologue();
+        }
         $i = $this->pos;
         while ($i < count($this->tokens)) {
             $t = $this->tokens[$i];
@@ -563,6 +601,9 @@ class Parser
      */
     private function blockStartHasUseStrictPrologue(): bool
     {
+        if ($this->typeScript) {
+            return $this->tsHasUseStrictPrologue();
+        }
         $i = $this->pos;
         while ($i < count($this->tokens)) {
             $t = $this->tokens[$i];
