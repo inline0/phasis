@@ -291,6 +291,8 @@ final class JsxHydrationTest extends TestCase
         $this->assertStringContainsString('[[public]],[[PrimitiveValue]]', $result->html);
         $this->assertStringContainsString('&quot;[[public]]&quot;:&quot;visible&quot;', $result->html);
         $this->assertStringContainsString('&quot;[[PrimitiveValue]]&quot;:42', $result->html);
+        $this->assertStringContainsString('[object Object]', $result->html);
+        $this->assertStringContainsString('TypeError', $result->html);
     }
 
     public function testLeadingNullBytesInDataKeysRemainJsonProperties(): void

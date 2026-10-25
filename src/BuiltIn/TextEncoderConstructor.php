@@ -41,12 +41,12 @@ class TextEncoderConstructor
         $constructor = JsFunction::fromCallable(
             'TextEncoder',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor TextEncoder requires 'new'");
                 }
 
                 // Per spec OrdinaryCreateFromConstructor: take prototype from newTarget.
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;

@@ -44,7 +44,7 @@ trait BufferTypes
             'ArrayBuffer',
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 // Step 1: If NewTarget is undefined, throw a TypeError.
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor ArrayBuffer requires \'new\'');
                 }
                 $arg0 = $args[0] ?? JsNumber::of(0.0);
@@ -68,7 +68,7 @@ trait BufferTypes
                 // which accesses NewTarget.prototype. When called via Reflect.construct
                 // with a custom newTarget, this may trigger a getter or throw.
                 $useProto = $proto;
-                $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                $ntDesc = $this_->getNativeSlotDescriptor('[[NewTarget]]');
                 if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
                     $ntProto = $ntDesc->value->get('prototype');
                     if ($ntProto instanceof JsObject) {
@@ -442,7 +442,7 @@ trait BufferTypes
         $constructor = JsFunction::fromCallable(
             'SharedArrayBuffer',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor SharedArrayBuffer requires \'new\'');
                 }
                 $arg0 = $args[0] ?? JsNumber::of(0.0);
@@ -462,7 +462,7 @@ trait BufferTypes
                 }
 
                 $useProto = $proto;
-                $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                $ntDesc = $this_->getNativeSlotDescriptor('[[NewTarget]]');
                 if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
                     $ntProto = $ntDesc->value->get('prototype');
                     if ($ntProto instanceof JsObject) {

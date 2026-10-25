@@ -79,7 +79,7 @@ final class WebSocketConstructor
         $ctor = JsFunction::fromCallable(
             'WebSocket',
             static function (JsValue $this_, array $args) use ($proto, $env): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor WebSocket requires 'new'");
                 }
                 $url = TypeConversion::toString($args[0] ?? JsUndefined::instance());

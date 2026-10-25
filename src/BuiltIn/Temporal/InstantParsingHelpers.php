@@ -73,10 +73,10 @@ trait InstantParsingHelpers
 
     private static function toInstantNs(JsValue $item): string
     {
-        if ($item instanceof JsObject && $item->has('[[EpochNanoseconds]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[EpochNanoseconds]]')) {
             return self::requireInstant($item);
         }
-        if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsZonedDateTime]]')) {
             return self::getSlotString($item, '[[EpochNanoseconds]]');
         }
         if ($item instanceof JsUndefined || $item instanceof JsNull) {

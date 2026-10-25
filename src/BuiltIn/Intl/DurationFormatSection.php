@@ -42,7 +42,7 @@ trait DurationFormatSection
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 if (
                     !$this_ instanceof JsObject
-                    || $this_->get('[[NewTarget]]') instanceof JsUndefined
+                    || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined
                 ) {
                     throw new TypeError('Constructor Intl.DurationFormat requires \'new\'');
                 }
@@ -239,7 +239,7 @@ trait DurationFormatSection
             if (
                 !$this_ instanceof JsObject
                 || $this_ instanceof \Phasis\Value\JsProxy
-                || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedDurationFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DurationFormat.prototype.format called on non-DurationFormat');
             }
@@ -260,7 +260,7 @@ trait DurationFormatSection
             if (
                 !$this_ instanceof JsObject
                 || $this_ instanceof \Phasis\Value\JsProxy
-                || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedDurationFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.DurationFormat.prototype.formatToParts called on non-DurationFormat',
@@ -284,7 +284,7 @@ trait DurationFormatSection
             if (
                 !$this_ instanceof JsObject
                 || $this_ instanceof \Phasis\Value\JsProxy
-                || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedDurationFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.DurationFormat.prototype.resolvedOptions called on non-DurationFormat',
@@ -315,7 +315,7 @@ trait DurationFormatSection
                     self::extractInternalString($this_, $displaySlot, 'auto'),
                 ));
             }
-            $fdVal = $this_->get('[[FractionalDigits]]');
+            $fdVal = $this_->getNativeSlot('[[FractionalDigits]]');
             if ($fdVal instanceof JsNumber) {
                 self::defineDataProp($result, 'fractionalDigits', $fdVal);
             }
@@ -543,7 +543,7 @@ trait DurationFormatSection
             $seconds += intdiv($fracTotalNs, 1000000000);
             $fracTotalNs %= 1000000000;
         }
-        $fdVal = $df->get('[[FractionalDigits]]');
+        $fdVal = $df->getNativeSlot('[[FractionalDigits]]');
         $fdLimit = $fdVal instanceof JsNumber ? (int) $fdVal->value : null;
         $fracDigits = '';
         if ($fdLimit === null) {
@@ -719,7 +719,7 @@ trait DurationFormatSection
         // Per spec ToDurationRecord: when input is a Temporal.Duration,
         // bypass the prototype getters and read the internal slots
         // directly. Detected via the [[IsDuration]] brand.
-        $isTemporalDuration = $duration->has('[[IsDuration]]');
+        $isTemporalDuration = $duration->hasNativeSlot('[[IsDuration]]');
         $readUnit = static function (string $u) use ($duration, $isTemporalDuration): JsValue {
             if ($isTemporalDuration) {
                 return $duration->get('[[' . $u . ']]');
@@ -843,7 +843,7 @@ trait DurationFormatSection
         // ToDurationRecord: when input is a Temporal.Duration, bypass
         // the prototype's getters and read internal slots directly so
         // userland prototype tampering can't observe the read.
-        $isTemporalDuration = $duration->has('[[IsDuration]]');
+        $isTemporalDuration = $duration->hasNativeSlot('[[IsDuration]]');
         $readUnit = static function (string $u) use ($duration, $isTemporalDuration): JsValue {
             if ($isTemporalDuration) {
                 return $duration->get('[[' . $u . ']]');
@@ -1184,7 +1184,7 @@ trait DurationFormatSection
             $rPadded = str_pad((string) $sub, $exponent, '0', STR_PAD_LEFT);
         }
         // Apply [[FractionalDigits]] override or default {0..9, trunc}.
-        $fdSlot = $df->get('[[FractionalDigits]]');
+        $fdSlot = $df->getNativeSlot('[[FractionalDigits]]');
         $fdLimit = $fdSlot instanceof JsNumber ? (int) $fdSlot->value : null;
         if ($fdLimit !== null) {
             // Pad to fdLimit with zeros, then truncate to that count.
@@ -1370,7 +1370,7 @@ trait DurationFormatSection
             }
             $fracTotalNsStr = (string) $tot;
         }
-        $fdVal = $df->get('[[FractionalDigits]]');
+        $fdVal = $df->getNativeSlot('[[FractionalDigits]]');
         $fdLimit = $fdVal instanceof JsNumber ? (int) $fdVal->value : null;
         $fracStr = '';
         $padded = str_pad($fracTotalNsStr, 9, '0', STR_PAD_LEFT);

@@ -38,7 +38,15 @@ export function Shapes({ data }) {
 }
 
 export function Keys(props) {
-    return <pre>{Object.keys(props).sort().join(',')}:{Reflect.ownKeys(props.data).join(',')}:{JSON.stringify(props.data)}</pre>;
+    let brand;
+    try {
+        Number.prototype.valueOf.call(props.data);
+        brand = 'number';
+    } catch (error) {
+        brand = error.name;
+    }
+    return <pre>{Object.keys(props).sort().join(',')}:{Reflect.ownKeys(props.data).join(',')}:{JSON.stringify(props.data)}
+        :{String(props.data)}:{Object.prototype.toString.call(props.data)}:{brand}</pre>;
 }
 
 export function Document() {

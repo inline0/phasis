@@ -85,12 +85,12 @@ class DisposableStackConstructor
         $proto = new JsObject();
 
         $ctor = JsFunction::fromCallable('DisposableStack', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Constructor DisposableStack requires \'new\'');
             }
             // OrdinaryCreateFromConstructor: fetch newTarget.prototype and
             // apply it to this_ (so prototype getters throw through us).
-            $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+            $ntDesc = $this_->getNativeSlotDescriptor('[[NewTarget]]');
             if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
                 $ntProto = $ntDesc->value->get('prototype');
                 $this_->setPrototype(
@@ -183,7 +183,7 @@ class DisposableStackConstructor
                 if (!$this_ instanceof JsObject || !self::isDisposableStack($this_)) {
                     throw new TypeError('Method DisposableStack.prototype.dispose requires a valid DisposableStack receiver');
                 }
-                $state = $this_->get('[[DisposableState]]');
+                $state = $this_->getNativeSlot('[[DisposableState]]');
                 if ($state instanceof JsString && $state->value === 'disposed') {
                     return JsUndefined::instance();
                 }
@@ -207,7 +207,7 @@ class DisposableStackConstructor
                     false,
                     false,
                 ));
-                $internalStack = $this_->get('[[DisposableStack]]');
+                $internalStack = $this_->getNativeSlot('[[DisposableStack]]');
                 $newStack->defineOwnProperty('[[DisposableStack]]', PropertyDescriptor::data(
                     $internalStack,
                     true,
@@ -232,7 +232,7 @@ class DisposableStackConstructor
                 if (!$this_ instanceof JsObject || !self::isDisposableStack($this_)) {
                     throw new TypeError('Method DisposableStack.prototype.disposed requires a valid DisposableStack receiver');
                 }
-                $state = $this_->get('[[DisposableState]]');
+                $state = $this_->getNativeSlot('[[DisposableState]]');
                 return new JsBoolean($state instanceof JsString && $state->value === 'disposed');
             }, 0),
             null,
@@ -266,12 +266,12 @@ class DisposableStackConstructor
         $proto = new JsObject();
 
         $ctor = JsFunction::fromCallable('AsyncDisposableStack', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Constructor AsyncDisposableStack requires \'new\'');
             }
             // OrdinaryCreateFromConstructor: fetch newTarget.prototype and
             // apply it to this_ (so prototype getters throw through us).
-            $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+            $ntDesc = $this_->getNativeSlotDescriptor('[[NewTarget]]');
             if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
                 $ntProto = $ntDesc->value->get('prototype');
                 $this_->setPrototype(
@@ -367,7 +367,7 @@ class DisposableStackConstructor
                             'disposeAsync requires a valid AsyncDisposableStack'
                         );
                     }
-                    $state = $this_->get('[[DisposableState]]');
+                    $state = $this_->getNativeSlot('[[DisposableState]]');
                     if ($state instanceof JsString && $state->value === 'disposed') {
                         return \Phasis\Value\JsPromise::resolved(JsUndefined::instance());
                     }
@@ -397,7 +397,7 @@ class DisposableStackConstructor
                     false,
                     false,
                 ));
-                $internalStack = $this_->get('[[DisposableStack]]');
+                $internalStack = $this_->getNativeSlot('[[DisposableStack]]');
                 $newStack->defineOwnProperty('[[DisposableStack]]', PropertyDescriptor::data(
                     $internalStack,
                     true,
@@ -421,7 +421,7 @@ class DisposableStackConstructor
                 if (!$this_ instanceof JsObject || !self::isAsyncDisposableStack($this_)) {
                     throw new TypeError('Method AsyncDisposableStack.prototype.disposed requires a valid AsyncDisposableStack receiver');
                 }
-                $state = $this_->get('[[DisposableState]]');
+                $state = $this_->getNativeSlot('[[DisposableState]]');
                 return new JsBoolean($state instanceof JsString && $state->value === 'disposed');
             }, 0),
             null,
@@ -471,7 +471,7 @@ class DisposableStackConstructor
                     : 'Method DisposableStack.prototype requires a valid DisposableStack receiver',
             );
         }
-        $state = $this_->get('[[DisposableState]]');
+        $state = $this_->getNativeSlot('[[DisposableState]]');
         if ($state instanceof JsString && $state->value === 'disposed') {
             throw new \Phasis\Exceptions\ReferenceError(
                 'Cannot add resource to a disposed stack.'
@@ -490,7 +490,7 @@ class DisposableStackConstructor
         if ($record === null) {
             return;
         }
-        $stack = $this_->get('[[DisposableStack]]');
+        $stack = $this_->getNativeSlot('[[DisposableStack]]');
         if (!$stack instanceof JsObject) {
             $stack = new JsObject();
             $this_->set('[[DisposableStack]]', $stack);
@@ -512,7 +512,7 @@ class DisposableStackConstructor
      */
     private static function disposeStack(JsObject $this_, bool $isAsync): void
     {
-        $stack = $this_->get('[[DisposableStack]]');
+        $stack = $this_->getNativeSlot('[[DisposableStack]]');
         if (!$stack instanceof JsObject) {
             return;
         }
@@ -553,7 +553,7 @@ class DisposableStackConstructor
     private static function disposeAsyncStack(JsObject $this_): JsPromise
     {
         $promise = new JsPromise();
-        $stack = $this_->get('[[DisposableStack]]');
+        $stack = $this_->getNativeSlot('[[DisposableStack]]');
         $this_->set('[[DisposableStack]]', new JsObject());
         if (!$stack instanceof JsObject) {
             $promise->resolve(JsUndefined::instance());

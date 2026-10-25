@@ -36,7 +36,7 @@ class ProxyConstructor
                 // called via `new`. If that marker is absent, it was a direct call.
                 if (
                     !$this_ instanceof JsObject
-                    || !$this_->hasOwnProperty('[[NewTarget]]')
+                    || !$this_->hasNativeSlot('[[NewTarget]]', own: true)
                 ) {
                     throw new TypeError('Constructor Proxy requires \'new\'');
                 }

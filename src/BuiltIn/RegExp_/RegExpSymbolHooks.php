@@ -498,7 +498,7 @@ trait RegExpSymbolHooks
             // Get the PCRE pattern from the splitter (which may differ from the
             // original if side effects recompiled the regex).
             /** @var JsObject $splitter */
-            $pcrePatternDesc = $splitter->getOwnPropertyDescriptor('[[PCREPattern]]');
+            $pcrePatternDesc = $splitter->getNativeSlotDescriptor('[[PCREPattern]]');
             $pcrePattern = ($pcrePatternDesc !== null && $pcrePatternDesc->value instanceof JsString)
                 ? $pcrePatternDesc->value->value
                 : null;

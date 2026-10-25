@@ -267,7 +267,7 @@ trait CollatorSection
                     \Collator::ON,
                 );
 
-                $numericVal = $this_->get('[[Numeric]]');
+                $numericVal = $this_->getNativeSlot('[[Numeric]]');
                 if ($numericVal instanceof JsBoolean && $numericVal->toBoolean()) {
                     $collator->setAttribute(\Collator::NUMERIC_COLLATION, \Collator::ON);
                 }
@@ -277,7 +277,7 @@ trait CollatorSection
                 // [[IgnorePunctuation]] choice — otherwise opting out
                 // of ignorePunctuation on a Thai collator silently
                 // keeps SHIFTED active.
-                $ipVal = $this_->get('[[IgnorePunctuation]]');
+                $ipVal = $this_->getNativeSlot('[[IgnorePunctuation]]');
                 $ignorePunct = $ipVal instanceof JsBoolean && $ipVal->toBoolean();
                 $collator->setAttribute(
                     \Collator::ALTERNATE_HANDLING,
@@ -300,7 +300,7 @@ trait CollatorSection
         ) use ($compareFn): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedCollator]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedCollator]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.Collator.prototype.compare called on non-Collator');
             }
@@ -329,7 +329,7 @@ trait CollatorSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedCollator]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedCollator]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.Collator.prototype.resolvedOptions called on non-Collator');
             }
@@ -342,14 +342,14 @@ trait CollatorSection
             self::defineDataProp($result, 'sensitivity', new JsString(
                 self::extractInternalString($this_, '[[Sensitivity]]', 'variant'),
             ));
-            $ipVal = $this_->get('[[IgnorePunctuation]]');
+            $ipVal = $this_->getNativeSlot('[[IgnorePunctuation]]');
             self::defineDataProp($result, 'ignorePunctuation', new JsBoolean(
                 $ipVal instanceof JsBoolean ? $ipVal->toBoolean() : false,
             ));
             self::defineDataProp($result, 'collation', new JsString(
                 self::extractInternalString($this_, '[[Collation]]', 'default'),
             ));
-            $numVal = $this_->get('[[Numeric]]');
+            $numVal = $this_->getNativeSlot('[[Numeric]]');
             self::defineDataProp($result, 'numeric', new JsBoolean(
                 $numVal instanceof JsBoolean ? $numVal->toBoolean() : false,
             ));

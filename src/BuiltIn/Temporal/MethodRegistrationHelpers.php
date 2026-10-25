@@ -173,7 +173,7 @@ trait MethodRegistrationHelpers
             $localeArg ?? JsUndefined::instance(),
             JsUndefined::instance(),
         ]);
-        $resolved = $obj->get('[[Calendar]]');
+        $resolved = $obj->getNativeSlot('[[Calendar]]');
         return $resolved instanceof JsString ? $resolved->value : null;
     }
 
@@ -599,8 +599,8 @@ trait MethodRegistrationHelpers
         $optionsArg = $args[1] ?? JsUndefined::instance();
         if (
             $this_ instanceof JsObject
-            && $this_->has('[[EpochNanoseconds]]')
-            && !$this_->has('[[IsZonedDateTime]]')
+            && $this_->hasNativeSlot('[[EpochNanoseconds]]')
+            && !$this_->hasNativeSlot('[[IsZonedDateTime]]')
         ) {
             $optionsArg = self::ensureFullDateTimeOptions($optionsArg);
         }
@@ -610,20 +610,20 @@ trait MethodRegistrationHelpers
         if (
             $this_ instanceof JsObject
             && (
-                $this_->has('[[IsPlainDate]]')
-                || $this_->has('[[IsPlainDateTime]]')
-                || $this_->has('[[IsPlainYearMonth]]')
-                || $this_->has('[[IsPlainMonthDay]]')
+                $this_->hasNativeSlot('[[IsPlainDate]]')
+                || $this_->hasNativeSlot('[[IsPlainDateTime]]')
+                || $this_->hasNativeSlot('[[IsPlainYearMonth]]')
+                || $this_->hasNativeSlot('[[IsPlainMonthDay]]')
             )
         ) {
-            $instCal = $this_->get('[[Calendar]]');
+            $instCal = $this_->getNativeSlot('[[Calendar]]');
             $instCalStr = $instCal instanceof JsString ? $instCal->value : 'iso8601';
             // PlainMonthDay (no year) and PlainYearMonth (no day) require
             // the formatter's calendar to match the instance's calendar:
             // even ISO instances reject a non-ISO locale calendar. Plain
             // date/datetime accept ISO instances on any locale.
-            $isStrict = $this_->has('[[IsPlainMonthDay]]')
-                || $this_->has('[[IsPlainYearMonth]]');
+            $isStrict = $this_->hasNativeSlot('[[IsPlainMonthDay]]')
+                || $this_->hasNativeSlot('[[IsPlainYearMonth]]');
             if ($instCalStr !== 'iso8601' || $isStrict) {
                 // Resolve the formatter's effective calendar by
                 // accounting for an explicit options.calendar
@@ -677,10 +677,10 @@ trait MethodRegistrationHelpers
         if (
             $this_ instanceof JsObject
             && (
-                (($this_->has('[[IsPlainDate]]') || $this_->has('[[IsPlainYearMonth]]')
-                    || $this_->has('[[IsPlainMonthDay]]'))
-                    && !$obj->get('[[TimeStyle]]') instanceof JsUndefined)
-                || ($this_->has('[[IsPlainTime]]') && !$obj->get('[[DateStyle]]') instanceof JsUndefined)
+                (($this_->hasNativeSlot('[[IsPlainDate]]') || $this_->hasNativeSlot('[[IsPlainYearMonth]]')
+                    || $this_->hasNativeSlot('[[IsPlainMonthDay]]'))
+                    && !$obj->getNativeSlot('[[TimeStyle]]') instanceof JsUndefined)
+                || ($this_->hasNativeSlot('[[IsPlainTime]]') && !$obj->getNativeSlot('[[DateStyle]]') instanceof JsUndefined)
             )
         ) {
             throw new TypeError('Temporal type does not support the requested date or time style');

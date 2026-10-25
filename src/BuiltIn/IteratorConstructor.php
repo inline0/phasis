@@ -39,10 +39,10 @@ class IteratorConstructor
         $iteratorCtor = JsFunction::fromCallable(
             'Iterator',
             function (JsValue $this_, array $args) use (&$iteratorCtor): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Iterator is not callable');
                 }
-                $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                $ntDesc = $this_->getNativeSlotDescriptor('[[NewTarget]]');
                 if ($ntDesc !== null && $ntDesc->value === $iteratorCtor) {
                     throw new TypeError('Abstract class Iterator not directly constructable');
                 }
@@ -106,7 +106,7 @@ class IteratorConstructor
                 if (!$this_ instanceof JsObject) {
                     throw new TypeError('Iterator helper next called on non-object');
                 }
-                $handler = $this_->getOwnPropertyDescriptor('[[NextHandler]]');
+                $handler = $this_->getNativeSlotDescriptor('[[NextHandler]]');
                 if ($handler === null || !$handler->value instanceof JsFunction) {
                     throw new TypeError('Method called on incompatible Iterator helper');
                 }
@@ -126,7 +126,7 @@ class IteratorConstructor
                 if (!$this_ instanceof JsObject) {
                     throw new TypeError('Iterator helper return called on non-object');
                 }
-                $handler = $this_->getOwnPropertyDescriptor('[[ReturnHandler]]');
+                $handler = $this_->getNativeSlotDescriptor('[[ReturnHandler]]');
                 if ($handler === null || !$handler->value instanceof JsFunction) {
                     throw new TypeError('Method called on incompatible Iterator helper');
                 }
@@ -997,13 +997,13 @@ class IteratorConstructor
 
         $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($nextMethod): JsValue {
             // Validate `this` has [[WrapForValidIterator]] (set on creation).
-            if (!$this_ instanceof JsObject || $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]') === null) {
+            if (!$this_ instanceof JsObject || $this_->getNativeSlotDescriptor('[[WrapForValidIterator]]') === null) {
                 throw new TypeError('Iterator wrap method called on incompatible receiver');
             }
             if (!$nextMethod instanceof JsFunction) {
                 throw new TypeError('Iterator next is not a function');
             }
-            $iter = $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]')->value;
+            $iter = $this_->getNativeSlotDescriptor('[[WrapForValidIterator]]')->value;
             // Spec WrapForValidIteratorPrototype.next: invoke the inner next
             // method with no arguments; the wrapper's caller-supplied args
             // are discarded ("next argument is ignored" semantic). The spec
@@ -1013,10 +1013,10 @@ class IteratorConstructor
         }, 0);
 
         $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsObject || $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]') === null) {
+            if (!$this_ instanceof JsObject || $this_->getNativeSlotDescriptor('[[WrapForValidIterator]]') === null) {
                 throw new TypeError('Iterator wrap method called on incompatible receiver');
             }
-            $iter = $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]')->value;
+            $iter = $this_->getNativeSlotDescriptor('[[WrapForValidIterator]]')->value;
             if (!$iter instanceof JsObject) {
                 return self::iterResult(JsUndefined::instance(), true);
             }

@@ -34,10 +34,10 @@ trait BrandCheckHelpers
 
     private static function requireInstant(JsValue $this_): string
     {
-        if (!$this_ instanceof JsObject || !$this_->has('[[EpochNanoseconds]]')) {
+        if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[EpochNanoseconds]]')) {
             throw new TypeError('this is not a Temporal.Instant');
         }
-        $v = $this_->get('[[EpochNanoseconds]]');
+        $v = $this_->getNativeSlot('[[EpochNanoseconds]]');
         return $v instanceof JsString ? $v->value : '0';
     }
 
@@ -46,7 +46,7 @@ trait BrandCheckHelpers
      */
     private static function requireDuration(JsValue $this_): void
     {
-        if (!$this_ instanceof JsObject || !$this_->has('[[IsDuration]]')) {
+        if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[IsDuration]]')) {
             throw new TypeError('this is not a Temporal.Duration');
         }
     }
@@ -54,14 +54,14 @@ trait BrandCheckHelpers
     private static function requirePlainDate(JsValue $this_): void
     {
         $isPlainDate = $this_ instanceof JsObject
-            && $this_->has('[[ISOYear]]')
-            && !$this_->has('[[IsPlainTime]]')
-            && !$this_->has('[[IsPlainDateTime]]')
-            && !$this_->has('[[IsPlainYearMonth]]')
-            && !$this_->has('[[IsPlainMonthDay]]')
-            && !$this_->has('[[IsZonedDateTime]]')
-            && !$this_->has('[[IsDuration]]')
-            && !$this_->has('[[EpochNanoseconds]]');
+            && $this_->hasNativeSlot('[[ISOYear]]')
+            && !$this_->hasNativeSlot('[[IsPlainTime]]')
+            && !$this_->hasNativeSlot('[[IsPlainDateTime]]')
+            && !$this_->hasNativeSlot('[[IsPlainYearMonth]]')
+            && !$this_->hasNativeSlot('[[IsPlainMonthDay]]')
+            && !$this_->hasNativeSlot('[[IsZonedDateTime]]')
+            && !$this_->hasNativeSlot('[[IsDuration]]')
+            && !$this_->hasNativeSlot('[[EpochNanoseconds]]');
         if (!$isPlainDate) {
             throw new TypeError('this is not a Temporal.PlainDate');
         }
@@ -69,7 +69,7 @@ trait BrandCheckHelpers
 
     private static function requirePlainTime(JsValue $this_): bool
     {
-        if (!$this_ instanceof JsObject || !$this_->has('[[IsPlainTime]]')) {
+        if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[IsPlainTime]]')) {
             throw new TypeError('this is not a Temporal.PlainTime');
         }
         return true;
@@ -77,7 +77,7 @@ trait BrandCheckHelpers
 
     private static function requirePlainDateTime(JsValue $this_): bool
     {
-        if (!$this_ instanceof JsObject || !$this_->has('[[IsPlainDateTime]]')) {
+        if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[IsPlainDateTime]]')) {
             throw new TypeError('this is not a Temporal.PlainDateTime');
         }
         return true;

@@ -37,7 +37,7 @@ trait DurationHelpers
         if (!$obj instanceof JsObject) {
             return 0;
         }
-        $v = $obj->get("[[{$field}]]");
+        $v = $obj->getNativeSlot("[[{$field}]]");
         if ($v instanceof JsNumber) {
             if ($v->value >= PHP_INT_MAX || $v->value < PHP_INT_MIN) {
                 return $v->value;
@@ -152,7 +152,7 @@ trait DurationHelpers
 
     private static function toDuration(JsValue $item, bool $copy = false): JsObject
     {
-        if ($item instanceof JsObject && $item->has('[[IsDuration]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsDuration]]')) {
             if ($copy) {
                 // Duration.from must return a new copy.
                 $fields = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'];
@@ -550,7 +550,7 @@ trait DurationHelpers
         if (!$obj instanceof JsObject) {
             return '0';
         }
-        $v = $obj->get("[[{$field}]]");
+        $v = $obj->getNativeSlot("[[{$field}]]");
         if ($v instanceof JsNumber) {
             if (abs($v->value) < 1e15) {
                 return (string) (int) $v->value;
@@ -592,7 +592,7 @@ trait DurationHelpers
     {
         // ZDT-aware totals: compute via actual epoch ns so that DST-shifted
         // wall days and months contribute their real (23/24/25h) length.
-        if ($relativeTo instanceof JsObject && $relativeTo->has('[[IsZonedDateTime]]')) {
+        if ($relativeTo instanceof JsObject && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')) {
             $tzZdt = self::getSlotString($relativeTo, '[[TimeZone]]');
             $startNsZdt = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
             $endNsZdt = self::addDurationToZdt($relativeTo, $dur, 1, 'constrain');
@@ -742,16 +742,16 @@ trait DurationHelpers
         }
         // Parse relativeTo as a PlainDate or PlainDateTime.
         $refDate = null;
-        if ($relativeTo instanceof JsObject && $relativeTo->has('[[IsPlainDate]]')) {
+        if ($relativeTo instanceof JsObject && $relativeTo->hasNativeSlot('[[IsPlainDate]]')) {
             $refDate = $relativeTo;
-        } elseif ($relativeTo instanceof JsObject && $relativeTo->has('[[IsPlainDateTime]]')) {
+        } elseif ($relativeTo instanceof JsObject && $relativeTo->hasNativeSlot('[[IsPlainDateTime]]')) {
             $refDate = self::createPlainDateObject(
                 self::getSlotInt($relativeTo, '[[ISOYear]]'),
                 self::getSlotInt($relativeTo, '[[ISOMonth]]'),
                 self::getSlotInt($relativeTo, '[[ISODay]]'),
                 self::getSlotString($relativeTo, '[[Calendar]]'),
             );
-        } elseif ($relativeTo instanceof JsObject && $relativeTo->has('[[IsZonedDateTime]]')) {
+        } elseif ($relativeTo instanceof JsObject && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]')) {
             $parts = self::zonedDateTimeParts($relativeTo);
             $refDate = self::createPlainDateObject(
                 $parts['year'],
@@ -1019,7 +1019,7 @@ trait DurationHelpers
         $calUnits = ['year', 'month', 'week'];
         $hasCalUnit = $years !== 0 || $months !== 0 || $weeks !== 0;
         $relIsZdt = $relativeTo instanceof JsObject
-            && $relativeTo->has('[[IsZonedDateTime]]');
+            && $relativeTo->hasNativeSlot('[[IsZonedDateTime]]');
         $needsCalendar = in_array($unit, $calUnits, true)
             || in_array($largestUnit, $calUnits, true)
             || $hasCalUnit
@@ -1027,7 +1027,7 @@ trait DurationHelpers
         if ($needsCalendar && $relativeTo !== null) {
             $refDate = $relativeTo;
             $isZdtRelativeTo = $refDate instanceof JsObject
-                && $refDate->has('[[IsZonedDateTime]]');
+                && $refDate->hasNativeSlot('[[IsZonedDateTime]]');
             $zdtTzIsDst = false;
             if ($isZdtRelativeTo) {
                 $tz = self::getSlotString($refDate, '[[TimeZone]]');

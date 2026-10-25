@@ -277,12 +277,12 @@ final class StructuredCloneFunction
         }
 
         // RegExp — detected via the [[OriginalSource]] internal slot.
-        if ($value->hasOwnProperty('[[OriginalSource]]')) {
+        if ($value->hasNativeSlot('[[OriginalSource]]', own: true)) {
             return self::cloneRegExp($value, $seen);
         }
 
         // Error and subclasses — detected via [[ErrorData]].
-        if ($value->hasOwnProperty('[[ErrorData]]')) {
+        if ($value->hasNativeSlot('[[ErrorData]]', own: true)) {
             return self::cloneError($value, $seen, $transferSet);
         }
 
@@ -495,8 +495,8 @@ final class StructuredCloneFunction
      */
     private static function cloneRegExp(JsObject $value, \SplObjectStorage $seen): JsObject
     {
-        $srcDesc = $value->getOwnPropertyDescriptor('[[OriginalSource]]');
-        $flagsDesc = $value->getOwnPropertyDescriptor('[[OriginalFlags]]');
+        $srcDesc = $value->getNativeSlotDescriptor('[[OriginalSource]]');
+        $flagsDesc = $value->getNativeSlotDescriptor('[[OriginalFlags]]');
         $source = ($srcDesc !== null && $srcDesc->value instanceof JsString)
             ? $srcDesc->value->value
             : '';

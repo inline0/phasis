@@ -485,9 +485,9 @@ final class SearchParams
 
                 // Allow both `new URLSearchParams()` and bare-call (per
                 // legacy compat). The latter is non-standard but harmless.
-                if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                     $obj = $this_;
-                    $newTarget = $this_->get('[[NewTarget]]');
+                    $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                     if ($newTarget instanceof JsFunction) {
                         $ntProto = $newTarget->get('prototype');
                         if ($ntProto instanceof JsObject) {
@@ -644,7 +644,7 @@ final class SearchParams
             if (!$this_ instanceof JsObject) {
                 throw new TypeError('not a URLSearchParams iterator');
             }
-            $stateDesc = $this_->getOwnPropertyDescriptor('[[USPIterState]]');
+            $stateDesc = $this_->getNativeSlotDescriptor('[[USPIterState]]');
             if ($stateDesc === null) {
                 throw new TypeError('not a URLSearchParams iterator');
             }

@@ -182,8 +182,8 @@ class IntlObject
      */
     private static function isInitializedLocale(JsObject $obj): bool
     {
-        return !$obj->get('[[LocaleTag]]') instanceof JsUndefined
-            || !$obj->get('[[language]]') instanceof JsUndefined;
+        return !$obj->getNativeSlot('[[LocaleTag]]') instanceof JsUndefined
+            || !$obj->getNativeSlot('[[language]]') instanceof JsUndefined;
     }
 
     /**
@@ -401,7 +401,7 @@ class IntlObject
     ): JsObject {
         if (
             $receiver instanceof JsObject
-            && $receiver->get('[[NewTarget]]') instanceof JsUndefined
+            && $receiver->getNativeSlot('[[NewTarget]]') instanceof JsUndefined
             && self::hasIntlPrototype($receiver, $prototype)
         ) {
             if (
@@ -468,13 +468,13 @@ class IntlObject
     ): JsObject {
         if (
             $this_ instanceof JsObject
-            && !$this_->get('[[NewTarget]]') instanceof JsUndefined
+            && !$this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined
         ) {
             // Per spec OrdinaryCreateFromConstructor: GetPrototypeFromConstructor
             // is called on NewTarget, which Gets the "prototype" property. A
             // poisoned getter on NewTarget.prototype must surface here, before
             // any option validation in the constructor body.
-            $newTarget = $this_->get('[[NewTarget]]');
+            $newTarget = $this_->getNativeSlot('[[NewTarget]]');
             if ($newTarget instanceof JsObject) {
                 $resolved = self::resolveProtoFromCtor($newTarget, $intrinsicName);
                 if ($resolved !== null) {

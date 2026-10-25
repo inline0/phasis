@@ -36,9 +36,10 @@ trait TypeConversionHelpers
     {
         if ($item instanceof JsObject) {
             if (
-                $item->has('[[ISOYear]]') && !$item->has('[[IsPlainTime]]') && !$item->has('[[IsPlainDateTime]]')
-                && !$item->has('[[IsPlainYearMonth]]') && !$item->has('[[IsPlainMonthDay]]')
-                && !$item->has('[[IsZonedDateTime]]') && !$item->has('[[IsDuration]]') && !$item->has('[[EpochNanoseconds]]')
+                $item->hasNativeSlot('[[ISOYear]]') && !$item->hasNativeSlot('[[IsPlainTime]]') && !$item->hasNativeSlot('[[IsPlainDateTime]]')
+                && !$item->hasNativeSlot('[[IsPlainYearMonth]]') && !$item->hasNativeSlot('[[IsPlainMonthDay]]')
+                && !$item->hasNativeSlot('[[IsZonedDateTime]]') && !$item->hasNativeSlot('[[IsDuration]]')
+                && !$item->hasNativeSlot('[[EpochNanoseconds]]')
             ) {
                 return self::createPlainDateObject(
                     self::getSlotInt($item, '[[ISOYear]]'),
@@ -47,7 +48,7 @@ trait TypeConversionHelpers
                     self::getSlotString($item, '[[Calendar]]'),
                 );
             }
-            if ($item->has('[[IsPlainDateTime]]')) {
+            if ($item->hasNativeSlot('[[IsPlainDateTime]]')) {
                 return self::createPlainDateObject(
                     self::getSlotInt($item, '[[ISOYear]]'),
                     self::getSlotInt($item, '[[ISOMonth]]'),
@@ -55,7 +56,7 @@ trait TypeConversionHelpers
                     self::getSlotString($item, '[[Calendar]]'),
                 );
             }
-            if ($item->has('[[IsZonedDateTime]]')) {
+            if ($item->hasNativeSlot('[[IsZonedDateTime]]')) {
                 $parts = self::zonedDateTimeParts($item);
                 return self::createPlainDateObject(
                     $parts['year'],
@@ -154,8 +155,8 @@ trait TypeConversionHelpers
         self::$relativeToZdtCache = null;
         if ($item instanceof JsObject) {
             if (
-                $item->has('[[IsPlainDate]]') || $item->has('[[IsPlainDateTime]]')
-                || $item->has('[[IsZonedDateTime]]') || $item->has('[[ISOYear]]')
+                $item->hasNativeSlot('[[IsPlainDate]]') || $item->hasNativeSlot('[[IsPlainDateTime]]')
+                || $item->hasNativeSlot('[[IsZonedDateTime]]') || $item->hasNativeSlot('[[ISOYear]]')
             ) {
                 return self::toPlainDate($item);
             }
@@ -409,7 +410,7 @@ trait TypeConversionHelpers
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to PlainTime');
         }
-        if ($item instanceof JsObject && $item->has('[[IsPlainTime]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainTime]]')) {
             // Return a copy, not the same object.
             return self::createPlainTimeObject(
                 self::getSlotInt($item, '[[ISOHour]]'),
@@ -420,7 +421,7 @@ trait TypeConversionHelpers
                 self::getSlotInt($item, '[[ISONanosecond]]'),
             );
         }
-        if ($item instanceof JsObject && $item->has('[[IsPlainDateTime]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainDateTime]]')) {
             return self::createPlainTimeObject(
                 self::getSlotInt($item, '[[ISOHour]]'),
                 self::getSlotInt($item, '[[ISOMinute]]'),
@@ -430,7 +431,7 @@ trait TypeConversionHelpers
                 self::getSlotInt($item, '[[ISONanosecond]]'),
             );
         }
-        if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsZonedDateTime]]')) {
             $parts = self::zonedDateTimeParts($item);
             return self::createPlainTimeObject(
                 $parts['hour'],
@@ -640,7 +641,7 @@ trait TypeConversionHelpers
 
     private static function toPlainDateTime(JsValue $item, string $overflow = 'constrain', ?JsValue $rawOptions = null): JsObject
     {
-        if ($item instanceof JsObject && $item->has('[[IsPlainDateTime]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainDateTime]]')) {
             // Return a copy per spec.
             return self::createPlainDateTimeObject(
                 self::getSlotInt($item, '[[ISOYear]]'),
@@ -655,7 +656,7 @@ trait TypeConversionHelpers
                 self::getSlotString($item, '[[Calendar]]'),
             );
         }
-        if ($item instanceof JsObject && $item->has('[[IsPlainDate]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainDate]]')) {
             return self::createPlainDateTimeObject(
                 self::getSlotInt($item, '[[ISOYear]]'),
                 self::getSlotInt($item, '[[ISOMonth]]'),
@@ -795,7 +796,7 @@ trait TypeConversionHelpers
 
     private static function toPlainYearMonthWithLazyOptions(JsValue $item, JsValue $rawOptions): JsObject
     {
-        if (!$item instanceof JsObject || $item->has('[[IsPlainYearMonth]]')) {
+        if (!$item instanceof JsObject || $item->hasNativeSlot('[[IsPlainYearMonth]]')) {
             // Should not happen via from() since instances and primitives are handled before.
             $options = self::getOptionsObject($rawOptions);
             $overflow = self::getOverflow($options);
@@ -814,7 +815,7 @@ trait TypeConversionHelpers
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to PlainYearMonth');
         }
-        if ($item instanceof JsObject && $item->has('[[IsPlainYearMonth]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainYearMonth]]')) {
             return self::createPlainYearMonthObject(
                 self::getSlotInt($item, '[[ISOYear]]'),
                 self::getSlotInt($item, '[[ISOMonth]]'),
@@ -942,7 +943,7 @@ trait TypeConversionHelpers
             throw new TypeError('Cannot convert primitive to a Temporal.PlainMonthDay');
         }
 
-        if ($item instanceof JsObject && $item->has('[[IsPlainMonthDay]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsPlainMonthDay]]')) {
             // Copy the PlainMonthDay, do not return the same object.
             return self::createPlainMonthDayObject(
                 self::getSlotInt($item, '[[ISOMonth]]'),

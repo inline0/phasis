@@ -37,7 +37,7 @@ final class QueuingStrategy
         $ctor = JsFunction::fromCallable(
             'ByteLengthQueuingStrategy',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor ByteLengthQueuingStrategy requires 'new'");
                 }
                 $init = $args[0] ?? JsUndefined::instance();
@@ -48,7 +48,7 @@ final class QueuingStrategy
                 if ($hwm instanceof JsUndefined) {
                     throw new TypeError('highWaterMark required');
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;
@@ -127,7 +127,7 @@ final class QueuingStrategy
         $ctor = JsFunction::fromCallable(
             'CountQueuingStrategy',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor CountQueuingStrategy requires 'new'");
                 }
                 $init = $args[0] ?? JsUndefined::instance();
@@ -138,7 +138,7 @@ final class QueuingStrategy
                 if ($hwm instanceof JsUndefined) {
                     throw new TypeError('highWaterMark required');
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;

@@ -623,7 +623,7 @@ class Engine
         $bigIntFn = \Phasis\Value\JsFunction::fromCallable(
             'BigInt',
             function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
-                if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                if ($this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new \Phasis\Exceptions\TypeError('BigInt is not a constructor');
                 }
                 $val = $args[0] ?? \Phasis\Value\JsUndefined::instance();
@@ -673,7 +673,7 @@ class Engine
                 $bigint = $this_ instanceof \Phasis\Value\JsBigInt ? $this_ : null;
                 if ($bigint === null && $this_ instanceof \Phasis\Value\JsObject) {
                     // BigInt wrapper object.
-                    $v = $this_->get('[[BigIntData]]');
+                    $v = $this_->getNativeSlot('[[BigIntData]]');
                     $bigint = $v instanceof \Phasis\Value\JsBigInt ? $v : null;
                 }
                 if ($bigint === null) {
@@ -737,7 +737,7 @@ class Engine
                     return $this_;
                 }
                 if ($this_ instanceof \Phasis\Value\JsObject) {
-                    $v = $this_->get('[[BigIntData]]');
+                    $v = $this_->getNativeSlot('[[BigIntData]]');
                     if ($v instanceof \Phasis\Value\JsBigInt) {
                         return $v;
                     }
@@ -758,7 +758,7 @@ class Engine
             function (\Phasis\Value\JsValue $this_, array $args): \Phasis\Value\JsValue {
                 $bigint = $this_ instanceof \Phasis\Value\JsBigInt ? $this_ : null;
                 if ($bigint === null && $this_ instanceof \Phasis\Value\JsObject) {
-                    $v = $this_->get('[[BigIntData]]');
+                    $v = $this_->getNativeSlot('[[BigIntData]]');
                     $bigint = $v instanceof \Phasis\Value\JsBigInt ? $v : null;
                 }
                 if ($bigint === null) {
@@ -1126,7 +1126,7 @@ class Engine
             $arg0 = $args[0] ?? \Phasis\Value\JsUndefined::instance();
             $arg1 = $args[1] ?? \Phasis\Value\JsUndefined::instance();
 
-            $calledAsNew = $this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]');
+            $calledAsNew = $this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]');
 
             // Per spec 22.2.3.1: IsRegExp check using @@match. If matcher is
             // undefined, fall back to whether the argument has the
@@ -1144,7 +1144,7 @@ class Engine
                     if ($arg0 instanceof \Phasis\Value\JsProxy) {
                         $patternIsRegExp = false;
                     } else {
-                        $patternIsRegExp = $arg0->getOwnPropertyDescriptor('[[PCREPattern]]') !== null;
+                        $patternIsRegExp = $arg0->getNativeSlotDescriptor('[[PCREPattern]]') !== null;
                     }
                 } else {
                     $patternIsRegExp = \Phasis\Spec\TypeConversion::toBoolean($matchProp);
@@ -1167,7 +1167,7 @@ class Engine
             $isSubclass = false;
             $newTarget = null;
             if ($calledAsNew) {
-                $ntd = $this_->getOwnPropertyDescriptor("[[NewTarget]]");
+                $ntd = $this_->getNativeSlotDescriptor("[[NewTarget]]");
                 $baseRegExp = $globalEnv->has("RegExp") ? $globalEnv->get("RegExp") : null;
                 if ($ntd !== null && $ntd->value !== null && $ntd->value !== $baseRegExp) {
                     $isSubclass = true;
@@ -1183,12 +1183,12 @@ class Engine
             $cachedPattern = null;
             $cachedFlags = null;
             if ($patternIsRegExp && $arg0 instanceof \Phasis\Value\JsObject) {
-                $srcDesc = $arg0->getOwnPropertyDescriptor('[[OriginalSource]]');
+                $srcDesc = $arg0->getNativeSlotDescriptor('[[OriginalSource]]');
                 if ($srcDesc !== null && $srcDesc->value instanceof \Phasis\Value\JsString) {
                     $cachedPattern = $srcDesc->value->value;
                 }
                 if ($arg1 instanceof \Phasis\Value\JsUndefined) {
-                    $flgDesc = $arg0->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                    $flgDesc = $arg0->getNativeSlotDescriptor('[[OriginalFlags]]');
                     if ($flgDesc !== null && $flgDesc->value instanceof \Phasis\Value\JsString) {
                         $cachedFlags = $flgDesc->value->value;
                     }

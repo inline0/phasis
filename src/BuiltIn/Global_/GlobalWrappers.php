@@ -36,14 +36,14 @@ trait GlobalWrappers
             // Per spec 22.1.1.1 step 2: when called as a function (no new.target),
             // a Symbol argument becomes its descriptive string. When called as a
             // constructor (new String(sym)), ToString(sym) still throws TypeError.
-            $isConstruct = $this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]');
+            $isConstruct = $this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]');
             if (!empty($args) && $args[0] instanceof \Phasis\Value\JsSymbol && !$isConstruct) {
                 $str = $args[0]->display();
             } else {
                 $str = empty($args) ? '' : TypeConversion::toString($args[0]);
             }
             // When called as constructor (new String(x)), create wrapper object
-            if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 $val = new JsString($str);
                 $this_->defineOwnProperty(
                     '[[PrimitiveValue]]',
@@ -93,7 +93,7 @@ trait GlobalWrappers
             }
             // When called as constructor (new Number(x)), set up wrapper.
             // valueOf/toString come from Number.prototype, not own properties.
-            if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 $val = JsNumber::of($num);
                 $this_->defineOwnProperty(
                     '[[PrimitiveValue]]',
@@ -109,7 +109,7 @@ trait GlobalWrappers
     {
         return function (JsValue $this_, array $args): JsValue {
             $bool = empty($args) ? false : TypeConversion::toBoolean($args[0]);
-            if ($this_ instanceof \Phasis\Value\JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof \Phasis\Value\JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 // Only set [[PrimitiveValue]], don't shadow prototype methods
                 $this_->defineOwnProperty(
                     '[[PrimitiveValue]]',

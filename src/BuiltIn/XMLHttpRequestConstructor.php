@@ -74,7 +74,7 @@ final class XMLHttpRequestConstructor
             'XMLHttpRequest',
             static function (JsValue $this_, array $args) use ($proto): JsValue {
                 unset($args);
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor XMLHttpRequest requires 'new'");
                 }
                 $this_->setPrototype($proto);
@@ -158,7 +158,7 @@ final class XMLHttpRequestConstructor
         $peCtor = JsFunction::fromCallable(
             'ProgressEvent',
             static function (JsValue $this_, array $args) use ($peProto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor ProgressEvent requires 'new'");
                 }
                 $type = TypeConversion::toString($args[0] ?? JsUndefined::instance());

@@ -93,10 +93,10 @@ final class ReadableStream
         $constructor = JsFunction::fromCallable(
             'ReadableStream',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor ReadableStream requires 'new'");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : self::getPrototype();
@@ -201,14 +201,14 @@ final class ReadableStream
         $ctor = JsFunction::fromCallable(
             'ReadableStreamDefaultReader',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor ReadableStreamDefaultReader requires 'new'");
                 }
                 $stream = $args[0] ?? JsUndefined::instance();
                 if (!self::isReadableStream($stream)) {
                     throw new TypeError('Argument must be a ReadableStream');
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : self::getReaderPrototype();

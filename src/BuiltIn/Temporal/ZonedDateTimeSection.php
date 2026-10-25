@@ -1015,7 +1015,7 @@ trait ZonedDateTimeSection
         self::installTemporalToPrimitive($proto, 'ZonedDateTime');
 
         $ctor = JsFunction::fromCallable('ZonedDateTime', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Temporal.ZonedDateTime must be called with new');
             }
             self::applyNewTargetPrototype($this_, $proto);
@@ -1025,7 +1025,7 @@ trait ZonedDateTimeSection
             $tzArg = $args[1] ?? JsUndefined::instance();
             // Constructor uses canonicalizeTimeZone (rejects ISO strings), not toTemporalTimeZoneIdentifier.
             if (!($tzArg instanceof JsString)) {
-                if ($tzArg instanceof JsObject && $tzArg->has('[[IsZonedDateTime]]')) {
+                if ($tzArg instanceof JsObject && $tzArg->hasNativeSlot('[[IsZonedDateTime]]')) {
                     $timeZone = self::getSlotString($tzArg, '[[TimeZone]]');
                 } else {
                     throw new TypeError('Expected a string for TimeZone');
@@ -1051,7 +1051,7 @@ trait ZonedDateTimeSection
                 $item = $args[0] ?? JsUndefined::instance();
                 $rawOptions = $args[1] ?? JsUndefined::instance();
                 // For ZDT or string: parse first, then validate options.
-                if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+                if ($item instanceof JsObject && $item->hasNativeSlot('[[IsZonedDateTime]]')) {
                     $result = self::createZonedDateTimeObject(
                         self::getSlotString($item, '[[EpochNanoseconds]]'),
                         self::getSlotString($item, '[[TimeZone]]'),
@@ -1097,7 +1097,7 @@ trait ZonedDateTimeSection
     /** Convert an item to a ZonedDateTime. */
     private static function toZonedDateTime(JsValue $item, ?JsValue $rawOptions = null): JsObject
     {
-        if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsZonedDateTime]]')) {
             return $item;
         }
         if ($item instanceof JsString) {
@@ -1215,7 +1215,7 @@ trait ZonedDateTimeSection
 
     private static function toZonedDateTimeNs(JsValue $item): string
     {
-        if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+        if ($item instanceof JsObject && $item->hasNativeSlot('[[IsZonedDateTime]]')) {
             return self::getSlotString($item, '[[EpochNanoseconds]]');
         }
         $zdt = self::toZonedDateTime($item);
@@ -1765,7 +1765,7 @@ trait ZonedDateTimeSection
     {
         // Per spec: if it's an Object, check for ZonedDateTime brand, otherwise throw.
         if ($item instanceof JsObject) {
-            if ($item->has('[[IsZonedDateTime]]')) {
+            if ($item->hasNativeSlot('[[IsZonedDateTime]]')) {
                 return self::getSlotString($item, '[[TimeZone]]');
             }
             throw new TypeError('Expected a string for TimeZone');

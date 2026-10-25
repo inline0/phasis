@@ -547,7 +547,7 @@ trait DateTimeFormatSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedDateTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.DateTimeFormat.prototype.formatToParts called on non-DateTimeFormat',
@@ -1011,7 +1011,7 @@ trait DateTimeFormatSection
             self::defineDataProp($result, 'timeZone', new JsString(
                 self::extractInternalString($this_, '[[TimeZone]]', 'UTC'),
             ));
-            $hcVal = $this_->get('[[HourCycle]]');
+            $hcVal = $this_->getNativeSlot('[[HourCycle]]');
             if (!$hcVal instanceof JsUndefined) {
                 $hcStr = TypeConversion::toString($hcVal);
                 self::defineDataProp($result, 'hourCycle', new JsString($hcStr));
@@ -1029,7 +1029,7 @@ trait DateTimeFormatSection
                 ['weekday', 'era', 'year', 'month', 'day', 'dayPeriod',
                 'hour', 'minute', 'second', 'fractionalSecondDigits', 'timeZoneName'] as $comp
             ) {
-                $val = $this_->get("[[{$comp}]]");
+                $val = $this_->getNativeSlot("[[{$comp}]]");
                 if ($val instanceof JsUndefined) {
                     continue;
                 }
@@ -1043,11 +1043,11 @@ trait DateTimeFormatSection
                 }
             }
 
-            $dsVal = $this_->get('[[DateStyle]]');
+            $dsVal = $this_->getNativeSlot('[[DateStyle]]');
             if (!$dsVal instanceof JsUndefined) {
                 self::defineDataProp($result, 'dateStyle', new JsString(TypeConversion::toString($dsVal)));
             }
-            $tsVal = $this_->get('[[TimeStyle]]');
+            $tsVal = $this_->getNativeSlot('[[TimeStyle]]');
             if (!$tsVal instanceof JsUndefined) {
                 self::defineDataProp($result, 'timeStyle', new JsString(TypeConversion::toString($tsVal)));
             }
@@ -1082,7 +1082,7 @@ trait DateTimeFormatSection
     {
         if (
             !$this_ instanceof JsObject
-            || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
+            || $this_->getNativeSlot('[[InitializedDateTimeFormat]]') instanceof JsUndefined
         ) {
             throw new TypeError(
                 "Intl.DateTimeFormat.prototype.{$name} called on non-DateTimeFormat",
@@ -2034,8 +2034,8 @@ trait DateTimeFormatSection
             }
         }
         // Instant: detected by [[EpochNanoseconds]] without ZDT.
-        $aIsInstant = $a->has('[[EpochNanoseconds]]') && !$a->has('[[IsZonedDateTime]]');
-        $bIsInstant = $b->has('[[EpochNanoseconds]]') && !$b->has('[[IsZonedDateTime]]');
+        $aIsInstant = $a->hasNativeSlot('[[EpochNanoseconds]]') && !$a->hasNativeSlot('[[IsZonedDateTime]]');
+        $bIsInstant = $b->hasNativeSlot('[[EpochNanoseconds]]') && !$b->hasNativeSlot('[[IsZonedDateTime]]');
         if ($aIsInstant !== $bIsInstant) {
             throw new TypeError(
                 'formatRange Temporal arguments must be the same type',
@@ -2061,8 +2061,8 @@ trait DateTimeFormatSection
             }
         }
         if ($aHasCal && $bHasCal) {
-            $calA = $a->get('[[Calendar]]');
-            $calB = $b->get('[[Calendar]]');
+            $calA = $a->getNativeSlot('[[Calendar]]');
+            $calB = $b->getNativeSlot('[[Calendar]]');
             $calAStr = $calA instanceof JsString ? $calA->value : '';
             $calBStr = $calB instanceof JsString ? $calB->value : '';
             if ($calAStr !== '' && $calBStr !== '' && $calAStr !== $calBStr) {
@@ -2075,15 +2075,15 @@ trait DateTimeFormatSection
 
     private static function isTemporalDateLike(JsObject $obj): bool
     {
-        return $obj->has('[[IsPlainDate]]')
-            || $obj->has('[[IsPlainDateTime]]')
-            || $obj->has('[[IsPlainTime]]')
-            || $obj->has('[[IsPlainYearMonth]]')
-            || $obj->has('[[IsPlainMonthDay]]')
-            || $obj->has('[[IsZonedDateTime]]')
+        return $obj->hasNativeSlot('[[IsPlainDate]]')
+            || $obj->hasNativeSlot('[[IsPlainDateTime]]')
+            || $obj->hasNativeSlot('[[IsPlainTime]]')
+            || $obj->hasNativeSlot('[[IsPlainYearMonth]]')
+            || $obj->hasNativeSlot('[[IsPlainMonthDay]]')
+            || $obj->hasNativeSlot('[[IsZonedDateTime]]')
             || (
-                $obj->has('[[EpochNanoseconds]]')
-                && !$obj->has('[[IsZonedDateTime]]')
+                $obj->hasNativeSlot('[[EpochNanoseconds]]')
+                && !$obj->hasNativeSlot('[[IsZonedDateTime]]')
             );
     }
 
@@ -2095,7 +2095,7 @@ trait DateTimeFormatSection
      */
     private static function formatTemporal(JsObject $dtf, JsObject $obj): string
     {
-        if ($obj->has('[[IsZonedDateTime]]')) {
+        if ($obj->hasNativeSlot('[[IsZonedDateTime]]')) {
             // Spec: Temporal.ZonedDateTime is rejected by format()
             // and formatToParts(); the user must call its
             // toLocaleString instead.
@@ -2105,7 +2105,7 @@ trait DateTimeFormatSection
         // PlainDate can't be used with time-only options; etc.
         self::checkTemporalOptionsCompat($dtf, $obj);
 
-        if ($obj->has('[[EpochNanoseconds]]')) {
+        if ($obj->hasNativeSlot('[[EpochNanoseconds]]')) {
             // Instant: uses epoch nanoseconds with the formatter's
             // own time zone. Use temporalFormatterFor so default
             // formatters get augmented to include both date AND
@@ -2158,7 +2158,7 @@ trait DateTimeFormatSection
         // values aren't shifted by the formatter's TimeZone option.
         // Instant uses the formatter's own zone (it carries an
         // absolute moment, so the zone is meaningful).
-        $isInstantBrand = $obj->has('[[EpochNanoseconds]]') && !$obj->has('[[IsZonedDateTime]]');
+        $isInstantBrand = $obj->hasNativeSlot('[[EpochNanoseconds]]') && !$obj->hasNativeSlot('[[IsZonedDateTime]]');
         if (!$isInstantBrand) {
             $base->setTimeZone(new \DateTimeZone('UTC'));
         }
@@ -2166,12 +2166,12 @@ trait DateTimeFormatSection
         if (!is_string($pattern) || $pattern === '') {
             return $base;
         }
-        $isPlainDate = $obj->has('[[IsPlainDate]]');
-        $isPlainDateTime = $obj->has('[[IsPlainDateTime]]');
-        $isPlainTime = $obj->has('[[IsPlainTime]]');
-        $isPlainYearMonth = $obj->has('[[IsPlainYearMonth]]');
-        $isPlainMonthDay = $obj->has('[[IsPlainMonthDay]]');
-        $isInstant = $obj->has('[[EpochNanoseconds]]') && !$obj->has('[[IsZonedDateTime]]');
+        $isPlainDate = $obj->hasNativeSlot('[[IsPlainDate]]');
+        $isPlainDateTime = $obj->hasNativeSlot('[[IsPlainDateTime]]');
+        $isPlainTime = $obj->hasNativeSlot('[[IsPlainTime]]');
+        $isPlainYearMonth = $obj->hasNativeSlot('[[IsPlainYearMonth]]');
+        $isPlainMonthDay = $obj->hasNativeSlot('[[IsPlainMonthDay]]');
+        $isInstant = $obj->hasNativeSlot('[[EpochNanoseconds]]') && !$obj->hasNativeSlot('[[IsZonedDateTime]]');
         $timeLetters = ['h', 'H', 'K', 'k', 'm', 's', 'S', 'a', 'B', 'z', 'Z', 'O', 'v', 'V', 'X', 'x'];
         $dateLetters = ['G', 'y', 'Y', 'u', 'r', 'M', 'L', 'd', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W', 'Q', 'q', 'U'];
         $tzLetters = ['z', 'Z', 'O', 'v', 'V', 'X', 'x'];
@@ -2305,7 +2305,7 @@ trait DateTimeFormatSection
      */
     private static function dtfHasExplicitOptions(JsObject $dtf): bool
     {
-        $defaulted = $dtf->get('[[ComponentsDefaulted]]');
+        $defaulted = $dtf->getNativeSlot('[[ComponentsDefaulted]]');
         if ($defaulted instanceof JsBoolean && $defaulted->value === true) {
             return false;
         }
@@ -2534,22 +2534,22 @@ trait DateTimeFormatSection
         // When the formatter's components were defaulted (no user
         // options), it adapts to the Temporal type so any plain
         // type renders without throwing.
-        $defaulted = $dtf->get('[[ComponentsDefaulted]]');
+        $defaulted = $dtf->getNativeSlot('[[ComponentsDefaulted]]');
         if ($defaulted instanceof JsBoolean && $defaulted->value === true) {
             return;
         }
-        $hasTimeStyle = !$dtf->get('[[TimeStyle]]') instanceof JsUndefined;
-        $hasDateStyle = !$dtf->get('[[DateStyle]]') instanceof JsUndefined;
-        $hasYear = !$dtf->get('[[year]]') instanceof JsUndefined;
-        $hasMonth = !$dtf->get('[[month]]') instanceof JsUndefined;
-        $hasDay = !$dtf->get('[[day]]') instanceof JsUndefined;
-        $hasWeekday = !$dtf->get('[[weekday]]') instanceof JsUndefined;
-        $hasEra = !$dtf->get('[[era]]') instanceof JsUndefined;
-        $hasHour = !$dtf->get('[[hour]]') instanceof JsUndefined;
-        $hasMinute = !$dtf->get('[[minute]]') instanceof JsUndefined;
-        $hasSecond = !$dtf->get('[[second]]') instanceof JsUndefined;
-        $hasFractionalSec = !$dtf->get('[[fractionalSecondDigits]]') instanceof JsUndefined;
-        $hasDayPeriod = !$dtf->get('[[dayPeriod]]') instanceof JsUndefined;
+        $hasTimeStyle = !$dtf->getNativeSlot('[[TimeStyle]]') instanceof JsUndefined;
+        $hasDateStyle = !$dtf->getNativeSlot('[[DateStyle]]') instanceof JsUndefined;
+        $hasYear = !$dtf->getNativeSlot('[[year]]') instanceof JsUndefined;
+        $hasMonth = !$dtf->getNativeSlot('[[month]]') instanceof JsUndefined;
+        $hasDay = !$dtf->getNativeSlot('[[day]]') instanceof JsUndefined;
+        $hasWeekday = !$dtf->getNativeSlot('[[weekday]]') instanceof JsUndefined;
+        $hasEra = !$dtf->getNativeSlot('[[era]]') instanceof JsUndefined;
+        $hasHour = !$dtf->getNativeSlot('[[hour]]') instanceof JsUndefined;
+        $hasMinute = !$dtf->getNativeSlot('[[minute]]') instanceof JsUndefined;
+        $hasSecond = !$dtf->getNativeSlot('[[second]]') instanceof JsUndefined;
+        $hasFractionalSec = !$dtf->getNativeSlot('[[fractionalSecondDigits]]') instanceof JsUndefined;
+        $hasDayPeriod = !$dtf->getNativeSlot('[[dayPeriod]]') instanceof JsUndefined;
         $hasAnyTime = $hasHour || $hasMinute || $hasSecond
             || $hasFractionalSec || $hasDayPeriod || $hasTimeStyle;
         $hasAnyDate = $hasYear || $hasMonth || $hasDay || $hasWeekday
@@ -2558,19 +2558,19 @@ trait DateTimeFormatSection
         // requested fields and the Temporal type's data model is
         // empty. The type can still render with extra-but-irrelevant
         // formatter fields as long as at least one field overlaps.
-        if ($obj->has('[[IsPlainDate]]')) {
+        if ($obj->hasNativeSlot('[[IsPlainDate]]')) {
             // PlainDate carries year/month/day/weekday/era.
             if (!$hasAnyDate) {
                 throw new TypeError('Temporal.PlainDate has no overlap with formatter options');
             }
         }
-        if ($obj->has('[[IsPlainTime]]')) {
+        if ($obj->hasNativeSlot('[[IsPlainTime]]')) {
             // PlainTime carries hour/minute/second/fractionalSec/dayPeriod.
             if (!$hasAnyTime) {
                 throw new TypeError('Temporal.PlainTime has no overlap with formatter options');
             }
         }
-        if ($obj->has('[[IsPlainYearMonth]]')) {
+        if ($obj->hasNativeSlot('[[IsPlainYearMonth]]')) {
             // PlainYearMonth carries year/month/era.
             // Reject formatters that ONLY ask for day/weekday or any
             // time field with no year/month/era overlap. dateStyle is
@@ -2580,7 +2580,7 @@ trait DateTimeFormatSection
                 throw new TypeError('Temporal.PlainYearMonth has no overlap with formatter options');
             }
         }
-        if ($obj->has('[[IsPlainMonthDay]]')) {
+        if ($obj->hasNativeSlot('[[IsPlainMonthDay]]')) {
             // PlainMonthDay carries month/day.
             $hasMonthDay = $hasMonth || $hasDay || $hasDateStyle;
             if (!$hasMonthDay) {
@@ -2782,8 +2782,8 @@ trait DateTimeFormatSection
         if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz) === 1) {
             $tz = 'GMT' . $tz;
         }
-        $dateStyle = $dtf->get('[[DateStyle]]');
-        $timeStyle = $dtf->get('[[TimeStyle]]');
+        $dateStyle = $dtf->getNativeSlot('[[DateStyle]]');
+        $timeStyle = $dtf->getNativeSlot('[[TimeStyle]]');
         $dateStyle = $dateStyle instanceof JsString ? $dateStyle->value : null;
         $timeStyle = $timeStyle instanceof JsString ? $timeStyle->value : null;
         $mapStyle = static function (?string $s): int {
@@ -2816,9 +2816,9 @@ trait DateTimeFormatSection
             // the locale's CLDR-derived time pattern. Without this the
             // user's hour-cycle choice silently drops when timeStyle
             // is set.
-            $hourCycleVal = $dtf->get('[[HourCycle]]');
+            $hourCycleVal = $dtf->getNativeSlot('[[HourCycle]]');
             $hourCycle = $hourCycleVal instanceof JsString ? $hourCycleVal->value : null;
-            $hourCycleSource = $dtf->get('[[HourCycleSource]]');
+            $hourCycleSource = $dtf->getNativeSlot('[[HourCycleSource]]');
             $isExplicit = $hourCycleSource instanceof JsString
                 && $hourCycleSource->value === 'option';
             if ($isExplicit && $hourCycle !== null && $timeStyle !== null) {
@@ -3049,7 +3049,7 @@ trait DateTimeFormatSection
         if ($v = $get('[[second]]')) {
             $sk .= $v === '2-digit' ? 'ss' : 's';
         }
-        $fsdVal = $dtf->get('[[fractionalSecondDigits]]');
+        $fsdVal = $dtf->getNativeSlot('[[fractionalSecondDigits]]');
         if ($fsdVal instanceof JsNumber) {
             $n = (int) $fsdVal->value;
             if ($n >= 1 && $n <= 3) {

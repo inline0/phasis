@@ -141,7 +141,7 @@ trait RegExpExec
             }
 
             // Step 1: confirm R has [[RegExpMatcher]] (we use [[PCREPattern]]).
-            if ($this_->getOwnPropertyDescriptor('[[PCREPattern]]') === null) {
+            if ($this_->getNativeSlotDescriptor('[[PCREPattern]]') === null) {
                 throw new \Phasis\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
             }
 
@@ -166,7 +166,7 @@ trait RegExpExec
             // [[OriginalFlags]] internal slot — NOT the public getter.
             // User overrides like Object.defineProperty(r, 'global', ...)
             // must not influence whether lastIndex is updated.
-            $origFlagsDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
+            $origFlagsDesc = $this_->getNativeSlotDescriptor('[[OriginalFlags]]');
             $origFlags = ($origFlagsDesc !== null && $origFlagsDesc->value instanceof JsString)
                 ? $origFlagsDesc->value->value
                 : '';
@@ -179,7 +179,7 @@ trait RegExpExec
             // overwritten [[PCREPattern]] by this point. The slot is
             // guaranteed present by the early check above; only its
             // (possibly mutated) value type still needs validation.
-            $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+            $pcrePatternDesc = $this_->getNativeSlotDescriptor('[[PCREPattern]]');
             $pcrePatternVal = $pcrePatternDesc->value;
             if (!$pcrePatternVal instanceof JsString) {
                 throw new \Phasis\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
@@ -208,8 +208,8 @@ trait RegExpExec
             // RegExp compiler stashed a parsed AST and the matcher
             // decides the result. Falls back to PCRE2 if our matcher
             // returns null for a pattern PCRE2 would have matched.
-            $customAstDesc = $this_->getOwnPropertyDescriptor('[[CustomRegexAst]]');
-            $customFlagsDesc = $this_->getOwnPropertyDescriptor('[[CustomRegexFlags]]');
+            $customAstDesc = $this_->getNativeSlotDescriptor('[[CustomRegexAst]]');
+            $customFlagsDesc = $this_->getNativeSlotDescriptor('[[CustomRegexFlags]]');
             if (
                 $customAstDesc !== null
                 && $customAstDesc->value instanceof \Phasis\Value\JsHostValue
@@ -351,7 +351,7 @@ trait RegExpExec
 
                 $groups = JsObject::createNullPrototype();
                 $hasGroups = false;
-                $groupNameMapDesc = $this_->getOwnPropertyDescriptor('[[GroupNameMap]]');
+                $groupNameMapDesc = $this_->getNativeSlotDescriptor('[[GroupNameMap]]');
                 $groupNameMap = ($groupNameMapDesc !== null && $groupNameMapDesc->value instanceof JsObject)
                     ? $groupNameMapDesc->value
                     : null;
@@ -359,7 +359,7 @@ trait RegExpExec
                 // that names that did not participate in the match still
                 // appear in source order (per duplicate-named-groups
                 // proposal).
-                $namedListDesc = $this_->getOwnPropertyDescriptor('[[NamedGroupNames]]');
+                $namedListDesc = $this_->getNativeSlotDescriptor('[[NamedGroupNames]]');
                 if ($namedListDesc !== null && $namedListDesc->value instanceof JsArray) {
                     $hasGroups = true;
                     $len = $namedListDesc->value->getLength();
@@ -575,7 +575,7 @@ trait RegExpExec
         // undefined, then overwrite with matched values.
         $groups = JsObject::createNullPrototype();
         $hasGroups = false;
-        $namedListDesc = $this_->getOwnPropertyDescriptor('[[NamedGroupNames]]');
+        $namedListDesc = $this_->getNativeSlotDescriptor('[[NamedGroupNames]]');
         if ($namedListDesc !== null && $namedListDesc->value instanceof JsArray) {
             $hasGroups = true;
             $nlen = $namedListDesc->value->getLength();
@@ -697,7 +697,7 @@ trait RegExpExec
         string $pcrePattern,
     ): array {
         // Get the original ES pattern from internal slot.
-        $srcDesc = $regexp->getOwnPropertyDescriptor('[[OriginalSource]]');
+        $srcDesc = $regexp->getNativeSlotDescriptor('[[OriginalSource]]');
         if ($srcDesc === null || !$srcDesc->value instanceof JsString) {
             return $matches;
         }
@@ -718,7 +718,7 @@ trait RegExpExec
         if ($interp === null) {
             return $matches;
         }
-        $flagsDesc = $regexp->getOwnPropertyDescriptor("[[OriginalFlags]]");
+        $flagsDesc = $regexp->getNativeSlotDescriptor("[[OriginalFlags]]");
         $esFlags = ($flagsDesc !== null && $flagsDesc->value instanceof JsString)
             ? $flagsDesc->value->value : "";
         $transformFn = static function (string $esSubPattern) use ($interp, $esFlags): string {
@@ -772,11 +772,11 @@ trait RegExpExec
         ) {
             return null;
         }
-        $pcreDesc = $rx->getOwnPropertyDescriptor('[[PCREPattern]]');
+        $pcreDesc = $rx->getNativeSlotDescriptor('[[PCREPattern]]');
         if ($pcreDesc === null || !$pcreDesc->value instanceof JsString) {
             return null;
         }
-        $origFlagsDesc = $rx->getOwnPropertyDescriptor('[[OriginalFlags]]');
+        $origFlagsDesc = $rx->getNativeSlotDescriptor('[[OriginalFlags]]');
         $origFlags = ($origFlagsDesc !== null && $origFlagsDesc->value instanceof JsString)
             ? $origFlagsDesc->value->value
             : '';
@@ -790,8 +790,8 @@ trait RegExpExec
         }
         // Predicate matching retains the same legacy captures and contexts as
         // exec without allocating a JavaScript match-result array.
-        $customAstDesc = $rx->getOwnPropertyDescriptor('[[CustomRegexAst]]');
-        $customFlagsDesc = $rx->getOwnPropertyDescriptor('[[CustomRegexFlags]]');
+        $customAstDesc = $rx->getNativeSlotDescriptor('[[CustomRegexAst]]');
+        $customFlagsDesc = $rx->getNativeSlotDescriptor('[[CustomRegexFlags]]');
         if (
             $customAstDesc !== null
             && $customAstDesc->value instanceof \Phasis\Value\JsHostValue
@@ -891,7 +891,7 @@ trait RegExpExec
             );
         }
         // Per spec 22.2.5.2.1 step 6: throw TypeError if R lacks [[RegExpMatcher]].
-        $pcreDesc = $rx->getOwnPropertyDescriptor('[[PCREPattern]]');
+        $pcreDesc = $rx->getNativeSlotDescriptor('[[PCREPattern]]');
         if ($pcreDesc === null) {
             throw new \Phasis\Exceptions\TypeError(
                 'Method RegExp.prototype.exec called on incompatible receiver'

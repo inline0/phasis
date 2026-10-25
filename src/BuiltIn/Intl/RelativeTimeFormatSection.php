@@ -262,7 +262,7 @@ trait RelativeTimeFormatSection
         $constructor = JsFunction::fromCallable(
             'RelativeTimeFormat',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Intl.RelativeTimeFormat requires \'new\'');
                 }
 
@@ -368,7 +368,7 @@ trait RelativeTimeFormatSection
         $format = JsFunction::fromCallable('format', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.RelativeTimeFormat.prototype.format called on non-RelativeTimeFormat'
@@ -394,7 +394,7 @@ trait RelativeTimeFormatSection
         $formatToParts = JsFunction::fromCallable('formatToParts', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.RelativeTimeFormat.prototype.formatToParts called on non-RelativeTimeFormat'
@@ -523,7 +523,7 @@ trait RelativeTimeFormatSection
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.RelativeTimeFormat.prototype.resolvedOptions called on non-RelativeTimeFormat');
             }

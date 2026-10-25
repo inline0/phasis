@@ -100,10 +100,10 @@ final class RequestConstructor
         $ctor = JsFunction::fromCallable(
             'Request',
             static function (JsValue $this_, array $args) use ($proto, $env): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Failed to construct 'Request': Please use the 'new' operator");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);

@@ -250,7 +250,7 @@ class JsonObject
         // Boolean / Number / String / BigInt) since spec ToJSON
         // unwraps these to their primitives, while our walker would
         // emit them as bare {} objects.
-        if (!$value instanceof \Phasis\Value\JsDataObject && $value->getOwnPropertyDescriptor('[[PrimitiveValue]]') !== null) {
+        if (!$value instanceof \Phasis\Value\JsDataObject && $value->getNativeSlotDescriptor('[[PrimitiveValue]]') !== null) {
             return self::trivialBailout();
         }
         // RawJSON object: bail so the spec serialiser emits its raw
@@ -395,38 +395,38 @@ class JsonObject
 
     private static function hasNumberData(JsObject $obj): bool
     {
-        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof JsNumber;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof JsNumber;
     }
 
     private static function hasStringData(JsObject $obj): bool
     {
-        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof JsString;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof JsString;
     }
 
     private static function hasBooleanData(JsObject $obj): bool
     {
-        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof JsBoolean;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof JsBoolean;
     }
 
     private static function hasBigIntData(JsObject $obj): bool
     {
-        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->has('[[PrimitiveValue]]')) {
+        if ($obj instanceof \Phasis\Value\JsDataObject || !$obj->hasNativeSlot('[[PrimitiveValue]]')) {
             return false;
         }
 
-        return $obj->get('[[PrimitiveValue]]') instanceof \Phasis\Value\JsBigInt;
+        return $obj->getNativeSlot('[[PrimitiveValue]]') instanceof \Phasis\Value\JsBigInt;
     }
 
     /**
@@ -1107,7 +1107,7 @@ class JsonObject
             } elseif (self::hasStringData($value)) {
                 $value = new JsString(TypeConversion::toString($value));
             } elseif (self::hasBooleanData($value)) {
-                $prim = $value->get('[[PrimitiveValue]]');
+                $prim = $value->getNativeSlot('[[PrimitiveValue]]');
                 if ($prim instanceof JsBoolean) {
                     $value = $prim;
                 }

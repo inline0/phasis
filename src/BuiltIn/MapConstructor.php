@@ -46,12 +46,12 @@ class MapConstructor
             'Map',
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 // Map must be called with new
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Map requires \'new\'');
                 }
                 // Use the subclass's prototype when new.target is not Map itself.
                 $effectiveProto = $proto;
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsFunction) {
                     $ntProto = $newTarget->get('prototype');
                     if ($ntProto instanceof JsObject) {
@@ -116,7 +116,7 @@ class MapConstructor
                     'Method Map Iterator.prototype.next called on incompatible receiver',
                 );
             }
-            $slotDesc = $this_->getOwnPropertyDescriptor('[[MapIteratorData]]');
+            $slotDesc = $this_->getNativeSlotDescriptor('[[MapIteratorData]]');
             if ($slotDesc === null) {
                 throw new TypeError(
                     'Method Map Iterator.prototype.next called on incompatible receiver',

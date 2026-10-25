@@ -39,7 +39,7 @@ trait LocaleSection
         $constructor = JsFunction::fromCallable(
             'Locale',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Intl.Locale requires \'new\'');
                 }
 
@@ -321,7 +321,7 @@ trait LocaleSection
         // Locale.prototype.toString()
         $toString = JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
             if ($this_ instanceof JsObject && self::isInitializedLocale($this_)) {
-                $tag = $this_->get('[[LocaleTag]]');
+                $tag = $this_->getNativeSlot('[[LocaleTag]]');
                 if (!$tag instanceof JsUndefined) {
                     return $tag;
                 }
@@ -347,7 +347,7 @@ trait LocaleSection
                 if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                     throw new TypeError("Intl.Locale.prototype.{$internalKey} called on non-Locale");
                 }
-                $val = $this_->get("[[{$internalKey}]]");
+                $val = $this_->getNativeSlot("[[{$internalKey}]]");
                 return $val instanceof JsUndefined ? JsUndefined::instance() : $val;
             }, 0);
             $proto->defineOwnProperty($prop, PropertyDescriptor::accessor(
@@ -362,7 +362,7 @@ trait LocaleSection
             if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.variants called on non-Locale');
             }
-            $variants = $this_->get('[[variants]]');
+            $variants = $this_->getNativeSlot('[[variants]]');
             if (!$variants instanceof JsArray || $variants->getLength() === 0) {
                 return JsUndefined::instance();
             }
@@ -384,7 +384,7 @@ trait LocaleSection
             if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.numeric called on non-Locale');
             }
-            $val = $this_->get('[[numeric]]');
+            $val = $this_->getNativeSlot('[[numeric]]');
             if ($val instanceof JsBoolean) {
                 return $val;
             }
@@ -405,7 +405,7 @@ trait LocaleSection
             $lang = self::extractInternalString($this_, '[[language]]', '');
             $script = self::extractInternalStringOrNull($this_, '[[script]]');
             $region = self::extractInternalStringOrNull($this_, '[[region]]');
-            $variantsVal = $this_->get('[[variants]]');
+            $variantsVal = $this_->getNativeSlot('[[variants]]');
 
             $parts = [$lang];
             if ($script !== null) {
@@ -477,7 +477,7 @@ trait LocaleSection
                 if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                     throw new TypeError("Intl.Locale.prototype.{$name} called on non-Locale");
                 }
-                $preferred = $this_->get("[[{$slot}]]");
+                $preferred = $this_->getNativeSlot("[[{$slot}]]");
                 $locale = self::extractInternalString($this_, '[[LocaleTag]]', 'und');
                 $language = self::extractInternalString($this_, '[[language]]', 'und');
                 $values = $preferred instanceof JsString ? [$preferred->value] : match ($name) {
@@ -529,7 +529,7 @@ trait LocaleSection
             $locale = self::extractInternalString($this_, '[[LocaleTag]]', 'und');
             $week = LocaleInfoData::week(self::localePreferredRegions($locale));
             $firstDay = $week['firstDay'];
-            $fwSlot = $this_->get('[[firstDayOfWeek]]');
+            $fwSlot = $this_->getNativeSlot('[[firstDayOfWeek]]');
             if ($fwSlot instanceof JsString) {
                 static $weekdayIndex = [
                     'mon' => 1, 'tue' => 2, 'wed' => 3, 'thu' => 4,

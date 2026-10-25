@@ -100,7 +100,7 @@ final class ByteStream
         $ctorByobReader = JsFunction::fromCallable(
             'ReadableStreamBYOBReader',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor ReadableStreamBYOBReader requires 'new'");
                 }
                 $stream = $args[0] ?? JsUndefined::instance();
@@ -111,7 +111,7 @@ final class ByteStream
                 if ($stream->getInternalProperty('[[ControllerType]]') !== 'byte') {
                     throw new TypeError('Cannot construct BYOB reader for non-byte stream');
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : self::getByobReaderPrototype();

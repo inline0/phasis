@@ -137,10 +137,10 @@ class BlobConstructor
         $ctor = JsFunction::fromCallable(
             'Blob',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Failed to construct 'Blob': Please use the 'new' operator");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);
@@ -179,7 +179,7 @@ class BlobConstructor
         $ctor = JsFunction::fromCallable(
             'File',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Failed to construct 'File': Please use the 'new' operator");
                 }
                 if (count($args) < 2) {
@@ -188,7 +188,7 @@ class BlobConstructor
                         . count($args) . ' present.'
                     );
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $this_->setPrototype($ntProto instanceof JsObject ? $ntProto : $proto);

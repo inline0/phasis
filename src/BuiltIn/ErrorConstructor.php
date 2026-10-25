@@ -104,7 +104,7 @@ class ErrorConstructor
                     // Per spec, check for [[ErrorData]] internal slot.
                     // We mark real error objects with this slot during construction.
                     return new \Phasis\Value\JsBoolean(
-                        $arg->hasOwnProperty('[[ErrorData]]')
+                        $arg->hasNativeSlot('[[ErrorData]]', own: true)
                     );
                 }, 1);
                 $constructor->defineOwnProperty('isError', PropertyDescriptor::data($isErrorFn, true, false, true));
@@ -259,11 +259,11 @@ class ErrorConstructor
             $options = $args[2] ?? JsUndefined::instance();
 
             // Determine target object.
-            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 $obj = $this_;
                 // Per §9.1.13 OrdinaryCreateFromConstructor, set the prototype
                 // from newTarget.prototype (fall back to intrinsicDefaultProto).
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;
@@ -404,7 +404,7 @@ class ErrorConstructor
                 : null;
             $options = $args[1] ?? JsUndefined::instance();
 
-            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 // Called via new: populate the already-created object.
                 // Do NOT override the prototype: evalNewExpression already sets
                 // the correct prototype based on new.target's .prototype property.
@@ -484,11 +484,11 @@ class ErrorConstructor
             $suppressedArg = $args[1] ?? JsUndefined::instance();
             $messageArg = $args[2] ?? JsUndefined::instance();
 
-            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof JsObject && $this_->hasNativeSlot('[[NewTarget]]')) {
                 $obj = $this_;
                 // Per §9.1.13 OrdinaryCreateFromConstructor, set prototype
                 // from newTarget.prototype.
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;

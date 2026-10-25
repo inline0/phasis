@@ -286,7 +286,7 @@ trait TemporalUnitsHelpers
     private static function toCalendarSlotValue(JsValue $calVal, bool $allowAnnotations = true): string
     {
         // Temporal objects with [[Calendar]] slot: extract directly.
-        if ($calVal instanceof JsObject && $calVal->has('[[Calendar]]')) {
+        if ($calVal instanceof JsObject && $calVal->hasNativeSlot('[[Calendar]]')) {
             return self::getSlotString($calVal, '[[Calendar]]');
         }
         if ($calVal instanceof JsNull) {

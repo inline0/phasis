@@ -261,7 +261,7 @@ trait PlainTimeSection
         self::installTemporalToPrimitive($proto, 'PlainTime');
 
         $ctor = JsFunction::fromCallable('PlainTime', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainTime must be called with new');
             }
             self::applyNewTargetPrototype($this_, $proto);
@@ -298,7 +298,8 @@ trait PlainTimeSection
                 // For strings/PlainTime/PlainDateTime/ZonedDateTime: convert first, then validate options.
                 if (
                     $item instanceof JsString || ($item instanceof JsObject && (
-                    $item->has('[[IsPlainTime]]') || $item->has('[[IsPlainDateTime]]') || $item->has('[[IsZonedDateTime]]')
+                    $item->hasNativeSlot('[[IsPlainTime]]') || $item->hasNativeSlot('[[IsPlainDateTime]]')
+                    || $item->hasNativeSlot('[[IsZonedDateTime]]')
                     ))
                 ) {
                     $result = self::toPlainTime($item);

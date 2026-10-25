@@ -106,7 +106,7 @@ trait PluralRulesSection
         $constructor = JsFunction::fromCallable(
             'PluralRules',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Intl.PluralRules requires \'new\'');
                 }
 
@@ -329,7 +329,7 @@ trait PluralRulesSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedPluralRules]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedPluralRules]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.PluralRules.prototype.select called on non-PluralRules');
             }
@@ -372,7 +372,7 @@ trait PluralRulesSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedPluralRules]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedPluralRules]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.PluralRules.prototype.selectRange called on non-PluralRules');
             }
@@ -401,7 +401,7 @@ trait PluralRulesSection
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedPluralRules]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedPluralRules]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.PluralRules.prototype.resolvedOptions called on non-PluralRules');
             }
@@ -415,7 +415,7 @@ trait PluralRulesSection
             self::defineDataProp($result, 'notation', new JsString(
                 self::extractInternalString($this_, '[[Notation]]', 'standard'),
             ));
-            $compactDisplay = $this_->get('[[CompactDisplay]]');
+            $compactDisplay = $this_->getNativeSlot('[[CompactDisplay]]');
             if ($compactDisplay instanceof JsString) {
                 self::defineDataProp($result, 'compactDisplay', $compactDisplay);
             }

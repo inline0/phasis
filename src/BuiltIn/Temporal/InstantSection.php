@@ -210,7 +210,7 @@ trait InstantSection
 
         // Constructor
         $ctor = JsFunction::fromCallable('Instant', function (JsValue $this_, array $args) use ($proto): JsValue {
-            if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+            if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                 throw new TypeError('Temporal.Instant must be called with new');
             }
             self::applyNewTargetPrototype($this_, $proto);
@@ -231,7 +231,7 @@ trait InstantSection
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $item = $args[0] ?? JsUndefined::instance();
-                if ($item instanceof JsObject && $item->has('[[EpochNanoseconds]]')) {
+                if ($item instanceof JsObject && $item->hasNativeSlot('[[EpochNanoseconds]]')) {
                     $ns = self::requireInstant($item);
                     return self::createInstantObject($ns);
                 }

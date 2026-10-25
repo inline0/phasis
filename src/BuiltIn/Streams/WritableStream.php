@@ -92,10 +92,10 @@ final class WritableStream
         $ctor = JsFunction::fromCallable(
             'WritableStream',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor WritableStream requires 'new'");
                 }
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : self::getPrototype();
@@ -157,7 +157,7 @@ final class WritableStream
         $ctorWriter = JsFunction::fromCallable(
             'WritableStreamDefaultWriter',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                if (!$this_ instanceof JsObject || !$this_->hasNativeSlot('[[NewTarget]]')) {
                     throw new TypeError("Constructor WritableStreamDefaultWriter requires 'new'");
                 }
                 $stream = $args[0] ?? JsUndefined::instance();
@@ -165,7 +165,7 @@ final class WritableStream
                     throw new TypeError('Argument must be a WritableStream');
                 }
                 /** @var JsObject $stream */
-                $newTarget = $this_->get('[[NewTarget]]');
+                $newTarget = $this_->getNativeSlot('[[NewTarget]]');
                 if ($newTarget instanceof JsObject) {
                     $ntProto = $newTarget->get('prototype');
                     $useProto = $ntProto instanceof JsObject ? $ntProto : self::getWriterPrototype();

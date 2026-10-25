@@ -625,7 +625,7 @@ trait TimezoneHelpers
         }
         // Resolve year/month/day for the ref calendar context. For a ZDT, use
         // its wall-time components.
-        $refZdt = ($ref instanceof JsObject && $ref->has('[[IsZonedDateTime]]')) ? $ref : null;
+        $refZdt = ($ref instanceof JsObject && $ref->hasNativeSlot('[[IsZonedDateTime]]')) ? $ref : null;
         // DST-aware path is only needed when the ZDT's time zone can actually
         // produce non-24h days. UTC and fixed offset zones are always 24h.
         $refDstZdt = null;
@@ -641,9 +641,9 @@ trait TimezoneHelpers
             $refM = $refParts['month'];
             $refD = $refParts['day'];
         } else {
-            $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
-            $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
-            $refD = $ref instanceof JsObject && $ref->has('[[ISODay]]') ? self::getSlotInt($ref, '[[ISODay]]') : 1;
+            $refY = $ref instanceof JsObject && $ref->hasNativeSlot('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
+            $refM = $ref instanceof JsObject && $ref->hasNativeSlot('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
+            $refD = $ref instanceof JsObject && $ref->hasNativeSlot('[[ISODay]]') ? self::getSlotInt($ref, '[[ISODay]]') : 1;
         }
         if ($smallestUnit === 'year' || $smallestUnit === 'month') {
             $destination = self::durationDestinationEpochNs($ref, $dur);

@@ -206,7 +206,7 @@ trait ListFormatSection
         $constructor = JsFunction::fromCallable(
             'ListFormat',
             function (JsValue $this_, array $args) use ($proto): JsValue {
-                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                if (!$this_ instanceof JsObject || $this_->getNativeSlot('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Intl.ListFormat requires \'new\'');
                 }
 
@@ -284,7 +284,7 @@ trait ListFormatSection
         $format = JsFunction::fromCallable('format', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedListFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedListFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.ListFormat.prototype.format called on non-ListFormat');
             }
@@ -300,7 +300,7 @@ trait ListFormatSection
         $formatToParts = JsFunction::fromCallable('formatToParts', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedListFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedListFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.ListFormat.prototype.formatToParts called on non-ListFormat'
@@ -358,7 +358,7 @@ trait ListFormatSection
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[InitializedListFormat]]') instanceof JsUndefined
+                || $this_->getNativeSlot('[[InitializedListFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.ListFormat.prototype.resolvedOptions called on non-ListFormat');
             }

@@ -14,7 +14,7 @@
 - Release download archives use the same export-ignore runtime inventory as Composer before installing their bundled production autoloader.
 
 ### Fixed
-- Captured data preserves all public JSON keys, including names resembling native slots and leading null bytes, without interpreting `[[PrimitiveValue]]` as a boxed value.
+- Captured data preserves all public JSON keys, including names resembling native slots and leading null bytes. Native metadata readers keep those objects unbranded, so a public `[[PrimitiveValue]]` key cannot make them behave as boxed values.
 
 ### Upgrade notes
 - The new helper targets React/React DOM 19.3.1 and element roots. Full-document convenience transport and renderer nonce/CSP options are explicitly unsupported; existing document rendering remains available through `render()`.
