@@ -1,13 +1,36 @@
 # Browser hydration
 
-This directory ships in `phasis/phasis`'s Composer archive. There is no Phasis
-npm package. Resolve the helper's peer `react`, `react-dom` and `react-dom/client`
-imports with the consumer's existing bundler, using one React/React DOM 19.3.1
-pair. `hydrate.d.mts` supplies TypeScript declarations.
-
 Render with `Engine::renderForHydration()` and explicit
-`Phasis\Hydration\HydrationOptions`, then emit the returned `toHtml()`. From an
-external browser entry in the project root:
+`Phasis\Hydration\HydrationOptions`, then emit the returned `toHtml()`. Hydrate
+with standard React; no Phasis browser import is required:
+
+```js
+import { createElement } from 'react';
+import { hydrateRoot } from 'react-dom/client';
+import Root from './components/Root.jsx';
+
+const state = JSON.parse(
+    document.querySelector('script[data-phasis-state="site"]').textContent,
+);
+
+hydrateRoot(document.getElementById('site'), createElement(Root, state.props), {
+    identifierPrefix: state.identifierPrefix,
+});
+```
+
+Bundle the external entry with the consumer's existing tooling and one
+React/React DOM 19.3.1 pair. Use the exact captured props and identifier prefix
+with the same component and matching browser build. The application's bootstrap
+owns validation, initialization and React error handling.
+
+## Optional helper
+
+This directory ships an optional bootstrap helper in `phasis/phasis`'s Composer
+archive. It wraps React's `hydrateRoot` with transport and identity checks.
+There is no Phasis npm package. Its peer React imports resolve through the same
+consumer bundler and React pair; `hydrate.d.mts` supplies TypeScript declarations.
+From an external entry in the project root, the helper can replace the direct
+React call above:
 
 ```js
 import * as Components from './components/Root.jsx';

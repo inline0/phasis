@@ -35,7 +35,7 @@ Phasis lexes, parses, and executes ECMAScript in pure PHP. No `exec('node …')`
 - **Experimental Express and Hono support** through opt-in Node compatibility: CommonJS packages, Buffer, streams, filesystem access, HTTP/HTTPS/HTTP2 servers and clients, TLS, crypto, timers, and async context, executed inside PHP. See the [module coverage and host limits](./docs/modules.md#node-compatibility).
 - **JSX Pack**: render JSX components to HTML from PHP with `Engine::render()`, no build step
   - **Native React 19.3 server renderer** in PHP: `react`, `react-dom/server` and `react-dom/static` are built in, with HTML byte-identical to `react-dom@19.3.1` and hydratable by React on the client (hooks, context, Suspense, `useId`, async components, resource hints)
-  - **Captured-data hydration**: `Engine::renderForHydration()` pairs HTML with safe public props and a Composer-shipped browser helper; see the [data and browser contract](./docs/react.md#rendering-a-component-for-hydration)
+  - **Captured-data hydration**: `Engine::renderForHydration()` pairs HTML with safe public props for React's standard `hydrateRoot`; a Composer-shipped bootstrap helper is optional. See the [data and browser contract](./docs/react.md#rendering-a-component-for-hydration).
   - **General HTML renderer** (`phasis`, `phasis/jsx-runtime`) for emails, feeds and static pages, byte-identical to preact-render-to-string 6.8.1, plus `raw()`
   - **Bundler-style imports**: extensionless paths and `index` files, `jsconfig` aliases, `node_modules` with `package.json` `exports`, CommonJS packages, style and asset imports, import maps, and barrel pruning for `sideEffects: false` packages
   - Optional precompile of static markup, an `opcache.preload` script, and an on-disk parse cache

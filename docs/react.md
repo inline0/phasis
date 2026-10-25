@@ -57,32 +57,32 @@ try {
 }
 ```
 
-An external browser entry statically imports the same component module and the
-shipped helper. Bundle this with the host's existing esbuild or other tooling:
+On the client, import the same component and hydrate it with React's standard
+`hydrateRoot`. Read the captured props from the inert state tag emitted by
+`toHtml()`:
 
 ```jsx
-import * as Comments from './components/CommentsToggle.jsx';
-import { hydrate } from './vendor/phasis/phasis/browser/hydrate.mjs';
+import { createElement } from 'react';
+import { hydrateRoot } from 'react-dom/client';
+import CommentsToggle from './components/CommentsToggle.jsx';
 
-hydrate(document.getElementById('comments'), Comments, {
-  entryId: 'comments',
-  buildId: ASSET_BUILD_ID, // Supplied by this build, matching PHP's identity.
-  onError: reportTransportError,
-  onRecoverableError: reportReactError,
-  onCaughtError: reportReactError,
-  onUncaughtError: reportReactError,
+const container = document.getElementById('comments');
+const state = JSON.parse(
+  document.querySelector('script[data-phasis-state="comments"]').textContent,
+);
+
+hydrateRoot(container, createElement(CommentsToggle, state.props), {
+  identifierPrefix: state.identifierPrefix,
 });
 ```
 
-The helper is a runtime asset of the **Composer** package, at
-`vendor/phasis/phasis/browser/hydrate.mjs`, with `hydrate.d.mts` declarations.
-The example assumes an entry in the project root; adjust the relative path or
-configure an explicit bundler alias for that installed file. There is no Phasis
-npm package or implicit bare-specifier resolution. Its peer imports (`react`,
-`react-dom`, `react-dom/client`) resolve through the consumer's bundler. Install
-one compatible React/React DOM pair, currently **19.3.1**. The helper does not
-bundle another copy. Node is development/build tooling, never the visitor's
-execution backend.
+No Phasis browser import is required. Components use ordinary React imports,
+props, hooks and context. For a named export, select it in PHP's `export`
+argument and statically import that same component in the browser.
+
+Bundle this external entry with the host's existing esbuild or other tooling.
+Use one React/React DOM **19.3.1** pair, matching the native server renderer.
+Node is development/build tooling, never the visitor's execution backend.
 
 `RenderedRoot` exposes readonly `html`, `payload` and `options`. The payload is
 captured **before** the component module executes. Phasis renders from those
@@ -113,7 +113,7 @@ available through the existing `render()` and `renderSource()` APIs.
   `defaultProps` behave as on the client. Use a named `data` prop for application
   fields that collide with React's own props.
 
-### Transport, identity and diagnostics
+### Transport and identity
 
 The versioned payload contains only protocol version, public entry/export/build
 identity, root ID, React version, identifier prefix and captured props. The server
@@ -127,23 +127,55 @@ For custom element-root markup, place `html` inside the host's root and `payload
 unchanged in that same adjacent state tag; escape both attribute IDs separately.
 Do not insert the state inside the root or format whitespace around its children.
 
-The browser helper validates the protocol and metadata, unique root ID, exact
+Pass the captured `props` and `identifierPrefix` unchanged to React. The root
+DOM ID and React's identifier prefix serve different purposes. Use distinct
+root IDs **and** prefixes for independent roots in one document, and keep
+browser assets paired with the HTML's build when caching or deploying.
+
+When calling `hydrateRoot` directly, the application's bootstrap owns state and
+build validation, duplicate initialization checks and React error handling.
+The optional helper below automates those checks.
+
+### Optional browser helper
+
+If useful, Phasis also ships a bootstrap helper around React's `hydrateRoot`.
+Using it is optional; it does not change the component API or provide an
+application context. An external browser entry can use it instead of the
+direct React call above:
+
+```jsx
+import * as Comments from './components/CommentsToggle.jsx';
+import { hydrate } from './vendor/phasis/phasis/browser/hydrate.mjs';
+
+hydrate(document.getElementById('comments'), Comments, {
+  entryId: 'comments',
+  buildId: ASSET_BUILD_ID, // Supplied by this build, matching PHP's identity.
+  onError: reportTransportError,
+  onRecoverableError: reportReactError,
+});
+```
+
+The helper is a runtime asset of the **Composer** package, at
+`vendor/phasis/phasis/browser/hydrate.mjs`, with `hydrate.d.mts` declarations.
+This example assumes an entry in the project root; adjust the relative path or
+configure an explicit bundler alias for that installed file. There is no Phasis
+npm package or implicit bare-specifier resolution. Its peer imports (`react`,
+`react-dom`, `react-dom/client`) resolve through the consumer's bundler, using the
+same React pair as the components. The helper does not bundle another copy.
+
+The optional helper validates the protocol and metadata, unique root ID, exact
 React/React DOM version, data shape, expected entry/build/export and an own
-component export of the statically imported module. For a named export, supply the same
-`export` name to PHP and the browser. No payload value drives an import or runs
-as code. Duplicate initialization, including another helper bundle, is rejected.
-After successful initialization the root carries `data-phasis-hydrated`.
+component export of the statically imported module. For a named export, supply
+the same `export` name to PHP and the helper. No payload value drives an import
+or runs as code. Duplicate initialization, including another helper bundle, is
+rejected. After successful initialization the root carries
+`data-phasis-hydrated`.
 
 Transport and identity failures throw `HydrationError` (with a `code`) and invoke
 the optional `onError` callback, preserving server HTML. Actual React diagnostics
 use the supplied `onRecoverableError`, `onCaughtError` and `onUncaughtError` hooks,
 or React's own defaults. There is no silent `createRoot` fallback. Fix hydration
 mismatches; React's documented recovery can replace mismatched nodes.
-
-The root DOM ID and React's `identifierPrefix` serve different purposes.
-`identifierPrefix` reaches native Fizz and `hydrateRoot` unchanged. Use distinct
-root IDs **and** prefixes for independent roots in one document, and keep all
-identities and browser assets paired when caching or deploying HTML.
 
 ### Element roots and CSP
 
