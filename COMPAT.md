@@ -3,13 +3,13 @@
 Generated from a completed `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
-- Snapshot time: `2026-10-25T10:38:39+00:00`
+- Snapshot time: `2026-10-25T16:41:11+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `161`
 - Test files: `53616`
-- Git: `feat/react-hydration` @ `194f0635` (dirty)
+- Git: `feat/typescript` @ `d5663bbf` (dirty)
 
 ## Summary
 
@@ -198,26 +198,26 @@ Generated from a completed `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| built-ins/decodeURIComponent | NORMAL | 161.263s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
-| built-ins/decodeURI | NORMAL | 145.859s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
-| staging/sm | NORMAL | 100.749s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
-| staging/sm | NORMAL | 98.881s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
-| staging/sm | NORMAL | 96.500s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
-| staging/sm | NORMAL | 94.585s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
-| staging/sm | NORMAL | 91.265s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
-| staging/sm | NORMAL | 83.485s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
-| staging/sm | NORMAL | 81.532s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
-| staging/sm | NORMAL | 78.526s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
-| staging/sm | NORMAL | 77.426s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
-| built-ins/decodeURI | NORMAL | 74.256s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
-| built-ins/decodeURIComponent | NORMAL | 72.042s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
-| language/literals | NORMAL | 71.990s | 25 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js` |
-| staging/sm | NORMAL | 62.725s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
-| intl402 | NORMAL | 62.168s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
-| intl402/DateTimeFormat | NORMAL | 60.538s | 25 | `test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plainmonthday-formatting-timezonename.js`<br>`test262/test/intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-plaintime-formatting-timezonename.js`<br>...<br>`test262/test/intl402/DateTimeFormat/prototype/formatToParts/name.js`<br>`test262/test/intl402/DateTimeFormat/prototype/formatToParts/offset-timezone-correct.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.903s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hanifi_Rohingya.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hanunoo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Hatran.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.787s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tibetan.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tifinagh.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tirhuta.js` |
-| built-ins/RegExp/property-escapes/generated | NORMAL | 59.667s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kharoshthi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khitan_Small_Script.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khmer.js` |
+| staging/sm | NORMAL | 98.777s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
+| staging/sm | NORMAL | 98.251s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
+| staging/sm | NORMAL | 89.595s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
+| staging/sm | NORMAL | 86.763s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
+| built-ins/decodeURIComponent | NORMAL | 84.989s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
+| staging/sm | NORMAL | 81.578s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
+| staging/sm | NORMAL | 79.706s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
+| staging/sm | NORMAL | 79.453s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
+| staging/sm | NORMAL | 75.012s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
+| language/literals | NORMAL | 73.062s | 25 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js` |
+| built-ins/TypedArray | NORMAL | 71.487s | 25 | `test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js`<br>`test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js`<br>...<br>`test262/test/built-ins/TypedArray/prototype/copyWithin/not-a-constructor.js`<br>`test262/test/built-ins/TypedArray/prototype/copyWithin/prop-desc.js` |
+| staging/sm | NORMAL | 71.357s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
+| intl402 | NORMAL | 71.059s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
+| built-ins/decodeURI | NORMAL | 69.792s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
+| annexB/built-ins/RegExp | NORMAL | 63.500s | 25 | `test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js`<br>`test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js`<br>...<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js`<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.871s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Paragraph_Separator.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Private_Use.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Punctuation.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.285s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Titlecase_Letter.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Unassigned.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 58.915s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Devanagari.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dives_Akuru.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Dogra.js` |
+| staging/sm | NORMAL | 58.690s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 58.656s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Rejang.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Runic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Samaritan.js` |
 
 ## Runner Caveats
 
