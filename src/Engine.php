@@ -2164,6 +2164,56 @@ class Engine
         });
     }
 
+    /**
+     * Render a React element root from one captured JSON-data snapshot.
+     *
+     * The payload is captured before module evaluation. Existing render APIs
+     * retain their general PHP interop; this API never exposes PHP services,
+     * callables or serialization hooks to the component or the browser.
+     *
+     * @param array<array-key, mixed>|\stdClass $props Object-shaped public data.
+     * @param Hydration\HydrationOptions|null $options Explicit public entry, build and root identities.
+     * @return Hydration\RenderedRoot Matched HTML and immutable, script-safe state.
+     */
+    public function renderForHydration(
+        string $path,
+        array|\stdClass $props = [],
+        string $export = 'default',
+        ?Hydration\HydrationOptions $options = null,
+    ): Hydration\RenderedRoot {
+        if ($options === null) {
+            throw new \InvalidArgumentException('renderForHydration requires explicit HydrationOptions.');
+        }
+        $payload = Hydration\PropsSnapshot::capture($props, $export, $options);
+        $resolved = realpath($path);
+        if ($resolved === false) {
+            throw new \RuntimeException("Cannot read module: {$path}");
+        }
+        return Hydration\PropsSnapshot::withPrecision(fn (): Hydration\RenderedRoot => $this->withCurrentInterpreter(
+            function () use ($resolved, $payload, $export, $options): Hydration\RenderedRoot {
+                $state = BuiltIn\JsonObject::parseSource($payload);
+                if (!$state instanceof JsObject || !($jsProps = $state->get('props')) instanceof JsObject) {
+                    throw new \LogicException('Captured hydration props must be an object.');
+                }
+                $namespace = $this->interpreter->getModuleLoader()->loadModule($resolved);
+                $this->eventLoop->runUntilEmpty();
+                if (!$namespace->hasOwnProperty($export)) {
+                    throw new \InvalidArgumentException("Hydration component export is missing: {$export}");
+                }
+                $element = BuiltIn\Jsx\React\ReactModule::createElement([$namespace->get($export), $jsProps]);
+                $renderOptions = new JsObject();
+                $renderOptions->defineOwnProperty('identifierPrefix', PropertyDescriptor::data(new JsString($options->identifierPrefix)));
+                $html = $this->prerenderElement($element, $renderOptions);
+                if (preg_match('/<!doctype\s|<html[\s>]/i', $html) === 1) {
+                    throw new \InvalidArgumentException(
+                        'renderForHydration supports element roots, not full HTML documents; use render() for documents.',
+                    );
+                }
+                return new Hydration\RenderedRoot($html, $payload, $options);
+            },
+        ));
+    }
+
     /** @param array<string, mixed> $props */
     private function renderExport(string $modulePath, JsObject $namespace, array $props, string $export, ?RenderProfile $profile): string
     {
@@ -2180,11 +2230,16 @@ class Engine
             return \Phasis\BuiltIn\Jsx\Html\HtmlRenderer::renderComponent($this, $component, $jsProps);
         }
         $element = \Phasis\BuiltIn\Jsx\React\ReactModule::element($component, \Phasis\Value\JsNull::instance(), $jsProps);
+        return $this->prerenderElement($element, JsUndefined::instance());
+    }
+
+    private function prerenderElement(JsValue $element, JsValue $options): string
+    {
         $html = null;
         $error = null;
         \Phasis\BuiltIn\Jsx\React\Fizz\Server::prerender(
             $element,
-            JsUndefined::instance(),
+            $options,
             static function (\Phasis\BuiltIn\Jsx\React\Fizz\Request $request) use (&$html): void {
                 $html = \Phasis\BuiltIn\Jsx\React\Fizz\Server::flushToString($request);
             },

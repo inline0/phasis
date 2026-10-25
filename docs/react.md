@@ -32,21 +32,131 @@ export default function CommentsToggle({ count, excerpt }) {
 }
 ```
 
-PHP renders it and embeds the props, so the client renders the same tree:
+For a matched server render and hydration payload, capture public data with
+`renderForHydration()`. PHP needs no Node process:
 
 ```php
-$props = ['count' => 3, 'excerpt' => $excerpt];
-echo '<div id="comments">' . $engine->render(__DIR__ . '/components/CommentsToggle.jsx', $props) . '</div>';
-echo '<script>window.__COMMENTS__ = ' . json_encode($props, JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>';
+use Phasis\Engine;
+use Phasis\Hydration\HydrationOptions;
+
+$engine = new Engine();
+try {
+    $root = $engine->renderForHydration(
+        __DIR__ . '/components/CommentsToggle.jsx',
+        ['count' => 3, 'excerpt' => $excerpt],
+        options: new HydrationOptions(
+            rootId: 'comments',
+            entryId: 'comments',
+            buildId: $assetBuildId,
+            identifierPrefix: 'comments-',
+        ),
+    );
+    echo $root->toHtml();
+} finally {
+    $engine->close();
+}
 ```
 
-On the client, standard React 19.3 tooling:
+An external browser entry statically imports the same component module and the
+shipped helper. Bundle this with the host's existing esbuild or other tooling:
 
 ```jsx
-hydrateRoot(document.getElementById('comments'), <CommentsToggle {...window.__COMMENTS__} />);
+import * as Comments from './components/CommentsToggle.jsx';
+import { hydrate } from './vendor/phasis/phasis/browser/hydrate.mjs';
+
+hydrate(document.getElementById('comments'), Comments, {
+  entryId: 'comments',
+  buildId: ASSET_BUILD_ID, // Supplied by this build, matching PHP's identity.
+  onError: reportTransportError,
+  onRecoverableError: reportReactError,
+  onCaughtError: reportReactError,
+  onUncaughtError: reportReactError,
+});
 ```
 
-The text markers React needs (`<!-- -->` between adjacent text) are in the output, and `useId()` produces the same `_R_..._` ids the client generates. The client must run React 19.3: other versions generate different ids and markup.
+The helper is a runtime asset of the **Composer** package, at
+`vendor/phasis/phasis/browser/hydrate.mjs`, with `hydrate.d.mts` declarations.
+The example assumes an entry in the project root; adjust the relative path or
+configure an explicit bundler alias for that installed file. There is no Phasis
+npm package or implicit bare-specifier resolution. Its peer imports (`react`,
+`react-dom`, `react-dom/client`) resolve through the consumer's bundler. Install
+one compatible React/React DOM pair, currently **19.3.1**. The helper does not
+bundle another copy. Node is development/build tooling, never the visitor's
+execution backend.
+
+`RenderedRoot` exposes readonly `html`, `payload` and `options`. The payload is
+captured **before** the component module executes. Phasis renders from those
+captured values; later PHP mutation, JS mutation during render, or a component's
+`toJSON` cannot alter the stored snapshot. The component sees ordinary props and
+can provide them through its own React context. No automatic context or global
+application singleton is created. PHP-to-JS callable/object interop remains
+available through the existing `render()` and `renderSource()` APIs.
+
+### Data contract
+
+- Root props are a PHP map or a plain `stdClass`; empty PHP root props become
+  `{}`. A nonempty root list is rejected. Nested list arrays remain JSON arrays;
+  maps become JSON objects. Use `new stdClass()` for a nested empty object.
+- Values are null, booleans, valid UTF-8 strings, finite doubles, safe PHP
+  integers, arrays and exact `stdClass` instances. Callable-looking strings and
+  arrays stay data. Arbitrary objects, serializers, closures, resources, cycles,
+  invalid UTF-8 and structures deeper than 128 levels are rejected before any
+  component module executes. Shared acyclic objects are allowed.
+- PHP integers must fit `[-9007199254740991, 9007199254740991]`; use strings for
+  larger exact integers. PHP floats already have IEEE 754 double precision and
+  keep that precision, including signed zero. They may represent approximate
+  large numbers. Encoding and rendering temporarily use round-trip
+  `serialize_precision=-1` and restore the host setting, including on failure.
+- Data-only JSON conversion preserves object/array distinctions, null and keys
+  without invoking PHP callbacks, JS `toJSON`, or JSON revivers. Normal React
+  `createElement` rules then apply to the root: reserved props and class
+  `defaultProps` behave as on the client. Use a named `data` prop for application
+  fields that collide with React's own props.
+
+### Transport, identity and diagnostics
+
+The versioned payload contains only protocol version, public entry/export/build
+identity, root ID, React version, identifier prefix and captured props. The server
+component path and executable source are never included. Public identities are
+provided by the host; do not use a secret or server path as an identity.
+
+`toHtml()` emits a div with an escaped ID and an adjacent inert
+`<script type="application/json" data-phasis-state="…">`. Script-safe JSON uses
+JSON escaping, not HTML entities. State stays outside React-managed children.
+For custom element-root markup, place `html` inside the host's root and `payload`
+unchanged in that same adjacent state tag; escape both attribute IDs separately.
+Do not insert the state inside the root or format whitespace around its children.
+
+The browser helper validates the protocol and metadata, unique root ID, exact
+React/React DOM version, data shape, expected entry/build/export and an own
+component export of the statically imported module. For a named export, supply the same
+`export` name to PHP and the browser. No payload value drives an import or runs
+as code. Duplicate initialization, including another helper bundle, is rejected.
+After successful initialization the root carries `data-phasis-hydrated`.
+
+Transport and identity failures throw `HydrationError` (with a `code`) and invoke
+the optional `onError` callback, preserving server HTML. Actual React diagnostics
+use the supplied `onRecoverableError`, `onCaughtError` and `onUncaughtError` hooks,
+or React's own defaults. There is no silent `createRoot` fallback. Fix hydration
+mismatches; React's documented recovery can replace mismatched nodes.
+
+The root DOM ID and React's `identifierPrefix` serve different purposes.
+`identifierPrefix` reaches native Fizz and `hydrateRoot` unchanged. Use distinct
+root IDs **and** prefixes for independent roots in one document, and keep all
+identities and browser assets paired when caching or deploying HTML.
+
+### Element roots and CSP
+
+The convenience API supports an element root only. Full HTML documents are
+rejected; existing `render()` still supports them. It exposes no streaming,
+bootstrap-script, nonce, or other renderer options. Do not pass extra options
+expecting Fizz to consume them.
+
+The state tag is inert, and the executable hydration entry should be an external
+hashed asset. This alone is **not** a complete CSP guarantee: React can emit
+executable instructions for Suspense or resource behavior. Nonce propagation
+and strict-CSP qualification for those instructions are unsupported by this
+API. The host owns response headers, asset policy and cache/nonce lifetimes.
 
 ## Exports
 
@@ -102,6 +212,12 @@ Identical props always give identical HTML, so the output can be cached keyed by
 - **Render oracle**: every React fixture in `tests/Jsx/react` renders byte-identical to `react-dom@19.3.1` in Node with `renderToString`, `renderToStaticMarkup` and `prerender`, and through `Engine::render()`.
 - **Hydration**: `tests/Jsx/oracle/hydrate.mjs` hydrates Phasis's output with React 19.3's client in jsdom, production and development builds, and requires zero recoverable errors, zero hydration warnings and every server node reused.
 - **Three-way**: real React 19.3 running inside Phasis agrees with both.
+- **Captured-data consumer**: `node tests/Jsx/oracle/hydration-contract.mjs`
+  installs the committed Composer archive into a separate project, bundles its
+  shipped helper with the same components and one peer React copy, and verifies
+  development/production hydration, node reuse, connected interaction, prefixes,
+  data mutation and rejection/diagnostic behavior. CI also runs it on PHP 8.2,
+  8.3 and 8.4, without installing development-only PHP tooling.
 
 ## Exact fallback
 

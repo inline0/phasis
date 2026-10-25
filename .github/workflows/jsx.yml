@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'browser/**'
       - 'tests/Jsx/**'
       - 'phpunit.xml.dist'
       - 'composer.json'
@@ -20,6 +21,7 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'browser/**'
       - 'tests/Jsx/**'
       - 'phpunit.xml.dist'
       - 'composer.json'
@@ -89,3 +91,37 @@ jobs:
         env:
           TZ: UTC
         run: node tests/Jsx/oracle/hydrate.mjs
+
+      - name: Qualify the Composer hydration consumer
+        run: node tests/Jsx/oracle/hydration-contract.mjs
+
+  hydration-runtime:
+    name: Hydration runtime PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, bcmath, intl, curl
+          coverage: none
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/Jsx/oracle/package-lock.json
+
+      - name: Install the pinned browser toolchain
+        working-directory: tests/Jsx/oracle
+        run: npm ci --no-audit --no-fund
+
+      # Only the downstream runtime is installed. PHPUnit requires newer PHP
+      # than our supported library minimum and is not a runtime dependency.
+      - name: Qualify the Composer hydration consumer
+        run: node tests/Jsx/oracle/hydration-contract.mjs
