@@ -17,6 +17,7 @@
     "lucide-react": "1.56.0",
     "preact": "11.0.1",
     "preact-render-to-string": "6.8.1",
+    "prettier": "3.9.10",
     "prop-types": "15.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -24,7 +25,11 @@
     "react-is": "19.3.1",
     "react-markdown": "10.1.0",
     "tailwind-merge": "3.7.0",
-    "use-sync-external-store": "1.7.0",
-    "prettier": "3.9.10"
+    "use-sync-external-store": "1.7.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2"
   }
 }

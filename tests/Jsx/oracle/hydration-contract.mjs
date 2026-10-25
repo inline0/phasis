@@ -48,6 +48,26 @@ try {
         assert.equal(cli.trim(), '2');
         checks += 4;
     }
+    fs.symlinkSync(path.join(here, 'node_modules'), path.join(temp, 'node_modules'), 'dir');
+    const types = path.join(temp, 'types.mts');
+    fs.writeFileSync(types, `
+        import { hydrate, HydrationError } from './vendor/phasis/phasis/browser/hydrate.mjs';
+        import type { Root } from 'react-dom/client';
+        const root: Root = hydrate(document.createElement('div'), {}, {
+            entryId: 'contract', buildId: 'build', export: 'Named',
+            onError(error) { const code: HydrationError['code'] = error.code; },
+            onRecoverableError(error, info) { const stack: string | undefined = info.componentStack; },
+        });
+        root.unmount();
+        // @ts-expect-error Build identity is mandatory.
+        hydrate(document.createElement('div'), {}, { entryId: 'contract' });
+        // @ts-expect-error Document hydration is outside the element-root contract.
+        hydrate(document, {}, { entryId: 'contract', buildId: 'build' });
+    `);
+    execFileSync(process.execPath, [path.join(here, 'node_modules/typescript/bin/tsc'),
+        '--strict', '--noEmit', '--module', 'NodeNext', '--target', 'ES2022', '--preserveSymlinks', types],
+    { cwd: temp, stdio: 'pipe' });
+    checks++;
     fs.cpSync(path.join(repo, 'tests/Jsx/hydration'), path.join(temp, 'components'), { recursive: true });
     const html = execFileSync('php', [path.join(repo, 'tests/Jsx/hydration-run.php'), temp], {
         encoding: 'utf8', env: { ...process.env, XDEBUG_MODE: 'off' },
