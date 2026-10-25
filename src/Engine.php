@@ -2191,7 +2191,7 @@ class Engine
         }
         return Hydration\PropsSnapshot::withPrecision(fn (): Hydration\RenderedRoot => $this->withCurrentInterpreter(
             function () use ($resolved, $payload, $export, $options): Hydration\RenderedRoot {
-                $state = BuiltIn\JsonObject::parseSource($payload);
+                $state = BuiltIn\JsonObject::parseSource($payload, publicProperties: true);
                 if (!$state instanceof JsObject || !($jsProps = $state->get('props')) instanceof JsObject) {
                     throw new \LogicException('Captured hydration props must be an object.');
                 }

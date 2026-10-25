@@ -37,6 +37,10 @@ export function Shapes({ data }) {
     return <pre>{JSON.stringify(data)}:{Object.is(data.zero, -0) ? 'negative-zero' : 'positive-zero'}:{data.decimal}</pre>;
 }
 
+export function Keys(props) {
+    return <pre>{Object.keys(props).sort().join(',')}:{Reflect.ownKeys(props.data).join(',')}:{JSON.stringify(props.data)}</pre>;
+}
+
 export function Document() {
     return <html><head><title>Document</title></head><body>Content</body></html>;
 }

@@ -278,4 +278,30 @@ final class JsxHydrationTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->engine->renderForHydration(__DIR__ . '/hydration/Root.jsx', export: '', options: $this->options());
     }
+
+    public function testDataKeysCannotBecomeHiddenNativeSlots(): void
+    {
+        $result = $this->engine->renderForHydration(
+            __DIR__ . '/hydration/Root.jsx',
+            ['[[public]]' => true, 'data' => ['[[public]]' => 'visible', '[[PrimitiveValue]]' => 42]],
+            export: 'Keys',
+            options: $this->options(),
+        );
+        $this->assertStringContainsString('[[public]],data', $result->html);
+        $this->assertStringContainsString('[[public]],[[PrimitiveValue]]', $result->html);
+        $this->assertStringContainsString('&quot;[[public]]&quot;:&quot;visible&quot;', $result->html);
+        $this->assertStringContainsString('&quot;[[PrimitiveValue]]&quot;:42', $result->html);
+    }
+
+    public function testLeadingNullBytesInDataKeysRemainJsonProperties(): void
+    {
+        $result = $this->engine->renderForHydration(
+            __DIR__ . '/hydration/Root.jsx',
+            ['data' => ["\0field" => 'visible']],
+            export: 'Shapes',
+            options: $this->options(),
+        );
+        $this->assertStringContainsString('\\u0000field', $result->html);
+        $this->assertStringContainsString('visible', $result->html);
+    }
 }

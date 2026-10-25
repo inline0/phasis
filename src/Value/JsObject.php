@@ -975,7 +975,7 @@ class JsObject implements JsValue
     {
         return array_values(array_filter(
             $this->properties->keys(),
-            fn(string $k) => !self::isInternalSlot($k),
+            fn(string $k) => !static::isInternalSlot($k),
         ));
     }
 
@@ -993,7 +993,7 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($allKeys as $key) {
-            if (self::isInternalSlot($key)) {
+            if (static::isInternalSlot($key)) {
                 continue;
             }
             if (self::isArrayIndex($key)) {
@@ -1088,7 +1088,7 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($stringKeys as $key) {
-            if (self::isInternalSlot($key)) {
+            if (static::isInternalSlot($key)) {
                 continue;
             }
             if (self::isArrayIndex($key)) {
@@ -1169,7 +1169,7 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($enumKeys as $key) {
-            if (self::isInternalSlot($key)) {
+            if (static::isInternalSlot($key)) {
                 continue;
             }
             if (self::isArrayIndex($key)) {

@@ -12,6 +12,9 @@ $cases = [
     ['id' => 'beta', 'export' => 'default', 'props' => ['data' => ['label' => 'Beta', 'value' => 20]]],
     ['id' => 'named', 'export' => 'Defaults', 'props' => ['key' => 'key', '__self' => 'hidden', '__source' => 'hidden', 'ref' => null]],
     ['id' => 'empty', 'export' => 'Defaults', 'props' => []],
+    ['id' => 'keys', 'export' => 'Keys', 'props' => ['[[public]]' => true, 'data' => [
+        '[[public]]' => 'visible', '[[PrimitiveValue]]' => 42,
+    ]]],
     ['id' => 'shapes', 'export' => 'Shapes', 'props' => ['data' => (object) [
         'emptyObject' => new stdClass(),
         'emptyArray' => [],
@@ -23,6 +26,7 @@ $cases = [
         'large' => 1.0e100,
         '__proto__' => (object) ['polluted' => true],
         'toJSON' => 'data only',
+        'nulKeys' => ["\0field" => 'visible'],
         'text' => '</script><script>window.exploit=true</script>' . "\u{2028}\u{2029}",
     ]]],
 ];

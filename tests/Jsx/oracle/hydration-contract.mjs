@@ -111,7 +111,8 @@ try {
                 for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
                 return nodes;
             });
-            for (const [id, name] of [['alpha', 'default'], ['beta', 'default'], ['named', 'Defaults'], ['empty', 'Defaults'], ['shapes', 'Shapes']]) {
+            for (const [id, name] of [['alpha', 'default'], ['beta', 'default'], ['named', 'Defaults'], ['empty', 'Defaults'],
+                ['shapes', 'Shapes'], ['keys', 'Keys']]) {
                 roots.push(hydrate(window.document.getElementById(id), components, options(name)));
             }
             await sleep(100);
@@ -129,7 +130,7 @@ try {
             assert.ok(b.id.startsWith('_beta-'));
             assert.notEqual(a.id, b.id);
             assert.equal(window.exploit, undefined);
-            assert.equal(window.document.querySelectorAll('script').length, 5, 'Captured text must not escape an inert state tag.');
+            assert.equal(window.document.querySelectorAll('script').length, 6, 'Captured text must not escape an inert state tag.');
             assert.equal(window.Object.prototype.polluted, undefined);
             a.click();
             await until(() => window.document.querySelector('#alpha output').textContent.endsWith(':1'));
