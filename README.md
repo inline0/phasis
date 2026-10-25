@@ -117,7 +117,7 @@ composer cs
 # Full quality gate (PHPStan + PHPCS + PHPUnit + oracle)
 ./bin/verify-all
 
-# Original Express and Hono suites, with pinned development dependencies
+# Local-only Express and Hono suites. NEVER run these in CI.
 npm ci --prefix tests/Frameworks
 python3 tests/Frameworks/express/setup.py
 python3 tests/Frameworks/hono/setup.py
@@ -128,7 +128,7 @@ python3 tests/Frameworks/hono/run.py --timeout-scale 10
 ./bin/test262 --category built-ins/Array --jobs 4
 ```
 
-Express and Hono support is experimental. Framework CI uses ten times the upstream test timeouts while retaining the original assertions and recording both timeout values. Omit `--timeout-scale 10` to check the original deadlines. This setting does not change test262 limits or engine execution budgets.
+Express and Hono support is experimental. **Framework compatibility suites must never run in CI**, including manual dispatches or release gates. The framework workflow is removed and disabled; releases do not require these suites. See the [local-only framework policy](./tests/Frameworks/README.md). Local runs may use `--timeout-scale 10` while retaining the original assertions and recording both timeout values. Omit it to check the original deadlines. This setting does not change test262 limits or engine execution budgets.
 
 CI runs PHPStan, PHPCS, the unit suite and the oracle regression on every push to `main` and every pull request; the Web Platform Tests and popular-package suites run when `src/` or their fixtures change. The full test262 matrix (`compat-matrix.yml`) is started by hand, not on every push; it runs against the test262 revision pinned by the submodule and commits the result to `COMPAT.md`, which records the snapshot time.
 

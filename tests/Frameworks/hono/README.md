@@ -1,7 +1,9 @@
 # Experimental Hono compatibility
 
-Hono support is experimental. CI checks functional compatibility with an explicit
-timeout scale of 10; meeting the original performance deadlines is deferred.
+Hono support is experimental. These suites are **local-only and must never run
+in CI**, including manual dispatches or release gates. See the
+[framework policy](../README.md). Meeting the original performance deadlines
+is deferred.
 
 The ignored source tree in `upstream/hono-4.13.13` is the unchanged Hono v4.13.13
 archive at commit `08a023cbfde55b434fb0fb30fae35d42e4bf20aa`. The repository,
@@ -35,7 +37,7 @@ runs both and compares every discovered case's identity and outcome. Each
 file runs in a separate process, sequentially, with a 1,800 second outer wall
 limit (`--timeout` overrides it). This lets large files finish hundreds of
 cases while retaining the original per-test and per-hook deadlines by default.
-Pass `--timeout-scale 10` to match CI, or set
+For a local scaled run, pass `--timeout-scale 10`, or set
 `PHASIS_FRAMEWORK_TIMEOUT_SCALE=10`; an explicit CLI value takes precedence.
 The scale applies equally to the Node harness and Phasis, and reports record
 the scale plus each case's original and effective timeout. The outer worker

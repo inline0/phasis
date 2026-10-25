@@ -15,9 +15,13 @@ run test oracles, but must never become an execution backend. Explicit
 through `process.execPath` runs the Phasis PHP entry point. New host resources
 must register cleanup with their owning NodeRuntime. Keep original framework
 assertions, report all discovered cases and upstream skips, and retain source
-identity for complete-run claims. Express and Hono support is experimental;
-their CI runners explicitly use `--timeout-scale 10` while performance work is
-deferred. Preserve original timeout values and record effective limits in the
+identity for complete-run claims. Express and Hono support is experimental.
+Framework compatibility suites are local-only and must NEVER run in CI,
+including manual workflow dispatches, pull requests, pushes or release gates.
+Do not restore the removed `frameworks.yml` workflow or dispatch old revisions.
+The owner's 2026-10-25 decision explicitly permits releases without this suite.
+See [the framework policy](tests/Frameworks/README.md). Preserve original
+timeout values and record effective limits in the
 results; a scaled run is a functional compatibility result, not a claim to meet
 upstream performance deadlines. Never relax test262 assertions, coverage or
 timeouts to accommodate framework workloads. Close and reap owned test

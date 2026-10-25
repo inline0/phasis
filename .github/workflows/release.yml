@@ -1,5 +1,8 @@
 name: Release
 
+# Framework compatibility must never run in CI and is not a release gate.
+# See tests/Frameworks/README.md for the owner's local-only policy.
+
 on:
   release:
     types: [published]

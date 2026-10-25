@@ -142,8 +142,12 @@ failures, blocked tests, source hashes and process timeouts. Framework versions
 and suite revisions are recorded there; passing a framework suite does not imply
 that the complete Node test suite or Hono's Bun/Deno/Fastly/workerd hosts pass.
 
-Framework CI passes `--timeout-scale 10` to the Express and Hono runners so slow
-PHP workloads can complete their original assertions. Reports retain the
+Framework compatibility suites are **local-only and must never run in CI**,
+including manual workflow dispatches or release gates. The workflow is removed
+and disabled; releases do not require a passing framework suite.
+
+For local investigation, pass `--timeout-scale 10` to the Express and Hono
+runners so slow PHP workloads can complete their original assertions. Reports retain the
 original and effective timeouts; scaled results do not establish upstream
 performance parity. The default scale is 1 for checking the original deadlines.
 This configuration does not affect test262 or engine execution budgets.

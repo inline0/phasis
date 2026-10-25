@@ -67,3 +67,4 @@ try {
   for (const child of running) child.kill('SIGKILL');
   rmSync(materialDirectory, { recursive: true, force: true });
 }
+// Local-only framework interoperability. Never run in CI; see ../README.md.

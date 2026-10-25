@@ -12,6 +12,7 @@
 
 ### Changed
 - Release download archives use the same export-ignore runtime inventory as Composer before installing their bundled production autoloader.
+- Framework compatibility is local-only and must never run in CI or gate a release. Its GitHub Actions workflow is removed and disabled.
 
 ### Fixed
 - Captured data preserves all public JSON keys, including names resembling native slots and leading null bytes. Native metadata readers keep those objects unbranded, so a public `[[PrimitiveValue]]` key cannot make them behave as boxed values.
