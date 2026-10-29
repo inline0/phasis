@@ -119,14 +119,15 @@ final class ModuleResolver
     }
 
     /**
-     * Whether $path is in a node_modules package whose package.json declares
-     * it free of side effects: `"sideEffects": false`, or a list of patterns
-     * it does not match. Bundlers trust the same field to tree-shake.
+     * Whether $path is in an installed package (node_modules or a package
+     * directory) whose package.json declares it free of side effects:
+     * `"sideEffects": false`, or a list of patterns it does not match.
+     * Bundlers trust the same field to tree-shake.
      */
     public function isSideEffectFree(string $path): bool
     {
         $scope = $this->packageScope($path);
-        if ($scope === null || !str_contains($path, '/node_modules/')) {
+        if ($scope === null || !$this->options->isPackageFile($path)) {
             return false;
         }
         $key = $scope . "\0" . $path;

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-29
+
+### Added
+- `ModuleOptions::$packageDirectories` lists directories whose files load as installed package code, as `node_modules` files do: `package.json` `"type"` and syntax detection decide a `.js` file's format and `"sideEffects"` keeps barrel pruning. For packages a build copies outside any `node_modules` directory and maps through the import map.
+
 ### Changed
 - Repository orchestration uses native TypeScript with Effect filesystem and scoped subprocess services, standard CLI flags, pinned Node/pnpm tooling and development-only dependency boundaries. PHP semantic probes and original reference fixtures remain native.
 

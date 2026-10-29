@@ -22,6 +22,10 @@ final readonly class ModuleOptions
      * @param bool $deferSideEffectFreeModules Load a module its package declares free of side effects when one of its
      *     imported bindings is first read, instead of before the importer runs. Off by default: it changes when such a
      *     module's top-level code runs, which a package that mislabels its side effects can observe.
+     * @param list<string> $packageDirectories Directories whose files are installed package code, like files in
+     *     node_modules: a `.js` file's format follows its package.json `"type"` (CommonJS unless it uses ES module
+     *     syntax) and its package's `"sideEffects"` allows barrel pruning. For packages copied outside any
+     *     node_modules directory, such as a build's vendored copies.
      */
     public function __construct(
         public ?string $projectRoot = null,
@@ -36,7 +40,22 @@ final readonly class ModuleOptions
         public ?string $parseCacheDir = null,
         public bool $deferSideEffectFreeModules = false,
         public bool $nodeCompatible = false,
+        public array $packageDirectories = [],
     ) {
+    }
+
+    /** Whether a resolved module path is installed package code: in node_modules or a package directory. */
+    public function isPackageFile(string $path): bool
+    {
+        if (str_contains($path, '/node_modules/')) {
+            return true;
+        }
+        foreach ($this->packageDirectories as $directory) {
+            if (str_starts_with($path, rtrim($directory, '/') . '/')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Preserve host resolution settings while selecting Node package semantics. */
@@ -52,6 +71,7 @@ final readonly class ModuleOptions
             parseCacheDir: $this->parseCacheDir,
             deferSideEffectFreeModules: false,
             nodeCompatible: true,
+            packageDirectories: $this->packageDirectories,
         );
     }
 

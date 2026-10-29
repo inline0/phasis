@@ -1593,7 +1593,7 @@ class ModuleLoader
         $resolved = $this->resolveRequest($node->source, $modulePath, $this->attributeType($node->attributes));
         if (
             isset($this->modules[$resolved])
-            || !str_contains($resolved, '/node_modules/')
+            || !$this->resolver->options()->isPackageFile($resolved)
             || $this->moduleFormat($resolved) !== 'esm'
             || !$this->resolver->isSideEffectFree($resolved)
         ) {
@@ -2181,9 +2181,9 @@ class ModuleLoader
             return 'esm';
         }
         // Application code is ES modules, as bundlers treat it. Inside
-        // node_modules, package.json "type" decides, with Node's syntax
-        // detection when it is absent.
-        if (!str_contains($path, '/node_modules/') && !$options->nodeCompatible) {
+        // node_modules or a package directory, package.json "type" decides,
+        // with Node's syntax detection when it is absent.
+        if (!$options->isPackageFile($path) && !$options->nodeCompatible) {
             return 'esm';
         }
         if (str_ends_with($lower, '.js') || str_ends_with($lower, '.ts')) {

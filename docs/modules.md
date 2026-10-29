@@ -48,6 +48,7 @@ $engine->setModuleOptions(new ModuleOptions(
     assetExtensions: ['.svg', '.png', '.jpg', /* ... */],
     parseCacheDir: null,                           // see "Parse cache"
     deferSideEffectFreeModules: false,             // see "Deferred loading"
+    packageDirectories: [],                        // see "Copied packages"
 ));
 ```
 
@@ -57,11 +58,25 @@ $engine->setModuleOptions(new ModuleOptions(
 
 Packages that ship only CommonJS (`classnames`, `dayjs`, `lodash`, `prop-types`, ...) load without a bundler.
 
-- `.cjs` files are CommonJS and `.mjs` files are ES modules. A `.js` file in `node_modules` is an ES module when its package says `"type": "module"`, else CommonJS unless it uses `import` or `export`. Application files outside `node_modules` are always ES modules.
+- `.cjs` files are CommonJS and `.mjs` files are ES modules. A `.js` file in `node_modules` is an ES module when its package says `"type": "module"`, else CommonJS unless it uses `import` or `export`. Application files outside `node_modules` and the `packageDirectories` are always ES modules.
 - Each file runs in Node's wrapper with `require`, `module`, `exports`, `__filename`, `__dirname` and a minimal `process` (`process.env.NODE_ENV`). `require` cycles see the partially filled exports, `require()` of JSON returns the value, and `require()` of an ES module returns its namespace.
 - **Interop** follows bundlers: importing a CommonJS module gives `module.exports` as the default export, or its `default` property when `__esModule` is set, plus every property as a named export. Importers with Node semantics (`.mjs` files, or `.js` files in `"type": "module"` packages) always get `module.exports` as the default, as in Node.
 
 In ES modules, `process.env.NODE_ENV` is replaced with the configured value at parse time, the way bundlers define it, so `if (process.env.NODE_ENV !== 'production')` branches work without a `process` object.
+
+### Copied packages
+
+A build that vendors the packages a render needs can copy them outside any
+`node_modules` directory, where deploys often leave them out, and map each
+bare specifier to its copy through the import map. List the copies' directory,
+canonical, in `packageDirectories`: files below it load as installed package
+code, so a `.js` file's format follows its `package.json` and a
+`"sideEffects": false` package keeps its barrel pruning.
+
+```php
+$engine->setModuleOptions(new ModuleOptions(packageDirectories: [__DIR__ . '/build/packages']));
+$engine->setImportMap(['use-sync-external-store/shim' => __DIR__ . '/build/packages/use-sync-external-store/shim/index.js']);
+```
 
 ## Node compatibility
 
