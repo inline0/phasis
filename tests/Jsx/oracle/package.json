@@ -4,6 +4,7 @@
   "description": "Pinned reference tools for the JSX Pack oracles. Installed only when refreshing oracles; outputs are committed.",
   "type": "module",
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@heroicons/react": "2.2.0",
     "class-variance-authority": "0.7.1",
     "classnames": "2.5.1",

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- A package smoke fixture for `@base-ui/react` 1.9: its accordion, tabs and button render byte-identical to `react-dom/server` in Node, with modules in bundle order and deferred.
+
 ## [0.12.0] - 2026-10-29
 
 ### Added
