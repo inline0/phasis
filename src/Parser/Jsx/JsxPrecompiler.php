@@ -163,6 +163,8 @@ final class JsxPrecompiler
         $meta = ['p' => $this->react ? 'react' : 'html', 'f' => $this->flags, 's' => $this->steps, 'a' => $this->attributes];
         if (!$this->react) {
             $meta['h'] = $this->htmlEdits;
+            // Version 1 includes edits for static attributes containing `>`.
+            $meta['v'] = 1;
         }
         return [[...$this->parts, $meta], $this->holes];
     }
@@ -268,7 +270,7 @@ final class JsxPrecompiler
                 if (!$this->react) {
                     $svgChunk = $this->staticAttribute($tag, $name, $static, true);
                     $empty = $static instanceof JsString && $static->value === '';
-                    if ($chunk !== $svgChunk || ($empty && $chunk !== '')) {
+                    if ($chunk !== $svgChunk || ($empty && $chunk !== '') || str_contains($chunk, '>')) {
                         $this->partHtmlEdits[] = [
                             strlen($this->part), strlen($chunk), 'attribute', $chunk, $svgChunk,
                             $empty && $chunk !== '' ? substr($chunk, 1) : '',

@@ -13,6 +13,101 @@ use PHPUnit\Framework\TestCase;
 
 final class JsxHtmlOptionsTest extends TestCase
 {
+    public function testTextAndAttributeEscapingMatchReactDomInBothModes(): void
+    {
+        $source = <<<'JS'
+export default ({text, attr}) => <main><section>
+  <p data-static="[&amp;&gt;span&gt;span] &quot; &lt;" data-dynamic={attr}>Static "quote" &amp; &lt; &gt; &amp;quot; {text}</p>
+  <pre>"pre" &amp; &lt; &gt;</pre><code>"code" &amp; &lt; &gt;</code>
+  </section><svg><a data-svg={attr}><foreignObject><div data-foreign={attr}>"foreign" {text}</div></foreignObject></a></svg></main>;
+JS;
+        $props = ['text' => '"dynamic" & < > &quot;', 'attr' => '[&>span>span] " < &quot;'];
+        $oracle = json_decode((string) file_get_contents(__DIR__ . '/oracle/text-attribute-escaping.expected.json'), true, 512, JSON_THROW_ON_ERROR);
+        $ordinary = new Engine();
+        $precompiled = new Engine();
+        $precompiled->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
+        foreach ([false, true] as $quotes) {
+            foreach ([false, true] as $greater) {
+                $options = new HtmlRenderOptions(literalTextQuotes: $quotes, escapeAttributeGreaterThan: $greater);
+                $html = $ordinary->renderSource($source, $props, 'default', null, RenderProfile::Html, $options);
+                $this->assertSame($html, $precompiled->renderSource($source, $props, 'default', null, RenderProfile::Html, $options));
+                $this->assertStringContainsString($quotes ? 'Static "quote"' : 'Static &quot;quote&quot;', $html);
+                $this->assertStringContainsString($greater ? '[&amp;&gt;span&gt;span]' : '[&amp;>span>span]', $html);
+                $dom = new \DOMDocument();
+                @$dom->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING);
+                $xpath = new \DOMXPath($dom);
+                $paragraph = $xpath->query('//p')->item(0);
+                $svg = $xpath->query('//a')->item(0);
+                $foreign = $xpath->query('//*[@data-foreign]')->item(0);
+                $this->assertInstanceOf(\DOMElement::class, $paragraph);
+                $this->assertInstanceOf(\DOMElement::class, $svg);
+                $this->assertInstanceOf(\DOMElement::class, $foreign);
+                $this->assertSame($oracle['paragraph'], $paragraph->textContent);
+                $this->assertSame($oracle['staticAttribute'], $paragraph->getAttribute('data-static'));
+                $this->assertSame($oracle['dynamicAttribute'], $paragraph->getAttribute('data-dynamic'));
+                $this->assertSame($oracle['pre'], $xpath->query('//pre')->item(0)->textContent);
+                $this->assertSame($oracle['code'], $xpath->query('//code')->item(0)->textContent);
+                $this->assertSame($oracle['svgAttribute'], $svg->getAttribute('data-svg'));
+                $this->assertSame($oracle['foreignAttribute'], $foreign->getAttribute('data-foreign'));
+                $this->assertSame($oracle['foreignText'], $foreign->textContent);
+            }
+        }
+    }
+
+    public function testNewOptionsPreserveRawScriptNoscriptAndEmptyValues(): void
+    {
+        $source = <<<'JS'
+import { raw } from 'phasis';
+export default ({text}) => <main><section><p title="&gt;" value="">"ordinary" {text}</p></section>
+  <noscript><div><p>"noscript" &gt; {text}</p></div></noscript>
+  <script>{'if (a > b) { x = "</script>" }'}</script>
+  {raw('<b data-x=">">"raw"</b>')}<div dangerouslySetInnerHTML={{__html:'<i>"raw"</i>'}}/></main>;
+JS;
+        $options = new HtmlRenderOptions(['value'], true, true, true, true);
+        $ordinary = new Engine();
+        $precompiled = new Engine();
+        $precompiled->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
+        $html = $ordinary->renderSource($source, ['text' => '">'], 'default', null, RenderProfile::Html, $options);
+        $this->assertSame($html, $precompiled->renderSource($source, ['text' => '">'], 'default', null, RenderProfile::Html, $options));
+        $this->assertStringContainsString('<p title="&gt;" value="">"ordinary" ">', $html);
+        $this->assertStringContainsString('<p>"noscript" &gt; "&gt;</p>', $html);
+        $this->assertStringContainsString('<script>if (a > b) { x = "</\\u0073cript>" }</script>', $html);
+        $this->assertStringContainsString('<b data-x=">">"raw"</b><div><i>"raw"</i></div>', $html);
+    }
+
+    public function testOldMetadataFailsClosedForGreaterThanEscaping(): void
+    {
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessage('precompiled static output from an older template');
+        (new Engine())->renderSource(
+            "import { jsxTemplate } from 'phasis/jsx-precompile'; import { jsx } from 'phasis/jsx-runtime'; "
+                . "const tpl = ['<p title=\">\">text</p>', {p:'html', f:[0], s:[], a:[], h:[[]]}]; "
+                . "export default () => jsx('div', {children:jsxTemplate(tpl)});",
+            [],
+            'default',
+            null,
+            RenderProfile::Html,
+            new HtmlRenderOptions(escapeAttributeGreaterThan: true),
+        );
+    }
+
+    public function testHostileDynamicAttributeCannotBreakOut(): void
+    {
+        $source = 'export default ({value}) => <main><section><p title={value}>{value}</p></section></main>;';
+        $value = '"><img src=x onerror=alert(1)> & <';
+        $options = new HtmlRenderOptions(literalTextQuotes: true, escapeAttributeGreaterThan: true);
+        $engine = new Engine();
+        $engine->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
+        $html = $engine->renderSource($source, ['value' => $value], 'default', null, RenderProfile::Html, $options);
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING);
+        $this->assertSame(0, $dom->getElementsByTagName('img')->length);
+        $paragraph = $dom->getElementsByTagName('p')->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $paragraph);
+        $this->assertSame($value, $paragraph->getAttribute('title'));
+        $this->assertSame($value, $paragraph->textContent);
+    }
+
     public function testSelectedEmptyValuesMatchReactWithoutChangingTheDefault(): void
     {
         $fixture = __DIR__ . '/react/empty-option.jsx';

@@ -56,7 +56,7 @@ final class ParseCacheTest extends TestCase
         $cache = $root . '/.cache';
         $jsx = new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis');
         $options = ['env' => 'production', 'jsx' => $jsx, 'typescript' => false, 'tsx' => false];
-        $key = sha1("phasis-ast-1\0module\0" . serialize($options) . "\0" . sha1($source));
+        $key = sha1("phasis-ast-2\0module\0" . serialize($options) . "\0" . sha1($source));
         $directory = $cache . '/' . substr($key, 0, 2);
         mkdir($directory, 0775, true);
         $legacySource = <<<'JS'
@@ -83,6 +83,23 @@ JS;
         $this->assertCount(2, $entries);
         $this->assertSame('<svg><a><a stroke-width="">x</a></a></svg>', $render());
         $this->assertSame($entries, self::entries($cache));
+    }
+
+    public function testPrecompiledCacheRetainsOptionIndependentStaticParts(): void
+    {
+        $root = $this->project(['App.jsx' => 'export default () => <main><p title="&gt;">"text"</p></main>;']);
+        $cache = $root . '/.cache';
+        $jsx = new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis');
+        foreach ([false, true, false, true] as $enabled) {
+            $engine = new Engine();
+            $engine->setModuleOptions(new ModuleOptions(parseCacheDir: $cache));
+            $engine->setJsxOptions($jsx);
+            $options = new HtmlRenderOptions(literalTextQuotes: $enabled, escapeAttributeGreaterThan: $enabled);
+            $expected = $enabled ? '<main><p title="&gt;">"text"</p></main>' : '<main><p title=">">&quot;text&quot;</p></main>';
+            $this->assertSame($expected, $engine->render($root . '/App.jsx', [], 'default', RenderProfile::Html, $options));
+            $engine->close();
+        }
+        $this->assertCount(1, self::entries($cache));
     }
 
     public function testTypeScriptCacheDoesNotBypassJavaScriptSyntaxValidation(): void

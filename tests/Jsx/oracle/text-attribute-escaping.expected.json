@@ -1,0 +1,10 @@
+{
+  "paragraph": "Static \"quote\" & < > &quot; \"dynamic\" & < > &quot;",
+  "staticAttribute": "[&>span>span] \" <",
+  "dynamicAttribute": "[&>span>span] \" < &quot;",
+  "pre": "\"pre\" & < >",
+  "code": "\"code\" & < >",
+  "svgAttribute": "[&>span>span] \" < &quot;",
+  "foreignAttribute": "[&>span>span] \" < &quot;",
+  "foreignText": "\"foreign\" \"dynamic\" & < > &quot;"
+}

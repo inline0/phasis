@@ -22,9 +22,9 @@ use Phasis\Value\JsValue;
  * renderers expand, jsxAttr() marks a dynamic attribute hole.
  *
  * A template is `[part, ..., part, meta]`: the static strings and a trailing
- * `{p, f, s, a, h}` object with the profile it was compiled for, per-part text
+ * `{p, f, s, a, h, v}` object with the profile it was compiled for, per-part text
  * flags, per-hole tree steps, per-hole attribute names, and optional HTML
- * option edits (see
+ * option edits and their version (see
  * JsxPrecompiler). Templates compiled before `a` existed pass attribute
  * holes as jsxAttr() markers instead; parse caches can still hold them.
  */
@@ -81,6 +81,7 @@ final class Template
      *     steps: list<?list<string|int>>,
      *     attributes: list<?array{0: string, 1: bool}>,
      *     htmlEdits: ?list<list<array{int, int, string, string, string, string, string}>>,
+     *     attributeGreaterEdits: bool,
      * }
      */
     public static function parse(JsValue $tpl): array
@@ -144,6 +145,7 @@ final class Template
             'steps' => $steps,
             'attributes' => $attributes,
             'htmlEdits' => $htmlEdits,
+            'attributeGreaterEdits' => Js::str(Js::get($meta ?? JsUndefined::instance(), 'v')) === '1',
         ];
         $tpl->setInternalProperty('[[PhasisTemplate]]', $parsed);
         return $parsed;

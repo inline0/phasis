@@ -253,6 +253,9 @@ final class HtmlRenderer
         if ($context->inNoscript && $context->options?->escapeNoscriptText) {
             return strtr($text, ['&' => '&amp;', '<' => '&lt;', '>' => '&gt;']);
         }
+        if ($context->options?->literalTextQuotes) {
+            return strtr($text, ['&' => '&amp;', '<' => '&lt;']);
+        }
         return self::encodeEntities($text);
     }
 
@@ -448,22 +451,32 @@ final class HtmlRenderer
         }
         $quoteEmpty = $options->options->quoteEmptyAttributes ?? [];
         $escapeText = $options->inNoscript && ($options->options->escapeNoscriptText ?? false);
-        if ($template['htmlEdits'] === null && ($quoteEmpty !== [] || $escapeText || $isSvgMode)) {
+        $literalQuotes = $options->options->literalTextQuotes ?? false;
+        $escapeGreater = $options->options->escapeAttributeGreaterThan ?? false;
+        if (
+            ($template['htmlEdits'] === null && ($quoteEmpty !== [] || $escapeText || $isSvgMode || $literalQuotes || $escapeGreater))
+            || ($escapeGreater && !$template['attributeGreaterEdits'])
+        ) {
             throw Js::error('HTML render options or SVG context cannot change precompiled static output from an older template.');
         }
         $exprs = Js::elements(Js::get($props, 'exprs'));
         $out = '';
         $parts = null;
         foreach ($template['parts'] as $i => $part) {
-            if ($quoteEmpty !== [] || $escapeText || $isSvgMode) {
+            if ($quoteEmpty !== [] || $escapeText || $isSvgMode || $literalQuotes || $escapeGreater) {
                 foreach (array_reverse($template['htmlEdits'][$i] ?? []) as [$offset, $length, $kind, $html, $svg, $htmlName, $svgName]) {
                     if ($kind === 'text') {
                         if ($escapeText) {
                             $part = substr_replace($part, $html, $offset, $length);
+                        } elseif ($literalQuotes) {
+                            $part = substr_replace($part, str_replace('&quot;', '"', substr($part, $offset, $length)), $offset, $length);
                         }
                         continue;
                     }
                     $replacement = $isSvgMode ? $svg : $html;
+                    if ($escapeGreater) {
+                        $replacement = str_replace('>', '&gt;', $replacement);
+                    }
                     $name = $isSvgMode ? $svgName : $htmlName;
                     if ($name !== '' && in_array($name, $quoteEmpty, true)) {
                         $replacement .= '=""';
@@ -830,7 +843,11 @@ final class HtmlRenderer
         if (($v instanceof JsBoolean && $v->value) || ($v instanceof JsString && $v->value === '')) {
             return ' ' . $name;
         }
-        return ' ' . $name . '="' . self::encodeEntities(self::concatString($v)) . '"';
+        $value = self::encodeEntities(self::concatString($v));
+        if ($options?->escapeAttributeGreaterThan) {
+            $value = str_replace('>', '&gt;', $value);
+        }
+        return ' ' . $name . '="' . $value . '"';
     }
 
     private static function styleObjToCss(JsObject $style): string
