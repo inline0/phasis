@@ -73,6 +73,10 @@ final class JsxPrecompiler
     private array $steps = [];
     /** @var list<?list<string>> Per hole: null for a child, or the attribute name (and the tag, for an `a` href). */
     private array $attributes = [];
+    /** @var list<list<array{int, int, string, string, string, string, string}>> */
+    private array $htmlEdits = [];
+    /** @var list<array{int, int, string, string, string, string, string}> */
+    private array $partHtmlEdits = [];
     private bool $text = false;
 
     /**
@@ -157,6 +161,9 @@ final class JsxPrecompiler
         $this->emitList($element->children, []);
         $this->closePart();
         $meta = ['p' => $this->react ? 'react' : 'html', 'f' => $this->flags, 's' => $this->steps, 'a' => $this->attributes];
+        if (!$this->react) {
+            $meta['h'] = $this->htmlEdits;
+        }
         return [[...$this->parts, $meta], $this->holes];
     }
 
@@ -216,7 +223,12 @@ final class JsxPrecompiler
             $this->text = false;
             return;
         }
-        $this->part .= HtmlRenderer::encodeEntities($text);
+        $default = HtmlRenderer::encodeEntities($text);
+        $noscript = strtr($text, ['&' => '&amp;', '<' => '&lt;', '>' => '&gt;']);
+        if ($default !== $noscript) {
+            $this->partHtmlEdits[] = [strlen($this->part), strlen($default), 'text', $noscript, '', '', ''];
+        }
+        $this->part .= $default;
     }
 
     /** @param list<string|int> $steps */
@@ -252,7 +264,19 @@ final class JsxPrecompiler
             $static = $value === null ? JsBoolean::of(true) : new JsString((string) $value->value);
             // React throws for a string style at render time; keep that for runtime.
             if (!($this->react && $name === 'style')) {
-                $this->part .= $this->staticAttribute($tag, $name, $static);
+                $chunk = $this->staticAttribute($tag, $name, $static);
+                if (!$this->react) {
+                    $svgChunk = $this->staticAttribute($tag, $name, $static, true);
+                    $empty = $static instanceof JsString && $static->value === '';
+                    if ($chunk !== $svgChunk || ($empty && $chunk !== '')) {
+                        $this->partHtmlEdits[] = [
+                            strlen($this->part), strlen($chunk), 'attribute', $chunk, $svgChunk,
+                            $empty && $chunk !== '' ? substr($chunk, 1) : '',
+                            $empty && $svgChunk !== '' ? substr($svgChunk, 1) : '',
+                        ];
+                    }
+                }
+                $this->part .= $chunk;
                 return;
             }
         }
@@ -279,7 +303,7 @@ final class JsxPrecompiler
         $this->attributes[] = $tag === 'a' && $name === 'href' ? [$name, 'a'] : [$name];
     }
 
-    private function staticAttribute(string $tag, string $name, JsBoolean|JsString $value): string
+    private function staticAttribute(string $tag, string $name, JsBoolean|JsString $value, bool $isSvgMode = false): string
     {
         if ($this->react) {
             $chunks = [];
@@ -290,7 +314,7 @@ final class JsxPrecompiler
             }
             return implode('', $chunks);
         }
-        return HtmlRenderer::attributeChunk($name, $value, null, false);
+        return HtmlRenderer::attributeChunk($name, $value, null, $isSvgMode);
     }
 
     /** @param list<string|int> $steps */
@@ -309,6 +333,10 @@ final class JsxPrecompiler
         }
         $this->parts[] = $this->part;
         $this->flags[] = $this->partFlags;
+        if (!$this->react) {
+            $this->htmlEdits[] = $this->partHtmlEdits;
+            $this->partHtmlEdits = [];
+        }
         $this->part = '';
         $this->partFlags = 0;
         $this->text = false;

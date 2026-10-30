@@ -5,7 +5,12 @@ declare(strict_types=1);
 namespace Phasis\Tests\Unit\Module;
 
 use Phasis\Engine;
+use Phasis\HtmlRenderOptions;
 use Phasis\Module\ModuleOptions;
+use Phasis\Parser\Jsx\JsxMode;
+use Phasis\Parser\Jsx\JsxOptions;
+use Phasis\Parser\Parser;
+use Phasis\RenderProfile;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -42,6 +47,42 @@ final class ParseCacheTest extends TestCase
         file_put_contents($root . '/label.js', "export const label = 'two';");
         $this->assertSame('<p>two</p>', $render());
         $this->assertCount(3, self::entries($cache));
+    }
+
+    public function testLegacyPrecompiledTemplatesAreReparsedAndCached(): void
+    {
+        $source = 'export default () => <svg><a><a strokeWidth="">x</a></a></svg>;';
+        $root = $this->project(['App.jsx' => $source]);
+        $cache = $root . '/.cache';
+        $jsx = new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis');
+        $options = ['env' => 'production', 'jsx' => $jsx, 'typescript' => false, 'tsx' => false];
+        $key = sha1("phasis-ast-1\0module\0" . serialize($options) . "\0" . sha1($source));
+        $directory = $cache . '/' . substr($key, 0, 2);
+        mkdir($directory, 0775, true);
+        $legacySource = <<<'JS'
+import { jsxTemplate } from 'phasis/jsx-precompile';
+import { jsx } from 'phasis/jsx-runtime';
+const tpl = ['<a strokeWidth>x</a>', {p:'html', f:[0], s:[], a:[]}];
+export default () => jsx('svg', {children:jsx('a', {children:jsxTemplate(tpl)})});
+JS;
+        $legacy = ['program' => Parser::parseSource($legacySource, 'module'), 'jsxImportSource' => 'phasis'];
+        file_put_contents($directory . '/' . $key . '.ast', serialize($legacy));
+
+        $render = static function () use ($root, $cache, $jsx): string {
+            $engine = new Engine();
+            $engine->setModuleOptions(new ModuleOptions(parseCacheDir: $cache));
+            $engine->setJsxOptions($jsx);
+            try {
+                return $engine->render($root . '/App.jsx', [], 'default', RenderProfile::Html, new HtmlRenderOptions(['stroke-width']));
+            } finally {
+                $engine->close();
+            }
+        };
+        $this->assertSame('<svg><a><a stroke-width="">x</a></a></svg>', $render());
+        $entries = self::entries($cache);
+        $this->assertCount(2, $entries);
+        $this->assertSame('<svg><a><a stroke-width="">x</a></a></svg>', $render());
+        $this->assertSame($entries, self::entries($cache));
     }
 
     public function testTypeScriptCacheDoesNotBypassJavaScriptSyntaxValidation(): void

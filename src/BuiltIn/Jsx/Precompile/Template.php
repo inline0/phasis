@@ -22,8 +22,9 @@ use Phasis\Value\JsValue;
  * renderers expand, jsxAttr() marks a dynamic attribute hole.
  *
  * A template is `[part, ..., part, meta]`: the static strings and a trailing
- * `{p, f, s, a}` object with the profile it was compiled for, per-part text
- * flags, per-hole tree steps, and per-hole attribute names (see
+ * `{p, f, s, a, h}` object with the profile it was compiled for, per-part text
+ * flags, per-hole tree steps, per-hole attribute names, and optional HTML
+ * option edits (see
  * JsxPrecompiler). Templates compiled before `a` existed pass attribute
  * holes as jsxAttr() markers instead; parse caches can still hold them.
  */
@@ -79,6 +80,7 @@ final class Template
      *     flags: list<int>,
      *     steps: list<?list<string|int>>,
      *     attributes: list<?array{0: string, 1: bool}>,
+     *     htmlEdits: ?list<list<array{int, int, string, string, string, string, string}>>,
      * }
      */
     public static function parse(JsValue $tpl): array
@@ -119,12 +121,29 @@ final class Template
             $entry = Js::isNullish($attribute) ? [] : Js::elements($attribute);
             $attributes[] = $entry === [] ? null : [Js::str($entry[0]), isset($entry[1])];
         }
+        $htmlEditsValue = Js::get($meta ?? JsUndefined::instance(), 'h');
+        $htmlEdits = null;
+        if (!Js::isNullish($htmlEditsValue)) {
+            $htmlEdits = [];
+            foreach (Js::elements($htmlEditsValue) as $partEdits) {
+                $edits = [];
+                foreach (Js::elements($partEdits) as $edit) {
+                    $values = Js::elements($edit);
+                    $edits[] = [
+                        (int) Js::str($values[0]), (int) Js::str($values[1]), Js::str($values[2]), Js::str($values[3]),
+                        Js::str($values[4]), Js::str($values[5]), Js::str($values[6]),
+                    ];
+                }
+                $htmlEdits[] = $edits;
+            }
+        }
         $parsed = [
             'profile' => Js::str(Js::get($meta ?? JsUndefined::instance(), 'p')),
             'parts' => $parts,
             'flags' => $flags,
             'steps' => $steps,
             'attributes' => $attributes,
+            'htmlEdits' => $htmlEdits,
         ];
         $tpl->setInternalProperty('[[PhasisTemplate]]', $parsed);
         return $parsed;

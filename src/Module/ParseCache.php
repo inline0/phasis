@@ -17,8 +17,8 @@ use Phasis\Ast\Program;
  */
 final class ParseCache
 {
-    /** Bump when the AST classes change shape, to orphan old entries. */
-    private const FORMAT = 'phasis-ast-1';
+    /** Bump when AST classes or generated runtime metadata change, to orphan old entries. */
+    private const FORMAT = 'phasis-ast-2';
 
     public function __construct(private readonly string $directory)
     {

@@ -1,0 +1,3 @@
+{
+  "html": "<main><section><p value=\"\" data-x=\"\">Outside a &amp; b &lt; c</p></section><noscript><div><p value=\"\" data-x=\"\">Static \"quoted\" &gt; a &amp; b &lt; c</p><div><p value=\"\" data-x=\"\">Static \"quoted\" &gt; a &amp; b &lt; c</p></div></div></noscript><script>if (a < b) { x = \"</\\u0073cript>\"; }</script><section><p>After</p></section></main>"
+}

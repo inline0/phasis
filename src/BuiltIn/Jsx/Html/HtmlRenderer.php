@@ -442,24 +442,35 @@ final class HtmlRenderer
         bool $asyncMode,
         HtmlRenderContext $options,
     ): string|array {
-        if (
-            $options->options !== null
-            && (
-                $options->options->quoteEmptyAttributes !== []
-                || ($options->inNoscript && $options->options->escapeNoscriptText)
-                || $options->options->reactScriptText
-            )
-        ) {
-            throw Js::error('HTML render options cannot change precompiled static output.');
-        }
         $template = Template::parse(Js::get($props, 'tpl'));
         if ($template['profile'] !== 'html') {
             throw Js::error('This JSX was precompiled for the React profile and cannot render with the phasis HTML profile.');
+        }
+        $quoteEmpty = $options->options->quoteEmptyAttributes ?? [];
+        $escapeText = $options->inNoscript && ($options->options->escapeNoscriptText ?? false);
+        if ($template['htmlEdits'] === null && ($quoteEmpty !== [] || $escapeText || $isSvgMode)) {
+            throw Js::error('HTML render options or SVG context cannot change precompiled static output from an older template.');
         }
         $exprs = Js::elements(Js::get($props, 'exprs'));
         $out = '';
         $parts = null;
         foreach ($template['parts'] as $i => $part) {
+            if ($quoteEmpty !== [] || $escapeText || $isSvgMode) {
+                foreach (array_reverse($template['htmlEdits'][$i] ?? []) as [$offset, $length, $kind, $html, $svg, $htmlName, $svgName]) {
+                    if ($kind === 'text') {
+                        if ($escapeText) {
+                            $part = substr_replace($part, $html, $offset, $length);
+                        }
+                        continue;
+                    }
+                    $replacement = $isSvgMode ? $svg : $html;
+                    $name = $isSvgMode ? $svgName : $htmlName;
+                    if ($name !== '' && in_array($name, $quoteEmpty, true)) {
+                        $replacement .= '=""';
+                    }
+                    $part = substr_replace($part, $replacement, $offset, $length);
+                }
+            }
             $out .= $part;
             if (!isset($exprs[$i])) {
                 continue;
@@ -468,8 +479,8 @@ final class HtmlRenderer
             if (($template['steps'][$i] ?? null) === null) {
                 $attribute = $template['attributes'][$i] ?? null;
                 $out .= $attribute === null
-                    ? self::attributeChunk(Js::str(Js::get($value, 'name')), Js::get($value, 'value'), null, false)
-                    : self::attributeChunk($attribute[0], $value, null, false);
+                    ? self::attributeChunk(Js::str(Js::get($value, 'name')), Js::get($value, 'value'), null, $isSvgMode, $options->options)
+                    : self::attributeChunk($attribute[0], $value, null, $isSvgMode, $options->options);
                 continue;
             }
             if ($value instanceof JsUndefined || $value instanceof JsNull || $value instanceof JsBoolean) {
