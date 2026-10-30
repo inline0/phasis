@@ -2129,16 +2129,21 @@ class Engine
      *
      * @param array<string, mixed> $props
      */
-    public function render(string $path, array $props = [], string $export = 'default', ?RenderProfile $profile = null): string
-    {
+    public function render(
+        string $path,
+        array $props = [],
+        string $export = 'default',
+        ?RenderProfile $profile = null,
+        ?HtmlRenderOptions $htmlOptions = null,
+    ): string {
         $resolved = realpath($path);
         if ($resolved === false) {
             throw new \RuntimeException("Cannot read module: {$path}");
         }
-        return $this->withCurrentInterpreter(function () use ($resolved, $props, $export, $profile): string {
+        return $this->withCurrentInterpreter(function () use ($resolved, $props, $export, $profile, $htmlOptions): string {
             $namespace = $this->interpreter->getModuleLoader()->loadModule($resolved);
             $this->eventLoop->runUntilEmpty();
-            return $this->renderExport($resolved, $namespace, $props, $export, $profile);
+            return $this->renderExport($resolved, $namespace, $props, $export, $profile, $htmlOptions);
         });
     }
 
@@ -2155,12 +2160,13 @@ class Engine
         string $export = 'default',
         ?string $path = null,
         ?RenderProfile $profile = null,
+        ?HtmlRenderOptions $htmlOptions = null,
     ): string {
         $modulePath = $path ?? (getcwd() ?: '/') . '/__phasis_render_' . md5($source) . '.jsx';
-        return $this->withCurrentInterpreter(function () use ($modulePath, $source, $props, $export, $profile): string {
+        return $this->withCurrentInterpreter(function () use ($modulePath, $source, $props, $export, $profile, $htmlOptions): string {
             $namespace = $this->interpreter->getModuleLoader()->evaluateModule($modulePath, $source);
             $this->eventLoop->runUntilEmpty();
-            return $this->renderExport($modulePath, $namespace, $props, $export, $profile);
+            return $this->renderExport($modulePath, $namespace, $props, $export, $profile, $htmlOptions);
         });
     }
 
@@ -2215,8 +2221,14 @@ class Engine
     }
 
     /** @param array<string, mixed> $props */
-    private function renderExport(string $modulePath, JsObject $namespace, array $props, string $export, ?RenderProfile $profile): string
-    {
+    private function renderExport(
+        string $modulePath,
+        JsObject $namespace,
+        array $props,
+        string $export,
+        ?RenderProfile $profile,
+        ?HtmlRenderOptions $htmlOptions,
+    ): string {
         $component = $namespace->get($export);
         if ($profile === null) {
             $source = $this->interpreter->getModuleLoader()->record($modulePath)->jsxImportSource ?? $this->jsxOptions->importSource;
@@ -2227,7 +2239,10 @@ class Engine
             $jsProps = new JsObject();
         }
         if ($profile === RenderProfile::Html) {
-            return \Phasis\BuiltIn\Jsx\Html\HtmlRenderer::renderComponent($this, $component, $jsProps);
+            return \Phasis\BuiltIn\Jsx\Html\HtmlRenderer::renderComponent($this, $component, $jsProps, $htmlOptions);
+        }
+        if ($htmlOptions !== null) {
+            throw new \InvalidArgumentException('HTML render options require the HTML profile.');
         }
         $element = \Phasis\BuiltIn\Jsx\React\ReactModule::element($component, \Phasis\Value\JsNull::instance(), $jsProps);
         return $this->prerenderElement($element, JsUndefined::instance());

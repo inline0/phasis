@@ -22,6 +22,7 @@ use Phasis\BuiltIn\Jsx\React\ReactModule;
 use Phasis\BuiltIn\Jsx\React\ReactSymbols;
 use Phasis\BuiltIn\SymbolConstructor;
 use Phasis\Engine;
+use Phasis\HtmlRenderOptions;
 use Phasis\Spec\AbstractOperations;
 use Phasis\Value\JsArray;
 use Phasis\Value\JsBoolean;
@@ -88,11 +89,12 @@ final class HtmlRenderer
     }
 
     /** renderToString(vnode, context): synchronous; a suspending component is an error. */
-    public static function renderToString(JsValue $vnode, JsValue $context): string
+    public static function renderToString(JsValue $vnode, JsValue $context, ?HtmlRenderOptions $options = null): string
     {
         self::$idCounter = 0;
+        $htmlContext = new HtmlRenderContext($options);
         try {
-            $rendered = self::withDispatcher(static fn () => self::render($vnode, self::rootContext($context), [], false, null, false));
+            $rendered = self::withDispatcher(static fn () => self::render($vnode, self::rootContext($context), [], false, null, false, $htmlContext));
         } catch (\Throwable $e) {
             $thrown = Js::thrownValue($e);
             if (Server::isSuspenseException($thrown) || ($thrown instanceof JsObject && Js::get($thrown, 'then')->toBoolean())) {
@@ -104,12 +106,13 @@ final class HtmlRenderer
     }
 
     /** renderToStringAsync(vnode, context): a promise of the HTML, waiting for suspended components. */
-    public static function renderToStringAsync(JsValue $vnode, JsValue $context): JsPromise
+    public static function renderToStringAsync(JsValue $vnode, JsValue $context, ?HtmlRenderOptions $options = null): JsPromise
     {
         self::$idCounter = 0;
+        $htmlContext = new HtmlRenderContext($options);
         $result = new JsPromise();
         try {
-            $rendered = self::withDispatcher(static fn () => self::render($vnode, self::rootContext($context), [], false, null, true));
+            $rendered = self::withDispatcher(static fn () => self::render($vnode, self::rootContext($context), [], false, null, true, $htmlContext));
         } catch (\Throwable $e) {
             $result->reject(Js::thrownValue($e));
             return $result;
@@ -126,12 +129,12 @@ final class HtmlRenderer
      * Render a component with PHP-side props (Engine::render with the HTML
      * profile), waiting for suspended and async components.
      */
-    public static function renderComponent(Engine $engine, JsValue $component, JsObject $props): string
+    public static function renderComponent(Engine $engine, JsValue $component, JsObject $props, ?HtmlRenderOptions $options = null): string
     {
         $element = ReactModule::element($component, JsNull::instance(), $props);
         $html = null;
         $error = null;
-        $promise = self::renderToStringAsync($element, JsUndefined::instance());
+        $promise = self::renderToStringAsync($element, JsUndefined::instance(), $options);
         $promise->addFulfillHandler(static function (JsValue $value) use (&$html): void {
             $html = Js::str($value);
         });
@@ -245,6 +248,14 @@ final class HtmlRenderer
         return strtr($text, ['"' => '&quot;', '&' => '&amp;', '<' => '&lt;']);
     }
 
+    private static function encodeText(string $text, HtmlRenderContext $context): string
+    {
+        if ($context->inNoscript && $context->options?->escapeNoscriptText) {
+            return strtr($text, ['&' => '&amp;', '<' => '&lt;', '>' => '&gt;']);
+        }
+        return self::encodeEntities($text);
+    }
+
     /** `value + ''`: ToPrimitive with the default hint, then ToString. */
     private static function concatString(JsValue $value): string
     {
@@ -276,12 +287,13 @@ final class HtmlRenderer
         bool $isSvgMode,
         ?JsValue $selectValue,
         bool $asyncMode,
+        HtmlRenderContext $options,
     ): string|array {
         if ($vnode instanceof JsUndefined || $vnode instanceof JsNull || $vnode instanceof JsBoolean) {
             return '';
         }
         if ($vnode instanceof JsString) {
-            return self::encodeEntities($vnode->value);
+            return self::encodeText($vnode->value, $options);
         }
         if (!$vnode instanceof JsObject) {
             return Js::str($vnode);
@@ -290,7 +302,7 @@ final class HtmlRenderer
             return '';
         }
         if (Js::isArray($vnode)) {
-            return self::renderArray(Js::elements($vnode), $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            return self::renderArray(Js::elements($vnode), $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
         }
         if (!self::isElement($vnode)) {
             return '';
@@ -301,9 +313,9 @@ final class HtmlRenderer
             $props = new JsObject();
         }
         if ($type instanceof JsString) {
-            return self::renderElement($vnode, $type->value, $props, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            return self::renderElement($vnode, $type->value, $props, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
         }
-        return self::renderComponentNode($vnode, $type, $props, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+        return self::renderComponentNode($vnode, $type, $props, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
     }
 
     /**
@@ -318,6 +330,7 @@ final class HtmlRenderer
         bool $isSvgMode,
         ?JsValue $selectValue,
         bool $asyncMode,
+        HtmlRenderContext $options,
     ): string|array {
         $rendered = '';
         $parts = null;
@@ -325,7 +338,7 @@ final class HtmlRenderer
             if ($child instanceof JsUndefined || $child instanceof JsNull || $child instanceof JsBoolean) {
                 continue;
             }
-            $childRender = self::render($child, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            $childRender = self::render($child, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
             if (is_string($childRender)) {
                 $rendered .= $childRender;
                 continue;
@@ -363,12 +376,13 @@ final class HtmlRenderer
         bool $isSvgMode,
         ?JsValue $selectValue,
         bool $asyncMode,
+        HtmlRenderContext $options,
     ): string|array {
         if ($type === ReactSymbols::$fragment || $type === ReactSymbols::$strictMode || $type === ReactSymbols::$profiler) {
-            return self::render(Js::get($props, 'children'), $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            return self::render(Js::get($props, 'children'), $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
         }
         if ($type === Template::templateSymbol()) {
-            return self::renderTemplate($props, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            return self::renderTemplate($props, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
         }
         if ($type === self::rawSymbol()) {
             $html = Js::get($props, '__html');
@@ -378,17 +392,17 @@ final class HtmlRenderer
             $typeof = Js::get($type, '$$typeof');
             if ($typeof === ReactSymbols::$context) {
                 $providers[] = [$type, Js::get($props, 'value')];
-                return self::render(Js::get($props, 'children'), $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+                return self::render(Js::get($props, 'children'), $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
             }
             if ($typeof === ReactSymbols::$consumer) {
                 $ctx = Js::get($type, '_context');
                 $value = $ctx instanceof JsObject ? self::contextValue($ctx, $providers) : JsUndefined::instance();
                 $children = Js::call(Js::get($props, 'children'), JsUndefined::instance(), [$value]);
-                return self::render($children, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+                return self::render($children, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
             }
             if ($typeof === ReactSymbols::$memo) {
                 $inner = ReactModule::element(Js::get($type, 'type'), Js::get($vnode, 'key'), $props);
-                return self::render($inner, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+                return self::render($inner, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
             }
             if ($typeof === ReactSymbols::$forwardRef) {
                 return self::renderFunction(
@@ -401,6 +415,7 @@ final class HtmlRenderer
                     $isSvgMode,
                     $selectValue,
                     $asyncMode,
+                    $options,
                 );
             }
             return '';
@@ -408,7 +423,7 @@ final class HtmlRenderer
         if (!$type instanceof JsFunction) {
             return '';
         }
-        return self::renderFunction($vnode, $type, $props, $context, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+        return self::renderFunction($vnode, $type, $props, $context, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
     }
 
     /**
@@ -425,7 +440,14 @@ final class HtmlRenderer
         bool $isSvgMode,
         ?JsValue $selectValue,
         bool $asyncMode,
+        HtmlRenderContext $options,
     ): string|array {
+        if (
+            $options->options !== null
+            && ($options->options->quoteEmptyAttributes !== [] || ($options->inNoscript && $options->options->escapeNoscriptText))
+        ) {
+            throw Js::error('HTML render options cannot change precompiled static attributes.');
+        }
         $template = Template::parse(Js::get($props, 'tpl'));
         if ($template['profile'] !== 'html') {
             throw Js::error('This JSX was precompiled for the React profile and cannot render with the phasis HTML profile.');
@@ -449,7 +471,7 @@ final class HtmlRenderer
             if ($value instanceof JsUndefined || $value instanceof JsNull || $value instanceof JsBoolean) {
                 continue;
             }
-            $rendered = self::render($value, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            $rendered = self::render($value, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
             if (is_string($rendered)) {
                 $out .= $rendered;
                 continue;
@@ -500,6 +522,7 @@ final class HtmlRenderer
         bool $isSvgMode,
         ?JsValue $selectValue,
         bool $asyncMode,
+        HtmlRenderContext $options,
     ): string|array {
         try {
             $rendered = self::callComponent($type, $props, $secondArg, $providers);
@@ -519,8 +542,8 @@ final class HtmlRenderer
         }
         if ($asyncMode && $rendered instanceof JsObject && Js::get($rendered, 'then') instanceof JsFunction) {
             // An async component (a Phasis extension: prts renders nothing for it).
-            return [self::then($rendered, static function (JsValue $value) use ($context, $providers, $isSvgMode, $selectValue): JsValue {
-                return self::toJs(self::render($value, $context, $providers, $isSvgMode, $selectValue, true));
+            return [self::then($rendered, static function (JsValue $value) use ($context, $providers, $isSvgMode, $selectValue, $options): JsValue {
+                return self::toJs(self::render($value, $context, $providers, $isSvgMode, $selectValue, true, $options));
             })];
         }
         if (
@@ -531,7 +554,7 @@ final class HtmlRenderer
             $rendered = Js::get(Js::get($rendered, 'props'), 'children');
         }
         try {
-            $str = self::render($rendered, $context, $providers, $isSvgMode, $selectValue, $asyncMode);
+            $str = self::render($rendered, $context, $providers, $isSvgMode, $selectValue, $asyncMode, $options);
             if (self::$suspended !== null && isset(self::$suspended[$vnode])) {
                 return self::wrapWithSuspenseMarkers($str);
             }
@@ -553,9 +576,12 @@ final class HtmlRenderer
                 $isSvgMode,
                 $selectValue,
                 $vnode,
+                $options,
             ): JsValue {
                 try {
-                    $result = self::withDispatcher(static fn () => self::render($rendered, $context, $providers, $isSvgMode, $selectValue, true));
+                    $result = self::withDispatcher(
+                        static fn () => self::render($rendered, $context, $providers, $isSvgMode, $selectValue, true, $options),
+                    );
                     if (self::$suspended !== null && isset(self::$suspended[$vnode])) {
                         $result = self::wrapWithSuspenseMarkers($result);
                     }
@@ -637,6 +663,7 @@ final class HtmlRenderer
         bool $isSvgMode,
         ?JsValue $selectValue,
         bool $asyncMode,
+        HtmlRenderContext $options,
     ): string|array {
         $s = '<' . $type;
         $html = '';
@@ -674,18 +701,19 @@ final class HtmlRenderer
                     $html = $innerHtml->toBoolean() ? self::concatString($innerHtml) : '';
                     continue 2;
             }
-            $s .= self::attributeChunk($name, $v, $props, $isSvgMode);
+            $s .= self::attributeChunk($name, $v, $props, $isSvgMode, $options->options);
         }
         if (preg_match(self::UNSAFE_NAME, $type) === 1) {
             throw Js::error($type . ' is not a valid HTML tag name in ' . $s . '>');
         }
+        $childOptions = $options->childrenOf($type);
         if ($html !== '') {
             // dangerouslySetInnerHTML defined the contents.
         } elseif ($children instanceof JsString) {
-            $html = self::encodeEntities($children->value);
+            $html = self::encodeText($children->value, $childOptions);
         } elseif ($children !== null && !Js::isNullish($children) && !$children instanceof JsBoolean) {
             $childSvgMode = $type === 'svg' || ($type !== 'foreignObject' && $isSvgMode);
-            $html = self::render($children, $context, $providers, $childSvgMode, $selectValue, $asyncMode);
+            $html = self::render($children, $context, $providers, $childSvgMode, $selectValue, $asyncMode, $childOptions);
         }
         if ($html === '' && isset(self::SELF_CLOSING[$type])) {
             return $s . '/>';
@@ -703,7 +731,7 @@ final class HtmlRenderer
      * dangerouslySetInnerHTML) are handled. $props, when given, is checked for
      * `for` and `class`, which win over htmlFor and className.
      */
-    public static function attributeChunk(string $name, JsValue $v, ?JsObject $props, bool $isSvgMode): string
+    public static function attributeChunk(string $name, JsValue $v, ?JsObject $props, bool $isSvgMode, ?HtmlRenderOptions $options = null): string
     {
         if ($v instanceof JsFunction && $name !== 'class' && $name !== 'className') {
             return '';
@@ -768,6 +796,9 @@ final class HtmlRenderer
         }
         if (Js::isNullish($v) || ($v instanceof JsBoolean && !$v->value)) {
             return '';
+        }
+        if ($v instanceof JsString && $v->value === '' && $options !== null && in_array($name, $options->quoteEmptyAttributes, true)) {
+            return ' ' . $name . '=""';
         }
         if (($v instanceof JsBoolean && $v->value) || ($v instanceof JsString && $v->value === '')) {
             return ' ' . $name;

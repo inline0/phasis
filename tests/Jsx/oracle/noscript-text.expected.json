@@ -1,0 +1,14 @@
+[
+  {
+    "input": "Software's \"tools\" <UI> & more © &",
+    "normalized": "Software's \"tools\" &lt;UI&gt; &amp; more © &amp;"
+  },
+  {
+    "input": "Literal &amp; and <tag> plus > and \"quotes\"",
+    "normalized": "Literal &amp;amp; and &lt;tag&gt; plus &gt; and \"quotes\""
+  },
+  {
+    "input": "plain 雪",
+    "normalized": "plain 雪"
+  }
+]

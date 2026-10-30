@@ -1,0 +1,5 @@
+{
+  "string": "<option value=\"\">All</option>",
+  "static": "<option value=\"\">All</option>",
+  "prerender": "<option value=\"\">All</option>"
+}

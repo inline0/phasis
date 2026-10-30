@@ -125,9 +125,20 @@ export default function Newsletter({ name, articleHtml }) {
 - **`phasis/jsx-runtime`** exports `jsx`, `jsxs` and `Fragment`.
 - **`phasis`** exports `createElement`, `Fragment`, `createContext`, the server hooks (`useState`, `useReducer`, `useMemo`, `useCallback`, `useRef`, `useContext`, `useId`, `use`, the effect hooks, which never run, and the rest), `renderToString`, `renderToStringAsync` and `raw`.
 - **Output** is byte-identical to preact-render-to-string 6.8.1: HTML spellings (`class`, `for`, string `style`) work as written, camelCase HTML props are lowercased, `style` objects become `prop:value;` pairs with `px`, booleans render as bare attributes, void elements as `<br/>`, and text escapes `&`, `<` and `"`.
+
 - **`raw(html)`** inserts trusted HTML verbatim. It and `dangerouslySetInnerHTML` are the only unescaped paths.
 - **No URL filtering.** `javascript:` URLs pass through as written, as in Preact. Sanitize untrusted URLs yourself.
 - **`renderToStringAsync`** waits for components that suspend on `use(promise)`, wrapping their output in preact's `<!--$s-->` markers. Awaiting async components is a Phasis extension; preact-render-to-string renders nothing for them.
+
+For raw-text contexts where the spelling of an empty attribute matters, PHP
+callers may opt in to quoting selected empty string attributes with
+`new \Phasis\HtmlRenderOptions(['value'])` as the fifth argument to
+`Engine::render()`, or the sixth argument to `renderSource()`. Boolean attributes
+and other names retain their normal spelling. The default remains byte-identical
+to Preact. `escapeNoscriptText: true` additionally serializes text below
+`<noscript>` with HTML text escaping (`&`, `<` and `>`), matching HTML
+parse-and-serialize pipelines. Options cannot be used with the React profile or
+precompiled HTML templates whose static contents would be affected.
 
 ## Precompile
 
