@@ -1,0 +1,26 @@
+[
+  {
+    "input": "a > b { content: \"&\"; }",
+    "html": "<style>a > b { content: \"&\"; }</style>"
+  },
+  {
+    "input": "</style>",
+    "html": "<style></\\73 tyle></style>"
+  },
+  {
+    "input": "</STYLE > and <style",
+    "html": "<style></\\53 TYLE > and <\\73 tyle</style>"
+  },
+  {
+    "input": "</sTyLe/x and </stylesheet>",
+    "html": "<style></\\73 TyLe/x and </\\73 tylesheet></style>"
+  },
+  {
+    "input": "text &amp; more 雪",
+    "html": "<style>text &amp; more 雪</style>"
+  },
+  {
+    "input": "<!-- <style> then </style> -->",
+    "html": "<style><!-- <\\73 tyle> then </\\73 tyle> --></style>"
+  }
+]

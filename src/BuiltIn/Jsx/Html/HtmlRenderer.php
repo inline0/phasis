@@ -749,6 +749,17 @@ final class HtmlRenderer
             } elseif ($children !== null && !Js::isNullish($children) && !$children instanceof JsBoolean) {
                 throw Js::error('A script element requires a single string child when reactScriptText is enabled.');
             }
+        } elseif ($type === 'style' && $options->options?->reactStyleText) {
+            if ($children instanceof JsString) {
+                // CSS hex escapes keep embedded style tags from ending the raw-text element.
+                $html = (string) preg_replace_callback(
+                    '/(<\/?)(s)(tyle)/i',
+                    static fn (array $match): string => $match[1] . '\\' . bin2hex($match[2]) . ' ' . $match[3],
+                    $children->value,
+                );
+            } elseif ($children !== null && !Js::isNullish($children) && !$children instanceof JsBoolean) {
+                throw Js::error('A style element requires a single string child when reactStyleText is enabled.');
+            }
         } elseif ($children instanceof JsString) {
             $html = self::encodeText($children->value, $childOptions);
         } elseif ($children !== null && !Js::isNullish($children) && !$children instanceof JsBoolean) {

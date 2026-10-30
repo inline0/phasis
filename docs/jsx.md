@@ -140,7 +140,9 @@ to Preact. `escapeNoscriptText: true` additionally serializes text below
 parse-and-serialize pipelines. `reactScriptText: true` writes a script's single
 string child as React does, including escaping embedded script-tag spellings;
 other nonempty child types fail instead of silently producing unsafe script.
-Only use this option for trusted script content. `literalTextQuotes: true`
+Only use this option for trusted script content. `reactStyleText: true` does
+the same for a style's single string child, using React's CSS escapes for
+embedded style-tag spellings. Only use it for trusted CSS. `literalTextQuotes: true`
 leaves double quotes literal in ordinary text while escaping `&` and `<`;
 `escapeAttributeGreaterThan: true` escapes `>` in attribute values. Together
 these permit WordPress `wptexturize` to recognize quotes and tag boundaries.

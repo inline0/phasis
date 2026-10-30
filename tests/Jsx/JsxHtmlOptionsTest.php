@@ -193,6 +193,37 @@ JS;
         $engine->renderSource($invalid, [], 'default', null, RenderProfile::Html, $options);
     }
 
+    public function testStyleTextMatchesReactInBothJsxModesWithoutChangingDefaults(): void
+    {
+        $cases = json_decode((string) file_get_contents(__DIR__ . '/oracle/style-text.expected.json'), true, 512, JSON_THROW_ON_ERROR);
+        $source = 'export default function App({text}) { return <main><style>{text}</style><p>{text}</p></main>; }';
+        $options = new HtmlRenderOptions(reactStyleText: true);
+        foreach ([JsxMode::Automatic, JsxMode::Precompile] as $mode) {
+            $engine = new Engine();
+            $engine->setJsxOptions(new JsxOptions(mode: $mode, importSource: 'phasis'));
+            foreach ($cases as $case) {
+                $ordinary = strtr($case['input'], ['"' => '&quot;', '&' => '&amp;', '<' => '&lt;']);
+                $this->assertSame(
+                    '<main>' . $case['html'] . '<p>' . $ordinary . '</p></main>',
+                    $engine->renderSource($source, ['text' => $case['input']], 'default', null, RenderProfile::Html, $options),
+                );
+            }
+            $this->assertSame(
+                '<main><style>a > b &amp; &quot;x&quot;</style><p>a > b &amp; &quot;x&quot;</p></main>',
+                $engine->renderSource($source, ['text' => 'a > b & "x"'], 'default', null, RenderProfile::Html),
+            );
+        }
+    }
+
+    public function testStyleTextRejectsMultipleChildren(): void
+    {
+        $engine = new Engine();
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessage('requires a single string child');
+        $source = 'export default function App(){return <style>{["</st", "yle>"]}</style>}';
+        $engine->renderSource($source, [], 'default', null, RenderProfile::Html, new HtmlRenderOptions(reactStyleText: true));
+    }
+
     public function testOptionsRejectInvalidNames(): void
     {
         $this->expectException(\InvalidArgumentException::class);
