@@ -444,9 +444,13 @@ final class HtmlRenderer
     ): string|array {
         if (
             $options->options !== null
-            && ($options->options->quoteEmptyAttributes !== [] || ($options->inNoscript && $options->options->escapeNoscriptText))
+            && (
+                $options->options->quoteEmptyAttributes !== []
+                || ($options->inNoscript && $options->options->escapeNoscriptText)
+                || $options->options->reactScriptText
+            )
         ) {
-            throw Js::error('HTML render options cannot change precompiled static attributes.');
+            throw Js::error('HTML render options cannot change precompiled static output.');
         }
         $template = Template::parse(Js::get($props, 'tpl'));
         if ($template['profile'] !== 'html') {
@@ -709,6 +713,18 @@ final class HtmlRenderer
         $childOptions = $options->childrenOf($type);
         if ($html !== '') {
             // dangerouslySetInnerHTML defined the contents.
+        } elseif ($type === 'script' && $options->options?->reactScriptText) {
+            if ($children instanceof JsString) {
+                // HTML parses script contents as raw text. Escape both opening
+                // and closing script spellings as React does, preserving case.
+                $html = (string) preg_replace_callback(
+                    '/(<\/?)(s)(cript)/i',
+                    static fn (array $match): string => $match[1] . '\\u00' . bin2hex($match[2]) . $match[3],
+                    $children->value,
+                );
+            } elseif ($children !== null && !Js::isNullish($children) && !$children instanceof JsBoolean) {
+                throw Js::error('A script element requires a single string child when reactScriptText is enabled.');
+            }
         } elseif ($children instanceof JsString) {
             $html = self::encodeText($children->value, $childOptions);
         } elseif ($children !== null && !Js::isNullish($children) && !$children instanceof JsBoolean) {

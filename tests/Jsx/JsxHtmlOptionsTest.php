@@ -57,6 +57,47 @@ JS;
         }
     }
 
+    public function testScriptTextMatchesReactWithoutChangingDefaultOrNeighbouringText(): void
+    {
+        $cases = json_decode((string) file_get_contents(__DIR__ . '/oracle/script-text.expected.json'), true, 512, JSON_THROW_ON_ERROR);
+        $source = 'export default function App({text}) { return <script>{text}</script>; }';
+        $engine = new Engine();
+        $options = new HtmlRenderOptions([], false, true);
+        foreach ($cases as $case) {
+            $this->assertSame(
+                $case['html'],
+                $engine->renderSource($source, ['text' => $case['input']], 'default', null, RenderProfile::Html, $options),
+            );
+        }
+        $text = 'if (a < b && x > 1) { console.log("ok") }';
+        $this->assertSame(
+            '<script>if (a &lt; b &amp;&amp; x > 1) { console.log(&quot;ok&quot;) }</script>',
+            $engine->renderSource($source, ['text' => $text], 'default', null, RenderProfile::Html),
+        );
+        $neighbours = 'export default function App(){return <main><p>{"a < b && c"}</p>'
+            . '<script>{"a < b && c"}</script><p>{"a < b && c"}</p></main>}';
+        $this->assertSame(
+            '<main><p>a &lt; b &amp;&amp; c</p><script>a < b && c</script><p>a &lt; b &amp;&amp; c</p></main>',
+            $engine->renderSource($neighbours, [], 'default', null, RenderProfile::Html, $options),
+        );
+    }
+
+    public function testScriptTextRequiresOneStringAndSurvivesAsyncRendering(): void
+    {
+        $engine = new Engine();
+        $options = new HtmlRenderOptions([], false, true);
+        $async = 'async function Child(){await Promise.resolve();return <script>{"if (a < b && c) { run() }"}</script>} '
+            . 'export default function App(){return <Child/>}';
+        $this->assertSame(
+            '<script>if (a < b && c) { run() }</script>',
+            $engine->renderSource($async, [], 'default', null, RenderProfile::Html, $options),
+        );
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessage('requires a single string child');
+        $invalid = 'export default function App(){return <script>{["</scr", "ipt>"]}</script>}';
+        $engine->renderSource($invalid, [], 'default', null, RenderProfile::Html, $options);
+    }
+
     public function testOptionsRejectInvalidNames(): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -77,7 +118,7 @@ JS;
         $engine = new Engine();
         $engine->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
         $this->expectException(\Throwable::class);
-        $this->expectExceptionMessage('HTML render options cannot change precompiled static attributes');
+        $this->expectExceptionMessage('HTML render options cannot change precompiled static output');
         $engine->renderSource(
             'export default () => <div><p value="">All</p></div>',
             [],
@@ -85,6 +126,22 @@ JS;
             null,
             RenderProfile::Html,
             new HtmlRenderOptions(['value']),
+        );
+    }
+
+    public function testPrecompiledScriptsFailClosedWhenReactScriptTextIsEnabled(): void
+    {
+        $engine = new Engine();
+        $engine->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessage('HTML render options cannot change precompiled static output');
+        $engine->renderSource(
+            'export default () => <div><p>Static</p><script>{"a < b && c"}</script></div>',
+            [],
+            'default',
+            null,
+            RenderProfile::Html,
+            new HtmlRenderOptions([], false, true),
         );
     }
 }

@@ -1,0 +1,26 @@
+[
+  {
+    "input": "if (a < b && x > 1) { console.log(\"ok\") }",
+    "html": "<script>if (a < b && x > 1) { console.log(\"ok\") }</script>"
+  },
+  {
+    "input": "</script>",
+    "html": "<script></\\u0073cript></script>"
+  },
+  {
+    "input": "</SCRIPT > and <script",
+    "html": "<script></\\u0053CRIPT > and <\\u0073cript</script>"
+  },
+  {
+    "input": "</sCrIpT/x and </scripture>",
+    "html": "<script></\\u0073CrIpT/x and </\\u0073cripture></script>"
+  },
+  {
+    "input": "text &amp; more 雪",
+    "html": "<script>text &amp; more 雪</script>"
+  },
+  {
+    "input": "<!-- <script> then </script> -->",
+    "html": "<script><!-- <\\u0073cript> then </\\u0073cript> --></script>"
+  }
+]
