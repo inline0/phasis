@@ -134,8 +134,12 @@ For raw-text contexts where the spelling of an empty attribute matters, PHP
 callers may opt in to quoting selected empty string attributes with
 `new \Phasis\HtmlRenderOptions(['value'])` as the fifth argument to
 `Engine::render()`, or the sixth argument to `renderSource()`. Boolean attributes
-and other names retain their normal spelling. The default remains byte-identical
-to Preact. `escapeNoscriptText: true` additionally serializes text below
+and other names retain their normal spelling. For integrations that require
+the attribute name as its boolean value, `namedBooleanAttributes: ['selected']`
+writes a true `selected` as `selected="selected"`, including selection inherited
+from a parent `select`. It applies only to true boolean attributes after name
+normalization; false values and empty strings keep their usual rules. The
+default remains byte-identical to Preact. `escapeNoscriptText: true` additionally serializes text below
 `<noscript>` with HTML text escaping (`&`, `<` and `>`), matching HTML
 parse-and-serialize pipelines. `reactScriptText: true` writes a script's single
 string child as React does, including escaping embedded script-tag spellings;

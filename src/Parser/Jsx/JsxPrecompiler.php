@@ -163,8 +163,8 @@ final class JsxPrecompiler
         $meta = ['p' => $this->react ? 'react' : 'html', 'f' => $this->flags, 's' => $this->steps, 'a' => $this->attributes];
         if (!$this->react) {
             $meta['h'] = $this->htmlEdits;
-            // Version 1 includes edits for static attributes containing `>`.
-            $meta['v'] = 1;
+            // Version 2 also records static true boolean attributes.
+            $meta['v'] = 2;
         }
         return [[...$this->parts, $meta], $this->holes];
     }
@@ -270,11 +270,14 @@ final class JsxPrecompiler
                 if (!$this->react) {
                     $svgChunk = $this->staticAttribute($tag, $name, $static, true);
                     $empty = $static instanceof JsString && $static->value === '';
-                    if ($chunk !== $svgChunk || ($empty && $chunk !== '') || str_contains($chunk, '>')) {
+                    $htmlBoolean = self::staticBooleanName($static, $chunk);
+                    $svgBoolean = self::staticBooleanName($static, $svgChunk);
+                    $boolean = $htmlBoolean !== '' || $svgBoolean !== '';
+                    if ($boolean || $chunk !== $svgChunk || ($empty && $chunk !== '') || str_contains($chunk, '>')) {
                         $this->partHtmlEdits[] = [
-                            strlen($this->part), strlen($chunk), 'attribute', $chunk, $svgChunk,
-                            $empty && $chunk !== '' ? substr($chunk, 1) : '',
-                            $empty && $svgChunk !== '' ? substr($svgChunk, 1) : '',
+                            strlen($this->part), strlen($chunk), $boolean ? 'boolean' : 'attribute', $chunk, $svgChunk,
+                            $boolean ? $htmlBoolean : ($empty && $chunk !== '' ? substr($chunk, 1) : ''),
+                            $boolean ? $svgBoolean : ($empty && $svgChunk !== '' ? substr($svgChunk, 1) : ''),
                         ];
                     }
                 }
@@ -303,6 +306,12 @@ final class JsxPrecompiler
         $this->holes[] = $holeValue;
         $this->steps[] = null;
         $this->attributes[] = $tag === 'a' && $name === 'href' ? [$name, 'a'] : [$name];
+    }
+
+    private static function staticBooleanName(JsBoolean|JsString $value, string $chunk): string
+    {
+        return $value instanceof JsBoolean && preg_match('/^ ([a-zA-Z_][a-zA-Z0-9_:.-]*)$/D', $chunk, $match) === 1
+            ? $match[1] : '';
     }
 
     private function staticAttribute(string $tag, string $name, JsBoolean|JsString $value, bool $isSvgMode = false): string

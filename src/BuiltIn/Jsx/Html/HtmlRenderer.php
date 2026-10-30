@@ -453,9 +453,12 @@ final class HtmlRenderer
         $escapeText = $options->inNoscript && ($options->options->escapeNoscriptText ?? false);
         $literalQuotes = $options->options->literalTextQuotes ?? false;
         $escapeGreater = $options->options->escapeAttributeGreaterThan ?? false;
+        $namedBooleans = $options->options->namedBooleanAttributes ?? [];
+        $needsEdits = $quoteEmpty !== [] || $escapeText || $isSvgMode || $literalQuotes || $escapeGreater || $namedBooleans !== [];
         if (
-            ($template['htmlEdits'] === null && ($quoteEmpty !== [] || $escapeText || $isSvgMode || $literalQuotes || $escapeGreater))
+            ($template['htmlEdits'] === null && $needsEdits)
             || ($escapeGreater && !$template['attributeGreaterEdits'])
+            || ($namedBooleans !== [] && !$template['namedBooleanEdits'])
         ) {
             throw Js::error('HTML render options or SVG context cannot change precompiled static output from an older template.');
         }
@@ -463,7 +466,7 @@ final class HtmlRenderer
         $out = '';
         $parts = null;
         foreach ($template['parts'] as $i => $part) {
-            if ($quoteEmpty !== [] || $escapeText || $isSvgMode || $literalQuotes || $escapeGreater) {
+            if ($needsEdits) {
                 foreach (array_reverse($template['htmlEdits'][$i] ?? []) as [$offset, $length, $kind, $html, $svg, $htmlName, $svgName]) {
                     if ($kind === 'text') {
                         if ($escapeText) {
@@ -478,7 +481,9 @@ final class HtmlRenderer
                         $replacement = str_replace('>', '&gt;', $replacement);
                     }
                     $name = $isSvgMode ? $svgName : $htmlName;
-                    if ($name !== '' && in_array($name, $quoteEmpty, true)) {
+                    if ($kind === 'boolean' && $name !== '' && in_array($name, $namedBooleans, true)) {
+                        $replacement .= '="' . $name . '"';
+                    } elseif ($kind === 'attribute' && $name !== '' && in_array($name, $quoteEmpty, true)) {
                         $replacement .= '=""';
                     }
                     $part = substr_replace($part, $replacement, $offset, $length);
@@ -720,7 +725,7 @@ final class HtmlRenderer
                     }
                     $selected = $selectValue ?? JsUndefined::instance();
                     if ($type === 'option' && AbstractOperations::abstractEquals($selected, $v) && !Js::has($props, 'selected')) {
-                        $s .= ' selected';
+                        $s .= self::booleanAttributeChunk('selected', $options->options);
                     }
                     break;
                 case 'dangerouslySetInnerHTML':
@@ -851,7 +856,10 @@ final class HtmlRenderer
         if ($v instanceof JsString && $v->value === '' && $options !== null && in_array($name, $options->quoteEmptyAttributes, true)) {
             return ' ' . $name . '=""';
         }
-        if (($v instanceof JsBoolean && $v->value) || ($v instanceof JsString && $v->value === '')) {
+        if ($v instanceof JsBoolean && $v->value) {
+            return self::booleanAttributeChunk($name, $options);
+        }
+        if ($v instanceof JsString && $v->value === '') {
             return ' ' . $name;
         }
         $value = self::encodeEntities(self::concatString($v));
@@ -859,6 +867,11 @@ final class HtmlRenderer
             $value = str_replace('>', '&gt;', $value);
         }
         return ' ' . $name . '="' . $value . '"';
+    }
+
+    private static function booleanAttributeChunk(string $name, ?HtmlRenderOptions $options): string
+    {
+        return ' ' . $name . ($options !== null && in_array($name, $options->namedBooleanAttributes, true) ? '="' . $name . '"' : '');
     }
 
     private static function styleObjToCss(JsObject $style): string

@@ -82,6 +82,7 @@ final class Template
      *     attributes: list<?array{0: string, 1: bool}>,
      *     htmlEdits: ?list<list<array{int, int, string, string, string, string, string}>>,
      *     attributeGreaterEdits: bool,
+     *     namedBooleanEdits: bool,
      * }
      */
     public static function parse(JsValue $tpl): array
@@ -138,6 +139,7 @@ final class Template
                 $htmlEdits[] = $edits;
             }
         }
+        $version = Js::str(Js::get($meta ?? JsUndefined::instance(), 'v'));
         $parsed = [
             'profile' => Js::str(Js::get($meta ?? JsUndefined::instance(), 'p')),
             'parts' => $parts,
@@ -145,7 +147,8 @@ final class Template
             'steps' => $steps,
             'attributes' => $attributes,
             'htmlEdits' => $htmlEdits,
-            'attributeGreaterEdits' => Js::str(Js::get($meta ?? JsUndefined::instance(), 'v')) === '1',
+            'attributeGreaterEdits' => in_array($version, ['1', '2'], true),
+            'namedBooleanEdits' => $version === '2',
         ];
         $tpl->setInternalProperty('[[PhasisTemplate]]', $parsed);
         return $parsed;

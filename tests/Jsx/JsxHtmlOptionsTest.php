@@ -13,6 +13,104 @@ use PHPUnit\Framework\TestCase;
 
 final class JsxHtmlOptionsTest extends TestCase
 {
+    public function testNamedBooleansMatchInOrdinaryAndPrecompiledRendering(): void
+    {
+        $source = <<<'JS'
+export default ({flag}) => <main><section>
+  <p hidden data-empty="" title="雪 &gt;">Static</p>
+  <p hidden={flag} data-empty={''} draggable={true} aria-hidden={true}>Dynamic</p>
+  <p defaultChecked selected="">Mapped and empty</p>
+  <select value="b"><option value="a">A</option><option value="b">B</option></select>
+  <select><option value="c" selected={flag}>C</option><option value="d" selected={false}>D</option></select>
+  <svg><a strokeWidth hidden>SVG</a></svg>
+</section></main>;
+JS;
+        $ordinary = new Engine();
+        $precompiled = new Engine();
+        $precompiled->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
+        $named = new HtmlRenderOptions(
+            namedBooleanAttributes: ['hidden', 'selected', 'checked', 'stroke-width', 'aria-hidden'],
+            quoteEmptyAttributes: ['data-empty', 'selected'],
+            escapeAttributeGreaterThan: true,
+        );
+        foreach ([true, false, null] as $flag) {
+            foreach ([null, $named] as $options) {
+                $expected = $ordinary->renderSource($source, ['flag' => $flag], 'default', null, RenderProfile::Html, $options);
+                $this->assertSame($expected, $precompiled->renderSource($source, ['flag' => $flag], 'default', null, RenderProfile::Html, $options));
+                if ($options === null) {
+                    $this->assertStringContainsString('<p hidden data-empty title="雪 >">', $expected);
+                    $this->assertStringContainsString(' selected value="b"', $expected);
+                    $this->assertStringNotContainsString('hidden="hidden"', $expected);
+                    continue;
+                }
+                $this->assertStringContainsString('<p hidden="hidden" data-empty="" title="雪 &gt;">', $expected);
+                $this->assertStringContainsString(' selected="selected" value="b"', $expected);
+                $this->assertStringContainsString('draggable="true"', $expected);
+                $this->assertStringContainsString('aria-hidden="true"', $expected);
+                $this->assertStringContainsString('<p checked="checked" selected="">', $expected);
+                $this->assertStringContainsString('stroke-width="stroke-width"', $expected);
+                $this->assertSame($flag === true ? 2 : 1, substr_count($expected, 'hidden="hidden"') - 1);
+                $this->assertSame($flag === true ? 2 : 1, substr_count($expected, 'selected="selected"'));
+            }
+        }
+    }
+
+    public function testNamedBooleanOptionsRejectInvalidAttributeNames(): void
+    {
+        foreach (['', 'bad name', 'bad"name', '<script>', '9bad'] as $name) {
+            try {
+                new HtmlRenderOptions(namedBooleanAttributes: [$name]);
+                $this->fail('An invalid attribute name was accepted.');
+            } catch (\InvalidArgumentException $error) {
+                $this->assertSame('Invalid HTML attribute name in namedBooleanAttributes.', $error->getMessage());
+            }
+        }
+    }
+
+    public function testVersionOnePrecompiledMetadataStillSupportsExistingOptions(): void
+    {
+        $source = "import { jsxTemplate } from 'phasis/jsx-precompile'; import { jsx } from 'phasis/jsx-runtime'; "
+            . "const tpl = ['<p hidden>text</p>', {p:'html', f:[0], s:[], a:[], h:[[]], v:1}]; "
+            . "export default () => jsx('div', {children:jsxTemplate(tpl)});";
+        $engine = new Engine();
+        $this->assertSame(
+            '<div><p hidden>text</p></div>',
+            $engine->renderSource($source, [], 'default', null, RenderProfile::Html, new HtmlRenderOptions(escapeAttributeGreaterThan: true)),
+        );
+    }
+
+    public function testVersionOnePrecompiledMetadataRejectsNamedBooleans(): void
+    {
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessage('precompiled static output from an older template');
+        (new Engine())->renderSource(
+            "import { jsxTemplate } from 'phasis/jsx-precompile'; import { jsx } from 'phasis/jsx-runtime'; "
+                . "const tpl = ['<p hidden>text</p>', {p:'html', f:[0], s:[], a:[], h:[[]], v:1}]; "
+                . "export default () => jsx('div', {children:jsxTemplate(tpl)});",
+            [],
+            'default',
+            null,
+            RenderProfile::Html,
+            new HtmlRenderOptions(namedBooleanAttributes: ['hidden']),
+        );
+    }
+
+    public function testPrecompiledMetadataWithoutVersionRejectsNamedBooleans(): void
+    {
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessage('precompiled static output from an older template');
+        (new Engine())->renderSource(
+            "import { jsxTemplate } from 'phasis/jsx-precompile'; import { jsx } from 'phasis/jsx-runtime'; "
+                . "const tpl = ['<p hidden>text</p>', {p:'html', f:[0], s:[], a:[], h:[[]]}]; "
+                . "export default () => jsx('div', {children:jsxTemplate(tpl)});",
+            [],
+            'default',
+            null,
+            RenderProfile::Html,
+            new HtmlRenderOptions(namedBooleanAttributes: ['hidden']),
+        );
+    }
+
     public function testTextAndAttributeEscapingMatchReactDomInBothModes(): void
     {
         $source = <<<'JS'
