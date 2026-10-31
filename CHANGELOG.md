@@ -2,8 +2,20 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-31
+
 ### Added
+- `HtmlRenderOptions` lets PHP callers of `Engine::render()` and `renderSource()` opt into quoting selected empty attributes, spelling selected true boolean attributes as `name="name"`, and escaping text inside `noscript` elements.
+- Opt-in React-compatible script and style text serialization escapes embedded script or style tag spellings. Separate text-quote and attribute `>` options support WordPress `wptexturize` processing.
 - A package smoke fixture for `@base-ui/react` 1.9: its accordion, tabs and button render byte-identical to `react-dom/server` in Node, with modules in bundle order and deferred.
+
+### Fixed
+- Precompiled JSX retains HTML, SVG and `noscript` context and applies the selected serialization options to static content and dynamic holes, including across suspended and asynchronous components.
+
+### Upgrade notes
+- HTML serialization options are opt-in and apply only to the HTML render profile; default rendering retains its Preact-compatible behavior. React-profile rendering rejects these options.
+- Older precompiled templates that lack the metadata needed for an option or SVG context fail instead of silently producing incorrect output. Recompile them; the parsed-module cache format has also changed so older cached entries are not reused.
+- React-compatible script and style text options are for trusted content and require a single string child when nonempty.
 
 ## [0.12.0] - 2026-10-29
 
