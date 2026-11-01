@@ -164,7 +164,7 @@ final class JsxPrecompiler
         if (!$this->react) {
             $meta['h'] = $this->htmlEdits;
             // Version 2 also records static true boolean attributes.
-            $meta['v'] = 2;
+            $meta['v'] = 3;
         }
         return [[...$this->parts, $meta], $this->holes];
     }
@@ -262,7 +262,11 @@ final class JsxPrecompiler
             return;
         }
         $value = $attribute->value;
-        if ($value === null || ($value instanceof Literal && is_string($value->value))) {
+        $aliased = !$this->react && HtmlRenderer::reactAttributeAlias($name) !== null;
+        if ($aliased) {
+            $value ??= new Literal($attribute->location, true, 'true');
+        }
+        if (!$aliased && ($value === null || ($value instanceof Literal && is_string($value->value)))) {
             $static = $value === null ? JsBoolean::of(true) : new JsString((string) $value->value);
             // React throws for a string style at render time; keep that for runtime.
             if (!($this->react && $name === 'style')) {

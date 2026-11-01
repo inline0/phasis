@@ -151,6 +151,17 @@ leaves double quotes literal in ordinary text while escaping `&` and `<`;
 `escapeAttributeGreaterThan: true` escapes `>` in attribute values. Together
 these permit WordPress `wptexturize` to recognize quotes and tag boundaries.
 Neither changes trusted raw HTML or the script and noscript options above.
+`reactAttributeAliases: true` writes every prop React DOM 19.3.1 renames under
+React's attribute name, on any element and whether or not it sits inside an
+`<svg>`: the SVG presentation props (`strokeWidth` becomes `stroke-width`,
+`clipPath` becomes `clip-path`), `xlinkHref` and the other `xlink:` and `xml:`
+props, `xmlnsXlink`, `tabIndex`, `autoFocus`, `crossOrigin`, `acceptCharset`,
+`httpEquiv` and `htmlFor`. Preact keeps camelCase names on the `<svg>` element
+itself and converts them only on its descendants; with this option the same
+camelCase props produce React's markup everywhere, so one component renders
+the same names through this profile and through `renderForHydration()`. Names
+React writes as they are keep this profile's spelling, and values keep this
+profile's rules.
 Options cannot be used with the React profile. Older precompiled templates
 without the necessary metadata fail rather than silently ignoring an option.
 

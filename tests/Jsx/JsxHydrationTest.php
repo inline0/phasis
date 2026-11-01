@@ -72,6 +72,22 @@ final class JsxHydrationTest extends TestCase
         $this->assertFalse($this->engine->eval('Object.hasOwn(Object.prototype, "polluted")'));
     }
 
+    public function testSvgPropsUseReactDomAttributeNames(): void
+    {
+        $result = $this->engine->renderForHydration(
+            __DIR__ . '/hydration/Root.jsx',
+            ['data' => ['width' => 2]],
+            export: 'Icon',
+            options: $this->options(),
+        );
+        $this->assertSame(
+            '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill-rule="evenodd" '
+                . 'clip-rule="evenodd" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" class="icon">'
+                . '<path d="M0 0" stroke-dasharray="1 2" stroke-miterlimit="4"></path><use xlink:href="#shape"></use></svg>',
+            $result->html,
+        );
+    }
+
     public function testEmptyRootPropsAreObjectsAndClassDefaultsAndReservedPropsMatchCreateElement(): void
     {
         $result = $this->engine->renderForHydration(

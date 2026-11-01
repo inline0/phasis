@@ -83,6 +83,7 @@ final class Template
      *     htmlEdits: ?list<list<array{int, int, string, string, string, string, string}>>,
      *     attributeGreaterEdits: bool,
      *     namedBooleanEdits: bool,
+     *     reactAliasHoles: bool,
      * }
      */
     public static function parse(JsValue $tpl): array
@@ -147,8 +148,9 @@ final class Template
             'steps' => $steps,
             'attributes' => $attributes,
             'htmlEdits' => $htmlEdits,
-            'attributeGreaterEdits' => in_array($version, ['1', '2'], true),
-            'namedBooleanEdits' => $version === '2',
+            'attributeGreaterEdits' => in_array($version, ['1', '2', '3'], true),
+            'namedBooleanEdits' => in_array($version, ['2', '3'], true),
+            'reactAliasHoles' => $version === '3',
         ];
         $tpl->setInternalProperty('[[PhasisTemplate]]', $parsed);
         return $parsed;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Phasis\Tests\Jsx;
 
+use Phasis\BuiltIn\Jsx\Html\HtmlRenderer;
 use Phasis\Engine;
 use Phasis\HtmlRenderOptions;
 use Phasis\Parser\Jsx\JsxMode;
@@ -475,6 +476,106 @@ JS;
             'default',
             null,
             RenderProfile::Html,
+        );
+    }
+
+    public function testReactAttributeAliasesMatchReactDomInOrdinaryAndPrecompiledRendering(): void
+    {
+        $fixture = __DIR__ . '/react/svg-attribute-aliases.jsx';
+        $expected = (string) file_get_contents(substr($fixture, 0, -4) . '.expected.txt');
+        $oracle = json_decode($expected, true, 512, JSON_THROW_ON_ERROR);
+        $options = new HtmlRenderOptions(reactAttributeAliases: true);
+        $ordinary = new Engine();
+        $precompiled = new Engine();
+        $precompiled->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
+        $this->assertSame($oracle['static'], $ordinary->render($fixture, [], 'default', RenderProfile::Html, $options));
+        $this->assertSame($oracle['static'], $precompiled->render($fixture, [], 'default', RenderProfile::Html, $options));
+        $default = $ordinary->render($fixture, [], 'default', RenderProfile::Html);
+        $this->assertSame($default, $precompiled->render($fixture, [], 'default', RenderProfile::Html));
+        $this->assertStringContainsString('<svg viewBox="0 0 24 24" accentHeight="v0"', $default);
+        $this->assertStringContainsString('<g accent-height="v0"', $default);
+    }
+
+    public function testReactAttributeAliasesCoverReactDomsAliasTable(): void
+    {
+        $bundle = (string) file_get_contents(__DIR__ . '/vendor/react-19.3.1/server.mjs');
+        $start = strpos($bundle, '["acceptCharset"');
+        $this->assertNotFalse($start);
+        $end = strpos($bundle, ']);', $start);
+        $this->assertNotFalse($end);
+        $entries = json_decode('[' . substr($bundle, $start, $end - $start) . ']', true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCount(79, $entries);
+        $fixture = (string) file_get_contents(__DIR__ . '/react/svg-attribute-aliases.jsx');
+        foreach ($entries as [$prop, $attribute]) {
+            $this->assertSame($attribute, HtmlRenderer::reactAttributeAlias($prop));
+            $this->assertStringContainsString(' ' . $prop . '="', $fixture);
+        }
+        $this->assertNull(HtmlRenderer::reactAttributeAlias('viewBox'));
+        $this->assertNull(HtmlRenderer::reactAttributeAlias('readOnly'));
+    }
+
+    public function testReactAttributeAliasesFollowRuntimeContextInPrecompiledTemplates(): void
+    {
+        $source = <<<'JS'
+async function Child() { await Promise.resolve(); return <a><a strokeWidth="2" xlinkHref="#a">Async</a></a>; }
+function Links({width}) {
+  return <a><a strokeWidth="" fillRule="evenodd" strokeLinecap={width} tabIndex="0" autoFocus crossOrigin=""
+    xmlSpace="preserve" glyphRef="g">Link</a><Child/></a>;
+}
+export default ({width}) => {
+  return <main><Links width={width}/><svg><Links width={width}/>
+    <foreignObject><Links width={width}/></foreignObject></svg></main>;
+}
+JS;
+        $ordinary = new Engine();
+        $precompiled = new Engine();
+        $precompiled->setJsxOptions(new JsxOptions(mode: JsxMode::Precompile, importSource: 'phasis'));
+        $profiles = [
+            null,
+            new HtmlRenderOptions(reactAttributeAliases: true),
+            new HtmlRenderOptions(['stroke-width', 'crossorigin'], reactAttributeAliases: true),
+            new HtmlRenderOptions(namedBooleanAttributes: ['autofocus'], escapeAttributeGreaterThan: true, reactAttributeAliases: true),
+        ];
+        foreach ($profiles as $options) {
+            foreach (['', 'round', null] as $width) {
+                $this->assertSame(
+                    $ordinary->renderSource($source, ['width' => $width], 'default', null, RenderProfile::Html, $options),
+                    $precompiled->renderSource($source, ['width' => $width], 'default', null, RenderProfile::Html, $options),
+                );
+            }
+        }
+        $aliased = $precompiled->renderSource($source, ['width' => 'round'], 'default', null, RenderProfile::Html, $profiles[2]);
+        $this->assertSame(3, substr_count(
+            $aliased,
+            '<a stroke-width="" fill-rule="evenodd" stroke-linecap="round" tabindex="0" autofocus crossorigin="" xml:space="preserve" glyphRef="g">',
+        ));
+        $this->assertSame(3, substr_count($aliased, '<a stroke-width="2" xlink:href="#a">Async</a>'));
+        $named = $precompiled->renderSource($source, ['width' => 'round'], 'default', null, RenderProfile::Html, $profiles[3]);
+        $this->assertSame(3, substr_count($named, ' autofocus="autofocus" crossorigin '));
+        $plain = $precompiled->renderSource($source, ['width' => 'round'], 'default', null, RenderProfile::Html);
+        $this->assertStringContainsString(
+            '<main><a><a strokeWidth fillRule="evenodd" strokeLinecap="round" tabindex="0" autofocus crossorigin',
+            $plain,
+        );
+        $this->assertStringContainsString(
+            '<svg><a><a stroke-width fill-rule="evenodd" stroke-linecap="round" tabIndex="0" autoFocus crossOrigin',
+            $plain,
+        );
+    }
+
+    public function testOlderPrecompiledTemplatesRejectReactAttributeAliases(): void
+    {
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessage('precompiled static output from an older template');
+        (new Engine())->renderSource(
+            "import { jsxTemplate } from 'phasis/jsx-precompile'; import { jsx } from 'phasis/jsx-runtime'; "
+                . "const tpl = ['<a strokeWidth=\"2\"></a>', {p:'html', f:[0], s:[], a:[], h:[[]], v:2}]; "
+                . "export default () => jsx('div', {children:jsxTemplate(tpl)});",
+            [],
+            'default',
+            null,
+            RenderProfile::Html,
+            new HtmlRenderOptions(reactAttributeAliases: true),
         );
     }
 }

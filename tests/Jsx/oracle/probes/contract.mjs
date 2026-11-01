@@ -39,7 +39,7 @@ const until = async (test) => {
                 return nodes;
             });
             for (const [id, name] of [['alpha', 'default'], ['beta', 'default'], ['named', 'Defaults'], ['empty', 'Defaults'],
-                ['shapes', 'Shapes'], ['keys', 'Keys']]) {
+                ['shapes', 'Shapes'], ['icon', 'Icon'], ['keys', 'Keys']]) {
                 roots.push(hydrate(window.document.getElementById(id), components, options(name)));
             }
             await sleep(100);
@@ -57,12 +57,16 @@ const until = async (test) => {
             assert.ok(b.id.startsWith('_beta-'));
             assert.notEqual(a.id, b.id);
             assert.equal(window.exploit, undefined);
-            assert.equal(window.document.querySelectorAll('script').length, 6, 'Captured text must not escape an inert state tag.');
+            assert.equal(window.document.querySelectorAll('script').length, 7, 'Captured text must not escape an inert state tag.');
             assert.equal(window.Object.prototype.polluted, undefined);
             a.click();
             await until(() => window.document.querySelector('#alpha output').textContent.endsWith(':1'));
             assert.equal(window.document.querySelector('#beta output').textContent, '20:0');
-            checks += 15;
+            const icon = window.document.querySelector('#icon svg');
+            assert.deepEqual(icon.getAttributeNames(), ['viewBox', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'fill-rule',
+                'clip-rule', 'xmlns:xlink', 'xml:space', 'class']);
+            assert.equal(window.document.querySelector('#icon use').getAttributeNS('http://www.w3.org/1999/xlink', 'href'), '#shape');
+            checks += 17;
 
             // Mismatched metadata fails synchronously, preserving the exact nodes.
             const base = window.document.getElementById('beta');

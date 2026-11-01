@@ -24,6 +24,7 @@ final class HtmlRenderOptions
         public readonly bool $escapeAttributeGreaterThan = false,
         public readonly bool $reactStyleText = false,
         public readonly array $namedBooleanAttributes = [],
+        public readonly bool $reactAttributeAliases = false,
     ) {
         foreach ($quoteEmptyAttributes as $name) {
             if (preg_match('/^[a-zA-Z_][a-zA-Z0-9_:.-]*$/D', $name) !== 1) {

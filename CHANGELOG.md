@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-01
+
+### Added
+- `HtmlRenderOptions::$reactAttributeAliases` makes the HTML profile write every prop React DOM 19.3.1 renames under React's attribute name (`strokeWidth` as `stroke-width`, `xlinkHref` as `xlink:href`, `xmlSpace` as `xml:space`, `tabIndex` as `tabindex` and the rest of React's alias table) on every element, including the `<svg>` element itself, where preact-render-to-string keeps camelCase names. Components can then pass React's camelCase SVG props and render the same names through `render()` and `renderForHydration()`.
+- A React fixture with every prop in React DOM's alias table, compared byte for byte with `react-dom` in both profiles, ordinary and precompiled, and hydrated by React 19.3.1 in development and production. The hydration consumer contract hydrates an SVG root with no warnings.
+
+### Upgrade notes
+- The option is opt-in and the HTML profile's default output is unchanged. Precompiled templates now keep aliased static attribute names as attribute holes, so older templates fail with the option instead of rendering Preact's spelling. The parsed-module cache format has changed, so older cached entries are not reused.
+
 ## [0.13.0] - 2026-10-31
 
 ### Added

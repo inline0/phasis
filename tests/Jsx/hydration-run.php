@@ -12,6 +12,7 @@ $cases = [
     ['id' => 'beta', 'export' => 'default', 'props' => ['data' => ['label' => 'Beta', 'value' => 20]]],
     ['id' => 'named', 'export' => 'Defaults', 'props' => ['key' => 'key', '__self' => 'hidden', '__source' => 'hidden', 'ref' => null]],
     ['id' => 'empty', 'export' => 'Defaults', 'props' => []],
+    ['id' => 'icon', 'export' => 'Icon', 'props' => ['data' => ['width' => 2]]],
     ['id' => 'keys', 'export' => 'Keys', 'props' => ['[[public]]' => true, 'data' => [
         '[[public]]' => 'visible', '[[PrimitiveValue]]' => 42,
     ]]],

@@ -49,6 +49,14 @@ export function Keys(props) {
         :{String(props.data)}:{Object.prototype.toString.call(props.data)}:{brand}</pre>;
 }
 
+export function Icon({ data }) {
+    return <svg viewBox="0 0 24 24" strokeWidth={data.width} strokeLinecap="round" strokeLinejoin="round" fillRule="evenodd"
+        clipRule="evenodd" xmlnsXlink="http://www.w3.org/1999/xlink" xmlSpace="preserve" className="icon">
+        <path d="M0 0" strokeDasharray="1 2" strokeMiterlimit="4" />
+        <use xlinkHref="#shape" />
+    </svg>;
+}
+
 export function Document() {
     return <html><head><title>Document</title></head><body>Content</body></html>;
 }

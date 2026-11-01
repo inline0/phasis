@@ -16,6 +16,7 @@ namespace Phasis\BuiltIn\Jsx\Html;
 
 use Phasis\BuiltIn\Jsx\Js;
 use Phasis\BuiltIn\Jsx\Precompile\Template;
+use Phasis\BuiltIn\Jsx\React\Fizz\Dom;
 use Phasis\BuiltIn\Jsx\React\Fizz\Hooks;
 use Phasis\BuiltIn\Jsx\React\Fizz\Server;
 use Phasis\BuiltIn\Jsx\React\ReactModule;
@@ -459,6 +460,7 @@ final class HtmlRenderer
             ($template['htmlEdits'] === null && $needsEdits)
             || ($escapeGreater && !$template['attributeGreaterEdits'])
             || ($namedBooleans !== [] && !$template['namedBooleanEdits'])
+            || (($options->options->reactAttributeAliases ?? false) && !$template['reactAliasHoles'])
         ) {
             throw Js::error('HTML render options or SVG context cannot change precompiled static output from an older template.');
         }
@@ -838,7 +840,10 @@ final class HtmlRenderer
                 if (preg_match(self::UNSAFE_NAME, $name) === 1) {
                     return '';
                 }
-                if (preg_match(self::NAMESPACE_REPLACE, $name) === 1) {
+                $alias = $options !== null && $options->reactAttributeAliases ? self::reactAttributeAlias($name) : null;
+                if ($alias !== null) {
+                    $name = $alias;
+                } elseif (preg_match(self::NAMESPACE_REPLACE, $name) === 1) {
                     $name = strtolower((string) preg_replace(self::NAMESPACE_REPLACE, '$1:$2', $name));
                 } elseif ((($name[4] ?? '') === '-' || isset(self::HTML_ENUMERATED[$name])) && !Js::isNullish($v)) {
                     $v = new JsString(self::concatString($v));
@@ -867,6 +872,18 @@ final class HtmlRenderer
             $value = str_replace('>', '&gt;', $value);
         }
         return ' ' . $name . '="' . $value . '"';
+    }
+
+    public static function reactAttributeAlias(string $name): ?string
+    {
+        return match ($name) {
+            'tabIndex' => 'tabindex',
+            'autoFocus' => 'autofocus',
+            'xlinkActuate', 'xlinkArcrole', 'xlinkHref', 'xlinkRole', 'xlinkShow', 'xlinkTitle', 'xlinkType'
+                => 'xlink:' . strtolower(substr($name, 5)),
+            'xmlBase', 'xmlLang', 'xmlSpace' => 'xml:' . strtolower(substr($name, 3)),
+            default => Dom::attributeAlias($name),
+        };
     }
 
     private static function booleanAttributeChunk(string $name, ?HtmlRenderOptions $options): string

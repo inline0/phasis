@@ -318,6 +318,11 @@ final class Dom
         }
     }
 
+    public static function attributeAlias(string $name): ?string
+    {
+        return self::ALIASES[$name] ?? null;
+    }
+
     /** @param list<string> $target */
     public static function pushAttribute(array &$target, string $name, JsValue $value): void
     {
