@@ -64,3 +64,13 @@ export function Document() {
 export function Broken() {
     throw new Error('render failed deliberately');
 }
+
+export function Unicode({ data }) {
+    const [count, setCount] = useState(0);
+    return <article title={data.emoji} data-flag={data.flag}>
+        <p>{data.emoji}|{data.emoji.slice(0, 6)}|{data.emoji.slice(6)}|{data.emoji.length}</p>
+        <p>{data.family}{data.flag}{data.cjk}</p>
+        <p>{data.list.map((item) => <span key={item} title={item}>{item}</span>)}</p>
+        <button onClick={() => setCount(count + 1)}>{data.skin} {count}</button>
+    </article>;
+}

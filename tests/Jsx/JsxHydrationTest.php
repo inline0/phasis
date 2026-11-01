@@ -142,6 +142,32 @@ final class JsxHydrationTest extends TestCase
         $this->assertStringContainsString('</div><script type="application/json"', $result->toHtml());
     }
 
+    public function testUnicodePropsRenderByteForByteWithReactDomAndRoundTrip(): void
+    {
+        $fixture = dirname(__DIR__) . '/Jsx/react/unicode-props.jsx';
+        preg_match('/export const props = (\{.*\});/', (string) file_get_contents($fixture), $match);
+        $props = json_decode($match[1], true, flags: JSON_THROW_ON_ERROR);
+        $expected = json_decode((string) file_get_contents(substr($fixture, 0, -4) . '.expected.txt'), true, flags: JSON_THROW_ON_ERROR);
+        $result = $this->engine->renderForHydration($fixture, $props, options: $this->options());
+        $this->assertSame($expected['prerender'], $result->html);
+        $this->assertSame($this->engine->render($fixture, $props), $result->html);
+        $this->assertSame($props, json_decode($result->payload, true, flags: JSON_THROW_ON_ERROR)['props']);
+        $this->assertSame(1, preg_match('/^[\x20-\x7E]*$/', $result->payload));
+    }
+
+    public function testLoneSurrogatesInPhpPropsAreRejectedBeforeModuleExecution(): void
+    {
+        $this->engine->setGlobal('moduleLoaded', false);
+        foreach (["\xED\xA0\xBD", "a\xED\xB8\x8Ab", "\xED\xA0\xBD\xED\xB8\x8A"] as $text) {
+            try {
+                $this->engine->renderForHydration(__DIR__ . '/hydration/capture.jsx', ['data' => $text], options: $this->options());
+                $this->fail('A CESU-8 surrogate was accepted as hydration data.');
+            } catch (\JsonException) {
+                $this->assertFalse($this->engine->eval('moduleLoaded'));
+            }
+        }
+    }
+
     public function testIdentifierPrefixReachesFizzAndRemainsSeparateFromTheRootId(): void
     {
         $first = $this->engine->renderForHydration(

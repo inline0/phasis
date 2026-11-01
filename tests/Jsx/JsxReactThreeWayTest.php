@@ -32,7 +32,7 @@ final class JsxReactThreeWayTest extends TestCase
     #[DataProvider('fixtureProvider')]
     public function testRealReactInPhasisMatchesNode(string $file): void
     {
-        $expected = json_decode((string) file_get_contents(substr($file, 0, -4) . '.expected.txt'), true);
+        $expected = ReactFixture::decode((string) file_get_contents(substr($file, 0, -4) . '.expected.txt'));
         $engine = new Engine();
         $dir = __DIR__ . '/vendor/react-' . ReactModule::VERSION . '/';
         $engine->setImportMap([
@@ -42,7 +42,7 @@ final class JsxReactThreeWayTest extends TestCase
             'react-dom/server' => $dir . 'server.mjs',
             'react-dom/static' => $dir . 'static.mjs',
         ]);
-        $actual = json_decode(ReactFixture::render($engine, $file), true);
+        $actual = ReactFixture::decode(ReactFixture::render($engine, $file));
         foreach (['string', 'static', 'prerender'] as $api) {
             if (str_starts_with($expected[$api], 'ERROR: ')) {
                 $this->assertStringStartsWith('ERROR: ', $actual[$api], $api);

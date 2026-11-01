@@ -18,4 +18,12 @@ final class ReactFixture
         $engine->evalAsModule($entry, dirname($fixture) . '/__entry_' . basename($fixture, '.jsx') . '.mjs');
         return (string) $engine->eval('globalThis.__phasisReactResult');
     }
+
+    /** @return array<string, string> */
+    public static function decode(string $json): array
+    {
+        $json = (string) preg_replace('/\\\\u([dD][89a-fA-F][0-9a-fA-F]{2})/', '<U+$1>', $json);
+        $decoded = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+        return is_array($decoded) ? $decoded : [];
+    }
 }

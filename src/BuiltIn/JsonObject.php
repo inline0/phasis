@@ -468,13 +468,7 @@ class JsonObject
     public static function parseSource(string $text, bool $publicProperties = false): JsValue
     {
         if ($publicProperties) {
-            // Associative validation accepts JSON keys (including leading NUL)
-            // that PHP cannot represent as decoded stdClass properties.
-            try {
-                json_decode($text, true, 512, JSON_THROW_ON_ERROR);
-            } catch (\JsonException) {
-                throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON');
-            }
+            self::validateForOwnParser($text);
             return self::parseWithSources($text, publicProperties: true)['value'];
         }
         $trimmed = trim($text);
@@ -482,12 +476,31 @@ class JsonObject
             return JsNumber::of(-0.0);
         }
         $decoded = json_decode($text);
-        if ($decoded === null && $trimmed !== 'null') {
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON');
-            }
+        if ($decoded === null && $trimmed !== 'null' && json_last_error() !== JSON_ERROR_NONE) {
+            self::validateForOwnParser($text);
+            return self::parseWithSources($text)['value'];
         }
         return self::phpToJsValue($decoded);
+    }
+
+    private static function validateForOwnParser(string $text): void
+    {
+        if (str_contains($text, '\\u') || str_contains($text, "\xED")) {
+            $text = (string) preg_replace_callback(
+                '/\\\\(?:u[dD][89a-fA-F][0-9a-fA-F]{2}|.)|\xED[\xA0-\xBF][\x80-\xBF]/s',
+                static fn (array $m): string => match (true) {
+                    $m[0][0] === "\xED" => "\u{FFFD}",
+                    strlen($m[0]) === 6 => '\\ufffd',
+                    default => $m[0],
+                },
+                $text,
+            );
+        }
+        try {
+            json_decode($text, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON');
+        }
     }
 
     private static function parse(): \Closure
@@ -503,11 +516,9 @@ class JsonObject
             // Decode objects to stdClass so we can distinguish {} from [];
             // both decode to PHP's empty array under assoc=true.
             $decoded = json_decode($text);
-
-            if ($decoded === null && $trimmed !== 'null') {
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    throw new \Phasis\Exceptions\SyntaxError('Unexpected token in JSON');
-                }
+            $ownParser = $decoded === null && $trimmed !== 'null' && json_last_error() !== JSON_ERROR_NONE;
+            if ($ownParser) {
+                self::validateForOwnParser($text);
             }
 
             $reviver = ($args[1] ?? null) instanceof JsFunction ? $args[1] : null;
@@ -518,6 +529,8 @@ class JsonObject
                 $root = $parsed['root'];
                 $sourceMap = $parsed['sourceMap'];
                 $result = self::internalizeJSONProperty($root, '', $reviver, $sourceMap);
+            } elseif ($ownParser) {
+                $result = self::parseWithSources($text)['value'];
             } else {
                 $result = self::phpToJsValue($decoded);
             }
@@ -702,7 +715,7 @@ class JsonObject
             $ch = $text[$pos];
             if ($ch === '"') {
                 $pos++;
-                return $result;
+                return JsString::joinSurrogatePairs($result);
             }
             if ($ch === '\\') {
                 $pos++;
@@ -715,10 +728,8 @@ class JsonObject
                     if ($pos + 4 > $len) {
                         throw new \Phasis\Exceptions\SyntaxError('Invalid unicode escape in JSON');
                     }
-                    $hex = substr($text, $pos, 4);
+                    $result .= JsString::utf16CodeUnitToUtf8((int) hexdec(substr($text, $pos, 4)));
                     $pos += 4;
-                    $cp = hexdec($hex);
-                    $result .= mb_chr((int) $cp, 'UTF-8') ?: '';
                 } else {
                     $result .= match ($esc) {
                         '"' => '"',

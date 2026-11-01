@@ -319,18 +319,7 @@ final class ReactDomModule
      */
     public static function normalize(string $html): string
     {
-        if (!str_contains($html, "\xED")) {
-            return $html;
-        }
-        return (string) preg_replace_callback(
-            '/\xED([\xA0-\xAF])([\x80-\xBF])\xED([\xB0-\xBF])([\x80-\xBF])/',
-            static function (array $m): string {
-                $high = 0xD000 | ((ord($m[1]) & 0x3F) << 6) | (ord($m[2]) & 0x3F);
-                $low = 0xD000 | ((ord($m[3]) & 0x3F) << 6) | (ord($m[4]) & 0x3F);
-                return mb_chr(0x10000 + (($high - 0xD800) << 10) + ($low - 0xDC00), 'UTF-8');
-            },
-            $html,
-        );
+        return JsString::joinSurrogatePairs($html);
     }
 
     private static function unsupported(string $name): JsFunction

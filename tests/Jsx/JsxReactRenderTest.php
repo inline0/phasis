@@ -40,7 +40,7 @@ final class JsxReactRenderTest extends TestCase
         if (str_contains($source, 'export const options')) {
             $this->markTestSkipped('Render options (identifierPrefix) are not Engine::render() parameters.');
         }
-        $expected = json_decode((string) file_get_contents(substr($file, 0, -4) . '.expected.txt'), true);
+        $expected = ReactFixture::decode((string) file_get_contents(substr($file, 0, -4) . '.expected.txt'));
         $props = [];
         if (preg_match('/export const props(?:\s*:\s*\w+)? = (\{.*\});/', $source, $m) === 1) {
             $props = json_decode((string) preg_replace('/(\w+):/', '"$1":', str_replace("'", '"', $m[1])), true) ?? [];

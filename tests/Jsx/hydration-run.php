@@ -16,6 +16,14 @@ $cases = [
     ['id' => 'keys', 'export' => 'Keys', 'props' => ['[[public]]' => true, 'data' => [
         '[[public]]' => 'visible', '[[PrimitiveValue]]' => 42,
     ]]],
+    ['id' => 'unicode', 'export' => 'Unicode', 'props' => ['data' => [
+        'emoji' => "smile \u{1F60A} x",
+        'family' => "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}",
+        'flag' => "\u{1F1E9}\u{1F1EA}\u{1F1EF}\u{1F1F5}",
+        'cjk' => "\u{20000}\u{29E3D}\u{2A6B2}",
+        'skin' => "\u{1F44D}\u{1F3FD}",
+        'list' => ["\u{1F389}", "1\u{FE0F}\u{20E3}", "\u{1D4B3}"],
+    ]]],
     ['id' => 'shapes', 'export' => 'Shapes', 'props' => ['data' => (object) [
         'emptyObject' => new stdClass(),
         'emptyArray' => [],

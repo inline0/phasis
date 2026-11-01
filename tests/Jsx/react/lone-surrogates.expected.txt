@@ -1,0 +1,5 @@
+{
+  "string": "<div title=\"a\ud83d\" data-low=\"\ude0ab\"><p>a\ud83d</p><p>\ude0ab\ud840</p><p>\ud800<!-- -->\udc00</p><p>\udc00\ud800</p><p>x\ud83d<!-- -->\ude0ay</p><span>a|\ud83d|\ude0a|b|\ud840|\udc00|c</span></div>",
+  "static": "<div title=\"a\ud83d\" data-low=\"\ude0ab\"><p>a\ud83d</p><p>\ude0ab\ud840</p><p>𐀀</p><p>\udc00\ud800</p><p>x😊y</p><span>a|\ud83d|\ude0a|b|\ud840|\udc00|c</span></div>",
+  "prerender": "<div title=\"a�\" data-low=\"�b\"><p>a�</p><p>�b�</p><p>�<!-- -->�</p><p>��</p><p>x�<!-- -->�y</p><span>a|�|�|b|�|�|c</span></div>"
+}

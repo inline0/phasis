@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-01
+
+### Fixed
+- `Engine::renderForHydration()` keeps emoji and every other astral-plane character in PHP props. The captured payload escapes them as UTF-16 surrogate pairs, and the parser that reads it back dropped each half, so the hydration HTML lost characters the production render and the browser kept, and React reported a hydration mismatch.
+- `JSON.parse()` decodes `\uXXXX` surrogate escapes as V8 does with and without a reviver: escaped pairs, emoji, ZWJ sequences and flags join into their code points, and lone or reversed halves, escaped or raw, stay lone code units instead of throwing a `SyntaxError` or disappearing. Object keys PHP cannot represent, such as a leading NUL, parse as well.
+
+### Added
+- React fixtures with emoji, ZWJ sequences, flags, keycaps, skin tones and astral CJK in text and attributes, and with lone surrogates, compared byte for byte with `react-dom`. The hydration consumer contract hydrates a Unicode root with no warnings in development and production.
+
 ## [0.14.0] - 2026-11-01
 
 ### Added
