@@ -1,0 +1,7 @@
+let 0 2
+let 1 2
+var 0
+cursor 1
+const 1
+of a 1
+catch boom

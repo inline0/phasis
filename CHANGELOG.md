@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-05
+
+### Fixed
+- TypeScript sources accept a type annotation on the first binding of a `for` statement head, such as `for (let node: Element | null = start; node; node = node.parentElement)`. The `for` head parsed its first declarator without the annotation and stopped with `Expected )`, while later declarators and ordinary declarations already took one.
+- An annotated `for...of` or `for...in` binding is rejected with the error Node's type stripping reports, `The left-hand side of a 'for...of' statement cannot use a type annotation` (or `for...in`), instead of a generic parse error.
+
+### Added
+- A TypeScript execution fixture with annotated `let`, `var` and `const` loop heads, a destructured `for...of` head and an annotated `catch` binding, compared with Node's output.
+
 ## [0.14.1] - 2026-11-01
 
 ### Fixed

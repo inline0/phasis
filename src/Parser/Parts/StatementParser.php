@@ -3391,6 +3391,15 @@ trait StatementParser
                     }
                 }
             }
+            $annotation = $this->typeScript && $this->check(TokenType::Colon) ? $this->current() : null;
+            $this->tsAnnotation();
+            if ($annotation !== null && ($this->check(TokenType::In) || $this->check(TokenType::Of))) {
+                $statement = $this->check(TokenType::In) ? 'for...in' : 'for...of';
+                throw new ParseError(
+                    "The left-hand side of a '{$statement}' statement cannot use a type annotation",
+                    $annotation,
+                );
+            }
             $init = null;
 
             if ($isUsingDecl && (!$id instanceof Identifier || $id->name === 'let' || $this->check(TokenType::In))) {

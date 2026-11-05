@@ -113,6 +113,8 @@ JS));
             'invalid ambient statement' => 'declare sideEffect();',
             'typed import in function' => 'function f() { import type X from "missing"; }',
             'typed export in function' => 'function f() { export type X = string; }',
+            'annotated for-of binding' => 'for (const value: number of [1]) {}',
+            'annotated for-in binding' => 'for (const key: string in {}) {}',
             ] as $name => $source
         ) {
             yield $name => [$source];
