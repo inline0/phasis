@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-11-07
+
+### Changed
+- Docs: the introduction page explains what Phasis runs (classic scripts, ES modules, TypeScript, JSX and React rendering, Node-compatible packages and the Web Platform APIs), shows a first embedding example and a component render, and links every section of the documentation. Its resource-limit summary now matches the API reference: loop iterations are capped with `setLimit()` in every execution tier, and wall-clock time with `setExecutionBudget()`.
+- Docs: the cookie jar page describes when `fetch()` calls `get()` and `set()` on each redirect hop, how return values are read, and that `XMLHttpRequest` does not consult the jar, and adds an end-to-end login example built from `setCookieJar()`, `setFetchTransport()` and a host function. Its JS-side jar now mounts the JavaScript object through `getGlobalEnv()`, because `eval()` returns a PHP array, and its examples no longer use top-level `await` inside `eval()`, which is a syntax error in a classic script.
+
 ## [0.14.2] - 2026-11-05
 
 ### Fixed

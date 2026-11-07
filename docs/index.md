@@ -1,50 +1,112 @@
 ---
 title: "Introduction"
-description: "Pure PHP JavaScript engine. ECMAScript coverage measured with official test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
+description: "Phasis runs JavaScript, TypeScript, JSX and React server rendering inside PHP, without Node.js. What it is, what it runs, a first example and a map of the docs."
 path: "."
 order: 0
-meta_title: "Introduction"
-meta_description: "Pure PHP JavaScript engine. ECMAScript coverage measured with official test262, plus Web Platform Pack and Fetch Pack at 100% WPT — fetch, Streams, Blob, FormData, URL, AbortSignal."
+meta_title: "Phasis documentation: a JavaScript engine in pure PHP"
+meta_description: "Phasis runs JavaScript, TypeScript, JSX and React server rendering inside PHP, without Node.js. What it is, what it runs, a first example and a map of the docs."
 ---
 
 # Introduction
-Phasis is a pure-PHP JavaScript engine. It lexes, parses, and executes ECMAScript in the host PHP process — without `exec('node …')`, without FFI, and without a custom binary extension. It requires three standard PHP extensions: `ext-mbstring`, `ext-bcmath` and `ext-curl` (the default `fetch()` transport). `ext-intl` and `ext-openssl` are optional. See [Getting Started](/docs/getting-started) for builds that leave `bcmath` out.
 
-- **Embeddable** — drop a JS runtime into any PHP app, framework, or CLI tool via the `Phasis\Engine` class.
-- **Spec-compliant** — passes the official test262 suite at 100 %, every category, no skips.
-- **Web APIs** — full **Web Platform Pack** (URL, TextEncoder/Decoder, atob/btoa, structuredClone, performance, DOMException), full **Fetch Pack** (fetch, Request, Response, Headers, Body, AbortController/Signal, Blob, File, FormData, EventTarget, full WHATWG Streams, navigator), plus `crypto` + `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, and a real event loop. 100 % of imported Web Platform Tests pass.
-- **Modern surface** — arrow functions, classes, async/await, Promises, generators, Symbol, BigInt, Proxy, Reflect, Temporal, Intl, TypedArrays, full module support.
-- **PHP↔JS interop** — pass PHP scalars and arrays into JS (arrays are copied), bind PHP closures as JS functions, and call JS functions from PHP. PHP objects expose public properties and methods by reference, while JS callbacks become callable PHP closures; see [Shared objects](/docs/interop/shared-objects).
+Phasis is a JavaScript engine written in PHP. It lexes, parses and executes ECMAScript inside the PHP process that calls it: no `exec('node …')`, no FFI and no custom binary extension. It ships as the Composer package `phasis/phasis` and needs PHP 8.2 or later with three standard extensions: `ext-mbstring`, `ext-bcmath` (BigInt arithmetic and integer-precision number handling) and `ext-curl` (the default `fetch()` transport). `ext-intl` is optional and enables the `Intl` APIs and non-ISO Temporal calendars; `ext-openssl` is optional and enables `crypto.subtle` AES encryption. [Getting Started](/docs/getting-started#install) shows how to add `bcmath` to builds that leave it out, such as the official `php` Docker images.
 
-## Why Phasis exists
+PHP applications that need to run JavaScript, such as templating, server-side rendering of components, validation rules shared with a browser, or user-supplied scripts in a sandbox, usually shell out to Node.js or drop the feature. A second runtime brings a serialization boundary, subprocess management and a harder deployment on shared hosting. Phasis keeps the JavaScript in the PHP process and lets PHP and JavaScript exchange values and call each other directly.
 
-PHP applications that need to run user-supplied JavaScript — templating engines, frontend SSR shims, data-validation rules, content sandboxes, headless test runners — usually shell out to Node.js or skip the feature. Either path adds operational complexity: a second runtime, a serialization boundary, a network of subprocess pipes, and a hostile deployment story for shared hosting.
+## A first example
 
-Phasis closes that gap. Your PHP code can lex, parse, and execute JavaScript using only PHP 8.2+ with `mbstring`, `bcmath` and `curl`. The engine ships as a Composer package and exposes a single small API surface.
+```bash
+composer require phasis/phasis
+```
 
-## What it does
+```php
+<?php
 
-- Implements the full ECMAScript standard library: `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, generators, async iterators, modules.
-- Ships the **Web Platform** APIs that real-world JS libraries pre-check for: `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`. See [Web APIs](/docs/compatibility/web-apis) for the full surface.
-- Ships **`fetch`** with the full Fetch family — `Request`, `Response`, `Headers`, body consumers, `AbortController`/`AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`/`Event`, and full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, BYOB, queuing strategies). Real HTTP works out of the box via PHP's `ext-curl`.
-- Ships **`crypto`** + full `SubtleCrypto` (SHA family, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2), **`WebSocket`** (RFC 6455 + swappable transport), and **`XMLHttpRequest`** (layered over the same fetch transport).
-- Ships a real **event loop**: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, plus Stage-3 `AsyncContext` for value propagation across async boundaries.
-- Supports modern syntax — destructuring, spread/rest, computed properties, optional chaining, nullish coalescing, template literals, tagged templates, classes (with private fields, static blocks, decorators), top-level await.
-- Converts values across the PHP↔JS boundary. Scalars and arrays are copied in, PHP callables become JS functions, and JS results come back as PHP scalars and arrays. See [Value conversion](/docs/interop/values) for the exact rules.
-- Runs under host control. The host owns the `fetch` transport and policy hooks, the event loop runs on virtual time, and a fixed call-stack ceiling stops runaway recursion. A loop-iteration limit exists, but it is not yet enforced on loops the bytecode VM runs, and there are no string-length, output or wall-clock limits; see [API: setLimit](/docs/api#setlimit).
-- Is verified against Node.js (V8). CI runs the unit and oracle suites on every push to `main` and every pull request, and the Web Platform Tests and popular-package suites when the engine source changes; the full test262 matrix is run by hand and its snapshot committed to `COMPAT.md`. See [Compatibility](/docs/compatibility).
+require __DIR__ . '/vendor/autoload.php';
+
+use Phasis\Engine;
+
+$engine = new Engine();
+
+$engine->setGlobal('order', [
+    'items' => [
+        ['name' => 'Notebook', 'price' => 12.5, 'qty' => 2],
+        ['name' => 'Pen', 'price' => 4, 'qty' => 3],
+    ],
+]);
+$engine->setGlobal('money', fn (float $amount): string => number_format($amount, 2) . ' EUR');
+
+$total = $engine->eval('
+    const total = order.items.reduce((sum, item) => sum + item.price * item.qty, 0);
+    console.log(`${order.items.length} items, ${money(total)}`);
+    total;
+');
+
+echo $total;
+// 37
+
+echo $engine->getConsoleOutput();
+// 2 items, 37.00 EUR
+
+$engine->eval('function label(amount) { return `Total: ${money(amount)}`; }');
+echo $engine->call('label', $total);
+// Total: 37.00 EUR
+```
+
+What happens here:
+
+- `setGlobal()` copies the PHP array into JavaScript as an object with an `items` array. The [value conversion rules](/docs/interop/values) describe every type in both directions.
+- `money` is a PHP closure. JavaScript calls it like any function; the argument and the return value are converted at the boundary. See [Host functions](/docs/interop/host-functions).
+- `eval()` runs the source as a classic script, drains the event loop, and returns the value of the last expression converted to PHP.
+- `console.log()` writes to a buffer on the engine, not to stdout. Read it with `getConsoleOutput()`.
+- The engine keeps its global state, so a later `eval()` or `call()` sees `total`, `money` and `label`.
+
+Rendering a component works the same way, with no build step:
+
+```php
+$html = $engine->renderSource(
+    "export default ({ name }) => <p>Hello {name}</p>;",
+    ['name' => 'Ada'],
+);
+// <p>Hello <!-- -->Ada</p>
+```
+
+## What it runs
+
+- **Classic scripts.** `eval()` and `execFile()` on a `.js` file run a script in the global scope. See [API](/docs/api#eval).
+- **ES modules.** `evalAsModule()` and `execFile()` on a `.mjs` file run modules through the module loader. Imports resolve with no build step: relative and extensionless paths, `index` files, import maps, `jsconfig` aliases, `node_modules` with `package.json` `exports`, CommonJS packages, and style and asset imports. See [Modules](/docs/modules).
+- **TypeScript.** `.ts`, `.tsx`, `.mts` and `.cts` files have their types erased by a native PHP parser when they are executed, imported or rendered. See [TypeScript](/docs/typescript).
+- **JSX and React.** `render()` and `renderSource()` render a component module to an HTML string. The React profile produces HTML byte-identical to `react-dom@19.3.1` that React can hydrate in the browser, and `renderForHydration()` pairs that HTML with the props the client needs. The HTML profile matches `preact-render-to-string` 6.8.1 for emails, feeds and static pages. See [JSX](/docs/jsx) and [React](/docs/react).
+- **Node-compatible packages.** `enableNode()` or `phasis --node` adds CommonJS, `Buffer`, streams, filesystem access, HTTP servers and clients, TLS, crypto and timers, all executed in PHP. Express and Hono support is experimental. See [Node compatibility](/docs/modules#node-compatibility).
+- **Web Platform APIs.** `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance` and `DOMException`; `fetch()` with `Request`, `Response`, `Headers`, `AbortController`/`AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget` and WHATWG Streams; `crypto` with `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, timers and `queueMicrotask`. See [Web APIs](/docs/compatibility/web-apis).
+
+The ECMAScript standard library is complete, including `Proxy`, `Reflect`, `Symbol`, `BigInt`, typed arrays, `Temporal` and `Intl`, as are modern syntax features such as classes with private fields and decorators, async generators and top-level `await` in modules. [Spec surface](/docs/compatibility/spec-surface) lists them.
+
+Two parts of the engine are useful on their own: the [parser](/docs/parser) turns source into a typed PHP AST or ESTree-shaped arrays without executing it, and the [formatter](/docs/formatter) formats JavaScript, JSON and CSS with prettier-compatible layout.
+
+## Under host control
+
+The PHP application decides what JavaScript can reach and how long it runs:
+
+- Network access goes through a replaceable [fetch transport](/docs/interop/fetch-transport) and an optional policy hook that can rewrite or reject each request. Cookies are off unless you mount a [cookie jar](/docs/interop/cookie-jar).
+- The event loop runs on virtual time: a `setTimeout(cb, 5000)` fires before `eval()` returns without PHP sleeping. See [Event loop](/docs/api#event-loop).
+- `setLimit('maxLoopIterations', …)` caps iterations per loop, [`setExecutionBudget()`](/docs/api#setexecutionbudget) stops evaluation after a wall-clock budget, and a fixed call-stack ceiling stops runaway recursion. There are no limits on string length or console output. See [setLimit](/docs/api#setlimit).
+- PHP objects passed to JavaScript expose their public properties and methods by reference; see [Shared objects](/docs/interop/shared-objects).
+
+## How it is verified
+
+Node.js (V8) is the reference: when V8 produces a result, Phasis must produce the same one. CI runs PHPStan, PHPCS, the unit suite and the oracle scenarios that compare Phasis output with Node on every push to `main` and every pull request, and the Web Platform Tests and popular-package suites when the engine source changes. Conformance with the pinned official test262 suite is run by hand in CI and committed to `COMPAT.md`; [test262](/docs/compatibility/test262) explains the snapshot and [Compatibility](/docs/compatibility) collects the results.
 
 ## What it is not
 
-Phasis is not a JIT compiler. It is a tree-walking interpreter with an opportunistic bytecode VM. Expect ~100× the runtime of V8 on dispatch-bound workloads. The trade-off is zero dependencies, pure PHP, and host-controlled execution — perfect for embedding JavaScript into PHP apps where correctness and isolation matter more than raw throughput.
+Phasis is not a JIT compiler. It is a tree-walking interpreter with an opportunistic bytecode VM that compiles supported hot functions to PHP closures. Expect around 100 times the runtime of V8 on dispatch-bound workloads. The trade-off is a pure-PHP runtime with no extra process and with host-controlled execution, which suits embedding where correctness and isolation matter more than raw throughput. See [Benchmarks](/docs/advanced/benchmarks) and [Limitations](/docs/compatibility/limitations).
 
-## Where to start
+## How the docs are organized
 
-- [Getting Started](/docs/getting-started) — install and run your first script.
-- [CLI](/docs/cli) — `bin/phasis` for running files, evaluating source, and dumping the AST.
-- [API](/docs/api) — embed `Phasis\Engine` in your PHP app.
-- [Interop](/docs/interop) — pass PHP values and callables to JavaScript.
-- [Compatibility](/docs/compatibility) — test262 coverage and supported features.
-- [Parser](/docs/parser) — parse JavaScript into a typed AST or ESTree without executing it.
-- [Formatter](/docs/formatter) — format JavaScript, JSON and CSS with prettier-compatible layout.
-- [Advanced](/docs/advanced) — architecture, bytecode VM, benchmarks, and the oracle testing model.
+- **Start here.** [Getting Started](/docs/getting-started) installs Phasis and runs a first script from the CLI and from PHP. [CLI](/docs/cli) covers `bin/phasis`, `bin/test262` and `bin/wpt`.
+- **Embedding reference.** [API](/docs/api) is the `Phasis\Engine` reference: evaluation, rendering, globals, console output, limits, the event loop, fetch hooks, exceptions and lifecycle.
+- **Interop.** [Interop](/docs/interop) explains the PHP and JavaScript boundary: [value conversion](/docs/interop/values), [host functions](/docs/interop/host-functions), [shared objects](/docs/interop/shared-objects), the [fetch transport](/docs/interop/fetch-transport), the [cookie jar](/docs/interop/cookie-jar) and [abort patterns](/docs/interop/abort-patterns).
+- **Languages and rendering.** [TypeScript](/docs/typescript), [JSX](/docs/jsx), [React](/docs/react) and [Modules](/docs/modules) cover file types, the render profiles, hydration and import resolution.
+- **Compatibility.** [Compatibility](/docs/compatibility) holds the conformance results: [test262](/docs/compatibility/test262), [Web APIs](/docs/compatibility/web-apis), [Streams](/docs/compatibility/streams), [popular packages](/docs/compatibility/popular-packages), the [spec surface](/docs/compatibility/spec-surface) and the [limitations](/docs/compatibility/limitations).
+- **Standalone tools.** [Parser](/docs/parser) and [Formatter](/docs/formatter) document the APIs that work without executing code.
+- **Internals.** [Advanced](/docs/advanced) describes the [architecture](/docs/advanced/architecture), the [bytecode VM](/docs/advanced/bytecode-vm), the [testing model](/docs/advanced/testing) and [benchmarks](/docs/advanced/benchmarks).
