@@ -1,62 +1,88 @@
 ---
 title: "Fetch transport"
-description: "Phasis's fetch() runs through a pluggable HTTP transport. Default is PHP's ext-curl. Embedders can swap to Guzzle, Symfony HttpClient, a mock, an allowlist, or a deny-all — and rewrite or block individual requests via the fetch policy hook."
+description: "Phasis fetch() sends requests through a replaceable HTTP transport, PHP's ext-curl by default. Swap in Guzzle, Symfony HttpClient, a mock or a deny-all, and allow, rewrite or reject requests with the fetch policy hook."
 path: "interop/fetch-transport"
 order: 60
 section: "Interop"
 meta_title: "Fetch transport"
-meta_description: "Phasis's fetch() runs through a pluggable HTTP transport. Default is PHP's ext-curl. Embedders can swap to Guzzle, Symfony HttpClient, a mock, an allowlist, or a deny-all — and rewrite or block individual requests via the fetch policy hook."
+meta_description: "Phasis fetch() sends requests through a replaceable HTTP transport, PHP's ext-curl by default. Swap in Guzzle, Symfony HttpClient, a mock or a deny-all, and allow, rewrite or reject requests with the fetch policy hook."
 ---
 
 # Fetch transport
 
-The default `fetch()` in Phasis runs through PHP's `ext-curl` — `CURLOPT_FOLLOWLOCATION=false` (the spec redirect loop runs in Phasis-land) with `CURLOPT_PROGRESSFUNCTION` polling the `AbortSignal`. For most embeddings this is fine.
+`fetch()` in Phasis builds the request, applies the policy hook, walks the redirect chain and builds the `Response` in the engine. The only part that touches the network is the transport: a PHP callable that sends one HTTP request and returns one response. The default transport, `Phasis\BuiltIn\Fetch\CurlTransport`, uses PHP's `ext-curl` with `CURLOPT_FOLLOWLOCATION` off, because Phasis follows redirects itself, and with `CURLOPT_PROGRESSFUNCTION` polling the request's `AbortSignal`.
 
-For everything else — proxies, custom DNS, the host app's existing HTTP client, network sandboxing, mocking in tests — the transport is **pluggable**.
+Replace the transport to route requests through the host application's HTTP client, a proxy, a mock in tests, or nothing at all in a sandbox.
 
 ## The interface
 
 ```php
 public function setFetchTransport(callable $transport): void
+public function getFetchTransport(): ?callable
 ```
 
-Your callable receives:
+`getFetchTransport()` returns the installed callable, or `null` while the default `CurlTransport` is in use. The callable is called as:
 
 ```php
 function (array $request, ?\Phasis\Value\JsObject $signal): array
 ```
 
-`$request` is an associative array:
+`fetch()` passes a `$request` array with these keys:
 
 | Key | Type | Notes |
 |---|---|---|
-| `method` | `string` | Already uppercased (`GET`, `POST`, …) |
-| `url` | `string` | Resolved absolute URL after URL parser + redirect chain |
-| `headers` | `list<list<string>>` | Pairs of `[name, value]`; case as the spec normalizes; multi-value entries are separate pairs (Set-Cookie etc.) |
-| `body` | `string` | Raw bytes. Empty string for bodyless methods. |
-| `redirect` | `string` | `"follow"` / `"error"` / `"manual"` (your transport should NOT follow — the redirect loop runs in Phasis) |
-| `timeout` | `int` | Wall-clock budget in milliseconds. `0` = no limit. |
-| `credentials` | `string` | `"omit"` / `"same-origin"` / `"include"` — informational; cookies are wired separately via `setCookieJar()`. |
+| `method` | `string` | The request method. `DELETE`, `GET`, `HEAD`, `OPTIONS`, `POST` and `PUT` are uppercased in any spelling, as the Fetch standard requires; other methods keep their case, so `"patch"` arrives as `patch`. |
+| `url` | `string` | The absolute URL of this hop. Each redirect hop is a separate call with the new URL. |
+| `headers` | `list<array{0: string, 1: string}>` | `[name, value]` pairs. Names set through `Headers` arrive lowercased (`content-type`). Phasis then appends `Cookie` from the [cookie jar](/docs/interop/cookie-jar), when one is mounted and returns a value, and `User-Agent: Phasis/0.1` unless the request already set a user agent. |
+| `body` | `string` | The request body bytes, or an empty string. |
+| `redirect` | `string` | `follow`, `error` or `manual`. Informational: the transport should not follow redirects, because Phasis handles all three modes. |
+| `timeout` | `int` | Overall time limit in seconds. `fetch()` always sends `30`. |
+| `connectTimeout` | `int` | Connection time limit in seconds. `fetch()` always sends `10`. |
 
-`$signal` is `null` if the request wasn't given a signal, otherwise a `JsObject` exposing `aborted` and `reason`. Poll it during long transfers.
+`CurlTransport` passes `timeout` and `connectTimeout` to `CURLOPT_TIMEOUT` and `CURLOPT_CONNECTTIMEOUT`. A custom transport may honor them or apply its own limits.
 
-Return shape:
+`$signal` is the request's `AbortSignal` as a `JsObject`, or `null` when the request was made without a signal. Read its state with `$signal->get('aborted')`, which returns a `JsBoolean` whose `value` property is the PHP `bool`. [Abort patterns](/docs/interop/abort-patterns#signal-in-a-custom-fetch-transport) shows a transport that polls it during a transfer.
+
+The transport returns an array:
 
 ```php
 return [
-    'status'     => 200,                          // int
-    'statusText' => 'OK',                         // string
+    'status'     => 200,
+    'statusText' => 'OK',
     'headers'    => [['content-type', 'text/plain'], ['x-custom', '1']],
-    'body'       => '...response bytes...',       // string
+    'body'       => 'response bytes',
 ];
 ```
 
-If the transport throws, Phasis catches and translates:
+| Key | Default when missing | Notes |
+|---|---|---|
+| `status` | `200` | A `301`, `302`, `303`, `307` or `308` with a `location` header (matched in any case) starts the next hop. |
+| `statusText` | `''` | The reason phrase. |
+| `headers` | `[]` | `[name, value]` pairs. Repeat a name for multiple values, such as several `set-cookie` headers. |
+| `body` | `''` | The response body bytes. |
+| `finalUrl` | the request URL | The URL reported as `response.url`. |
 
-- A `Phasis\BuiltIn\Fetch\TransportException` with `$e->kind === "aborted"` → `fetch` rejects with `AbortError DOMException`.
-- `kind === "timeout"` → `TypeError` carrying the message.
-- `kind === "network-error"` (default) → `TypeError`.
-- Anything else → `TypeError` with the exception message.
+Returning anything other than an array rejects the `fetch()` promise with `TypeError: fetch transport must return an array`.
+
+### Errors
+
+Throw `Phasis\BuiltIn\Fetch\TransportException` to report a failed request. Its constructor is `new TransportException(string $message, string $kind = 'network-error')`, and `fetch()` maps the kind:
+
+| Thrown | `fetch()` rejects with |
+|---|---|
+| `TransportException` with kind `aborted` | the signal's abort reason, or an `AbortError` `DOMException` when the signal has no reason or there is no signal |
+| `TransportException` with kind `timeout` or `network-error` | `TypeError` with the exception's message |
+| any other `Throwable` | `TypeError` with the exception's message |
+
+`CurlTransport` throws `aborted` when the signal aborts, `timeout` when curl reports `CURLE_OPERATION_TIMEOUTED`, and `network-error` for every other curl error.
+
+### Other callers
+
+`XMLHttpRequest` sends its requests through the same transport. Its calls differ from `fetch()` in four ways: `$signal` is always `null`, `followRedirects` is `true` because the transport is expected to follow redirects itself, `timeout` is the XHR `timeout` rounded up to whole seconds (`30` when unset), and a `credentials` key holds `include` when `withCredentials` is set and `same-origin` otherwise. XHR does not run the policy hook or consult the cookie jar.
+
+With [Node compatibility](/docs/modules#node-compatibility) enabled and no transport installed, `fetch()` uses the Node HTTP client instead of `CurlTransport`. Installing a transport takes precedence in Node mode too.
+
+`CurlTransport` also serves `blob:` URLs created with `URL.createObjectURL()` from memory. A custom transport receives those URLs like any other and must handle them itself if scripts fetch them.
 
 ## Worked examples
 
@@ -65,76 +91,105 @@ If the transport throws, Phasis catches and translates:
 ```php
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use Phasis\BuiltIn\Fetch\TransportException;
 
-$client = new Client(['allow_redirects' => false]);
+$client = new Client();
 
-$engine->setFetchTransport(function (array $req, $signal) use ($client) {
+$engine->setFetchTransport(function (array $request, $signal) use ($client): array {
+    $headers = [];
+    foreach ($request['headers'] as [$name, $value]) {
+        $headers[$name][] = $value;
+    }
+
     try {
-        $r = $client->request($req['method'], $req['url'], [
-            'headers'     => collect($req['headers'])->groupBy(0)->map->pluck(1)->all(),
-            'body'        => $req['body'],
-            'timeout'     => max(1, $req['timeout'] / 1000.0),
-            'http_errors' => false,
+        $response = $client->request($request['method'], $request['url'], [
+            'headers'         => $headers,
+            'body'            => $request['body'],
+            'timeout'         => $request['timeout'],
+            'connect_timeout' => $request['connectTimeout'],
+            'allow_redirects' => false,
+            'http_errors'     => false,
         ]);
     } catch (GuzzleException $e) {
-        throw new \Phasis\BuiltIn\Fetch\TransportException($e->getMessage(), 'network-error');
+        throw new TransportException($e->getMessage(), 'network-error');
     }
-    $headers = [];
-    foreach ($r->getHeaders() as $name => $values) {
-        foreach ($values as $v) {
-            $headers[] = [$name, $v];
+
+    $pairs = [];
+    foreach ($response->getHeaders() as $name => $values) {
+        foreach ($values as $value) {
+            $pairs[] = [$name, $value];
         }
     }
+
     return [
-        'status'     => $r->getStatusCode(),
-        'statusText' => $r->getReasonPhrase(),
-        'headers'    => $headers,
-        'body'       => (string) $r->getBody(),
+        'status'     => $response->getStatusCode(),
+        'statusText' => $response->getReasonPhrase(),
+        'headers'    => $pairs,
+        'body'       => (string) $response->getBody(),
     ];
 });
 ```
+
+`allow_redirects` must be `false`. Guzzle follows redirects by default, which would hide them from Phasis and break `redirect: "manual"` and `redirect: "error"`.
 
 ### Symfony HttpClient
 
 ```php
+use Phasis\BuiltIn\Fetch\TransportException;
 use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
-$client = HttpClient::create(['max_redirects' => 0]);
+$client = HttpClient::create();
 
-$engine->setFetchTransport(function (array $req, $signal) use ($client) {
+$engine->setFetchTransport(function (array $request, $signal) use ($client): array {
     $headers = [];
-    foreach ($req['headers'] as [$name, $value]) {
+    foreach ($request['headers'] as [$name, $value]) {
         $headers[$name][] = $value;
     }
-    $r = $client->request($req['method'], $req['url'], [
-        'headers'      => $headers,
-        'body'         => $req['body'],
-        'timeout'      => $req['timeout'] / 1000.0,
-        'max_redirects'=> 0,
-    ]);
+
+    try {
+        $response = $client->request($request['method'], $request['url'], [
+            'headers'       => $headers,
+            'body'          => $request['body'],
+            'max_duration'  => (float) $request['timeout'],
+            'max_redirects' => 0,
+        ]);
+        $status = $response->getStatusCode();
+        $responseHeaders = $response->getHeaders(false);
+        $body = $response->getContent(false);
+    } catch (TransportExceptionInterface $e) {
+        throw new TransportException($e->getMessage(), 'network-error');
+    }
+
+    $pairs = [];
+    foreach ($responseHeaders as $name => $values) {
+        foreach ($values as $value) {
+            $pairs[] = [$name, $value];
+        }
+    }
+
     return [
-        'status'     => $r->getStatusCode(),
+        'status'     => $status,
         'statusText' => '',
-        'headers'    => collect($r->getHeaders(false))
-            ->flatMap(fn ($values, $name) => array_map(fn ($v) => [$name, $v], $values))
-            ->values()->all(),
-        'body'       => $r->getContent(false),
+        'headers'    => $pairs,
+        'body'       => $body,
     ];
 });
 ```
 
+Symfony sends requests lazily, so network errors surface from `getStatusCode()`, `getHeaders()` or `getContent()`, which is why they sit inside the `try`. Passing `false` to the last two returns 4xx and 5xx responses instead of throwing.
+
 ### Deny-all
 
 ```php
-$engine->setFetchTransport(function () {
-    throw new \Phasis\BuiltIn\Fetch\TransportException(
-        'network access disabled in this sandbox',
-        'network-error',
-    );
+use Phasis\BuiltIn\Fetch\TransportException;
+
+$engine->setFetchTransport(function (): array {
+    throw new TransportException('network access disabled in this sandbox', 'network-error');
 });
 ```
 
-This makes every `fetch()` call reject with TypeError. Useful for sandboxing user-supplied JS.
+Every `fetch()` then rejects with `TypeError: network access disabled in this sandbox`, and every `XMLHttpRequest` fires `error`.
 
 ### Mock for tests
 
@@ -144,58 +199,82 @@ $canned = [
     'https://api.example.com/404'   => ['status' => 404, 'body' => 'not found'],
 ];
 
-$engine->setFetchTransport(function (array $req) use ($canned) {
-    $r = $canned[$req['url']] ?? ['status' => 500, 'body' => 'no mock'];
+$engine->setFetchTransport(function (array $request) use ($canned): array {
+    $response = $canned[$request['url']] ?? ['status' => 500, 'body' => 'no mock'];
     return [
-        'status'     => $r['status'],
-        'statusText' => $r['status'] === 200 ? 'OK' : 'ERR',
+        'status'     => $response['status'],
+        'statusText' => $response['status'] === 200 ? 'OK' : 'ERR',
         'headers'    => [['content-type', 'application/json']],
-        'body'       => $r['body'],
+        'body'       => $response['body'],
     ];
 });
 ```
 
+The [cookie jar](/docs/interop/cookie-jar#end-to-end-example) page has a longer mock that answers a login flow with a redirect and a session cookie.
+
 ## The policy hook
 
-The transport runs the request; the **policy hook** decides whether to run it at all. Use this for HTTPS-only enforcement, header injection, URL rewriting, allowlists, or per-tenant credential binding.
+The transport sends requests; the policy hook decides whether a request is sent at all. Use it for HTTPS-only rules, allowlists, header injection or URL rewriting.
 
 ```php
 public function setFetchPolicy(callable $hook): void
+public function getFetchPolicy(): ?callable
 ```
 
-Hook signature: `function (JsObject $request): ?JsObject`. Returning `null` allows as-is. Returning a Request rewrites. Throwing rejects the fetch with the thrown error.
+The hook is called once per `fetch()` with the `Request` as a `JsObject`, before the transport and before any cookie or user-agent header is added:
+
+- Return `null`, or nothing, to send the request as it is.
+- Return a different `Request` `JsObject` to send that one instead. Any other return value rejects the `fetch()` with a `TypeError`.
+- Throw to reject the `fetch()`. A PHP exception becomes a `TypeError` carrying the exception's message.
+
+Request properties are JavaScript values. `$request->get('url')` returns a `JsString` whose `value` is the PHP string. `$request->get('headers')` returns the request's `Headers` object; call its `set` method through `JsFunction::call()`, which takes the receiver and a list of JavaScript arguments. Changes made this way are part of the request the transport receives.
 
 ```php
-$allowedHosts = ['api.example.com', 'cdn.example.com'];
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
 
-$engine->setFetchPolicy(function ($req) use ($allowedHosts) {
-    $url = parse_url($req->get('url')->value);
-    if (!in_array($url['host'] ?? '', $allowedHosts, true)) {
-        throw new \RuntimeException("host not allowed: " . ($url['host'] ?? ''));
+$allowedHosts = ['api.example.com', 'cdn.example.com'];
+$token = getenv('INTERNAL_API_TOKEN');
+
+$engine->setFetchPolicy(function (JsObject $request) use ($allowedHosts, $token): ?JsObject {
+    $url = $request->get('url');
+    $host = parse_url($url instanceof JsString ? $url->value : '', PHP_URL_HOST) ?? '';
+    if (!in_array($host, $allowedHosts, true)) {
+        throw new \RuntimeException("host not allowed: $host");
     }
-    // Inject internal-only auth header
-    $req->get('headers')->call('set', 'X-Internal-Token', $secret);
+
+    $headers = $request->get('headers');
+    $set = $headers instanceof JsObject ? $headers->get('set') : null;
+    if ($set instanceof JsFunction) {
+        $set->call($headers, [new JsString('x-internal-token'), new JsString($token)]);
+    }
+
     return null;
 });
 ```
 
-The policy hook runs **before** the transport — so even a buggy or untrusted transport can't bypass it.
+`fetch("https://evil.example.net/")` then rejects with `TypeError: host not allowed: evil.example.net`, and requests to the allowed hosts reach the transport with an `x-internal-token` header.
 
-## Default behavior summary
+The hook runs only for the URL passed to `fetch()`. Redirect hops do not run it again, so an allowed host that redirects elsewhere is followed. To enforce a rule on every hop, check `$request['url']` in the transport as well, or call `fetch()` with `redirect: "manual"` and decide in JavaScript.
+
+## Default behavior
 
 | Concern | Default |
 |---|---|
-| Transport | `CurlTransport` (PHP `ext-curl`) |
-| Redirects | Follow up to 20 per spec. `redirect: "manual"` returns the redirect Response with `type: "opaqueredirect"`. |
-| Timeout | 30 s wall-clock, 10 s connect |
-| TLS verification | `CURLOPT_SSL_VERIFYPEER = true` (no opt-out — override via transport replacement) |
-| User-Agent | `Phasis/0.1` injected only if not set |
-| Cookies | None stored. Use `setCookieJar()` to enable. |
-| Policy hook | None. All requests allowed unless explicitly denied. |
-| AbortSignal | Honored mid-flight via curl progress-callback poll. |
+| Transport | `CurlTransport` (`ext-curl`) |
+| Redirects | Followed by Phasis up to 20 hops; the 21st redirect rejects with `TypeError: Too many redirects (exceeded 20 hops)`. A `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, continues as `GET` without a body; `307` and `308` keep the method and body. `redirect: "manual"` resolves with the redirect response, whose `type` is `opaqueredirect`. `redirect: "error"` rejects with a `TypeError`. |
+| Time limits | 30 seconds overall, 10 seconds to connect |
+| TLS verification | `CURLOPT_SSL_VERIFYPEER` on and `CURLOPT_SSL_VERIFYHOST` at `2`, with no option to turn them off. Replace the transport to change TLS settings. |
+| User-Agent | `Phasis/0.1`, added only when the request has none |
+| Cookies | None sent or stored. Mount a [cookie jar](/docs/interop/cookie-jar) to enable them. |
+| Policy hook | None: every request is allowed. |
+| AbortSignal | Checked before the request starts and polled during the transfer through the curl progress callback. |
 
 ## See also
 
-- [API reference — Fetch hooks](/docs/api#fetch-hooks) — short signature reference.
-- [Web APIs](/docs/compatibility/web-apis) — the full Fetch Pack surface.
-- [Cookie jar](/docs/interop/cookie-jar) — persisting cookies across fetches with a PHP or JS jar object.
+- [Cookie jar](/docs/interop/cookie-jar): persisting cookies across requests, with an end-to-end example that uses a mock transport.
+- [Abort patterns](/docs/interop/abort-patterns): timeouts, cancellation and polling the signal in a custom transport.
+- [Host functions](/docs/interop/host-functions): exposing other PHP services to JavaScript when `fetch()` is not the right shape.
+- [API: Fetch hooks](/docs/api#fetch-hooks): short signature reference.
+- [Web APIs](/docs/compatibility/web-apis): the full Fetch Pack surface.

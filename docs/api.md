@@ -309,57 +309,59 @@ when the PHP application needs to drive a server's loop itself.
 
 ## Fetch hooks
 
-Phasis ships `fetch()` enabled by default with PHP's `ext-curl` as the underlying transport. Three hooks let an embedder swap the transport, gate requests, or enable cookie storage. All three accept either a PHP callable or a method-on-object; see [Web APIs](/docs/compatibility/web-apis) for the value-shape contract.
+Phasis ships `fetch()` enabled by default with PHP's `ext-curl` as the underlying transport. Three hooks let an embedder swap the transport, gate requests, or enable cookie storage. The transport and the policy hook take any PHP `callable`; the cookie jar takes an object. [Fetch transport](/docs/interop/fetch-transport) documents the request and response arrays, errors and defaults, and [Cookie jar](/docs/interop/cookie-jar) the jar interface.
 
 ### setFetchTransport
 
 ```php
 public function setFetchTransport(callable $transport): void
+public function getFetchTransport(): ?callable
 ```
 
-Replace the default CurlTransport. The callable receives a request descriptor and an optional `AbortSignal` JsObject; returns a response descriptor.
+Replace the default `CurlTransport`. The callable receives a request array (`method`, `url`, `headers` as `[name, value]` pairs, `body`, `redirect`, and `timeout` and `connectTimeout` in seconds) and the request's `AbortSignal` as a `JsObject` or `null`, and returns a response array. Phasis follows redirects itself, so the transport must not.
 
 ```php
-// Use Guzzle as the transport instead of curl
-$client = new GuzzleHttp\Client();
-$engine->setFetchTransport(function (array $req, $signal) use ($client) {
-    $r = $client->request($req['method'], $req['url'], [
-        'headers' => $req['headers'],
-        'body' => $req['body'],
-        'http_errors' => false,
-    ]);
-    return [
-        'status' => $r->getStatusCode(),
-        'statusText' => $r->getReasonPhrase(),
-        'headers' => array_map(
-            fn ($name, $values) => array_map(fn ($v) => [$name, $v], $values),
-            array_keys($r->getHeaders()),
-            $r->getHeaders(),
-        ),
-        'body' => (string) $r->getBody(),
-    ];
+$engine->setFetchTransport(function (array $request, $signal): array {
+    if ($request['url'] === 'https://api.example.com/users') {
+        return [
+            'status' => 200,
+            'statusText' => 'OK',
+            'headers' => [['content-type', 'application/json']],
+            'body' => '{"users":[]}',
+        ];
+    }
+    throw new \Phasis\BuiltIn\Fetch\TransportException('no mock for ' . $request['url'], 'network-error');
 });
 ```
 
-A common embedding pattern: install a mock transport in tests, the real curl transport in production.
+A common embedding pattern: install a mock transport in tests, the real curl transport in production. Guzzle and Symfony HttpClient adapters are on the [Fetch transport](/docs/interop/fetch-transport#worked-examples) page.
 
 ### setFetchPolicy
 
 ```php
 public function setFetchPolicy(callable $hook): void
+public function getFetchPolicy(): ?callable
 ```
 
-Pre-flight policy hook. Receives the `Request` JsObject; can throw to deny, return a modified `Request` to rewrite, or return `null`/no value to allow.
+Pre-flight policy hook, called once per `fetch()` with the `Request` as a `JsObject`. Throw to deny (the `fetch()` rejects with a `TypeError` carrying the message), return a different `Request` to rewrite, or return `null` or no value to allow. Redirect hops do not run the hook again.
 
 ```php
-// Block non-HTTPS and inject auth on a specific host
-$engine->setFetchPolicy(function ($req) {
-    $url = $req->get('url')->value;
-    if (str_starts_with($url, 'http://')) {
+use Phasis\Value\JsFunction;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
+
+$engine->setFetchPolicy(function (JsObject $request) use ($token): ?JsObject {
+    $url = $request->get('url');
+    $url = $url instanceof JsString ? $url->value : '';
+    if (!str_starts_with($url, 'https://')) {
         throw new \RuntimeException('HTTPS only');
     }
-    if (str_contains($url, 'api.example.com')) {
-        $req->get('headers')->call('set', 'Authorization', 'Bearer ...');
+    if (parse_url($url, PHP_URL_HOST) === 'api.example.com') {
+        $headers = $request->get('headers');
+        $set = $headers instanceof JsObject ? $headers->get('set') : null;
+        if ($set instanceof JsFunction) {
+            $set->call($headers, [new JsString('authorization'), new JsString("Bearer $token")]);
+        }
     }
     return null;
 });
@@ -369,21 +371,33 @@ $engine->setFetchPolicy(function ($req) {
 
 ```php
 public function setCookieJar(mixed $jar): void
+public function getCookieJar(): mixed
 ```
 
-Opt-in cookie store. Accepts any object exposing `get(string $url): string` and `set(string $url, string $header): void` — PHP-side or JS-side.
+Opt-in cookie store. Accepts any PHP or JavaScript object with `get(url)`, which returns the `Cookie` header value for a URL, and `set(url, header)`, which receives one `Set-Cookie` header value. `null` removes the jar.
 
 ```php
-class SimpleJar
+final class SimpleJar
 {
     private array $cookies = [];
-    public function get(string $url): string { return implode('; ', $this->cookies); }
-    public function set(string $url, string $header): void { $this->cookies[] = $header; }
+
+    public function get(string $url): string
+    {
+        return implode('; ', $this->cookies);
+    }
+
+    public function set(string $url, string $header): void
+    {
+        [$pair] = explode(';', $header, 2);
+        [$name] = explode('=', $pair, 2);
+        $this->cookies[trim($name)] = trim($pair);
+    }
 }
+
 $engine->setCookieJar(new SimpleJar());
 ```
 
-Without `setCookieJar()`, `fetch` ignores both inbound `Set-Cookie` and outbound `Cookie` headers — the default is **no cookies**.
+`SimpleJar` sends every cookie to every host and ignores cookie attributes; the [Cookie jar](/docs/interop/cookie-jar) page has per-host and Symfony BrowserKit jars. Without `setCookieJar()`, `fetch` ignores both inbound `Set-Cookie` and outbound `Cookie` headers: the default is no cookies.
 
 ## Exceptions
 
