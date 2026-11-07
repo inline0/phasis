@@ -1,11 +1,11 @@
 ---
 title: "Fetch transport"
-description: "Phasis fetch() sends requests through a replaceable HTTP transport, PHP's ext-curl by default. Swap in Guzzle, Symfony HttpClient, a mock or a deny-all, and allow, rewrite or reject requests with the fetch policy hook."
+description: "Send Phasis fetch() through ext-curl, Guzzle, Symfony HttpClient or a mock, and allow or block each request with a policy hook."
 path: "interop/fetch-transport"
 order: 60
 section: "Interop"
 meta_title: "Fetch transport"
-meta_description: "Phasis fetch() sends requests through a replaceable HTTP transport, PHP's ext-curl by default. Swap in Guzzle, Symfony HttpClient, a mock or a deny-all, and allow, rewrite or reject requests with the fetch policy hook."
+meta_description: "Send Phasis fetch() through ext-curl, Guzzle, Symfony HttpClient or a mock, and allow or block each request with a policy hook."
 ---
 
 # Fetch transport
@@ -78,7 +78,16 @@ Throw `Phasis\BuiltIn\Fetch\TransportException` to report a failed request. Its 
 
 ### Other callers
 
-`XMLHttpRequest` sends its requests through the same transport. Its calls differ from `fetch()` in four ways: `$signal` is always `null`, `timeout` is the XHR `timeout` rounded up to whole seconds (`30` when unset), a `credentials` key holds `include` when `withCredentials` is set and `same-origin` otherwise, and a `followRedirects` key says who follows redirects. Without a policy hook it is `true` and the transport is expected to follow redirects itself. With a [policy hook](#redirects) it is `false`: XHR follows up to 20 redirects itself, one transport call per hop, drops `authorization`, `proxy-authorization` and `cookie` headers when a hop changes origin, and continues a `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, as a `GET` without a body. XHR does not consult the cookie jar.
+`XMLHttpRequest` sends its requests through the same transport and does not consult the cookie jar. Its calls differ from `fetch()` in four ways:
+
+- `$signal` is always `null`.
+- `timeout` is the XHR `timeout` rounded up to whole seconds, or `30` when unset.
+- A `credentials` key holds `include` when `withCredentials` is set and `same-origin` otherwise.
+- A `followRedirects` key says who follows redirects.
+
+Without a policy hook, `followRedirects` is `true` and the transport is expected to follow redirects itself. With a [policy hook](#redirects) it is `false`, and XHR follows up to 20 redirects itself, one transport call per hop.
+
+On those hops XHR drops `authorization`, `proxy-authorization` and `cookie` headers when the origin changes. It continues a `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, as a `GET` without a body.
 
 With [Node compatibility](/docs/modules#node-compatibility) enabled and no transport installed, `fetch()` uses the Node HTTP client instead of `CurlTransport`. Installing a transport takes precedence in Node mode too.
 
@@ -275,7 +284,9 @@ The same rule applies to the other paths that follow redirects. With a hook inst
 | Concern | Default |
 |---|---|
 | Transport | `CurlTransport` (`ext-curl`) |
-| Redirects | Followed by Phasis up to 20 hops; the 21st redirect rejects with `TypeError: Too many redirects (exceeded 20 hops)`. A `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, continues as `GET` without a body; `307` and `308` keep the method and body. `redirect: "manual"` resolves with the redirect response, whose `type` is `opaqueredirect`. `redirect: "error"` rejects with a `TypeError`. |
+| Redirects | Followed by Phasis up to 20 hops; the 21st redirect rejects with `TypeError: Too many redirects (exceeded 20 hops)`. |
+| Redirect methods | A `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, continues as `GET` without a body; `307` and `308` keep the method and body. |
+| Redirect modes | `redirect: "manual"` resolves with the redirect response, whose `type` is `opaqueredirect`. `redirect: "error"` rejects with a `TypeError`. |
 | Time limits | 30 seconds overall, 10 seconds to connect |
 | TLS verification | `CURLOPT_SSL_VERIFYPEER` on and `CURLOPT_SSL_VERIFYHOST` at `2`, with no option to turn them off. Replace the transport to change TLS settings. |
 | User-Agent | `Phasis/0.1`, added only when the request has none |

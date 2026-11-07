@@ -76,7 +76,14 @@ use Phasis\Parser\Jsx\JsxOptions;
 $program = Parser::parseSource('const a = <p class="x">Hi {name}</p>;', 'module', new JsxOptions(mode: JsxMode::Preserve));
 ```
 
-The JSX node classes live in `Phasis\Ast\Jsx`: `JsxElement`, `JsxFragment`, `JsxOpeningElement`, `JsxClosingElement`, `JsxOpeningFragment`, `JsxClosingFragment`, `JsxAttribute`, `JsxSpreadAttribute`, `JsxExpressionContainer`, `JsxEmptyExpression`, `JsxSpreadChild`, `JsxText` (with the decoded `value` and the `raw` source), `JsxIdentifier`, `JsxMemberExpression` and `JsxNamespacedName`. `EstreeSerializer` exports them as the standard ESTree JSX types (`JSXElement`, `JSXAttribute`, ...), matching Babel's `jsx` and `estree` plugins. JSX parses in the `script` goal too, for tooling, but lowering with the automatic runtime needs `module`.
+The JSX node classes live in `Phasis\Ast\Jsx`:
+
+- elements and fragments: `JsxElement`, `JsxFragment`, `JsxOpeningElement`, `JsxClosingElement`, `JsxOpeningFragment` and `JsxClosingFragment`
+- attributes and children: `JsxAttribute`, `JsxSpreadAttribute`, `JsxExpressionContainer`, `JsxEmptyExpression` and `JsxSpreadChild`
+- `JsxText`, with the decoded `value` and the `raw` source
+- names: `JsxIdentifier`, `JsxMemberExpression` and `JsxNamespacedName`
+
+`EstreeSerializer` exports them as the standard ESTree JSX types (`JSXElement`, `JSXAttribute`, ...), matching Babel's `jsx` and `estree` plugins. JSX parses in the `script` goal too, for tooling, but lowering with the automatic runtime needs `module`.
 
 Syntax errors use Babel's wording where it has one, for example "Adjacent JSX elements must be wrapped in an enclosing tag. Did you want a JSX fragment <>...</>?".
 

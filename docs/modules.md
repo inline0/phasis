@@ -1,11 +1,11 @@
 ---
 title: "Modules"
-description: "How imports resolve with no build step: import maps, node_modules and package exports, CommonJS, aliases, styles, assets and barrel pruning."
+description: "How Phasis resolves imports with no build step: import maps, node_modules, package exports, CommonJS, aliases and assets."
 path: "modules"
 order: 87
 section: "JSX"
 meta_title: "Modules"
-meta_description: "How imports resolve with no build step: import maps, node_modules and package exports, CommonJS, aliases, styles, assets and barrel pruning."
+meta_description: "How Phasis resolves imports with no build step: import maps, node_modules, package exports, CommonJS, aliases and assets."
 ---
 
 # Modules

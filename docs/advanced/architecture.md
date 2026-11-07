@@ -1,11 +1,11 @@
 ---
 title: "Architecture"
-description: "A tour through the lexer, parser, AST, runtime, and built-in library — the four layers that turn JS text into PHP-driven execution."
+description: "A tour of the lexer, parser, AST, runtime and built-in library, the layers that turn JavaScript source into execution in PHP."
 path: "advanced/architecture"
 order: 170
 section: "Advanced"
 meta_title: "Architecture"
-meta_description: "A tour through the lexer, parser, AST, runtime, and built-in library — the four layers that turn JS text into PHP-driven execution."
+meta_description: "A tour of the lexer, parser, AST, runtime and built-in library, the layers that turn JavaScript source into execution in PHP."
 ---
 
 # Architecture
@@ -102,7 +102,14 @@ Number handling is the single largest source of historical bugs: `NaN !== NaN` m
 
 ## Built-in library
 
-`src/BuiltIn/` provides every standard-library object: `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl`, `console`, plus the Web Platform / Fetch packs (`URL`, `Headers`, `Request`, `Response`, `Blob`, `FormData`, full Streams, `EventTarget`, `AbortController`/`AbortSignal`, `DOMException`, `structuredClone`, `performance`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`), `crypto` + `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, and the event loop (`setTimeout`, `setInterval`, `queueMicrotask`, `AsyncContext`).
+`src/BuiltIn/` provides every standard-library object:
+
+- `Array`, `String`, `Object`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set` and `Promise`
+- `Proxy`, `Reflect`, `Symbol`, `BigInt`, `TypedArray`, `Temporal`, `Intl` and `console`
+- the Web Platform and Fetch packs: `URL`, `Headers`, `Request`, `Response`, `Blob`, `FormData`, full Streams and `EventTarget`
+- `AbortController`/`AbortSignal`, `DOMException`, `structuredClone`, `performance`, `TextEncoder`/`TextDecoder` and `atob`/`btoa`
+- `crypto` with `SubtleCrypto`, `WebSocket` and `XMLHttpRequest`
+- the event loop: `setTimeout`, `setInterval`, `queueMicrotask` and `AsyncContext`
 
 Each built-in is a static `install()` method on a class. The `Engine` calls them in dependency order at construction. Each one defines its prototype chain, installs methods as `JsFunction` instances wrapped around PHP closures, and exposes the constructor as a global.
 

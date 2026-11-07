@@ -29,7 +29,11 @@ RUN docker-php-ext-install bcmath
 
 Run `php -m` to see which extensions your build has.
 
-`ext-intl` is optional. Phasis works without it, but the entire `Intl.*` family (`Collator`, `NumberFormat`, `DateTimeFormat`, `PluralRules`, `Locale`, `DisplayNames`, `ListFormat`, `RelativeTimeFormat`, `Segmenter`, `DurationFormat`) and the non-ISO Temporal calendars (`hebrew`, `islamic`, `japanese`, `persian`, etc.) need it. Install it whenever the host application exposes JS that touches locale-aware formatting. `ext-openssl` is optional as well: `crypto.subtle` AES-CBC, AES-CTR and AES-GCM encryption need it, while digests and HMAC work without it.
+`ext-intl` is optional. Phasis works without it, but the entire `Intl.*` family needs it: `Collator`, `NumberFormat`, `DateTimeFormat`, `PluralRules`, `Locale`, `DisplayNames`, `ListFormat`, `RelativeTimeFormat`, `Segmenter` and `DurationFormat`.
+
+The non-ISO Temporal calendars (`hebrew`, `islamic`, `japanese`, `persian`, etc.) need it too. Install it whenever the host application exposes JS that touches locale-aware formatting.
+
+`ext-openssl` is optional as well: `crypto.subtle` AES-CBC, AES-CTR and AES-GCM encryption need it, while digests and HMAC work without it.
 
 No `exec`, no FFI, no Node.js, no custom native extension.
 
@@ -81,7 +85,9 @@ The `Engine` instance keeps its global state between calls, so subsequent `eval(
 
 `console.log` and its siblings append to a buffer on the engine instead of writing to stdout. Read it with `getConsoleOutput()` (one string, lines joined with `\n`) or `getConsoleLines()` (a list of lines), and empty it with `clearConsole()`.
 
-Cold-start is cheap: only the spec-load-bearing core (`Object`, `Function`, `Array`, `Promise`, `Symbol`, `BigInt`, `RegExp`, the error types) is installed up front. `Map`, `TypedArray`, `Temporal`, `Intl`, `URL`, `fetch`, the full Web Platform / Fetch Packs, and everything else materialize transparently on first read. Pass `new Engine(eager: true)` to install every built-in at construction — useful for conformance tooling that introspects descriptors before reading them; rarely needed for normal embedding.
+Cold-start is cheap: only the spec-load-bearing core (`Object`, `Function`, `Array`, `Promise`, `Symbol`, `BigInt`, `RegExp`, the error types) is installed up front. `Map`, `TypedArray`, `Temporal`, `Intl`, `URL`, `fetch`, the full Web Platform / Fetch Packs, and everything else materialize transparently on first read.
+
+Pass `new Engine(eager: true)` to install every built-in at construction. That is useful for conformance tooling that introspects descriptors before reading them, and rarely needed for normal embedding.
 
 ## Call JS functions from PHP
 

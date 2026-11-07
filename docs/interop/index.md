@@ -1,11 +1,11 @@
 ---
 title: "Overview"
-description: "How PHP and JavaScript values cross the boundary in Phasis — value conversion rules, exposing PHP callables as JS functions, and what happens to PHP objects."
+description: "How PHP and JavaScript values cross the Phasis boundary: conversion rules, PHP callables as JS functions, and shared PHP objects."
 path: "interop"
 order: 20
 section: "Interop"
 meta_title: "Overview"
-meta_description: "How PHP and JavaScript values cross the boundary in Phasis — value conversion rules, exposing PHP callables as JS functions, and what happens to PHP objects."
+meta_description: "How PHP and JavaScript values cross the Phasis boundary: conversion rules, PHP callables as JS functions, and shared PHP objects."
 ---
 
 # Interop

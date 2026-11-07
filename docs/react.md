@@ -1,11 +1,11 @@
 ---
 title: "React"
-description: "The native React 19.3 server renderer: byte-identical to react-dom, hydratable on the client, with hooks, Suspense, useId and resource hints."
+description: "The native React 19.3 server renderer in PHP: byte-identical to react-dom, hydratable, with hooks, Suspense and useId."
 path: "react"
 order: 86
 section: "JSX"
 meta_title: "React"
-meta_description: "The native React 19.3 server renderer: byte-identical to react-dom, hydratable on the client, with hooks, Suspense, useId and resource hints."
+meta_description: "The native React 19.3 server renderer in PHP: byte-identical to react-dom, hydratable, with hooks, Suspense and useId."
 ---
 
 # React

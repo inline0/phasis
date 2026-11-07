@@ -1,11 +1,11 @@
 ---
 title: "API"
-description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, render, setGlobal, call, console output, resource limits, and lifecycle."
+description: "Reference for Phasis\\Engine, the PHP entry point: eval, modules, files, rendering, globals, console output, limits and lifecycle."
 path: "api"
 order: 220
 section: "Reference"
 meta_title: "API"
-meta_description: "The Phasis\\Engine class is the public PHP entry point — eval, evalAsModule, execFile, render, setGlobal, call, console output, resource limits, and lifecycle."
+meta_description: "Reference for Phasis\\Engine, the PHP entry point: eval, modules, files, rendering, globals, console output, limits and lifecycle."
 ---
 
 # API
@@ -22,7 +22,18 @@ $engine = new Engine(eager: true);      // install every built-in up front
 $engine = new Engine(node: true);       // opt-in Node modules and host I/O
 ```
 
-A fresh `Engine` exposes the full standard library — `Object`, `Array`, `String`, `Number`, `Symbol`, `BigInt`, `Promise`, `RegExp`, `Error` and the core language intrinsics install eagerly so the spec works (you can't have classes without `Function.prototype`, async/await without `Promise`, regex literals without `RegExp`). Everything else — `Math`, `JSON`, `Map`, `Set`, `Date`, `TypedArray` and the array-buffer family, `Atomics`, `Proxy`, `Reflect`, `console`, `Intl`, the weak-ref family, `Temporal`, `ShadowRealm`, the Web Platform Pack, and the Fetch Pack — is registered as a placeholder accessor and materializes on first read. Reading the global is transparent: `Map`, `typeof Map`, `'Map' in globalThis`, `Object.keys(globalThis).includes('Map')` all work, and after the first read the placeholder is replaced with a regular data descriptor.
+A fresh `Engine` exposes the full standard library. `Object`, `Array`, `String`, `Number`, `Symbol`, `BigInt`, `Promise`, `RegExp`, `Error` and the other core language intrinsics install eagerly.
+
+They install eagerly because the language depends on them: you can't have classes without `Function.prototype`, async/await without `Promise`, or regex literals without `RegExp`.
+
+Everything else is registered as a placeholder accessor and materializes on first read:
+
+- `Math`, `JSON`, `Map`, `Set`, `Date`, `Proxy`, `Reflect` and `console`
+- `TypedArray` and the array-buffer family, and `Atomics`
+- `Intl`, the weak-ref family, `Temporal` and `ShadowRealm`
+- the Web Platform Pack and the Fetch Pack
+
+Reading the global is transparent: `Map`, `typeof Map`, `'Map' in globalThis` and `Object.keys(globalThis).includes('Map')` all work, and after the first read the placeholder is replaced with a regular data descriptor.
 
 Pass `eager: true` if you specifically need the pre-lazy behavior — every built-in installed at construction with the full descriptor surface visible to introspection. The conformance harness (`bin/test262`, `bin/wpt`) constructs engines in eager mode so test262/WPT see the descriptor shapes they expect.
 

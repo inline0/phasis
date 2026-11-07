@@ -1,11 +1,11 @@
 ---
 title: "Cookie jar"
-description: "Phasis fetch() sends and stores no cookies by default. Mount a jar with setCookieJar() to keep cookies across requests: any PHP or JavaScript object with get(url) and set(url, header) methods works."
+description: "Phasis fetch() keeps no cookies by default. Mount a PHP or JavaScript jar with get(url) and set(url, header) to persist them."
 path: "interop/cookie-jar"
 order: 70
 section: "Interop"
 meta_title: "Cookie jar"
-meta_description: "Phasis fetch() sends and stores no cookies by default. Mount a jar with setCookieJar() to keep cookies across requests: any PHP or JavaScript object with get(url) and set(url, header) methods works."
+meta_description: "Phasis fetch() keeps no cookies by default. Mount a PHP or JavaScript jar with get(url) and set(url, header) to persist them."
 ---
 
 # Cookie jar

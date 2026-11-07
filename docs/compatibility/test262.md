@@ -1,11 +1,11 @@
 ---
 title: "test262 coverage"
-description: "Phasis measures ECMAScript conformance against the pinned official test262 suite, with canonical CI results and individual failure details."
+description: "How Phasis measures ECMAScript conformance against the pinned official test262 suite, with CI results and failure details."
 path: "compatibility/test262"
 order: 100
 section: "Compatibility"
 meta_title: "test262 coverage"
-meta_description: "Phasis measures ECMAScript conformance against the pinned official test262 suite, with canonical CI results and individual failure details."
+meta_description: "How Phasis measures ECMAScript conformance against the pinned official test262 suite, with CI results and failure details."
 ---
 
 # test262 coverage

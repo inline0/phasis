@@ -1,11 +1,11 @@
 ---
 title: "Overview"
-description: "How Phasis compares to V8 (Node, Chrome), SpiderMonkey, and JavaScriptCore. test262 conformance, Web Platform Tests pass rates, real-world library byte-equality, and known limitations."
+description: "How Phasis compares to V8, SpiderMonkey and JavaScriptCore: test262, Web Platform Tests, popular packages and known limits."
 path: "compatibility"
 order: 90
 section: "Compatibility"
 meta_title: "Overview"
-meta_description: "How Phasis compares to V8 (Node, Chrome), SpiderMonkey, and JavaScriptCore. test262 conformance, Web Platform Tests pass rates, real-world library byte-equality, and known limitations."
+meta_description: "How Phasis compares to V8, SpiderMonkey and JavaScriptCore: test262, Web Platform Tests, popular packages and known limits."
 ---
 
 # Compatibility

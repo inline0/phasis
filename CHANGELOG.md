@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-11-07
+
+### Changed
+- Docs: every page's `description` and `meta_description` is 130 characters or fewer, so translated descriptions stay within 160. The 16 longer ones, up to 545 characters on the popular packages page, were rewritten.
+- Docs: long blocks are split so each paragraph or list item carries a handful of links and code spans. The introduction's documentation map has one short section per area, and dense paragraphs on the API, Web APIs, getting started, limitations, architecture, parser and fetch transport pages became lists or shorter paragraphs. Every link and every listed API is kept.
+
 ## [0.14.5] - 2026-11-07
 
 ### Fixed

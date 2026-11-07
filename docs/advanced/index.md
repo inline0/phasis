@@ -1,11 +1,11 @@
 ---
 title: "Overview"
-description: "How Phasis works under the hood — architecture, the bytecode VM, perf numbers, the oracle testing model, and where to extend the engine."
+description: "How Phasis works inside: architecture, the bytecode VM, performance, the oracle testing model and where to extend the engine."
 path: "advanced"
 order: 160
 section: "Advanced"
 meta_title: "Overview"
-meta_description: "How Phasis works under the hood — architecture, the bytecode VM, perf numbers, the oracle testing model, and where to extend the engine."
+meta_description: "How Phasis works inside: architecture, the bytecode VM, performance, the oracle testing model and where to extend the engine."
 ---
 
 # Advanced

@@ -1,11 +1,11 @@
 ---
 title: "Web APIs (WHATWG / W3C)"
-description: "The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding, structuredClone, fetch, Streams, Blob, FormData, AbortSignal, and more. 100% Web Platform Tests conformance on the imported subset."
+description: "The Web Platform APIs Phasis ships beyond ECMAScript: URL, encoding, structuredClone, fetch, Streams, Blob, FormData and more."
 path: "compatibility/web-apis"
 order: 110
 section: "Compatibility"
 meta_title: "Web APIs (WHATWG / W3C)"
-meta_description: "The non-ECMAScript Web Platform APIs Phasis ships — URL, encoding, structuredClone, fetch, Streams, Blob, FormData, AbortSignal, and more. 100% Web Platform Tests conformance on the imported subset."
+meta_description: "The Web Platform APIs Phasis ships beyond ECMAScript: URL, encoding, structuredClone, fetch, Streams, Blob, FormData and more."
 ---
 
 # Web APIs
@@ -13,7 +13,9 @@ meta_description: "The non-ECMAScript Web Platform APIs Phasis ships — URL, en
 Beyond ECMAScript itself, Phasis ships several layered packs of WHATWG / W3C APIs:
 
 - **Web Platform Pack** — pure value types, no I/O: `URL`, `URLSearchParams`, `URLPattern`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone`, `performance`, `DOMException`, and `WebAssembly.Memory` (no module compilation; see [Known limitations](/docs/compatibility/limitations#wasm)).
-- **Fetch Pack** — real HTTP from JavaScript: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget`, `Event`, full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB), `CompressionStream` / `DecompressionStream` (gzip / deflate / deflate-raw via zlib; brotli when the `kjdev/php-ext-brotli` PECL extension is loaded), `navigator`, and the HTML-spec `self` global alias + `reportError`.
+- **Fetch Pack**: real HTTP from JavaScript with `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`, `AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget` and `Event`.
+- **Fetch Pack streams**: full WHATWG Streams (`ReadableStream`, `WritableStream`, `TransformStream`, queuing strategies, BYOB) and `CompressionStream` / `DecompressionStream` (gzip / deflate / deflate-raw via zlib; brotli when the `kjdev/php-ext-brotli` PECL extension is loaded).
+- **Fetch Pack globals**: `navigator`, the HTML-spec `self` global alias and `reportError`.
 - **Crypto** — `crypto.getRandomValues`, `crypto.randomUUID`, and full `SubtleCrypto`: digest (SHA-1/256/384/512), HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA (P-256/384/521), ECDH, HKDF, PBKDF2 — plus JWK import/export. Backed by `ext-openssl`.
 - **WebSocket** — constructor, RFC 6455 frame codec, events. Default transport uses `stream_socket_client`; replaceable via `Engine::setWebSocketTransport()` for ReactPHP / Ratchet / mocks in tests.
 - **XMLHttpRequest** — layered over the fetch transport, so the same policy hooks and swappable transport apply.
@@ -23,7 +25,16 @@ All packs are **on by default**. No flag, no setup — `typeof fetch` returns `"
 
 ## Conformance
 
-The imported [Web Platform Tests](https://github.com/web-platform-tests/wpt) corpus (`tests/Wpt/fixtures/`) covers `AbortController` / `AbortSignal`, `atob` / `btoa`, `Blob` / `File`, `TextEncoder` / `TextDecoder`, `EventTarget` / `Event`, `FormData`, `Headers`, `performance.now`, the full Streams Standard (`Readable`/`Writable`/`Transform` + BYOB + queuing), `structuredClone`, `URL` / `URLSearchParams`, the full **`crypto` / `SubtleCrypto`** surface (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2 — including thousands of derive-bits permutations from `hkdf` and `pbkdf2`), the **`WebSocket`** state machine (constructor URL and subprotocol validation, close-code semantics, `send()` for strings / `ArrayBuffer` / typed-array views / `Blob`, `binaryType`, `bufferedAmount`, async close while connecting, event-handler nullability), and a broad slice of **`Fetch`** + **`XMLHttpRequest`** — `responseType` state machine, abort/send transitions, CORS-safelisted headers, multipart `FormData` uploads, `XMLHttpRequestUpload` + `ProgressEvent`, `Response`/`Headers` init validation, the static `Response.json` / `Response.error` constructors, redirect-chain Authorization stripping, `URL.createObjectURL` blob URLs, body-mixin consumption (`text` / `blob` / `json` / `formData` / `arrayBuffer`), `Response.clone` with `structuredClone`-d teed streams, and sync XHR network-error throwing. Every imported subtest passes.
+The imported [Web Platform Tests](https://github.com/web-platform-tests/wpt) corpus (`tests/Wpt/fixtures/`) covers the areas below. Every imported subtest passes.
+
+- `AbortController` / `AbortSignal`, `atob` / `btoa`, `Blob` / `File` and `TextEncoder` / `TextDecoder`.
+- `EventTarget` / `Event`, `FormData`, `Headers`, `performance.now`, `structuredClone` and `URL` / `URLSearchParams`.
+- The full Streams Standard (`Readable`/`Writable`/`Transform`, BYOB and queuing).
+- The full **`crypto` / `SubtleCrypto`** surface: digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF and PBKDF2, including thousands of derive-bits permutations from `hkdf` and `pbkdf2`.
+- The **`WebSocket`** state machine: constructor URL and subprotocol validation, close-code semantics, `send()` for strings / `ArrayBuffer` / typed-array views / `Blob`, `binaryType`, `bufferedAmount`, async close while connecting and event-handler nullability.
+- **`Fetch`** and **`XMLHttpRequest`** requests: the `responseType` state machine, abort/send transitions, CORS-safelisted headers, multipart `FormData` uploads, `XMLHttpRequestUpload` and `ProgressEvent`, redirect-chain Authorization stripping and sync XHR network-error throwing.
+- **`Fetch`** responses: `Response`/`Headers` init validation, the static `Response.json` / `Response.error` constructors, `URL.createObjectURL` blob URLs and `Response.clone` with `structuredClone`-d teed streams.
+- Body-mixin consumption: `text` / `blob` / `json` / `formData` / `arrayBuffer`.
 
 To extend further, drop a new `*.any.js` into `tests/Wpt/fixtures/<category>/` — the runner picks it up automatically. The XHR/Fetch suites are driven by `tests/Wpt/fetch-server.php` (a single-file emulator of the WPT `resources/*.py` handlers); the WebSocket suite uses an inert in-runner transport that synthesizes open/echo/close, sufficient for the imported fixtures. Run the corpus yourself:
 
@@ -124,7 +135,9 @@ const doubled = new ReadableStream({
 for await (const v of doubled) console.log(v);  // 2, 4, 6
 ```
 
-Full Streams spec: `ReadableStream`, `WritableStream`, `TransformStream`, `ReadableStreamDefaultController`, `ReadableByteStreamController`, `ReadableStreamDefaultReader`, `ReadableStreamBYOBReader`, `ReadableStreamBYOBRequest`, `WritableStreamDefaultController`, `WritableStreamDefaultWriter`, `TransformStreamDefaultController`, `ByteLengthQueuingStrategy`, `CountQueuingStrategy`, plus `pipeTo` / `pipeThrough` / `tee`.
+Full Streams spec: `ReadableStream`, `WritableStream` and `TransformStream`, the queuing strategies `ByteLengthQueuingStrategy` and `CountQueuingStrategy`, plus `pipeTo` / `pipeThrough` / `tee`.
+
+The controllers, readers and writers are there too: `ReadableStreamDefaultController`, `ReadableByteStreamController`, `ReadableStreamDefaultReader`, `ReadableStreamBYOBReader`, `ReadableStreamBYOBRequest`, `WritableStreamDefaultController`, `WritableStreamDefaultWriter` and `TransformStreamDefaultController`.
 
 ## Event loop
 

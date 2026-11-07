@@ -1,11 +1,11 @@
 ---
 title: "Formatter"
-description: "Format JavaScript with Phasis\\Formatter\\Formatter: a native PHP pretty-printer with prettier-compatible layout, no Node.js required."
+description: "Format JavaScript, JSON and CSS in PHP with Phasis\\Formatter\\Formatter, a prettier-compatible printer that needs no Node.js."
 path: "formatter"
 order: 240
 section: "Reference"
 meta_title: "Formatter"
-meta_description: "Format JavaScript with Phasis\\Formatter\\Formatter: a native PHP pretty-printer with prettier-compatible layout, no Node.js required."
+meta_description: "Format JavaScript, JSON and CSS in PHP with Phasis\\Formatter\\Formatter, a prettier-compatible printer that needs no Node.js."
 ---
 
 # Formatter

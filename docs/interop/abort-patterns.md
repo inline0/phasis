@@ -1,11 +1,11 @@
 ---
 title: "AbortController patterns"
-description: "Cancelling work in Phasis — timeout, race, propagation, AbortSignal.any/timeout, and how a PHP fetch transport polls a signal mid-transfer to honor cancellation."
+description: "Cancel work in Phasis with AbortSignal: timeouts, races, propagation, and polling the signal in a custom PHP fetch transport."
 path: "interop/abort-patterns"
 order: 80
 section: "Interop"
 meta_title: "AbortController patterns"
-meta_description: "Cancelling work in Phasis — timeout, race, propagation, AbortSignal.any/timeout, and how a PHP fetch transport polls a signal mid-transfer to honor cancellation."
+meta_description: "Cancel work in Phasis with AbortSignal: timeouts, races, propagation, and polling the signal in a custom PHP fetch transport."
 ---
 
 # AbortController patterns

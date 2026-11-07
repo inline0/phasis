@@ -1,11 +1,11 @@
 ---
 title: "Popular packages"
-description: "Phasis runs 205+ real-world JS libraries — acorn, lodash, zod, effect, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
+description: "Phasis runs 205 popular npm packages, including lodash, zod, prettier and typescript, with output compared to Node.js in CI."
 path: "compatibility/popular-packages"
 order: 130
 section: "Compatibility"
 meta_title: "Popular packages"
-meta_description: "Phasis runs 205+ real-world JS libraries — acorn, lodash, zod, effect, marked, ramda, dayjs, date-fns, immer, redux, immutable, fuse.js, minisearch, semver, prettier, typescript, svelte (compiler), terser, @babel/parser, graphql-js, ajv, mobx, cheerio, htmlparser2, papaparse, lunr, postcss, moment, luxon, JSZip, xstate, chai, mqtt-packet, yaml, jsonata, escodegen, magic-string, valtio, nanostores, jotai, redux-saga, and more — byte-equal to Node.js. Verified in CI by the popular.yml workflow whenever the engine source or the suite changes."
+meta_description: "Phasis runs 205 popular npm packages, including lodash, zod, prettier and typescript, with output compared to Node.js in CI."
 ---
 
 # Popular packages

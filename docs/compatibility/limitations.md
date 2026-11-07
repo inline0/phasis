@@ -58,7 +58,13 @@ Phasis cannot compile or run WebAssembly modules: there's no PHP wasm runtime to
 
 ## Browser-only Web APIs we skip
 
-Phasis ships the full **Web Platform Pack** (`URL`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance`, `DOMException`), the full **Fetch Pack** (`fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams, `navigator`), plus `crypto` (`getRandomValues`, `randomUUID`, full `SubtleCrypto`: digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2), `WebSocket` (constructor + RFC 6455 frame codec, swappable transport), `XMLHttpRequest` (layered over the fetch transport), and a real event loop (`setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, `AsyncContext`). See [Web APIs](/docs/compatibility/web-apis).
+Phasis ships these Web APIs; [Web APIs](/docs/compatibility/web-apis) has the details:
+
+- the full **Web Platform Pack**: `URL`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance` and `DOMException`
+- the full **Fetch Pack**: `fetch`, `Request`, `Response`, `Headers`, `Body`, `AbortController`/`AbortSignal`, `Blob`/`File`, `FormData`, `EventTarget`/`Event`, full WHATWG Streams and `navigator`
+- `crypto`: `getRandomValues`, `randomUUID` and full `SubtleCrypto` (digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF, PBKDF2)
+- `WebSocket` (constructor and RFC 6455 frame codec, swappable transport) and `XMLHttpRequest` (layered over the fetch transport)
+- a real event loop: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask` and `AsyncContext`
 
 What's *not* shipped:
 

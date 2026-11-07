@@ -1,15 +1,19 @@
 ---
 title: "Introduction"
-description: "Phasis runs JavaScript, TypeScript, JSX and React server rendering inside PHP, without Node.js. What it is, what it runs, a first example and a map of the docs."
+description: "Phasis runs JavaScript, TypeScript, JSX and React server rendering inside PHP, without Node.js. Overview, example and docs map."
 path: "."
 order: 0
 meta_title: "Phasis documentation: a JavaScript engine in pure PHP"
-meta_description: "Phasis runs JavaScript, TypeScript, JSX and React server rendering inside PHP, without Node.js. What it is, what it runs, a first example and a map of the docs."
+meta_description: "Phasis runs JavaScript, TypeScript, JSX and React server rendering inside PHP, without Node.js. Overview, example and docs map."
 ---
 
 # Introduction
 
-Phasis is a JavaScript engine written in PHP. It lexes, parses and executes ECMAScript inside the PHP process that calls it: no `exec('node …')`, no FFI and no custom binary extension. It ships as the Composer package `phasis/phasis` and needs PHP 8.2 or later with three standard extensions: `ext-mbstring`, `ext-bcmath` (BigInt arithmetic and integer-precision number handling) and `ext-curl` (the default `fetch()` transport). `ext-intl` is optional and enables the `Intl` APIs and non-ISO Temporal calendars; `ext-openssl` is optional and enables `crypto.subtle` AES encryption. [Getting Started](/docs/getting-started#install) shows how to add `bcmath` to builds that leave it out, such as the official `php` Docker images.
+Phasis is a JavaScript engine written in PHP. It lexes, parses and executes ECMAScript inside the PHP process that calls it: no `exec('node …')`, no FFI and no custom binary extension. It ships as the Composer package `phasis/phasis`.
+
+It needs PHP 8.2 or later with three standard extensions: `ext-mbstring`, `ext-bcmath` (BigInt arithmetic and integer-precision number handling) and `ext-curl` (the default `fetch()` transport). [Getting Started](/docs/getting-started#install) shows how to add `bcmath` to builds that leave it out, such as the official `php` Docker images.
+
+Two extensions are optional: `ext-intl` enables the `Intl` APIs and non-ISO Temporal calendars, and `ext-openssl` enables `crypto.subtle` AES encryption.
 
 PHP applications that need to run JavaScript, such as templating, server-side rendering of components, validation rules shared with a browser, or user-supplied scripts in a sandbox, usually shell out to Node.js or drop the feature. A second runtime brings a serialization boundary, subprocess management and a harder deployment on shared hosting. Phasis keeps the JavaScript in the PHP process and lets PHP and JavaScript exchange values and call each other directly.
 
@@ -78,7 +82,9 @@ $html = $engine->renderSource(
 - **TypeScript.** `.ts`, `.tsx`, `.mts` and `.cts` files have their types erased by a native PHP parser when they are executed, imported or rendered. See [TypeScript](/docs/typescript).
 - **JSX and React.** `render()` and `renderSource()` render a component module to an HTML string. The React profile produces HTML byte-identical to `react-dom@19.3.1` that React can hydrate in the browser, and `renderForHydration()` pairs that HTML with the props the client needs. The HTML profile matches `preact-render-to-string` 6.8.1 for emails, feeds and static pages. See [JSX](/docs/jsx) and [React](/docs/react).
 - **Node-compatible packages.** `enableNode()` or `phasis --node` adds CommonJS, `Buffer`, streams, filesystem access, HTTP servers and clients, TLS, crypto and timers, all executed in PHP. Express and Hono support is experimental. See [Node compatibility](/docs/modules#node-compatibility).
-- **Web Platform APIs.** `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance` and `DOMException`; `fetch()` with `Request`, `Response`, `Headers`, `AbortController`/`AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget` and WHATWG Streams; `crypto` with `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, timers and `queueMicrotask`. See [Web APIs](/docs/compatibility/web-apis).
+- **Web Platform APIs.** `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`, `performance` and `DOMException`. See [Web APIs](/docs/compatibility/web-apis).
+- **Fetch.** `fetch()` with `Request`, `Response`, `Headers`, `AbortController`/`AbortSignal`, `Blob`, `File`, `FormData`, `EventTarget` and WHATWG Streams.
+- **Crypto, sockets and timers.** `crypto` with `SubtleCrypto`, `WebSocket`, `XMLHttpRequest`, timers and `queueMicrotask`.
 
 The ECMAScript standard library is complete, including `Proxy`, `Reflect`, `Symbol`, `BigInt`, typed arrays, `Temporal` and `Intl`, as are modern syntax features such as classes with private fields and decorators, async generators and top-level `await` in modules. [Spec surface](/docs/compatibility/spec-surface) lists them.
 
@@ -103,10 +109,34 @@ Phasis is not a JIT compiler. It is a tree-walking interpreter with an opportuni
 
 ## How the docs are organized
 
-- **Start here.** [Getting Started](/docs/getting-started) installs Phasis and runs a first script from the CLI and from PHP. [CLI](/docs/cli) covers `bin/phasis`, `bin/test262` and `bin/wpt`.
-- **Embedding reference.** [API](/docs/api) is the `Phasis\Engine` reference: evaluation, rendering, globals, console output, limits, the event loop, fetch hooks, exceptions and lifecycle.
-- **Interop.** [Interop](/docs/interop) explains the PHP and JavaScript boundary: [value conversion](/docs/interop/values), [host functions](/docs/interop/host-functions), [shared objects](/docs/interop/shared-objects), the [fetch transport](/docs/interop/fetch-transport), the [cookie jar](/docs/interop/cookie-jar) and [abort patterns](/docs/interop/abort-patterns).
-- **Languages and rendering.** [TypeScript](/docs/typescript), [JSX](/docs/jsx), [React](/docs/react) and [Modules](/docs/modules) cover file types, the render profiles, hydration and import resolution.
-- **Compatibility.** [Compatibility](/docs/compatibility) holds the conformance results: [test262](/docs/compatibility/test262), [Web APIs](/docs/compatibility/web-apis), [Streams](/docs/compatibility/streams), [popular packages](/docs/compatibility/popular-packages), the [spec surface](/docs/compatibility/spec-surface) and the [limitations](/docs/compatibility/limitations).
-- **Standalone tools.** [Parser](/docs/parser) and [Formatter](/docs/formatter) document the APIs that work without executing code.
-- **Internals.** [Advanced](/docs/advanced) describes the [architecture](/docs/advanced/architecture), the [bytecode VM](/docs/advanced/bytecode-vm), the [testing model](/docs/advanced/testing) and [benchmarks](/docs/advanced/benchmarks).
+### Start here
+
+[Getting Started](/docs/getting-started) installs Phasis and runs a first script from the CLI and from PHP. [CLI](/docs/cli) covers `bin/phasis`, `bin/test262` and `bin/wpt`.
+
+### Embedding reference
+
+[API](/docs/api) is the `Phasis\Engine` reference: evaluation, rendering, globals, console output, limits, the event loop, fetch hooks, exceptions and lifecycle.
+
+### Interop
+
+[Interop](/docs/interop) explains the boundary between PHP and JavaScript. [Value conversion](/docs/interop/values), [host functions](/docs/interop/host-functions) and [shared objects](/docs/interop/shared-objects) cover how data and calls cross it.
+
+For network access from JavaScript, read the [fetch transport](/docs/interop/fetch-transport), the [cookie jar](/docs/interop/cookie-jar) and [abort patterns](/docs/interop/abort-patterns) pages.
+
+### Languages and rendering
+
+[TypeScript](/docs/typescript), [JSX](/docs/jsx), [React](/docs/react) and [Modules](/docs/modules) cover file types, the render profiles, hydration and import resolution.
+
+### Compatibility
+
+[Compatibility](/docs/compatibility) collects the conformance results: [test262](/docs/compatibility/test262), [Web APIs](/docs/compatibility/web-apis) and [Streams](/docs/compatibility/streams).
+
+[Popular packages](/docs/compatibility/popular-packages) lists the npm libraries checked against Node.js, [Spec surface](/docs/compatibility/spec-surface) the implemented built-ins, and [Limitations](/docs/compatibility/limitations) where Phasis differs from V8.
+
+### Standalone tools
+
+[Parser](/docs/parser) and [Formatter](/docs/formatter) document the APIs that work without executing code.
+
+### Internals
+
+[Advanced](/docs/advanced) describes the [architecture](/docs/advanced/architecture), the [bytecode VM](/docs/advanced/bytecode-vm), the [testing model](/docs/advanced/testing) and [benchmarks](/docs/advanced/benchmarks).
