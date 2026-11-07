@@ -24,7 +24,13 @@ export const checks = [
   {
     label: "PHPUnit",
     command: "php",
-    args: ["-d", "memory_limit=512M", "vendor/bin/phpunit"],
+    args: [
+      "-d",
+      "memory_limit=512M",
+      "-d",
+      "xdebug.mode=off",
+      "vendor/bin/phpunit",
+    ],
   },
   {
     label: "Oracle regression",

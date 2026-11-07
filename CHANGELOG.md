@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-11-07
+
+### Changed
+- Docs: the fetch transport page matches the engine. The request array carries `timeout` and `connectTimeout` in seconds (always `30` and `10` from `fetch()`) and no `credentials` key; standard methods are uppercased and others keep their case; header names arrive lowercased with `Cookie` and `User-Agent` appended. The page documents the response defaults, the `TransportException` kinds, what `XMLHttpRequest`, Node mode and `blob:` URLs send through the transport, and that redirect hops do not run the policy hook. The Guzzle and Symfony HttpClient adapters no longer depend on Laravel's `collect()` and pass time limits in seconds, and the policy example calls `Headers.set` through `JsFunction::call()`, because `JsObject` has no `call()` method.
+- Docs: the API reference's fetch hook examples run as written: the transport example returns the documented response shape, the policy example sets a header through `JsFunction::call()`, and the cookie jar example stores `name=value` pairs instead of whole `Set-Cookie` lines.
+- `composer test`, `composer test:unit` and the PHPUnit step of `scripts/verify-all.ts` run PHPUnit with `xdebug.mode=off`. With Xdebug loaded, its `max_nesting_level` of 512 aborted the recursion case of `ExecutionBudgetTest`, and its develop mode kept objects reachable that four memory-lifetime tests (`CompilationFailuresTest`, `CompilationTemplatesTest`, `FrameLifetimeTest` and the Node `VmTest` context test) expect to be collected. CI runs without Xdebug and was not affected; an explicit `XDEBUG_MODE` environment variable still takes precedence.
+
 ## [0.14.3] - 2026-11-07
 
 ### Changed

@@ -34,8 +34,8 @@
         "bin/phasis"
     ],
     "scripts": {
-        "test": "@php -d memory_limit=512M ./vendor/bin/phpunit",
-        "test:unit": "@php -d memory_limit=512M ./vendor/bin/phpunit --testsuite=unit",
+        "test": "@php -d memory_limit=512M -d xdebug.mode=off ./vendor/bin/phpunit",
+        "test:unit": "@php -d memory_limit=512M -d xdebug.mode=off ./vendor/bin/phpunit --testsuite=unit",
         "cs": "@php -d memory_limit=512M ./vendor/bin/phpcs",
         "cs:fix": "@php -d memory_limit=512M ./vendor/bin/phpcbf",
         "analyse": "@php -d memory_limit=4G ./vendor/bin/phpstan analyse",
