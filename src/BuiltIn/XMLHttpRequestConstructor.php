@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Phasis\BuiltIn;
 
 use Phasis\BuiltIn\Fetch\CurlTransport;
+use Phasis\BuiltIn\Fetch\FetchPolicy;
 use Phasis\BuiltIn\Fetch\TransportException;
 use Phasis\Engine;
 use Phasis\Exceptions\TypeError;
@@ -66,6 +67,8 @@ use Phasis\Value\JsValue;
  */
 final class XMLHttpRequestConstructor
 {
+    private const REDIRECT_LIMIT = 20;
+
     public static function install(Environment $env): void
     {
         $proto = new JsObject();
@@ -770,6 +773,44 @@ final class XMLHttpRequestConstructor
     }
 
     /**
+     * @param array<mixed> $headers
+     * @return list<array{0:string,1:string}>
+     */
+    private static function headerPairs(array $headers): array
+    {
+        $pairs = [];
+        foreach ($headers as $pair) {
+            if (is_array($pair) && isset($pair[0], $pair[1]) && is_string($pair[0]) && is_string($pair[1])) {
+                $pairs[] = [$pair[0], $pair[1]];
+            }
+        }
+        return $pairs;
+    }
+
+    /**
+     * @param list<array{0:string,1:string}> $headers
+     * @param list<string> $names
+     * @return list<array{0:string,1:string}>
+     */
+    private static function withoutHeaders(array $headers, array $names): array
+    {
+        return array_values(array_filter(
+            $headers,
+            static fn (array $pair): bool => !in_array(strtolower($pair[0]), $names, true),
+        ));
+    }
+
+    private static function originOf(string $url): string
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts)) {
+            return '';
+        }
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        return strtolower(($parts['scheme'] ?? '') . '://' . ($parts['host'] ?? '')) . $port;
+    }
+
+    /**
      * Derive an `Origin: scheme://host[:port]` header value from the
      * realm's base URL. Returns null when nothing resembling a base
      * URL is configured.
@@ -1116,45 +1157,96 @@ final class XMLHttpRequestConstructor
             }
         }
 
-        $descriptor = [
-            'method' => $method,
-            'url' => $url,
-            'headers' => $headers,
-            'body' => $body,
-            'redirect' => 'follow',
-            // XHR follows redirects automatically (spec §4.5.6 step
-            // 12). We delegate the walk to libcurl rather than
-            // reimplementing here so Authorization and other auth
-            // headers persist across same-origin redirects.
-            'followRedirects' => true,
-            'timeout' => $timeoutMs > 0 ? (int) ceil($timeoutMs / 1000.0) : 30,
-            'connectTimeout' => 10,
-            'credentials' => $xhr->getInternalProperty('[[WithCredentials]]') === true ? 'include' : 'same-origin',
-        ];
-
         $transport = $realm->getFetchTransport();
+        $policed = FetchPolicy::active();
+        $hops = 0;
 
-        try {
-            $response = $transport !== null
-                ? $transport($descriptor, null)
-                : CurlTransport::send($descriptor, null);
-        } catch (TransportException $e) {
-            $kind = $e->kind;
-            if ($kind === 'timeout') {
-                self::finishTimeout($xhr);
-            } elseif ($kind === 'aborted') {
-                // Mid-flight abort — treat like our own abort.
-                $xhr->setInternalProperty('[[Aborted]]', true);
-                self::setReadyState($xhr, 4);
-                self::fireEvent($xhr, 'abort');
-                self::fireEvent($xhr, 'loadend');
-            } else {
-                self::finishError($xhr, $e->getMessage());
+        while (true) {
+            if ($policed) {
+                try {
+                    $hop = FetchPolicy::describe(FetchPolicy::apply(FetchPolicy::request(
+                        $realm->getGlobalEnv(),
+                        $url,
+                        $method,
+                        self::headerPairs($headers),
+                        $body,
+                        'follow',
+                    )));
+                } catch (\Throwable $e) {
+                    self::finishError($xhr, $e->getMessage());
+                    return;
+                }
+                $url = $hop['url'];
+                $method = $hop['method'];
+                $headers = $hop['headers'];
+                $body = $hop['body'];
             }
-            return;
-        } catch (\Throwable $e) {
-            self::finishError($xhr, $e->getMessage());
-            return;
+
+            $descriptor = [
+                'method' => $method,
+                'url' => $url,
+                'headers' => $headers,
+                'body' => $body,
+                'redirect' => 'follow',
+                // XHR follows redirects automatically (spec §4.5.6 step
+                // 12). We delegate the walk to libcurl rather than
+                // reimplementing here so Authorization and other auth
+                // headers persist across same-origin redirects.
+                'followRedirects' => !$policed,
+                'timeout' => $timeoutMs > 0 ? (int) ceil($timeoutMs / 1000.0) : 30,
+                'connectTimeout' => 10,
+                'credentials' => $xhr->getInternalProperty('[[WithCredentials]]') === true ? 'include' : 'same-origin',
+            ];
+
+            try {
+                $response = $transport !== null
+                    ? $transport($descriptor, null)
+                    : CurlTransport::send($descriptor, null);
+            } catch (TransportException $e) {
+                $kind = $e->kind;
+                if ($kind === 'timeout') {
+                    self::finishTimeout($xhr);
+                } elseif ($kind === 'aborted') {
+                    // Mid-flight abort — treat like our own abort.
+                    $xhr->setInternalProperty('[[Aborted]]', true);
+                    self::setReadyState($xhr, 4);
+                    self::fireEvent($xhr, 'abort');
+                    self::fireEvent($xhr, 'loadend');
+                } else {
+                    self::finishError($xhr, $e->getMessage());
+                }
+                return;
+            } catch (\Throwable $e) {
+                self::finishError($xhr, $e->getMessage());
+                return;
+            }
+
+            if (!$policed) {
+                break;
+            }
+            $hopStatus = (int) ($response['status'] ?? 0);
+            $hopHeaders = $response['headers'] ?? [];
+            $location = FetchFunction::isRedirectStatus($hopStatus) && is_array($hopHeaders)
+                ? FetchFunction::extractLocation($hopHeaders)
+                : null;
+            if ($location === null) {
+                break;
+            }
+            $hops++;
+            if ($hops > self::REDIRECT_LIMIT) {
+                self::finishError($xhr, 'Too many redirects (exceeded ' . self::REDIRECT_LIMIT . ' hops)');
+                return;
+            }
+            $next = FetchFunction::resolveLocation($url, $location);
+            if (self::originOf($next) !== self::originOf($url)) {
+                $headers = self::withoutHeaders($headers, ['authorization', 'proxy-authorization', 'cookie']);
+            }
+            if ($hopStatus === 303 || ($hopStatus === 301 || $hopStatus === 302) && $method !== 'GET' && $method !== 'HEAD') {
+                $method = 'GET';
+                $body = '';
+                $headers = self::withoutHeaders($headers, ['content-type', 'content-length']);
+            }
+            $url = $next;
         }
 
         if ($xhr->getInternalProperty('[[Aborted]]')) {

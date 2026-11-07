@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Phasis\Tests\Unit\Node;
 
 use Phasis\Engine;
+use Phasis\Value\JsObject;
+use Phasis\Value\JsString;
 use PHPUnit\Framework\TestCase;
 
 final class FetchTest extends TestCase
@@ -71,5 +73,57 @@ server.listen(0, '127.0.0.1', async () => {
 JS);
         self::assertSame([true, true, 'firstlast', 'TypeError', '00ff8041'], $engine->eval('result'));
         $engine->reset();
+    }
+
+    public function testFetchPolicyRunsForEveryRedirectHop(): void
+    {
+        $engine = new Engine(node: true);
+        $engine->setExecutionBudget(15);
+        $seen = [];
+        $engine->setFetchPolicy(static function (JsObject $request) use (&$seen): ?JsObject {
+            $url = $request->get('url');
+            $path = (string) parse_url($url instanceof JsString ? $url->value : '', PHP_URL_PATH);
+            $seen[] = $path;
+            if (str_starts_with($path, '/forbidden')) {
+                throw new \RuntimeException('path not allowed: ' . $path);
+            }
+            return null;
+        });
+        try {
+            $engine->eval(<<<'JS'
+const http = require('node:http');
+const result = [];
+const hits = [];
+const server = http.createServer((req, res) => {
+  hits.push(req.method + ' ' + req.url);
+  if (req.url === '/to-forbidden') { res.writeHead(302, { Location: '/forbidden' }); res.end(); return; }
+  if (req.url === '/to-allowed') { res.writeHead(307, { Location: '/allowed' }); res.end(); return; }
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => res.end(req.url + ' ' + Buffer.concat(chunks).toString()));
+});
+server.listen(0, '127.0.0.1', async () => {
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    try {
+      await fetch(base + '/to-forbidden');
+      result.push('followed');
+    } catch (error) { result.push(error.name + ': ' + error.message); }
+    const response = await fetch(base + '/to-allowed', { method: 'POST', body: 'payload' });
+    result.push(response.redirected, await response.text());
+  } catch (error) { result.push('unexpected ' + error.message); }
+  finally { server.close(); }
+});
+JS);
+            self::assertSame([
+                'TypeError: path not allowed: /forbidden',
+                true,
+                '/allowed payload',
+            ], $engine->eval('result'));
+            self::assertSame(['GET /to-forbidden', 'POST /to-allowed', 'POST /allowed'], $engine->eval('hits'));
+            self::assertSame(['/to-forbidden', '/forbidden', '/to-allowed', '/allowed'], $seen);
+        } finally {
+            $engine->close();
+        }
     }
 }

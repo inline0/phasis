@@ -197,6 +197,7 @@ final class NodeRuntime
         JsFunction $cookieSet,
         JsFunction $finalize,
         JsFunction $responseConstructor,
+        ?JsValue $redirectHook = null,
     ): JsPromise {
         $transport = $this->loadLibrary('#fetch', 'fetch.cjs');
         if (!$transport instanceof JsFunction) {
@@ -205,7 +206,7 @@ final class NodeRuntime
         $result = $this->engine->getInterpreter()->callFunction(
             $transport,
             JsUndefined::instance(),
-            [$request, $bytes, $cookieGet, $cookieSet, $finalize, $responseConstructor],
+            [$request, $bytes, $cookieGet, $cookieSet, $finalize, $responseConstructor, $redirectHook ?? JsUndefined::instance()],
         );
         if (!$result instanceof JsPromise) {
             throw new \LogicException('Node fetch transport must return a Promise');

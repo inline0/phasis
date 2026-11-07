@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Phasis\BuiltIn;
 
 use Phasis\BuiltIn\Fetch\CurlTransport;
+use Phasis\BuiltIn\Fetch\FetchPolicy;
 use Phasis\BuiltIn\Fetch\TransportException;
 use Phasis\Engine;
 use Phasis\Exceptions\TypeError;
@@ -149,7 +150,8 @@ final class FetchFunction
         if (!$responseConstructor instanceof JsFunction) {
             throw new \LogicException('Response intrinsic is not installed');
         }
-        return $runtime->fetch($request, $bytes, $get, $set, $finish, $responseConstructor);
+        $hop = FetchPolicy::active() ? FetchPolicy::redirectHook($env) : JsUndefined::instance();
+        return $runtime->fetch($request, $bytes, $get, $set, $finish, $responseConstructor, $hop);
     }
 
     /**
@@ -181,22 +183,7 @@ final class FetchFunction
      */
     private static function applyFetchPolicy(JsObject $request): JsObject
     {
-        $realm = Engine::getCurrentRealm();
-        if ($realm === null) {
-            return $request;
-        }
-        $policy = $realm->getFetchPolicy();
-        if ($policy === null) {
-            return $request;
-        }
-        $result = $policy($request);
-        if ($result === null) {
-            return $request;
-        }
-        if (!$result instanceof JsObject || !RequestConstructor::isRequest($result)) {
-            throw new TypeError('Fetch policy hook must return a Request, null, or undefined');
-        }
-        return $result;
+        return FetchPolicy::apply($request);
     }
 
     /**
@@ -313,6 +300,26 @@ final class FetchFunction
                     if ($status === 303 || ($status === 301 || $status === 302) && $method !== 'GET' && $method !== 'HEAD') {
                         $method = 'GET';
                         $bodyString = '';
+                    }
+                    if (FetchPolicy::active()) {
+                        try {
+                            $request = FetchPolicy::apply(FetchPolicy::request(
+                                $env,
+                                $url,
+                                $method,
+                                self::buildHeaderPairs($request, $url),
+                                $bodyString,
+                                $redirectMode,
+                            ));
+                        } catch (\Phasis\Exceptions\JsThrowable $e) {
+                            return JsPromise::rejected($e->jsValue);
+                        } catch (\Throwable $e) {
+                            return JsPromise::rejected(self::buildTypeError($env, $e->getMessage()));
+                        }
+                        $hop = FetchPolicy::describe($request);
+                        $url = $hop['url'];
+                        $method = $hop['method'];
+                        $bodyString = $hop['body'];
                     }
                     // Continue loop with the new URL.
                     continue;
@@ -511,7 +518,7 @@ final class FetchFunction
     /**
      * @param array<int,mixed> $headers
      */
-    private static function extractLocation(array $headers): ?string
+    public static function extractLocation(array $headers): ?string
     {
         foreach ($headers as $p) {
             if (!is_array($p) || count($p) < 2) {
@@ -524,7 +531,7 @@ final class FetchFunction
         return null;
     }
 
-    private static function isRedirectStatus(int $status): bool
+    public static function isRedirectStatus(int $status): bool
     {
         return $status === 301 || $status === 302 || $status === 303
             || $status === 307 || $status === 308;
@@ -536,7 +543,7 @@ final class FetchFunction
      * need to round-trip the full WHATWG URL parser here because the
      * Request's URL was already normalised at construction.
      */
-    private static function resolveLocation(string $base, string $location): string
+    public static function resolveLocation(string $base, string $location): string
     {
         // Absolute URL: use as-is.
         if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $location) === 1) {

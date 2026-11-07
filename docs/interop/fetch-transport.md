@@ -78,7 +78,7 @@ Throw `Phasis\BuiltIn\Fetch\TransportException` to report a failed request. Its 
 
 ### Other callers
 
-`XMLHttpRequest` sends its requests through the same transport. Its calls differ from `fetch()` in four ways: `$signal` is always `null`, `followRedirects` is `true` because the transport is expected to follow redirects itself, `timeout` is the XHR `timeout` rounded up to whole seconds (`30` when unset), and a `credentials` key holds `include` when `withCredentials` is set and `same-origin` otherwise. XHR does not run the policy hook or consult the cookie jar.
+`XMLHttpRequest` sends its requests through the same transport. Its calls differ from `fetch()` in four ways: `$signal` is always `null`, `timeout` is the XHR `timeout` rounded up to whole seconds (`30` when unset), a `credentials` key holds `include` when `withCredentials` is set and `same-origin` otherwise, and a `followRedirects` key says who follows redirects. Without a policy hook it is `true` and the transport is expected to follow redirects itself. With a [policy hook](#redirects) it is `false`: XHR follows up to 20 redirects itself, one transport call per hop, drops `authorization`, `proxy-authorization` and `cookie` headers when a hop changes origin, and continues a `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, as a `GET` without a body. XHR does not consult the cookie jar.
 
 With [Node compatibility](/docs/modules#node-compatibility) enabled and no transport installed, `fetch()` uses the Node HTTP client instead of `CurlTransport`. Installing a transport takes precedence in Node mode too.
 
@@ -221,7 +221,7 @@ public function setFetchPolicy(callable $hook): void
 public function getFetchPolicy(): ?callable
 ```
 
-The hook is called once per `fetch()` with the `Request` as a `JsObject`, before the transport and before any cookie or user-agent header is added:
+The hook is called with the `Request` as a `JsObject` before the transport, and before any cookie or user-agent header is added. It runs for the request passed to `fetch()` and again for every [redirect hop](#redirects):
 
 - Return `null`, or nothing, to send the request as it is.
 - Return a different `Request` `JsObject` to send that one instead. Any other return value rejects the `fetch()` with a `TypeError`.
@@ -256,7 +256,19 @@ $engine->setFetchPolicy(function (JsObject $request) use ($allowedHosts, $token)
 
 `fetch("https://evil.example.net/")` then rejects with `TypeError: host not allowed: evil.example.net`, and requests to the allowed hosts reach the transport with an `x-internal-token` header.
 
-The hook runs only for the URL passed to `fetch()`. Redirect hops do not run it again, so an allowed host that redirects elsewhere is followed. To enforce a rule on every hop, check `$request['url']` in the transport as well, or call `fetch()` with `redirect: "manual"` and decide in JavaScript.
+### Redirects
+
+The hook runs again for every redirect hop that Phasis follows. Before each hop it builds a `Request` for the new URL with the hop's method, headers and body, and passes it to the hook like the first request:
+
+- Returning `null` sends the hop. Headers the hook sets on the hop's `Request` are sent with it.
+- Returning a different `Request` sends that request as the hop instead.
+- Throwing rejects the `fetch()` with a `TypeError` carrying the message, exactly as a direct request to that URL would be rejected, and the transport is not called for that URL.
+
+So with the allowlist above, `fetch("https://api.example.com/go")` answered by a `302` to `https://evil.example.net/` rejects with `TypeError: host not allowed: evil.example.net`, while a redirect from `api.example.com` to `cdn.example.com` is followed. The hop's method and body are already adjusted when the hook sees it: after a `303`, the hook sees a `GET` with no body.
+
+`redirect: "manual"` and `redirect: "error"` follow nothing, so the hook runs only for the first request.
+
+The same rule applies to the other paths that follow redirects. With a hook installed, `XMLHttpRequest` runs it before its first request and on every hop, and walks the redirect chain itself instead of asking the transport to follow redirects; a rejection fails the request with an `error` event, or a `NetworkError` from a synchronous `send()`. In [Node mode](/docs/modules#node-compatibility) without a custom transport, `fetch()` runs the hook on every hop of the Node HTTP client's redirect chain.
 
 ## Default behavior
 
@@ -268,7 +280,7 @@ The hook runs only for the URL passed to `fetch()`. Redirect hops do not run it 
 | TLS verification | `CURLOPT_SSL_VERIFYPEER` on and `CURLOPT_SSL_VERIFYHOST` at `2`, with no option to turn them off. Replace the transport to change TLS settings. |
 | User-Agent | `Phasis/0.1`, added only when the request has none |
 | Cookies | None sent or stored. Mount a [cookie jar](/docs/interop/cookie-jar) to enable them. |
-| Policy hook | None: every request is allowed. |
+| Policy hook | None: every request and redirect hop is allowed. |
 | AbortSignal | Checked before the request starts and polled during the transfer through the curl progress callback. |
 
 ## See also

@@ -6,9 +6,9 @@ const { Buffer } = require('buffer');
 const { Readable } = require('stream');
 const zlib = require('zlib');
 
-module.exports = async function fetchTransport(request, originalBytes, cookieGet, cookieSet, finalize, Response) {
+module.exports = async function fetchTransport(request, originalBytes, cookieGet, cookieSet, finalize, Response, redirectHook) {
   const signal = request.signal;
-  const headers = new Headers(request.headers);
+  let headers = new Headers(request.headers);
   if (!headers.has('accept')) headers.set('accept', '*/*');
   if (!headers.has('accept-language')) headers.set('accept-language', '*');
   if (!headers.has('user-agent')) headers.set('user-agent', 'phasis');
@@ -58,7 +58,7 @@ module.exports = async function fetchTransport(request, originalBytes, cookieGet
       response.resume();
       if (request.redirect === 'error') throw new TypeError('fetch failed: unexpected redirect');
       if (hops >= 20) throw new TypeError('fetch failed: redirect count exceeded');
-      const next = new URL(location, url);
+      let next = new URL(location, url);
       if (next.origin !== url.origin) for (const name of ['authorization', 'proxy-authorization', 'cookie', 'host']) headers.delete(name);
       if (((status === 301 || status === 302) && method === 'POST') || (status === 303 && method !== 'GET' && method !== 'HEAD')) {
         method = 'GET'; body = null; replay = null;
@@ -66,6 +66,14 @@ module.exports = async function fetchTransport(request, originalBytes, cookieGet
       } else if (body) {
         if (replay === null) throw new TypeError('fetch failed: cannot replay a streamed request body');
         body = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(replay)); controller.close(); } });
+      }
+      if (typeof redirectHook === 'function') {
+        const hop = redirectHook(next.href, method, headers, replay);
+        next = new URL(hop.url);
+        method = hop.method;
+        headers = new Headers(hop.headers);
+        replay = hop.body === null ? null : Buffer.from(hop.body);
+        body = replay === null ? null : new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(replay)); controller.close(); } });
       }
       url = next;
       continue;

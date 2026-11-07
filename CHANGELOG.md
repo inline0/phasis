@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-11-07
+
+### Fixed
+- The fetch policy hook installed with `Engine::setFetchPolicy()` runs for every redirect hop, not only for the URL passed to `fetch()`. Before each hop Phasis builds a `Request` for the new URL with the hop's method, headers and body and applies the hook as it does to the first request: `null` sends the hop, a returned `Request` replaces it, and a throw rejects the `fetch()` with the same `TypeError` a direct request to that URL gets, without calling the transport for it. Node-mode `fetch()`, whose redirects the Node HTTP client follows, runs the hook on every hop as well.
+- `XMLHttpRequest` runs the fetch policy hook. With a hook installed it applies it before the first request and on every redirect hop, follows up to 20 redirects itself instead of asking the transport to follow them, drops `authorization`, `proxy-authorization` and `cookie` headers on a cross-origin hop, and fails a denied request with a network error. Without a hook, XHR requests are sent as before.
+
+### Security
+- An embedder that used the policy hook as an allowlist could be bypassed by a redirect: an allowed host answering with a redirect to a disallowed host was followed, and `XMLHttpRequest` skipped the hook entirely. Upgrade if the hook enforces which hosts or URLs JavaScript may reach. `redirect: "manual"` and `redirect: "error"` were not affected.
+
+### Added
+- Regression tests for a redirect from an allowed to a disallowed host (rejected for `fetch()`, XHR and Node-mode `fetch()`), redirects between allowed hosts (still followed, with the hop's method, body and hook-set headers), and `redirect: "manual"` (unchanged).
+
 ## [0.14.4] - 2026-11-07
 
 ### Changed

@@ -343,7 +343,7 @@ public function setFetchPolicy(callable $hook): void
 public function getFetchPolicy(): ?callable
 ```
 
-Pre-flight policy hook, called once per `fetch()` with the `Request` as a `JsObject`. Throw to deny (the `fetch()` rejects with a `TypeError` carrying the message), return a different `Request` to rewrite, or return `null` or no value to allow. Redirect hops do not run the hook again.
+Pre-flight policy hook, called with the `Request` as a `JsObject` before the request is sent and again for every redirect hop that `fetch()`, `XMLHttpRequest` or Node-mode `fetch()` follows. Throw to deny (the `fetch()` rejects with a `TypeError` carrying the message; an `XMLHttpRequest` fails with a network error), return a different `Request` to rewrite, or return `null` or no value to allow. A denied hop is rejected exactly like a direct request to its URL; see [Redirects](/docs/interop/fetch-transport#redirects).
 
 ```php
 use Phasis\Value\JsFunction;
