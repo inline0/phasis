@@ -800,16 +800,6 @@ final class XMLHttpRequestConstructor
         ));
     }
 
-    private static function originOf(string $url): string
-    {
-        $parts = parse_url($url);
-        if (!is_array($parts)) {
-            return '';
-        }
-        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-        return strtolower(($parts['scheme'] ?? '') . '://' . ($parts['host'] ?? '')) . $port;
-    }
-
     /**
      * Derive an `Origin: scheme://host[:port]` header value from the
      * realm's base URL. Returns null when nothing resembling a base
@@ -1157,6 +1147,12 @@ final class XMLHttpRequestConstructor
             }
         }
 
+        $scheme = FetchFunction::urlScheme($url);
+        if ($scheme !== '' && $scheme !== 'http' && $scheme !== 'https' && $scheme !== 'blob') {
+            self::finishError($xhr, 'Unsupported URL scheme "' . $scheme . ':"');
+            return;
+        }
+
         $transport = $realm->getFetchTransport();
         $policed = FetchPolicy::active();
         $hops = 0;
@@ -1174,6 +1170,11 @@ final class XMLHttpRequestConstructor
                     )));
                 } catch (\Throwable $e) {
                     self::finishError($xhr, $e->getMessage());
+                    return;
+                }
+                $hopScheme = FetchFunction::urlScheme($hop['url']);
+                if ($hopScheme !== 'http' && $hopScheme !== 'https' && ($hops > 0 || ($hopScheme !== '' && $hopScheme !== 'blob'))) {
+                    self::finishError($xhr, 'Redirect to an invalid or non-HTTP(S) URL');
                     return;
                 }
                 $url = $hop['url'];
@@ -1238,9 +1239,11 @@ final class XMLHttpRequestConstructor
                 return;
             }
             $next = FetchFunction::resolveLocation($url, $location);
-            if (self::originOf($next) !== self::originOf($url)) {
-                $headers = self::withoutHeaders($headers, ['authorization', 'proxy-authorization', 'cookie']);
+            if ($next === null || !FetchFunction::isHttpUrl($next)) {
+                self::finishError($xhr, 'Redirect to an invalid or non-HTTP(S) URL');
+                return;
             }
+            $headers = FetchFunction::redirectHeaders(self::headerPairs($headers), $url, $next);
             if ($hopStatus === 303 || ($hopStatus === 301 || $hopStatus === 302) && $method !== 'GET' && $method !== 'HEAD') {
                 $method = 'GET';
                 $body = '';

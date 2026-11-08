@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-08
+
+### Security
+- `fetch()` removes `authorization`, `proxy-authorization` and `cookie` headers on the first redirect hop that changes origin, and they stay removed for the rest of the chain. Before, every hop was rebuilt from the original request, so these headers went to any host a server redirected to, with or without a policy hook. That included a token the policy hook set for one host: the documented `setFetchPolicy()` example sent its `api.example.com` bearer token to whatever HTTPS host `api.example.com` redirected to. Origins are compared with Phasis's WHATWG URL parser, before the policy hook sees the hop and on the path without a hook.
+- `fetch()` only sends `http` and `https` URLs, plus `blob:` URLs on the first request. A redirect to `file:`, `ftp:`, `data:`, `blob:` or any other scheme rejects with a `TypeError` before the transport is called, as does a direct request to such a URL or a hop the policy hook rewrites to one. Before, the default transport followed a `302` to `file:///etc/hosts` and returned the file. `CurlTransport` now also limits libcurl to `http` and `https` with `CURLOPT_PROTOCOLS_STR` and `CURLOPT_REDIR_PROTOCOLS_STR` (the bitmask options on older builds), so a direct `CurlTransport::send()` of a `file:` URL fails too.
+- `XMLHttpRequest` compares origins on a redirect with the same WHATWG URL parser that builds the next hop's URL. It used `parse_url()`, which reads `https://evil.example.net\@api.example.com/x` as host `api.example.com` while the hop went to `evil.example.net`, so `authorization` and `cookie` were kept for a cross-origin hop. XHR also fails a request whose URL or redirect target is not `http` or `https` (`blob:` on the first request).
+- `new WebSocket()` runs the fetch policy hook before the transport, with a `GET` `Request` for the handshake URL (`https:` for `wss:`, `http:` for `ws:`). A denial fails the socket with an `error` event and a `close` event with code `1006`, and a returned `Request` changes the URL the transport connects to. Before, a deny-all hook rejected `fetch()` while `new WebSocket()` still connected to any host. Upgrade if the hook enforces which hosts JavaScript may reach.
+
+### Changed
+- A `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, now also removes `content-type`, `content-encoding`, `content-language` and `content-location` from the `GET` that `fetch()` continues with, as the Fetch standard requires.
+- Docs: the policy hook's scope is stated where the hook is introduced (the introduction, the API reference and the fetch transport page): it covers `fetch()`, `XMLHttpRequest` and the `WebSocket` handshake, and not Node mode's `http`, `https`, `net`, `tls`, `http2`, `child_process` and `fs` modules, so Node compatibility should stay off when the hook is a security boundary. The fetch transport page documents the credential removal and the allowed URL schemes in its default behavior table.
+- Docs: the introduction says CI runs on every pull request and on pushes to `main` whose head commit carries `[ci]`, as `ci.yml` does, instead of on every push to `main`. The API reference says that without a cookie jar `fetch()` stores no cookies and adds no `Cookie` header, while a `Cookie` header the script sets is sent. The fetch transport page lists every way XHR's transport calls differ from `fetch()`, adding that XHR sends no `User-Agent`, adds an `Origin` header when the realm has a base URL, and keeps header-name case. The Web APIs page says the WPT fixture covers XHR's redirect stripping and the PHPUnit suite covers `fetch()`'s.
+
+### Added
+- Regression tests in `FetchRedirectSecurityTest` for the credential headers on cross-origin, cross-scheme, same-origin and returning redirect chains, a policy-set token, a backslash `Location` for `fetch()` and XHR, body headers after a `303`, redirects and direct requests to `file:`, `ftp:`, `data:` and `blob:` URLs, `blob:` on the first request, `CurlTransport`'s protocol limit, and the policy hook on the WebSocket handshake (deny, handshake URL and rewrite).
+
+### Upgrade notes
+- A custom transport no longer receives URLs whose scheme is not `http`, `https` or (first request only) `blob`. Code that used a custom transport to serve another scheme through `fetch()` now gets a `TypeError`; serve that content through a host function or an `http` URL the transport recognizes. `FetchFunction::resolveLocation()` returns `null` for a `Location` the URL parser rejects, and such a redirect rejects the `fetch()`.
+
 ## [0.14.6] - 2026-11-07
 
 ### Changed

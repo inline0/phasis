@@ -32,7 +32,7 @@ The imported [Web Platform Tests](https://github.com/web-platform-tests/wpt) cor
 - The full Streams Standard (`Readable`/`Writable`/`Transform`, BYOB and queuing).
 - The full **`crypto` / `SubtleCrypto`** surface: digest, HMAC, AES-GCM/CBC/CTR, RSA-OAEP/PSS/PKCS1, ECDSA, ECDH, HKDF and PBKDF2, including thousands of derive-bits permutations from `hkdf` and `pbkdf2`.
 - The **`WebSocket`** state machine: constructor URL and subprotocol validation, close-code semantics, `send()` for strings / `ArrayBuffer` / typed-array views / `Blob`, `binaryType`, `bufferedAmount`, async close while connecting and event-handler nullability.
-- **`Fetch`** and **`XMLHttpRequest`** requests: the `responseType` state machine, abort/send transitions, CORS-safelisted headers, multipart `FormData` uploads, `XMLHttpRequestUpload` and `ProgressEvent`, redirect-chain Authorization stripping and sync XHR network-error throwing.
+- **`Fetch`** and **`XMLHttpRequest`** requests: the `responseType` state machine, abort/send transitions, CORS-safelisted headers, multipart `FormData` uploads, `XMLHttpRequestUpload` and `ProgressEvent`, `XMLHttpRequest` Authorization stripping on a cross-origin redirect and sync XHR network-error throwing. The same stripping in `fetch()`, which also removes `Proxy-Authorization` and `Cookie`, is covered by the PHPUnit suite rather than a WPT fixture.
 - **`Fetch`** responses: `Response`/`Headers` init validation, the static `Response.json` / `Response.error` constructors, `URL.createObjectURL` blob URLs and `Response.clone` with `structuredClone`-d teed streams.
 - Body-mixin consumption: `text` / `blob` / `json` / `formData` / `arrayBuffer`.
 

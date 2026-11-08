@@ -221,6 +221,8 @@ final class CurlTransport
             };
         }
 
+        $options += self::protocolOptions();
+
         curl_setopt_array($ch, $options);
 
         $result = curl_exec($ch);
@@ -261,6 +263,23 @@ final class CurlTransport
             // it walks the chain.
             'finalUrl' => $url,
             'redirected' => false,
+        ];
+    }
+
+    /**
+     * @return array<int, int|string>
+     */
+    public static function protocolOptions(): array
+    {
+        if (defined('CURLOPT_PROTOCOLS_STR') && defined('CURLOPT_REDIR_PROTOCOLS_STR')) {
+            return [
+                (int) constant('CURLOPT_PROTOCOLS_STR') => 'http,https',
+                (int) constant('CURLOPT_REDIR_PROTOCOLS_STR') => 'http,https',
+            ];
+        }
+        return [
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
         ];
     }
 

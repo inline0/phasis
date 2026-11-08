@@ -94,14 +94,14 @@ Two parts of the engine are useful on their own: the [parser](/docs/parser) turn
 
 The PHP application decides what JavaScript can reach and how long it runs:
 
-- Network access goes through a replaceable [fetch transport](/docs/interop/fetch-transport) and an optional policy hook that can rewrite or reject each request. Cookies are off unless you mount a [cookie jar](/docs/interop/cookie-jar).
+- Network access goes through a replaceable [fetch transport](/docs/interop/fetch-transport) and an optional policy hook that can rewrite or reject each request. The hook covers `fetch()`, `XMLHttpRequest` and the `WebSocket` handshake. It does not cover Node mode's `http`, `https`, `net`, `tls`, `http2` and `child_process` modules, so leave [Node compatibility](/docs/modules#node-compatibility) off when the hook is a security boundary. Cookies are off unless you mount a [cookie jar](/docs/interop/cookie-jar).
 - The event loop runs on virtual time: a `setTimeout(cb, 5000)` fires before `eval()` returns without PHP sleeping. See [Event loop](/docs/api#event-loop).
 - `setLimit('maxLoopIterations', …)` caps iterations per loop, [`setExecutionBudget()`](/docs/api#setexecutionbudget) stops evaluation after a wall-clock budget, and a fixed call-stack ceiling stops runaway recursion. There are no limits on string length or console output. See [setLimit](/docs/api#setlimit).
 - PHP objects passed to JavaScript expose their public properties and methods by reference; see [Shared objects](/docs/interop/shared-objects).
 
 ## How it is verified
 
-Node.js (V8) is the reference: when V8 produces a result, Phasis must produce the same one. CI runs PHPStan, PHPCS, the unit suite and the oracle scenarios that compare Phasis output with Node on every push to `main` and every pull request, and the Web Platform Tests and popular-package suites when the engine source changes. Conformance with the pinned official test262 suite is run by hand in CI and committed to `COMPAT.md`; [test262](/docs/compatibility/test262) explains the snapshot and [Compatibility](/docs/compatibility) collects the results.
+Node.js (V8) is the reference: when V8 produces a result, Phasis must produce the same one. CI runs PHPStan, PHPCS, the unit suite and the oracle scenarios that compare Phasis output with Node on every pull request and on pushes to `main` whose head commit carries `[ci]`, and the Web Platform Tests and popular-package suites when the engine source changes. Conformance with the pinned official test262 suite is run by hand in CI and committed to `COMPAT.md`; [test262](/docs/compatibility/test262) explains the snapshot and [Compatibility](/docs/compatibility) collects the results.
 
 ## What it is not
 

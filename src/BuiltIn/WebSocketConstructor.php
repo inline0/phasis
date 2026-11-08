@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Phasis\BuiltIn;
 
 use Phasis\BuiltIn\DomExceptionConstructor;
+use Phasis\BuiltIn\Fetch\FetchPolicy;
 use Phasis\BuiltIn\Url\UrlParser;
 use Phasis\BuiltIn\Url\UrlRecord;
 use Phasis\BuiltIn\Url\UrlSerializer;
@@ -121,6 +122,7 @@ final class WebSocketConstructor
                 };
 
                 try {
+                    $url = self::applyFetchPolicy($url, $env);
                     $handle = $transport($url, $protocols, $emit);
                 } catch (\Throwable $e) {
                     // Surface transport errors as an asynchronous 'error'
@@ -190,6 +192,33 @@ final class WebSocketConstructor
         );
 
         $env->defineVar('WebSocket', $ctor);
+    }
+
+    private static function applyFetchPolicy(string $url, Environment $env): string
+    {
+        if (!FetchPolicy::active()) {
+            return $url;
+        }
+        $record = UrlParser::parse($url);
+        if ($record === null) {
+            throw new TypeError('Invalid WebSocket URL');
+        }
+        $record->scheme = $record->scheme === 'wss' ? 'https' : 'http';
+        $hop = FetchPolicy::describe(FetchPolicy::apply(FetchPolicy::request(
+            $env,
+            UrlSerializer::serializeUrl($record),
+            'GET',
+            [],
+            '',
+            'error',
+        )));
+        $result = UrlParser::parse($hop['url']);
+        if ($result === null || !in_array($result->scheme, ['http', 'https', 'ws', 'wss'], true)) {
+            throw new TypeError('The fetch policy returned a URL that is not a WebSocket URL');
+        }
+        $result->scheme = $result->scheme === 'https' || $result->scheme === 'wss' ? 'wss' : 'ws';
+        $result->fragment = null;
+        return UrlSerializer::serializeUrl($result);
     }
 
     private static function initInstance(JsObject $ws, string $url): void

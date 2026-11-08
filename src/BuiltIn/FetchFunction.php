@@ -7,6 +7,8 @@ namespace Phasis\BuiltIn;
 use Phasis\BuiltIn\Fetch\CurlTransport;
 use Phasis\BuiltIn\Fetch\FetchPolicy;
 use Phasis\BuiltIn\Fetch\TransportException;
+use Phasis\BuiltIn\Url\UrlParser;
+use Phasis\BuiltIn\Url\UrlSerializer;
 use Phasis\Engine;
 use Phasis\Exceptions\TypeError;
 use Phasis\Object\PropertyDescriptor;
@@ -51,6 +53,10 @@ final class FetchFunction
 {
     /** Spec-mandated redirect limit per §5.4 main fetch. */
     private const REDIRECT_LIMIT = 20;
+
+    public const CREDENTIAL_HEADERS = ['authorization', 'proxy-authorization', 'cookie'];
+
+    public const REQUEST_BODY_HEADERS = ['content-encoding', 'content-language', 'content-location', 'content-type'];
 
     public static function install(Environment $env): void
     {
@@ -206,32 +212,35 @@ final class FetchFunction
 
         $redirected = false;
         $hops = 0;
+        $headers = self::buildHeaderPairs($request, $url);
+
+        $scheme = self::urlScheme($url);
+        if ($scheme !== 'http' && $scheme !== 'https' && $scheme !== 'blob') {
+            return JsPromise::rejected(self::buildTypeError(
+                $env,
+                'fetch failed: unsupported URL scheme "' . $scheme . ':"',
+            ));
+        }
 
         while (true) {
-            // Spec step 4: build transport descriptor for the current URL.
-            $headers = self::buildHeaderPairs($request, $url);
+            $sent = $headers;
 
             // Step 5: layer the cookie jar's `Cookie` header (if any).
             if ($cookieJar !== null) {
                 $cookieHeader = self::cookieJarGet($cookieJar, $url);
                 if ($cookieHeader !== '') {
-                    $headers[] = ['Cookie', $cookieHeader];
+                    $sent[] = ['Cookie', $cookieHeader];
                 }
             }
 
-            // Identify the engine — default User-Agent if the request
-            // didn't already specify one.
-            if (!self::hasHeader($headers, 'user-agent')) {
-                $headers[] = ['User-Agent', NavigatorObject::USER_AGENT];
+            if (!self::hasHeader($sent, 'user-agent')) {
+                $sent[] = ['User-Agent', NavigatorObject::USER_AGENT];
             }
-            // Mirror the request's content type if the body extraction
-            // already set one (RequestConstructor stores it on the
-            // Headers object — buildHeaderPairs has already pulled it).
 
             $descriptor = [
                 'method' => $method,
                 'url' => $url,
-                'headers' => $headers,
+                'headers' => $sent,
                 'body' => $bodyString,
                 'redirect' => $redirectMode,
                 'timeout' => 30,
@@ -291,8 +300,18 @@ final class FetchFunction
                             'Too many redirects (exceeded ' . self::REDIRECT_LIMIT . ' hops)',
                         ));
                     }
-                    // Resolve relative Location against the current URL.
-                    $url = self::resolveLocation($url, $location);
+                    $next = self::resolveLocation($url, $location);
+                    if ($next === null) {
+                        return JsPromise::rejected(self::buildTypeError($env, 'fetch failed: invalid redirect location'));
+                    }
+                    if (!self::isHttpUrl($next)) {
+                        return JsPromise::rejected(self::buildTypeError(
+                            $env,
+                            'fetch failed: redirect to unsupported URL scheme "' . self::urlScheme($next) . ':"',
+                        ));
+                    }
+                    $headers = self::redirectHeaders($headers, $url, $next);
+                    $url = $next;
                     $redirected = true;
                     // Per spec, 303 and 301/302-with-non-GET force the
                     // method down to GET and strip the body. 307/308
@@ -300,6 +319,7 @@ final class FetchFunction
                     if ($status === 303 || ($status === 301 || $status === 302) && $method !== 'GET' && $method !== 'HEAD') {
                         $method = 'GET';
                         $bodyString = '';
+                        $headers = self::withoutHeaders($headers, self::REQUEST_BODY_HEADERS);
                     }
                     if (FetchPolicy::active()) {
                         try {
@@ -307,7 +327,7 @@ final class FetchFunction
                                 $env,
                                 $url,
                                 $method,
-                                self::buildHeaderPairs($request, $url),
+                                $headers,
                                 $bodyString,
                                 $redirectMode,
                             ));
@@ -317,8 +337,15 @@ final class FetchFunction
                             return JsPromise::rejected(self::buildTypeError($env, $e->getMessage()));
                         }
                         $hop = FetchPolicy::describe($request);
+                        if (!self::isHttpUrl($hop['url'])) {
+                            return JsPromise::rejected(self::buildTypeError(
+                                $env,
+                                'fetch failed: redirect to unsupported URL scheme "' . self::urlScheme($hop['url']) . ':"',
+                            ));
+                        }
                         $url = $hop['url'];
                         $method = $hop['method'];
+                        $headers = $hop['headers'];
                         $bodyString = $hop['body'];
                     }
                     // Continue loop with the new URL.
@@ -537,31 +564,54 @@ final class FetchFunction
             || $status === 307 || $status === 308;
     }
 
-    /**
-     * Resolve a possibly-relative Location header against the current
-     * request URL. PHP's parse_url + a tiny join is enough — we don't
-     * need to round-trip the full WHATWG URL parser here because the
-     * Request's URL was already normalised at construction.
-     */
-    public static function resolveLocation(string $base, string $location): string
+    public static function resolveLocation(string $base, string $location): ?string
     {
-        // Absolute URL: use as-is.
-        if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $location) === 1) {
-            return $location;
+        $record = UrlParser::parse($location, UrlParser::parse($base));
+        return $record === null ? null : UrlSerializer::serializeUrl($record);
+    }
+
+    public static function urlScheme(string $url): string
+    {
+        return UrlParser::parse($url)->scheme ?? '';
+    }
+
+    public static function isHttpUrl(string $url): bool
+    {
+        $scheme = self::urlScheme($url);
+        return $scheme === 'http' || $scheme === 'https';
+    }
+
+    public static function sameOrigin(string $a, string $b): bool
+    {
+        $left = UrlParser::parse($a);
+        $right = UrlParser::parse($b);
+        if ($left === null || $right === null) {
+            return false;
         }
-        $parts = parse_url($base);
-        if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
-            return $location;
-        }
-        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-        $origin = $parts['scheme'] . '://' . $parts['host'] . $port;
-        if ($location !== '' && $location[0] === '/') {
-            return $origin . $location;
-        }
-        // Relative to current path's directory.
-        $path = $parts['path'] ?? '/';
-        $dir = rtrim(substr($path, 0, (int) strrpos($path, '/') + 1), '/');
-        return $origin . ($dir === '' ? '/' : $dir . '/') . $location;
+        $origin = UrlSerializer::serializeOrigin($left);
+        return $origin !== 'null' && $origin === UrlSerializer::serializeOrigin($right);
+    }
+
+    /**
+     * @param list<array{0:string,1:string}> $headers
+     * @return list<array{0:string,1:string}>
+     */
+    public static function redirectHeaders(array $headers, string $from, string $to): array
+    {
+        return self::sameOrigin($from, $to) ? $headers : self::withoutHeaders($headers, self::CREDENTIAL_HEADERS);
+    }
+
+    /**
+     * @param list<array{0:string,1:string}> $headers
+     * @param list<string> $names
+     * @return list<array{0:string,1:string}>
+     */
+    public static function withoutHeaders(array $headers, array $names): array
+    {
+        return array_values(array_filter(
+            $headers,
+            static fn (array $pair): bool => !in_array(strtolower($pair[0]), $names, true),
+        ));
     }
 
     private static function stringSlot(JsObject $obj, string $slot): string

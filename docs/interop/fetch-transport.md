@@ -78,16 +78,19 @@ Throw `Phasis\BuiltIn\Fetch\TransportException` to report a failed request. Its 
 
 ### Other callers
 
-`XMLHttpRequest` sends its requests through the same transport and does not consult the cookie jar. Its calls differ from `fetch()` in four ways:
+`XMLHttpRequest` sends its requests through the same transport and does not consult the cookie jar. Its calls differ from `fetch()` in these ways:
 
 - `$signal` is always `null`.
 - `timeout` is the XHR `timeout` rounded up to whole seconds, or `30` when unset.
 - A `credentials` key holds `include` when `withCredentials` is set and `same-origin` otherwise.
 - A `followRedirects` key says who follows redirects.
+- No `User-Agent` header is added.
+- An `Origin` header is added when the realm has a base URL (`__phasisRequestBaseUrl` or `location.href`) and the script set none.
+- Header names keep the case given to `setRequestHeader()`.
 
-Without a policy hook, `followRedirects` is `true` and the transport is expected to follow redirects itself. With a [policy hook](#redirects) it is `false`, and XHR follows up to 20 redirects itself, one transport call per hop.
+Without a policy hook, `followRedirects` is `true` and the transport is expected to follow redirects itself. `CurlTransport` then lets libcurl follow them, limited to `http` and `https`. With a [policy hook](#redirects) it is `false`, and XHR follows up to 20 redirects itself, one transport call per hop.
 
-On those hops XHR drops `authorization`, `proxy-authorization` and `cookie` headers when the origin changes. It continues a `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, as a `GET` without a body.
+On those hops XHR drops `authorization`, `proxy-authorization` and `cookie` headers when the origin changes, comparing origins with the same WHATWG URL parser that builds the hop's URL. A `Location` that is not an `http` or `https` URL fails the request. It continues a `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, as a `GET` without a body.
 
 With [Node compatibility](/docs/modules#node-compatibility) enabled and no transport installed, `fetch()` uses the Node HTTP client instead of `CurlTransport`. Installing a transport takes precedence in Node mode too.
 
@@ -277,7 +280,21 @@ So with the allowlist above, `fetch("https://api.example.com/go")` answered by a
 
 `redirect: "manual"` and `redirect: "error"` follow nothing, so the hook runs only for the first request.
 
+When a hop changes origin (scheme, host or port, compared with the WHATWG URL parser), Phasis removes `authorization`, `proxy-authorization` and `cookie` from the hop's headers before the hook sees them. Headers removed this way stay removed for the rest of the chain. So a token the hook adds for `api.example.com` is never carried to another host; the hook adds it again only where its own rule says so. A hop to a URL that is not `http` or `https`, including one the hook returns, rejects with a `TypeError` before the transport is called.
+
 The same rule applies to the other paths that follow redirects. With a hook installed, `XMLHttpRequest` runs it before its first request and on every hop, and walks the redirect chain itself instead of asking the transport to follow redirects; a rejection fails the request with an `error` event, or a `NetworkError` from a synchronous `send()`. In [Node mode](/docs/modules#node-compatibility) without a custom transport, `fetch()` runs the hook on every hop of the Node HTTP client's redirect chain.
+
+### WebSocket
+
+`new WebSocket(url)` runs the hook once, before the [WebSocket transport](/docs/compatibility/web-apis) is called. The hook receives a `GET` `Request` for the handshake URL, with `https:` in place of `wss:` and `http:` in place of `ws:`:
+
+- Returning `null` opens the socket as requested.
+- Returning a different `Request` connects to its URL instead, mapped back to `wss:` or `ws:`. Its headers and body are not used, because the WebSocket transport takes no headers.
+- Throwing fails the socket without calling the transport: an `error` event, then a `close` event with code `1006`.
+
+### What the hook does not cover
+
+Node mode's `http`, `https`, `net`, `tls` and `http2` clients open connections without the hook, and its `child_process` and `fs` modules reach the host directly. When the hook is a security boundary, leave Node compatibility off. A custom WebSocket transport installed with `setWebSocketTransport()` still runs after the hook.
 
 ## Default behavior
 
@@ -287,6 +304,8 @@ The same rule applies to the other paths that follow redirects. With a hook inst
 | Redirects | Followed by Phasis up to 20 hops; the 21st redirect rejects with `TypeError: Too many redirects (exceeded 20 hops)`. |
 | Redirect methods | A `303`, or a `301` or `302` after a method other than `GET` or `HEAD`, continues as `GET` without a body; `307` and `308` keep the method and body. |
 | Redirect modes | `redirect: "manual"` resolves with the redirect response, whose `type` is `opaqueredirect`. `redirect: "error"` rejects with a `TypeError`. |
+| Redirect credentials | `authorization`, `proxy-authorization` and `cookie` are removed on the first hop that changes origin and stay removed. |
+| URL schemes | `fetch()` sends `http` and `https` URLs, and `blob:` URLs on the first request only. Any other scheme, directly or through a redirect, rejects with a `TypeError` before the transport is called. `CurlTransport` also limits libcurl to `http` and `https` with `CURLOPT_PROTOCOLS` and `CURLOPT_REDIR_PROTOCOLS`. |
 | Time limits | 30 seconds overall, 10 seconds to connect |
 | TLS verification | `CURLOPT_SSL_VERIFYPEER` on and `CURLOPT_SSL_VERIFYHOST` at `2`, with no option to turn them off. Replace the transport to change TLS settings. |
 | User-Agent | `Phasis/0.1`, added only when the request has none |

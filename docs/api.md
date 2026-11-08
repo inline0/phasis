@@ -356,6 +356,10 @@ public function getFetchPolicy(): ?callable
 
 Pre-flight policy hook, called with the `Request` as a `JsObject` before the request is sent and again for every redirect hop that `fetch()`, `XMLHttpRequest` or Node-mode `fetch()` follows. Throw to deny (the `fetch()` rejects with a `TypeError` carrying the message; an `XMLHttpRequest` fails with a network error), return a different `Request` to rewrite, or return `null` or no value to allow. A denied hop is rejected exactly like a direct request to its URL; see [Redirects](/docs/interop/fetch-transport#redirects).
 
+- Before a hop that changes origin, Phasis removes `authorization`, `proxy-authorization` and `cookie`, so a header the hook sets for one host is not carried to the next.
+- `new WebSocket()` runs the hook with a `GET` `Request` for the handshake URL, `https:` for `wss:` and `http:` for `ws:`. A denial fails the socket with an `error` event and a `close` event with code `1006`.
+- Node mode's `http`, `https`, `net`, `tls` and `http2` clients do not run the hook. See [what the hook does not cover](/docs/interop/fetch-transport#what-the-hook-does-not-cover).
+
 ```php
 use Phasis\Value\JsFunction;
 use Phasis\Value\JsObject;
@@ -408,7 +412,7 @@ final class SimpleJar
 $engine->setCookieJar(new SimpleJar());
 ```
 
-`SimpleJar` sends every cookie to every host and ignores cookie attributes; the [Cookie jar](/docs/interop/cookie-jar) page has per-host and Symfony BrowserKit jars. Without `setCookieJar()`, `fetch` ignores both inbound `Set-Cookie` and outbound `Cookie` headers: the default is no cookies.
+`SimpleJar` sends every cookie to every host and ignores cookie attributes; the [Cookie jar](/docs/interop/cookie-jar) page has per-host and Symfony BrowserKit jars. Without `setCookieJar()`, `fetch` stores no inbound `Set-Cookie` headers and adds no `Cookie` header of its own. A `Cookie` header the script sets is sent as given, and dropped when a redirect changes origin.
 
 ## Exceptions
 
